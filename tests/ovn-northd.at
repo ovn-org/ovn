@@ -4151,7 +4151,7 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 check ovn-nbctl --bfd=$uuid lr-route-add r0 100.0.0.0/8 192.168.1.2
 wait_column down bfd status logical_port=r0-sw1
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd], [0], [], [ignore])
 
 check_engine_stats northd recompute nocompute
 check_engine_stats bfd recompute nocompute
@@ -4163,11 +4163,11 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 check ovn-nbctl --bfd lr-route-add r0 200.0.0.0/8 192.168.2.2
 wait_column down bfd status logical_port=r0-sw2
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.2.2 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.2.2 | grep -q bfd], [0], [], [ignore])
 
 check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.5.2 r0-sw5
 wait_column down bfd status logical_port=r0-sw5
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd], [0], [], [ignore])
 
 check_engine_stats northd recompute nocompute
 check_engine_stats bfd recompute nocompute
@@ -4179,7 +4179,7 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.6.1/32 192.168.10.10 r0-sw6
 wait_column down bfd status logical_port=r0-sw6
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.6.1 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.6.1 | grep -q bfd], [0], [], [ignore])
 
 check_engine_stats northd recompute nocompute
 check_engine_stats bfd recompute nocompute
@@ -4191,7 +4191,7 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
 check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.7.1/32 192.168.10.10 r0-sw7
 wait_column down bfd status logical_port=r0-sw7
-AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.7.1 | grep -q bfd],[0])
+AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.7.1 | grep -q bfd], [0], [], [ignore])
 
 route_uuid=$(fetch_column nb:logical_router_static_route _uuid ip_prefix="100.0.0.0/8")
 check ovn-nbctl clear logical_router_static_route $route_uuid bfd
@@ -4266,7 +4266,7 @@ AT_CHECK([ovn-nbctl copp-list copp0], [0], [dnl
 event-elb: meter0
 ])
 
-AT_CHECK([ovn-sbctl list logical_flow | grep trigger_event -A 2 | grep -q meter0])
+AT_CHECK([ovn-sbctl list logical_flow | grep trigger_event -A 2 | grep -q meter0], [0], [], [ignore])
 
 check ovn-nbctl --wait=hv meter-add meter1 drop 300 pktps 10
 AT_CHECK([ovn-nbctl meter-list |grep meter1 -A 1], [0], [dnl
@@ -4284,7 +4284,7 @@ AT_CHECK([ovn-nbctl copp-list copp1], [0], [dnl
 arp: meter1
 ])
 
-AT_CHECK([ovn-sbctl list logical_flow | grep arp -A 2 | grep -q meter1])
+AT_CHECK([ovn-sbctl list logical_flow | grep arp -A 2 | grep -q meter1], [0], [], [ignore])
 
 check ovn-nbctl --wait=hv copp-del copp1 arp
 AT_CHECK([ovn-nbctl copp-list copp1], [0], [dnl
@@ -4298,7 +4298,7 @@ AT_CHECK([ovn-nbctl copp-list copp2], [0], [dnl
 icmp4-error: meter2
 ])
 
-AT_CHECK([ovn-sbctl list logical_flow | grep icmp4 -A 2 | grep -q meter2])
+AT_CHECK([ovn-sbctl list logical_flow | grep icmp4 -A 2 | grep -q meter2], [0], [], [ignore])
 
 check ovn-nbctl --wait=hv copp-del copp2 icmp4-error
 AT_CHECK([ovn-nbctl copp-list copp2], [0], [dnl
@@ -4310,7 +4310,7 @@ AT_CHECK([ovn-nbctl copp-list copp3], [0], [dnl
 icmp6-error: meter2
 ])
 
-AT_CHECK([ovn-sbctl list logical_flow | grep icmp6 -A 2 | grep -q meter2])
+AT_CHECK([ovn-sbctl list logical_flow | grep icmp6 -A 2 | grep -q meter2], [0], [], [ignore])
 
 check ovn-nbctl --wait=hv copp-del copp3 icmp6-error
 AT_CHECK([ovn-nbctl copp-list copp3], [0], [dnl
@@ -4322,7 +4322,7 @@ AT_CHECK([ovn-nbctl copp-list copp4], [0], [dnl
 tcp-reset: meter2
 ])
 
-AT_CHECK([ovn-sbctl list logical_flow | grep tcp -A 2 | grep -q meter2])
+AT_CHECK([ovn-sbctl list logical_flow | grep tcp -A 2 | grep -q meter2], [0], [], [ignore])
 
 check ovn-nbctl --wait=hv copp-del copp4 tcp-reset
 AT_CHECK([ovn-nbctl copp-list copp4], [0], [dnl
@@ -4351,7 +4351,7 @@ check ovn-nbctl --wait=hv lr-copp-add copp7 r0
 AT_CHECK([ovn-nbctl copp-list copp7], [0], [dnl
 bfd: meter0
 ])
-AT_CHECK([ovn-sbctl list logical_flow | grep bfd -A 2 | grep -q meter0])
+AT_CHECK([ovn-sbctl list logical_flow | grep bfd -A 2 | grep -q meter0],[0],[],[ignore])
 
 check ovn-nbctl --wait=hv set Logical_Switch sw1 \
     other_config:mcast_querier="false" \
@@ -4361,7 +4361,7 @@ check ovn-nbctl --wait=hv ls-copp-add copp8 sw1
 AT_CHECK([ovn-nbctl copp-list copp8], [0], [dnl
 igmp: meter1
 ])
-AT_CHECK([ovn-sbctl list logical_flow | grep igmp -A 2 | grep -q meter1])
+AT_CHECK([ovn-sbctl list logical_flow | grep igmp -A 2 | grep -q meter1],[0],[],[ignore])
 
 check ovn-nbctl copp-del copp8
 AT_CHECK([ovn-nbctl copp-list copp8], [0], [dnl
@@ -7901,7 +7901,7 @@ AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_l2_lkup | grep -q 'match=(eth.mca
 check ovn-nbctl --wait=sb set Logical_Switch S1 \
     other_config:broadcast-arps-to-all-routers=false
 
-AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_l2_lkup | grep -q 'match=(eth.mcast && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)'], [0])
+AT_CHECK([ovn-sbctl lflow-list S1 | grep ls_in_l2_lkup | grep -q 'match=(eth.mcast && (arp.op == 1 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)'], [0], [], [ignore])
 
 check ovn-nbctl --wait=sb set Logical_Switch S1 \
     other_config:broadcast-arps-to-all-routers=true
@@ -17201,7 +17201,7 @@ check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows lr0 > lrflows
 AT_CAPTURE_FILE([lrflows])
-AT_CHECK([! ovn_strip_lflows < lrflows | grep priority=105 | grep -q "flags.force_snat_for_lb == 1"])
+AT_CHECK([! ovn_strip_lflows < lrflows | grep priority=105 | grep -q "flags.force_snat_for_lb == 1"], [0], [], [ignore])
 
 check ovn-nbctl lrp-del lrp0 -- lrp-add lr0 lrp0 02:00:00:00:00:01 4242::4242/64
 check ovn-nbctl --wait=sb sync
