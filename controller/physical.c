@@ -3222,7 +3222,7 @@ physical_consider_evpn_binding(const struct evpn_binding *binding,
         ip4 = in6_addr_get_mapped_ipv4(&binding->remote_ip);
         put_load_bytes(&ip4, sizeof ip4, MFF_TUN_DST, 0, 32, ofpacts);
     } else {
-        put_load_bytes(&local_ip, sizeof local_ip, MFF_TUN_IPV6_SRC,
+        put_load_bytes(local_ip, sizeof *local_ip, MFF_TUN_IPV6_SRC,
                        0, 128, ofpacts);
         put_load_bytes(&binding->remote_ip, sizeof binding->remote_ip,
                        MFF_TUN_IPV6_DST, 0, 128, ofpacts);
@@ -3323,7 +3323,7 @@ physical_consider_evpn_multicast(const struct evpn_multicast_group *mc_group,
         ovs_be32 ip4 = in6_addr_get_mapped_ipv4(local_ip);
         put_load_bytes(&ip4, sizeof ip4, MFF_TUN_SRC, 0, 32, ofpacts);
     } else {
-        put_load_bytes(&local_ip, sizeof local_ip, MFF_TUN_IPV6_SRC,
+        put_load_bytes(local_ip, sizeof *local_ip, MFF_TUN_IPV6_SRC,
                        0, 128, ofpacts);
     }
     put_load(mc_group->vni, MFF_TUN_ID, 0, 24, ofpacts);
