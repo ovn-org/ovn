@@ -1,6 +1,7 @@
 /libovn.sym
 /ovn-br-idl.c
 /ovn-br-idl.h
+/ovn-br-idl.ovsidl
 /ovn-nb-idl.c
 /ovn-nb-idl.h
 /ovn-nb-idl.ovsidl

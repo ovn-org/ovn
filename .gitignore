@@ -61,6 +61,9 @@
 /missing
 /missing-distfiles
 /ovn-architecture.7
+/ovn-br.5
+/ovn-br.gv
+/ovn-br.pic
 /ovn-nb.5
 /ovn-nb.gv
 /ovn-nb.pic
