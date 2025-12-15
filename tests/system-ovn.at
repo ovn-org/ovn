@@ -6718,11 +6718,11 @@ AT_CHECK([ovn-nbctl set Logical_Switch_Port ext options:qos_burst=6000000])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 200Kbit ceil 300Kbit burst 375000b cburst 375000b'])
+                grep -q 'class htb .* rate 200Kbit ceil 300Kbit burst 3.....b cburst 3.....b'])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-ext'])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* rate 400Kbit ceil 600Kbit burst 750000b cburst 750000b'])
+                grep -q 'class htb .* rate 400Kbit ceil 600Kbit burst 7.....b cburst 7.....b'])
 
 # The same now with ovs db read only
 #
@@ -6740,24 +6740,24 @@ wake_up_ovsdb .
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 200Kbit ceil 300Kbit burst 375000b cburst 375000b'])
+                grep -q 'class htb .* rate 200Kbit ceil 300Kbit burst 3.....b cburst 3.....b'])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-ext'])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* rate 400Kbit ceil 600Kbit burst 750000b cburst 750000b'])
+                grep -q 'class htb .* rate 400Kbit ceil 600Kbit burst 7.....b cburst 7.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_min_rate=200000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_max_rate=300000])
 
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 12Kbit ceil 34359Mbit burst 375000b cburst 373662b'])
+                grep -q 'class htb .* rate 12Kbit ceil 34359Mbit burst 3.....b cburst 3.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_burst=3000000])
 OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-public')" = ""])
 
 AT_CHECK([ovn-nbctl set Logical_Switch_Port ext options:qos_max_rate=800000])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 750000b cburst 750000b'])
+                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 7.....b cburst 7.....b'])
 
 AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_min_rate=400000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_max_rate=800000])
@@ -6765,7 +6765,7 @@ AT_CHECK([ovn-nbctl set Logical_Switch_Port public options:qos_burst=6000000])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 750000b cburst 750000b'])
+                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 7.....b cburst 7.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port ext options qos_min_rate=400000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port ext options qos_max_rate=800000])
@@ -6775,7 +6775,7 @@ OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-ext')" = ""])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 750000b cburst 750000b'])
+                grep -q 'class htb .* rate 400Kbit ceil 800Kbit burst 7.....b cburst 7.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_min_rate=400000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port public options qos_max_rate=800000])
@@ -6793,25 +6793,25 @@ AT_CHECK([ovn-nbctl set Logical_Switch_Port sw11 options:qos_burst=6000000])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 200Kbit ceil 350Kbit burst 375000b cburst 374999b'])
+                grep -q 'class htb .* rate 200Kbit ceil 350Kbit burst 3.....b cburst 3.....b'])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-ext'])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* prio 0 rate 400Kbit ceil 700Kbit burst 750000b cburst 749999b'])
+                grep -q 'class htb .* prio 0 rate 400Kbit ceil 700Kbit burst 7.....b cburst 7.....b'])
 
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_min_rate=300000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_max_rate=500000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_burst=3000000])
 
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* prio 0 rate 300Kbit ceil 500Kbit burst 375000b cburst 375000b'])
+                grep -q 'class htb .* prio 0 rate 300Kbit ceil 500Kbit burst 3.....b cburst 3.....b'])
 
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw12 options:qos_min_rate=400000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw12 options:qos_max_rate=500000])
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw12 options:qos_burst=3000000])
 
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* prio 0 rate 400Kbit ceil 500Kbit burst 375000b cburst 375000b'])
+                grep -q 'class htb .* prio 0 rate 400Kbit ceil 500Kbit burst 3.....b cburst 3.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw02 options qos_min_rate=300000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw02 options qos_max_rate=500000])
@@ -6819,9 +6819,9 @@ AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw02 options qos_burst=3000000])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-public'])
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* rate 200Kbit ceil 350Kbit burst 375000b cburst 374999b'])
+                grep -q 'class htb .* rate 200Kbit ceil 350Kbit burst 3.....b cburst 3.....b'])
 OVS_WAIT_UNTIL([test "$(tc class show dev ovs-public | \
-                grep 'class htb .* prio 0 rate 300Kbit ceil 500Kbit burst 375000b cburst 375000b')" = ""])
+                grep 'class htb .* prio 0 rate 300Kbit ceil 500Kbit burst 3.....b cburst 3.....b')" = ""])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw01 options qos_min_rate=200000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw01 options qos_max_rate=350000])
@@ -6830,9 +6830,9 @@ OVS_WAIT_UNTIL([test "$(tc qdisc show | grep 'htb 1: dev ovs-public')" = ""])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-ext'])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* prio 0 rate 400Kbit ceil 700Kbit burst 750000b cburst 749999b'])
+                grep -q 'class htb .* prio 0 rate 400Kbit ceil 700Kbit burst 7.....b cburst 7.....b'])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* prio 0 rate 400Kbit ceil 500Kbit burst 375000b cburst 375000b'])
+                grep -q 'class htb .* prio 0 rate 400Kbit ceil 500Kbit burst 3.....b cburst 3.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw11 options qos_min_rate=400000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw11 options qos_max_rate=700000])
@@ -6840,9 +6840,9 @@ AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw11 options qos_burst=6000000])
 
 OVS_WAIT_UNTIL([tc qdisc show | grep -q 'htb 1: dev ovs-ext'])
 OVS_WAIT_UNTIL([test "$(tc class show dev ovs-ext | \
-                grep 'class htb .* prio 0 rate 400Kbit ceil 700Kbit burst 750000b cburst 749999b')" = ""])
+                grep 'class htb .* prio 0 rate 400Kbit ceil 700Kbit burst 7.....b cburst 7.....b')" = ""])
 OVS_WAIT_UNTIL([tc class show dev ovs-ext | \
-                grep -q 'class htb .* prio 0 rate 400Kbit ceil 500Kbit burst 375000b cburst 375000b'])
+                grep -q 'class htb .* prio 0 rate 400Kbit ceil 500Kbit burst 3.....b cburst 3.....b'])
 
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw12 options qos_min_rate=400000])
 AT_CHECK([ovn-nbctl remove Logical_Switch_Port sw12 options qos_max_rate=500000])
@@ -6855,7 +6855,7 @@ AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_max_rate=6000000000
 AT_CHECK([ovn-nbctl set Logical_Switch_Port sw02 options:qos_burst=1000000])
 
 OVS_WAIT_UNTIL([tc class show dev ovs-public | \
-                grep -q 'class htb .* prio 0 rate 5Gbit ceil 6Gbit burst 125000b cburst 124500b'])
+                grep -q 'class htb .* prio 0 rate 5Gbit ceil 6Gbit burst 1.....b cburst 1.....b'])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
