@@ -195,6 +195,35 @@ m4_define([LOAD_MODULE],
     ]
 )
 
+# SET_EVPN_IFACE_NAMES IFNAME SWITCH [VNI]
+#
+# If IFNAME != "default" configures LS to use br-<IFNAME>, vxlan-<IFNAME> and
+# lo-<IFNAME> as EVPN host interfaces.
+# If IFNAME == "default" configures LS to use the default br-$vni, vxlan-$vni
+# and lo-$vni host interfaces.
+#
+# The host interface names are exported as environment variables BR_NAME,
+# VXLAN_NAME and LO_NAME.
+m4_define([SET_EVPN_IFACE_NAMES],
+    [
+        ifname=$1 switch=$2 vni=$3
+
+        [[ $ifname = "default" ]] && BR_NAME=br-$vni || BR_NAME=br-$ifname
+        [[ $ifname = "default" ]] && VXLAN_NAME=vxlan-$vni || VXLAN_NAME=vxlan-$ifname
+        [[ $ifname = "default" ]] && LO_NAME=lo-$vni || LO_NAME=lo-$ifname
+
+        if [[ $ifname != "default" ]]; then
+            check ovn-nbctl set logical_switch $switch                 \
+                other_config:dynamic-routing-bridge-ifname=$BR_NAME    \
+                other_config:dynamic-routing-vxlan-ifname=$VXLAN_NAME  \
+                other_config:dynamic-routing-advertise-ifname=$LO_NAME
+        fi
+
+        export BR_NAME VXLAN_NAME LO_NAME
+        on_exit 'unset BR_NAME VXLAN_NAME LO_NAME'
+    ]
+)
+
 # OVN_TEST_IPV6_PREFIX_DELEGATION()
 m4_define([OVN_TEST_IPV6_PREFIX_DELEGATION],
 [
