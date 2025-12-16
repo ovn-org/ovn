@@ -19592,3 +19592,163 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /Couldn't parse IPv6 prefix nexthop.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - BGP learned routes and removing them when ovn-controller stops])
+
+# This test validates that BGP learned routes work correctly:
+# 1. Routes added to the VRF appear in Learned_Route table
+# 2. Stopping ovn-controller remove learned routes
+#
+# Topology:
+#    +---------+
+#    | public  |
+#    +----+----+
+#         |
+#    +----+---+
+#    | lr-frr | (in VRF 10)
+#    +----+---+
+#         |
+#  +------+-------+
+#  |local-bgp-port| (in VRF 10)
+#  +--------------+
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-ex])
+
+check ovs-ofctl add-flow br-ex action=normal
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Configure bridge mappings for localnet
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phys:br-ex
+
+id=10
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ip link add vrf-$id type vrf table $id
+on_exit "ip link del vrf-$id"
+check ip link set vrf-$id up
+
+# Create public logical switch with localnet port
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add-localnet-port public ln_port phys
+
+# Create lr-frr with dynamic routing in VRF $id
+check ovn-nbctl lr-add lr-frr \
+    -- set Logical_Router lr-frr \
+        options:dynamic-routing=true \
+        options:dynamic-routing-vrf-id=$id \
+        options:dynamic-routing-maintain-vrf=false \
+        options:dynamic-routing-redistribute=static
+
+check ovn-nbctl lrp-add lr-frr lrp-local-bgp-port 00:00:00:00:00:03 20.0.0.3/8
+check ovn-nbctl lrp-set-gateway-chassis lrp-local-bgp-port hv1
+check ovn-nbctl lsp-add-router-port public public-lr-frr lrp-local-bgp-port
+
+# Create local-bgp-port in VRF 10
+check ovs-vsctl add-port br-int local-bgp-port \
+    -- set Interface local-bgp-port type=internal \
+    -- set Interface local-bgp-port external_ids:iface-id=local-bgp-port
+
+check ovn-nbctl lsp-add public local-bgp-port \
+    -- lsp-set-addresses local-bgp-port "00:00:00:00:00:03 20.0.0.3"
+
+# Configure local-bgp-port interface and add to VRF
+check ip link set local-bgp-port master vrf-$id
+check ip link set local-bgp-port address 00:00:00:00:00:03
+check ip addr add dev local-bgp-port 20.0.0.3/8
+check ip link set local-bgp-port up
+
+# Wait for everything to be ready
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Check lrp-local-bgp-port has dynamic-routing option set.
+check_row_count Port_Binding 1 logical_port=cr-lrp-local-bgp-port 'options:dynamic-routing=true'
+
+# Add static routes
+check ovn-nbctl lr-route-add lr-frr 10.10.2.1 20.0.0.42 lrp-local-bgp-port
+
+# Verify advertised routes exist
+AS_BOX([Advertised_Route])
+wait_row_count Advertised_Route 1 ip_prefix=10.10.2.1
+
+# Add a route to the VRF (simulating BGP learning a route)
+check ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$id proto zebra
+
+# Verify learned route appears in SB database
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+# Add a second route to the VRF (simulating BGP learning a route)
+ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$id proto zebra
+
+# Verify both routes appear in SB database.
+wait_row_count Learned_Route 1 ip_prefix=10.10.4.1
+
+# Remove one route.
+AS_BOX([$(date +%H:%M:%S.%03N) Remove first route])
+check ip route del 10.10.4.1 via 20.0.0.25 vrf vrf-$id proto zebra
+
+# Verify only one route remains in SB database.
+wait_row_count Learned_Route 1
+check_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+# Remove second route.
+AS_BOX([$(date +%H:%M:%S.%03N) Remove second route])
+check ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$id
+
+# Verify all routes removed from SB database.
+wait_row_count Learned_Route 0
+
+# Add again a route to the VRF (simulating BGP learning a route)
+check ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$id proto zebra
+
+# Verify learned route appears in SB database
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+# Disable dynamic routing
+AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-routing])
+check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=false
+check_row_count Port_Binding 0 logical_port=cr-lrp-local-bgp-port 'options:dynamic-routing=true'
+
+# Add one more route to the VRF (simulating BGP learning a route)
+check ip route add 10.10.4.1 via 20.0.0.25 vrf vrf-$id proto zebra
+
+# Verify learned routes are removed as dynamic-routing=false
+wait_row_count Learned_Route 0
+
+# Re-enable dynamic routing
+check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=true
+check_row_count Port_Binding 1 logical_port=cr-lrp-local-bgp-port 'options:dynamic-routing=true'
+
+# Verify both routes appear in SB database.
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+wait_row_count Learned_Route 1 ip_prefix=10.10.4.1
+check_row_count Learned_Route 2
+
+# Stop ovn-controller
+OVN_CLEANUP_CONTROLLER([hv1], [], [], [lr-frr])
+check ovn-nbctl --wait=sb sync
+
+# Verify routes are removed in SB database.
+wait_row_count Learned_Route 0
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/failed to query port patch-.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])
