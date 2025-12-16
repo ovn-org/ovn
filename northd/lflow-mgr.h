@@ -24,6 +24,7 @@
 struct ovsdb_idl_txn;
 struct ovn_datapath;
 struct ovsdb_idl_row;
+struct ovn_lflow;
 
 /* lflow map which stores the logical flows. */
 struct lflow_table {
@@ -87,12 +88,13 @@ struct lflow_table_add_args {
     const char *flow_desc;
     struct lflow_ref *lflow_ref;
     const char *where;
+    bool acl_ct_translation;
 };
 
-void lflow_table_add_lflow(struct lflow_table_add_args *args);
-
+struct ovn_lflow *lflow_table_add_lflow(struct lflow_table_add_args *args);
 
 #define WITH_HINT(HINT) .stage_hint = HINT
+#define WITH_CT_TRANSLATION .acl_ct_translation = true
 /* The IN_OUT_PORT argument tells the lport name that appears in the MATCH,
  * which helps ovn-controller to bypass lflows parsing when the lport is
  * not local to the chassis. The critiera of the lport to be added using this

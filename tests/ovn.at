@@ -44594,3 +44594,78 @@ check ovn-nbctl --wait=hv lsp-set-type down_ext localnet
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL CT translation - Rules])
+AT_KEYWORDS([acl_ct_translation_rules])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 lp1 \
+    -- lsp-set-addresses lp1 "f0:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-add ls1 lp2 \
+    -- lsp-set-addresses lp2 "f0:00:00:00:00:02 10.0.0.2"
+
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lp1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=lp2
+
+# Get the OF table numbers for ACL evaluation stages
+acl_in_eval=$(ovn-debug lflow-stage-to-oftable ls_in_acl_eval)
+acl_out_eval=$(ovn-debug lflow-stage-to-oftable ls_out_acl_eval)
+
+# Create port group and add ACLs with TCP/UDP matches
+lp1_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=lp1)
+lp2_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=lp2)
+check ovn-nbctl pg-add pg1 $lp1_uuid $lp2_uuid
+
+check ovn-nbctl acl-add pg1 from-lport 1002 \
+    "inport == @pg1 && ip4 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl acl-add pg1 from-lport 1002 \
+    "inport == @pg1 && ip4 && udp && udp.dst == 53" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 \
+    "outport == @pg1 && ip4 && tcp && tcp.src == 80" allow-related
+check ovn-nbctl acl-add pg1 to-lport 1002 \
+    "outport == @pg1 && ip4 && udp && udp.src == 53" allow-related
+check ovn-nbctl --wait=hv --log acl-add pg1 to-lport 100 "outport == @pg1" drop
+
+# Verify lflows do NOT have acl_ct_translation tag when option is disabled (default)
+check_row_count Logical_Flow 0 'tags:acl_ct_translation="true"'
+
+# Verify OpenFlows use packet header fields (tcp.dst, udp.dst) not CT fields
+# When CT translation is OFF, we should see tp_dst matches in ACL tables
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_in_eval | grep -q "tp_dst=80"], [0])
+
+# Now enable ACL CT translation
+check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=true
+
+# Verify lflows now have acl_ct_translation tag in the tags column
+wait_row_count Logical_Flow 10 'tags:acl_ct_translation="true"'
+
+# Verify OpenFlows now use CT fields (ct_tp_dst) instead of packet headers
+# When CT translation is ON, we should see ct_tp_dst matches in ACL tables
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_in_eval | grep -q "ct_tp_dst=80"], [0])
+
+# Now disable ACL CT translation again
+check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=false
+
+# Verify lflows no longer have acl_ct_translation tag
+wait_row_count Logical_Flow 0 'tags:acl_ct_translation="true"'
+
+# Verify OpenFlows reverted to packet header fields in ACL tables
+as hv1
+AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_in_eval | grep -q "tp_dst=80"], [0])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])

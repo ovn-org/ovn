@@ -101,6 +101,12 @@ Post v25.09.0
   - Add "distributed" option for load balancer, that forces traffic to be
     routed only to backend instances running locally on the same chassis
     it arrives on.
+   - Fixed support for fragmented traffic in the userspace datapath. Added the
+     "acl_ct_translation" NB_Global option to enable connection tracking
+     based L4 field translation for stateful ACLs. When enabled allows proper
+     handling of IP fragmentation in userspace datapaths. This option breaks
+     hardware offloading and is disabled by default.
+
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

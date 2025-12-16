@@ -51,10 +51,19 @@ COVERAGE_DEFINE(consider_logical_flow);
 /* Contains "struct expr_symbol"s for fields supported by OVN lflows. */
 static struct shash symtab;
 
+/* Alternative symbol table for ACL CT translation.
+ * This symbol table maps L4 port fields (tcp/udp/sctp) to their connection
+ * tracking equivalents (ct_tp_src/ct_tp_dst with ct_proto predicates).
+ * This allows matching on all IP fragments (not just the first fragment)
+ * so that all fragments can be matched based on the connection tracking state.
+ */
+static struct shash acl_ct_symtab;
+
 void
 lflow_init(void)
 {
     ovn_init_symtab(&symtab);
+    ovn_init_acl_ct_symtab(&acl_ct_symtab);
 }
 
 struct lookup_port_aux {
@@ -1001,7 +1010,15 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
                      lflow->match);
         return NULL;
     }
-    struct expr *e = expr_parse_string(lex_str_get(&match_s), &symtab,
+
+    /* Check if this logical flow requires ACL CT translation.
+     * If the tags contains "acl_ct_translation"="true", we use the
+     * alternative symbol table that maps L4 fields (tcp/udp/sctp ports)
+     * to their CT equivalents. */
+    bool ct_trans = smap_get_bool(&lflow->tags, "acl_ct_translation", false);
+    struct shash *symtab_to_use = ct_trans ? &acl_ct_symtab : &symtab;
+
+    struct expr *e = expr_parse_string(lex_str_get(&match_s), symtab_to_use,
                                        addr_sets, port_groups, &addr_sets_ref,
                                        &port_groups_ref,
                                        ldp->datapath->tunnel_key,
@@ -1033,7 +1050,7 @@ convert_match_to_expr(const struct sbrec_logical_flow *lflow,
             e = expr_combine(EXPR_T_AND, e, *prereqs);
             *prereqs = NULL;
         }
-        e = expr_annotate(e, &symtab, &error);
+        e = expr_annotate(e, symtab_to_use, &error);
     }
     if (error) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
@@ -2062,6 +2079,8 @@ lflow_destroy(void)
 {
     expr_symtab_destroy(&symtab);
     shash_destroy(&symtab);
+    expr_symtab_destroy(&acl_ct_symtab);
+    shash_destroy(&acl_ct_symtab);
 }
 
 bool
