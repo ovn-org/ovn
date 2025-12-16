@@ -29,6 +29,7 @@ DOC_SOURCE = \
 	Documentation/topics/high-availability.rst \
 	Documentation/topics/incremental-processing/datapath-sync-graph.png \
 	Documentation/topics/incremental-processing/evpn-arp-graph.png \
+	Documentation/topics/incremental-processing/ic-graph.png \
 	Documentation/topics/incremental-processing/index.rst \
 	Documentation/topics/incremental-processing/incremental-processing.rst \
 	Documentation/topics/integration.rst \

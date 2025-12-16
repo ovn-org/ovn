@@ -97,8 +97,8 @@ DOT format.
 Dumping the Graph
 ~~~~~~~~~~~~~~~~~
 
-Both `ovn-northd` and `ovn-controller` support the `--dump-inc-proc-graph`
-command-line option.
+Both `ovn-northd`, `ovn-controller` and `ovn-ic` support the
+`--dump-inc-proc-graph` command-line option.
 
 Full Graph Dump
 +++++++++++++++
@@ -110,6 +110,8 @@ To dump the entire engine graph, simply pass the option without arguments:
    ovn-northd --dump-inc-proc-graph
    # or
    ovn-controller --dump-inc-proc-graph
+   # or
+   ovn-ic --dump-inc-proc-graph
 
 This will output the full DAG definition to stdout.
 
@@ -127,6 +129,9 @@ to that node (including the node itself and its transitive dependencies).
 
    # Dump the graph for 'runtime_data' node in ovn-controller
    ovn-controller --dump-inc-proc-graph=runtime_data
+
+   # Dump the graph for 'ic' node in ovn-ic
+   ovn-ic --dump-inc-proc-graph=ic
 
 This allows for focused analysis of specific parts of the processing pipeline.
 
@@ -157,6 +162,7 @@ from Graphviz:
 
    ovn-northd --dump-inc-proc-graph | dot -Tpng -o engine_graph.png
    ovn-controller --dump-inc-proc-graph | dot -Tpng -o engine_graph.png
+   ovn-ic --dump-inc-proc-graph | dot -Tpng -o engine_graph.png
 
 
 Visual representation of the ovn-northd incremental processing engine
@@ -181,6 +187,19 @@ dependencies up to the `evpn_arp` node:
 
 .. figure:: evpn-arp-graph.png
    :alt: OVN Incremental Processing Graph (evpn_arp node)
+   :width: 80%
+   :align: center
+
+
+Visual representation of the ovn-ic incremental processing engine
+dependencies up to the `ic` node:
+
+.. code-block:: bash
+
+   ovn-ic --dump-inc-proc-graph=ic | dot -Tpng -o ic-graph.png
+
+.. figure:: ic-graph.png
+   :alt: OVN Incremental Processing Graph (ic node)
    :width: 80%
    :align: center
 
