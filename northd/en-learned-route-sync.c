@@ -222,8 +222,7 @@ routes_table_sync(
                                              sbrec_learned_route_table) {
         struct ovn_port *op =
             ovn_port_find(lr_ports, sb_route->logical_port->logical_port);
-        if (!op || op->sb != sb_route->logical_port || !op->od ||
-            !op->od->dynamic_routing) {
+        if (!ovn_port_must_learn_route(op, sb_route)) {
             sbrec_learned_route_delete(sb_route);
             continue;
         }
