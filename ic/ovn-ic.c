@@ -3054,6 +3054,28 @@ update_sequence_numbers(struct ic_context *ctx,
     }
 }
 
+static void
+inc_proc_graph_dump(const char *end_node)
+{
+    struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&nbrec_idl_class, true));
+    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
+    struct ovsdb_idl_loop ovninb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&icnbrec_idl_class, true));
+    struct ovsdb_idl_loop ovnisb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&icsbrec_idl_class, true));
+
+    inc_proc_ic_init(&ovnnb_idl_loop, &ovnsb_idl_loop,
+                     &ovninb_idl_loop, &ovnisb_idl_loop);
+    engine_dump_graph(end_node);
+
+    ovsdb_idl_loop_destroy(&ovnnb_idl_loop);
+    ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
+    ovsdb_idl_loop_destroy(&ovninb_idl_loop);
+    ovsdb_idl_loop_destroy(&ovnisb_idl_loop);
+}
+
 void
 ovn_db_run(struct ic_context *ctx)
 {
@@ -3081,6 +3103,7 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         OVN_DAEMON_OPTION_ENUMS,
         VLOG_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
+        OPT_DUMP_INC_PROC_GRAPH,
     };
     static const struct option long_options[] = {
         {"ovnsb-db", required_argument, NULL, 'd'},
@@ -3091,6 +3114,8 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         {"help", no_argument, NULL, 'h'},
         {"options", no_argument, NULL, 'o'},
         {"version", no_argument, NULL, 'V'},
+        {"dump-inc-proc-graph", optional_argument, NULL,
+         OPT_DUMP_INC_PROC_GRAPH},
         OVN_DAEMON_LONG_OPTIONS,
         VLOG_LONG_OPTIONS,
         STREAM_SSL_LONG_OPTIONS,
@@ -3168,6 +3193,14 @@ parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
 
         case 'V':
             ovn_print_version(0, 0);
+            exit(EXIT_SUCCESS);
+
+        /* --dump-inc-proc-graph[=<i-p-node>]: Whether to dump the I-P engine
+         * graph representation in DOT format to stdout.  Optionally only up
+         * to <i-p-node>.
+         */
+        case OPT_DUMP_INC_PROC_GRAPH:
+            inc_proc_graph_dump(optarg);
             exit(EXIT_SUCCESS);
 
         default:
