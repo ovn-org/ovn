@@ -1,6 +1,11 @@
 # ovn-ic
 bin_PROGRAMS += ic/ovn-ic
-ic_ovn_ic_SOURCES = ic/ovn-ic.c
+ic_ovn_ic_SOURCES = ic/ovn-ic.c \
+	ic/ovn-ic.h \
+	ic/en-ic.c \
+	ic/en-ic.h \
+	ic/inc-proc-ic.c \
+	ic/inc-proc-ic.h
 ic_ovn_ic_LDADD = \
 	lib/libovn.la \
 	$(OVSDB_LIBDIR)/libovsdb.la \

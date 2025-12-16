@@ -46,6 +46,8 @@
 #include "uuid.h"
 #include "openvswitch/vlog.h"
 #include "vec.h"
+#include "inc-proc-ic.h"
+#include "ovn-ic.h"
 
 VLOG_DEFINE_THIS_MODULE(ovn_ic);
 
@@ -54,45 +56,6 @@ static unixctl_cb_func ovn_ic_pause;
 static unixctl_cb_func ovn_ic_resume;
 static unixctl_cb_func ovn_ic_is_paused;
 static unixctl_cb_func ovn_ic_status;
-
-struct ic_context {
-    struct ovsdb_idl *ovnnb_idl;
-    struct ovsdb_idl *ovnsb_idl;
-    struct ovsdb_idl *ovninb_idl;
-    struct ovsdb_idl *ovnisb_idl;
-    struct ovsdb_idl_txn *ovnnb_txn;
-    struct ovsdb_idl_txn *ovnsb_txn;
-    struct ovsdb_idl_txn *ovninb_txn;
-    struct ovsdb_idl_txn *ovnisb_txn;
-    const struct icsbrec_availability_zone *runned_az;
-    struct ovsdb_idl_index *nbrec_ls_by_name;
-    struct ovsdb_idl_index *nbrec_lr_by_name;
-    struct ovsdb_idl_index *nbrec_lrp_by_name;
-    struct ovsdb_idl_index *nbrec_port_by_name;
-    struct ovsdb_idl_index *sbrec_chassis_by_name;
-    struct ovsdb_idl_index *sbrec_port_binding_by_name;
-    struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type;
-    struct ovsdb_idl_index *sbrec_service_monitor_by_ic_learned;
-    struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type_logical_port;
-    struct ovsdb_idl_index *icnbrec_transit_switch_by_name;
-    struct ovsdb_idl_index *icsbrec_port_binding_by_az;
-    struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
-    struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az;
-    struct ovsdb_idl_index *icsbrec_route_by_az;
-    struct ovsdb_idl_index *icsbrec_route_by_ts;
-    struct ovsdb_idl_index *icsbrec_route_by_ts_az;
-    struct ovsdb_idl_index *icsbrec_service_monitor_by_source_az;
-    struct ovsdb_idl_index *icsbrec_service_monitor_by_target_az;
-    struct ovsdb_idl_index *icsbrec_service_monitor_by_target_az_logical_port;
-};
-
-struct ic_state {
-    bool had_lock;
-    bool paused;
-};
-
-enum ic_datapath_type { IC_SWITCH, IC_ROUTER, IC_DATAPATH_MAX };
-enum ic_port_binding_type { IC_SWITCH_PORT, IC_ROUTER_PORT, IC_PORT_MAX };
 
 static const char *ovnnb_db;
 static const char *ovnsb_db;
@@ -3091,7 +3054,7 @@ update_sequence_numbers(struct ic_context *ctx,
     }
 }
 
-static void
+void
 ovn_db_run(struct ic_context *ctx)
 {
     struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
@@ -3311,172 +3274,183 @@ main(int argc, char *argv[])
     /* ovn-ic-nb db. */
     struct ovsdb_idl_loop ovninb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovn_ic_nb_db, &icnbrec_idl_class, true, true));
+    ovsdb_idl_track_add_all(ovninb_idl_loop.idl);
 
     /* ovn-ic-sb db. */
     struct ovsdb_idl_loop ovnisb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovn_ic_sb_db, &icsbrec_idl_class, true, true));
+    ovsdb_idl_track_add_all(ovnisb_idl_loop.idl);
 
     /* ovn-nb db. */
     struct ovsdb_idl_loop ovnnb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovnnb_db, &nbrec_idl_class, false, true));
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_nb_global);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl, &nbrec_nb_global_col_name);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl, &nbrec_nb_global_col_options);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_nb_global_col_name);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_nb_global_col_options);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl,
                         &nbrec_table_logical_router_static_route);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_static_route_col_route_table);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_static_route_col_ip_prefix);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_static_route_col_nexthop);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_static_route_col_external_ids);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_static_route_col_options);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_static_route_col_policy);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                    &nbrec_logical_router_static_route_col_route_table);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                    &nbrec_logical_router_static_route_col_ip_prefix);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                    &nbrec_logical_router_static_route_col_nexthop);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                    &nbrec_logical_router_static_route_col_external_ids);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                    &nbrec_logical_router_static_route_col_options);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                    &nbrec_logical_router_static_route_col_policy);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_router);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_name);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_static_routes);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_ports);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_options);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_external_ids);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_enabled);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_load_balancer);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_col_load_balancer_group);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_name);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_static_routes);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_ports);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_options);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_external_ids);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_enabled);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_load_balancer);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_col_load_balancer_group);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_router_port);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_port_col_mac);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_port_col_name);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_port_col_networks);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_port_col_external_ids);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_router_port_col_options);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_port_col_mac);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_port_col_name);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_port_col_networks);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_port_col_external_ids);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_router_port_col_options);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_switch);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_col_name);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_col_ports);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_col_other_config);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_col_external_ids);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_col_name);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_col_ports);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_col_other_config);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_col_external_ids);
 
     ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_logical_switch_port);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_name);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_addresses);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_options);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_type);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_up);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_addresses);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_enabled);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_logical_switch_port_col_external_ids);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_name);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_options);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_type);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_up);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_addresses);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_enabled);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_logical_switch_port_col_external_ids);
 
-    ovsdb_idl_add_table(ovnnb_idl_loop.idl,
-                        &nbrec_table_load_balancer);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_load_balancer_col_vips);
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_load_balancer);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_load_balancer_col_vips);
 
-    ovsdb_idl_add_table(ovnnb_idl_loop.idl,
-                        &nbrec_table_load_balancer_group);
-    ovsdb_idl_add_column(ovnnb_idl_loop.idl,
-                         &nbrec_load_balancer_group_col_load_balancer);
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_load_balancer_group);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_load_balancer_group_col_load_balancer);
 
     /* ovn-sb db. */
     struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovnsb_db, &sbrec_idl_class, false, true));
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_sb_global);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_sb_global_col_options);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_sb_global_col_options);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_chassis);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_encaps);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_name);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_hostname);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_chassis_col_other_config);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_chassis_col_encaps);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_chassis_col_name);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_chassis_col_hostname);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_chassis_col_other_config);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_encap);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_chassis_name);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_type);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_ip);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_encap_col_options);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_encap_col_chassis_name);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_encap_col_type);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_encap_col_ip);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_encap_col_options);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_datapath_binding);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_datapath_binding_col_type);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_datapath_binding_col_external_ids);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_datapath_binding_col_nb_uuid);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_datapath_binding_col_type);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_datapath_binding_col_external_ids);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_datapath_binding_col_nb_uuid);
 
     ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_port_binding);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_datapath);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_mac);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_options);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_logical_port);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_external_ids);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_chassis);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_port_binding_col_up);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_datapath);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_mac);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_options);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_logical_port);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_external_ids);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_chassis);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_port_binding_col_up);
 
-    ovsdb_idl_add_table(ovnsb_idl_loop.idl,
-                        &sbrec_table_service_monitor);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_chassis_name);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_external_ids);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_type);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_ip);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_logical_port);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_port);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_protocol);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_src_ip);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_src_mac);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_remote);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_ic_learned);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_status);
-    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
-                         &sbrec_service_monitor_col_options);
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_service_monitor);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_chassis_name);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_external_ids);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_type);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_ip);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_logical_port);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_port);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_protocol);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_src_ip);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_src_mac);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_remote);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_ic_learned);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_status);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_service_monitor_col_options);
 
     /* Create IDL indexes */
     struct ovsdb_idl_index *nbrec_ls_by_name
@@ -3497,7 +3471,7 @@ main(int argc, char *argv[])
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_chassis_col_name);
 
-   struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type
+    struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type
         = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
                                   &sbrec_service_monitor_col_remote);
 
@@ -3562,10 +3536,22 @@ main(int argc, char *argv[])
     unixctl_command_register("ic-sb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnisb_idl_loop.idl);
 
+    /* Initialize incremental processing engine for ovn-northd */
+    inc_proc_ic_init(&ovnnb_idl_loop, &ovnsb_idl_loop,
+                     &ovninb_idl_loop, &ovnisb_idl_loop);
+
+    unsigned int ovnnb_cond_seqno = UINT_MAX;
+    unsigned int ovnsb_cond_seqno = UINT_MAX;
+    unsigned int ovninb_cond_seqno = UINT_MAX;
+    unsigned int ovnisb_cond_seqno = UINT_MAX;
+
     /* Main loop. */
+    struct ic_engine_context  eng_ctx = {0};
+
     exiting = false;
     state.had_lock = false;
     state.paused = false;
+
     while (!exiting) {
         update_ssl_config();
         update_idl_probe_interval(ovnsb_idl_loop.idl, ovnnb_idl_loop.idl,
@@ -3579,6 +3565,7 @@ main(int argc, char *argv[])
             simap_destroy(&usage);
         }
 
+        bool clear_idl_track = true;
         if (!state.paused) {
             if (!ovsdb_idl_has_lock(ovnsb_idl_loop.idl) &&
                 !ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
@@ -3590,15 +3577,67 @@ main(int argc, char *argv[])
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_ic");
             }
 
+            struct ovsdb_idl_txn *ovnnb_txn =
+                run_idl_loop(&ovnnb_idl_loop, "OVN_Northbound",
+                             &eng_ctx.nb_idl_duration_ms);
+            unsigned int new_ovnnb_cond_seqno =
+                        ovsdb_idl_get_condition_seqno(ovnnb_idl_loop.idl);
+            if (new_ovnnb_cond_seqno != ovnnb_cond_seqno) {
+                if (!new_ovnnb_cond_seqno) {
+                    VLOG_INFO("OVN NB IDL reconnected, force recompute.");
+                    inc_proc_ic_force_recompute();
+                }
+                ovnnb_cond_seqno = new_ovnnb_cond_seqno;
+            }
+
+            struct ovsdb_idl_txn *ovnsb_txn =
+                run_idl_loop(&ovnsb_idl_loop, "OVN_Southbound",
+                             &eng_ctx.sb_idl_duration_ms);
+            unsigned int new_ovnsb_cond_seqno =
+                        ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
+            if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
+                if (!new_ovnsb_cond_seqno) {
+                    VLOG_INFO("OVN SB IDL reconnected, force recompute.");
+                    inc_proc_ic_force_recompute();
+                }
+                ovnsb_cond_seqno = new_ovnsb_cond_seqno;
+            }
+
+            struct ovsdb_idl_txn *ovninb_txn =
+                run_idl_loop(&ovninb_idl_loop, "OVN_IC_Northbound",
+                             &eng_ctx.inb_idl_duration_ms);
+            unsigned int new_ovninb_cond_seqno =
+                        ovsdb_idl_get_condition_seqno(ovninb_idl_loop.idl);
+            if (new_ovninb_cond_seqno != ovninb_cond_seqno) {
+                if (!new_ovninb_cond_seqno) {
+                    VLOG_INFO("OVN INB IDL reconnected, force recompute.");
+                    inc_proc_ic_force_recompute();
+                }
+                ovninb_cond_seqno = new_ovninb_cond_seqno;
+            }
+
+            struct ovsdb_idl_txn *ovnisb_txn =
+                run_idl_loop(&ovnisb_idl_loop, "OVN_IC_Southbound",
+                             &eng_ctx.isb_idl_duration_ms);
+            unsigned int new_ovnisb_cond_seqno =
+                        ovsdb_idl_get_condition_seqno(ovnisb_idl_loop.idl);
+            if (new_ovnisb_cond_seqno != ovnisb_cond_seqno) {
+                if (!new_ovnisb_cond_seqno) {
+                    VLOG_INFO("OVN ISB IDL reconnected, force recompute.");
+                    inc_proc_ic_force_recompute();
+                }
+                ovnisb_cond_seqno = new_ovnisb_cond_seqno;
+            }
+
             struct ic_context ctx = {
                 .ovnnb_idl = ovnnb_idl_loop.idl,
-                .ovnnb_txn = ovsdb_idl_loop_run(&ovnnb_idl_loop),
+                .ovnnb_txn = ovnnb_txn,
                 .ovnsb_idl = ovnsb_idl_loop.idl,
-                .ovnsb_txn = ovsdb_idl_loop_run(&ovnsb_idl_loop),
+                .ovnsb_txn = ovnsb_txn,
                 .ovninb_idl = ovninb_idl_loop.idl,
-                .ovninb_txn = ovsdb_idl_loop_run(&ovninb_idl_loop),
+                .ovninb_txn = ovninb_txn,
                 .ovnisb_idl = ovnisb_idl_loop.idl,
-                .ovnisb_txn = ovsdb_idl_loop_run(&ovnisb_idl_loop),
+                .ovnisb_txn = ovnisb_txn,
                 .nbrec_ls_by_name = nbrec_ls_by_name,
                 .nbrec_lr_by_name = nbrec_lr_by_name,
                 .nbrec_lrp_by_name = nbrec_lrp_by_name,
@@ -3627,44 +3666,75 @@ main(int argc, char *argv[])
                     icsbrec_service_monitor_by_target_az_logical_port,
             };
 
-            if (!state.had_lock && ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
+            if (!state.had_lock && ovsdb_idl_has_lock(ctx.ovnsb_idl)) {
                 VLOG_INFO("ovn-ic lock acquired. "
-                        "This ovn-ic instance is now active.");
+                            "This ovn-ic instance is now active.");
                 state.had_lock = true;
             } else if (state.had_lock &&
-                       !ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
+                       !ovsdb_idl_has_lock(ctx.ovnsb_idl)) {
                 VLOG_INFO("ovn-ic lock lost. "
-                        "This ovn-ic instance is now on standby.");
+                            "This ovn-ic instance is now on standby.");
                 state.had_lock = false;
             }
 
-            if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl) &&
+            if (ovsdb_idl_has_lock(ctx.ovnsb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnnb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnsb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovninb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnisb_idl)) {
-                const struct icsbrec_availability_zone *az = az_run(&ctx);
-                VLOG_DBG("Availability zone: %s", az ? az->name :
-                                               "not created yet.");
-                if (az) {
-                    ovn_db_run(&ctx);
-                    update_sequence_numbers(&ctx, &ovnisb_idl_loop);
+                if (ctx.ovnnb_txn && ctx.ovnsb_txn && ctx.ovninb_txn &&
+                    ctx.ovnisb_txn && inc_proc_ic_can_run(&eng_ctx)) {
+                    ctx.runned_az = az_run(&ctx);
+                    VLOG_DBG("Availability zone: %s", ctx.runned_az ?
+                             ctx.runned_az->name : "not created yet.");
+                    if (ctx.runned_az) {
+                        (void) inc_proc_ic_run(&ctx, &eng_ctx);
+                        update_sequence_numbers(&ctx, &ovnisb_idl_loop);
+                    }
+                } else if (!inc_proc_ic_get_force_recompute()) {
+                    clear_idl_track = false;
+                }
+                /* If there are any errors, we force a full recompute in order
+                 * to ensure we handle all changes. */
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop)) {
+                    VLOG_INFO("OVNNB commit failed, "
+                                "force recompute next time.");
+                    inc_proc_ic_force_recompute_immediate();
                 }
 
-            }
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
+                    VLOG_INFO("OVNSB commit failed, "
+                                "force recompute next time.");
+                    inc_proc_ic_force_recompute_immediate();
+                }
 
-            int rc1 = ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
-            int rc2 = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
-            int rc3 = ovsdb_idl_loop_commit_and_wait(&ovninb_idl_loop);
-            int rc4 = ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop);
-            if (!rc1 || !rc2 || !rc3 || !rc4) {
-                VLOG_DBG(" a transaction failed in: %s %s %s %s",
-                         !rc1 ? "nb" : "", !rc2 ? "sb" : "",
-                         !rc3 ? "ic_nb" : "", !rc4 ? "ic_sb" : "");
-                /* A transaction failed. Wake up immediately to give
-                 * opportunity to send the proper transaction
-                 */
-                poll_immediate_wake();
+                if (!ovsdb_idl_loop_commit_and_wait(&ovninb_idl_loop)) {
+                    VLOG_INFO("OVNINB commit failed, "
+                                "force recompute next time.");
+                    inc_proc_ic_force_recompute_immediate();
+                }
+
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop)) {
+                    VLOG_INFO("OVNISB commit failed, "
+                                "force recompute next time.");
+                    inc_proc_ic_force_recompute_immediate();
+                }
+            } else {
+                /* Make sure we send any pending requests, e.g., lock. */
+                int rc1 = ovsdb_idl_loop_commit_and_wait(&ovnnb_idl_loop);
+                int rc2 = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
+                int rc3 = ovsdb_idl_loop_commit_and_wait(&ovninb_idl_loop);
+                int rc4 = ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop);
+                if (!rc1 || !rc2 || !rc3 || !rc4) {
+                    VLOG_DBG(" a transaction failed in: %s %s %s %s",
+                            !rc1 ? "nb" : "", !rc2 ? "sb" : "",
+                            !rc3 ? "ic_nb" : "", !rc4 ? "ic_sb" : "");
+                    /* A transaction failed. Wake up immediately to give
+                    * opportunity to send the proper transaction
+                    */
+                }
+                /* Force a full recompute next time we become active. */
+                inc_proc_ic_force_recompute();
             }
         } else {
             /* ovn-ic is paused
@@ -3690,6 +3760,16 @@ main(int argc, char *argv[])
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
             ovsdb_idl_wait(ovninb_idl_loop.idl);
             ovsdb_idl_wait(ovnisb_idl_loop.idl);
+
+            /* Force a full recompute next time we become active. */
+            inc_proc_ic_force_recompute_immediate();
+        }
+
+        if (clear_idl_track) {
+            ovsdb_idl_track_clear(ovnnb_idl_loop.idl);
+            ovsdb_idl_track_clear(ovnsb_idl_loop.idl);
+            ovsdb_idl_track_clear(ovninb_idl_loop.idl);
+            ovsdb_idl_track_clear(ovnisb_idl_loop.idl);
         }
 
         unixctl_server_run(unixctl);
@@ -3704,6 +3784,7 @@ main(int argc, char *argv[])
             exiting = true;
         }
     }
+    inc_proc_ic_cleanup();
 
     unixctl_server_destroy(unixctl);
     ovsdb_idl_loop_destroy(&ovnnb_idl_loop);

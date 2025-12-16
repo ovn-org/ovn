@@ -158,6 +158,8 @@ struct engine_context {
     struct ovsdb_idl_txn *ovnsb_idl_txn;
     struct ovsdb_idl_txn *ovnnb_idl_txn;
     struct ovsdb_idl_txn *ovnbr_idl_txn;
+    struct ovsdb_idl_txn *ovnisb_idl_txn;
+    struct ovsdb_idl_txn *ovninb_idl_txn;
 
     void *client_ctx;
 };
@@ -167,6 +169,8 @@ struct engine_arg {
     struct ovsdb_idl *sb_idl;
     struct ovsdb_idl *nb_idl;
     struct ovsdb_idl *ovnbr_idl;
+    struct ovsdb_idl *icsb_idl;
+    struct ovsdb_idl *icnb_idl;
     struct ovsdb_idl *ovs_idl;
 };
 
@@ -548,6 +552,16 @@ en_##DB_NAME##_##TBL_NAME##_compute_failure_info(struct engine_node *node)  \
     ENGINE_FUNC_OVSDB(ovnbr, TBL_NAME)
 
 /* Macro to define member functions of an engine node which represents
+ * a table of OVN ISB DB */
+#define ENGINE_FUNC_ICSB(TBL_NAME) \
+    ENGINE_FUNC_OVSDB(icsb, TBL_NAME)
+
+/* Macro to define member functions of an engine node which represents
+ * a table of OVN INB DB */
+#define ENGINE_FUNC_ICNB(TBL_NAME) \
+    ENGINE_FUNC_OVSDB(icnb, TBL_NAME)
+
+/* Macro to define member functions of an engine node which represents
  * a table of open_vswitch DB */
 #define ENGINE_FUNC_OVS(TBL_NAME) \
     ENGINE_FUNC_OVSDB(ovs, TBL_NAME)
@@ -569,6 +583,13 @@ en_##DB_NAME##_##TBL_NAME##_compute_failure_info(struct engine_node *node)  \
 /* Macro to define an engine node which represents a table of OVN BR DB */
 #define ENGINE_NODE_BR(TBL_NAME) \
     ENGINE_NODE_OVSDB(ovnbr, "BR", TBL_NAME, #TBL_NAME);
+/* Macro to define an engine node which represents a table of OVN ISB DB */
+#define ENGINE_NODE_ICSB(TBL_NAME) \
+    ENGINE_NODE_OVSDB(icsb, "ICSB", TBL_NAME, #TBL_NAME);
+
+/* Macro to define an engine node which represents a table of OVN INB DB */
+#define ENGINE_NODE_ICNB(TBL_NAME) \
+    ENGINE_NODE_OVSDB(icnb, "ICNB", TBL_NAME, #TBL_NAME);
 
 /* Macro to define an engine node which represents a table of open_vswitch
  * DB */
