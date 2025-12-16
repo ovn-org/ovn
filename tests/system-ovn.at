@@ -17609,14 +17609,16 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 AT_CLEANUP
 ])
 
+m4_define([EVPN_SWITCH_TESTS],[
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([dynamic-routing - EVPN])
+AT_SETUP([dynamic-routing - EVPN $1 naming])
 AT_KEYWORDS([dynamic-routing])
 
 CHECK_VRF()
 CHECK_CONNTRACK()
 CHECK_CONNTRACK_NAT()
 
+IFNAME=$1
 vni=10
 VRF_RESERVE([$vni])
 ovn_start
@@ -17648,6 +17650,17 @@ check ovn-nbctl                                                               \
     -- lsp-set-addresses workload2 "f0:00:0f:16:01:20 172.16.1.20 172:16::20" \
     -- lsp-add-localnet-port ls-evpn ln_port phynet
 
+[[ $IFNAME = "default" ]] && BR_NAME=br-$vni || BR_NAME=br-evpn
+[[ $IFNAME = "default" ]] && VXLAN_NAME=vxlan-$vni || VXLAN_NAME=vxlan-evpn
+[[ $IFNAME = "default" ]] && LO_NAME=lo-$vni || LO_NAME=lo-evpn
+
+if [[ $IFNAME != "default" ]]; then
+    check ovn-nbctl                                                                         \
+        -- set logical_switch ls-evpn other_config:dynamic-routing-bridge-ifname=$BR_NAME   \
+        -- set logical_switch ls-evpn other_config:dynamic-routing-vxlan-ifname=$VXLAN_NAME \
+        -- set logical_switch ls-evpn other_config:dynamic-routing-advertise-ifname=$LO_NAME
+fi
+
 ADD_NAMESPACES(workload1)
 ADD_VETH(workload1, workload1, br-int, "172:16::10/64", "f0:00:0f:16:01:10", \
          "172:16::1", "nodad", "172.16.1.10/24", "172.16.1.1")
@@ -17666,10 +17679,10 @@ on_exit "ip link del vrf-$vni"
 check ip link set vrf-$vni up
 
 # Add VNI bridge.
-check ip link add br-$vni type bridge
-on_exit "ip link del br-$vni"
-check ip link set br-$vni master vrf-$vni addrgenmode none
-check ip link set dev br-$vni up
+check ip link add $BR_NAME type bridge
+on_exit "ip link del $BR_NAME"
+check ip link set $BR_NAME master vrf-$vni addrgenmode none
+check ip link set dev $BR_NAME up
 
 # Add VXLAN VTEP for the VNI (linked to the OVS vxlan_sys_<port> interface).
 # Use a dstport different than the one used by OVS.
@@ -17677,18 +17690,18 @@ check ip link set dev br-$vni up
 # the $vxlan interface.  FRR should read the dstport from the linked
 # vxlan_sys_${vxlan_port} device.
 dstport=$((60000 + $vni))
-check ip link add vxlan-$vni type vxlan \
+check ip link add $VXLAN_NAME type vxlan \
     id $vni dstport $dstport local 169.0.0.1 nolearning
-on_exit "ip link del vxlan-$vni"
-check ip link set dev vxlan-$vni up
-check ip link set vxlan-$vni master br-$vni
+on_exit "ip link del $VXLAN_NAME"
+check ip link set dev $VXLAN_NAME up
+check ip link set $VXLAN_NAME master $BR_NAME
 
 # Add a dummy loopback to the VNI bridge to be used for advertising local
 # MACs.
-check ip link add name lo-$vni type dummy
-on_exit "ip link del lo-$vni"
-check ip link set lo-$vni master br-$vni
-check ip link set lo-$vni up
+check ip link add name $LO_NAME type dummy
+on_exit "ip link del $LO_NAME"
+check ip link set $LO_NAME master $BR_NAME
+check ip link set $LO_NAME up
 
 AS_BOX([L2 EVPN VTEP and FDB learning])
 
@@ -17706,7 +17719,7 @@ AT_CHECK([ovn-appctl evpn/vtep-multicast-group-list], [0], [dnl
 ])
 
 # Simulate remote VTEP.
-check bridge fdb append 00:00:00:00:00:00 dev vxlan-$vni dst 169.0.0.10 static permanent
+check bridge fdb append 00:00:00:00:00:00 dev $VXLAN_NAME dst 169.0.0.10 static permanent
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/remote-vtep-list], [0], [dnl
 IP: 169.0.0.10, port: 4789, vni: $vni
@@ -17721,12 +17734,12 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-multicast-group-list | cut -d
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep priority=1050 | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_VTEP_OUTPUT | grep output | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=50,reg15=0x8000,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
 priority=50,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
 priority=50,reg15=0x8001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],output:$ofport,resubmit(,OFTABLE_LOCAL_OUTPUT)
@@ -17735,13 +17748,13 @@ priority=55,reg10=0x1/0x1,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa90
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
-                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | strip_cookie | sort], [0], [dnl
 priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 ])
 
 # Simulate more remote VTEPs.
-check bridge fdb append 00:00:00:00:00:00 dev vxlan-$vni dst 169.0.0.20 static permanent
-check bridge fdb append 00:00:00:00:00:01 dev vxlan-$vni dst 169.0.0.30 extern_learn
+check bridge fdb append 00:00:00:00:00:00 dev $VXLAN_NAME dst 169.0.0.20 static permanent
+check bridge fdb append 00:00:00:00:00:01 dev $VXLAN_NAME dst 169.0.0.30 extern_learn
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
 IP: 169.0.0.10, port: 4789, vni: $vni
@@ -17763,7 +17776,7 @@ AT_CHECK([ovn-appctl evpn/vtep-multicast-group-list | wc -l], [0], [1
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep priority=1050 | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=1050,tun_id=0xa,tun_src=169.0.0.10,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000001->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 priority=1050,tun_id=0xa,tun_src=169.0.0.20,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000002->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 priority=1050,tun_id=0xa,tun_src=169.0.0.30,tun_dst=169.0.0.1,in_port=$ofport actions=load:0x$dp_key->OXM_OF_METADATA[[0..31]],load:0x80000003->NXM_NX_REG14[[]],resubmit(,OFTABLE_LEARN_REMOTE_FDB),resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
@@ -17771,7 +17784,7 @@ priority=1050,tun_id=0xa,tun_src=169.0.0.30,tun_dst=169.0.0.1,in_port=$ofport ac
 
 ovs-ofctl dump-flows br-int table=OFTABLE_REMOTE_VTEP_OUTPUT > oftable_remote_vtep_output
 AT_CHECK_UNQUOTED([grep "output" oftable_remote_vtep_output | grep -v resubmit | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=50,reg15=0x80000001,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900000a->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
 priority=50,reg15=0x80000002,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa9000014->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
 priority=50,reg15=0x80000003,metadata=0x$dp_key actions=load:0xa9000001->NXM_NX_TUN_IPV4_SRC[[]],load:0xa900001e->NXM_NX_TUN_IPV4_DST[[]],load:0xa->NXM_NX_TUN_ID[[0..23]],output:$ofport
@@ -17781,7 +17794,7 @@ priority=55,reg10=0x1/0x1,reg15=0x80000003,metadata=0x$dp_key actions=load:0xa90
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
-                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | strip_cookie | sort], [0], [dnl
 priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000003,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
@@ -17796,9 +17809,9 @@ AT_CHECK([grep "resubmit" oftable_remote_vtep_output | grep -c "load:0xa900001e"
 ])
 
 # Simulate remote workload.
-check bridge fdb add f0:00:0f:16:10:50 dev vxlan-$vni dst 169.0.0.10 static extern_learn
-check bridge fdb add f0:00:0f:16:10:60 dev vxlan-$vni dst 169.0.0.20 static extern_learn
-check bridge fdb add f0:00:0f:16:10:70 dev vxlan-$vni dst 169.0.0.30 static extern_learn
+check bridge fdb add f0:00:0f:16:10:50 dev $VXLAN_NAME dst 169.0.0.10 static extern_learn
+check bridge fdb add f0:00:0f:16:10:60 dev $VXLAN_NAME dst 169.0.0.20 static extern_learn
+check bridge fdb add f0:00:0f:16:10:70 dev $VXLAN_NAME dst 169.0.0.30 static extern_learn
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-fdb-list | cut -d',' -f2- | sort], [0], [dnl
  MAC: 00:00:00:00:00:01, vni: $vni, binding_key: 0x80000003, dp_key: $dp_key
@@ -17808,7 +17821,7 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-fdb-list | cut -d',' -f2- | s
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_GET_REMOTE_FDB | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=0 actions=load:0->NXM_NX_REG1[[]]
 priority=150,metadata=0x$dp_key,dl_dst=00:00:00:00:00:01 actions=load:0x80000003->NXM_NX_REG1[[]]
 priority=150,metadata=0x$dp_key,dl_dst=f0:00:0f:16:10:50 actions=load:0x80000001->NXM_NX_REG1[[]]
@@ -17817,7 +17830,7 @@ priority=150,metadata=0x$dp_key,dl_dst=f0:00:0f:16:10:70 actions=load:0x80000003
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
-                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | strip_cookie | sort], [0], [dnl
 priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000003,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
@@ -17846,27 +17859,27 @@ check diff -q fdb_before fdb_after
 AS_BOX([L2 EVPN FDB advertising])
 
 check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:dynamic-routing-redistribute=fdb
-OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
-f0:00:0f:16:01:10 dev lo-10 master br-10 static
-f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
-f0:00:0f:16:01:20 dev lo-10 master br-10 static
-f0:00:0f:16:01:20 dev lo-10 vlan 1 master br-10 static
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:10 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:10 dev $LO_NAME vlan 1 master $BR_NAME static
+f0:00:0f:16:01:20 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:20 dev $LO_NAME vlan 1 master $BR_NAME static
 ])
 
 check ovn-nbctl --wait=hv lsp-del workload2
-OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
-f0:00:0f:16:01:10 dev lo-10 master br-10 static
-f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:10 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:10 dev $LO_NAME vlan 1 master $BR_NAME static
 ])
 
 check ovn-nbctl --wait=hv remove logical_switch ls-evpn other_config dynamic-routing-redistribute
-OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
 ])
 
 check ovn-nbctl --wait=hv set logical_switch ls-evpn other_config:fdb_age_threshold=300
 ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
-                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | strip_cookie | sort], [0], [dnl
 priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,hard_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,hard_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000003,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,hard_timeout=300,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
@@ -17878,7 +17891,7 @@ priority=150,reg14=0x80000003,metadata=0x$dp_key,dl_src=f0:00:0f:16:10:70 action
 
 check ovn-nbctl --wait=hv remove logical_switch ls-evpn other_config fdb_age_threshold
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \
-                   awk '{print $7, $8}' | strip_cookie | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | strip_cookie | sort], [0], [dnl
 priority=100,reg14=0x80000001,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000002,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
 priority=100,reg14=0x80000003,metadata=0x$dp_key actions=learn(table=OFTABLE_GET_REMOTE_FDB,priority=150,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_DST[[]]=NXM_OF_ETH_SRC[[]],load:NXM_NX_REG14[[]]->NXM_NX_REG1[[]])
@@ -17902,13 +17915,13 @@ rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=lr-ls-evpn)
 # ovn-controller needs to add OF rules for ARP lookup but no rules for
 # MAC_CACHE use.  These entries do not age out automatically, their lifetime
 # is controlled by the BGP-EVPN control plane.
-check ip neigh add dev br-10 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
-check ip neigh add dev br-10 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
-check ip neigh add dev br-10 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
 
-check ip -6 neigh add dev br-10 172:16::50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
-check ip -6 neigh add dev br-10 172:16::60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
-check ip -6 neigh add dev br-10 172:16::70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
  VNI: 10, MAC: f0:00:0f:16:10:50, IP: 172.16.1.50, dp_key: $dp_key
@@ -17923,7 +17936,7 @@ AS_BOX([Check dynamic-routing-arp-prefer-local=true])
 check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routing-arp-prefer-local=true
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
 priority=20,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
 priority=20,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
@@ -17934,7 +17947,7 @@ priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadat
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=20,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=20,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
@@ -17945,7 +17958,7 @@ priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,m
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
 ])
@@ -17954,7 +17967,7 @@ AS_BOX([Check dynamic-routing-arp-prefer-local=false])
 check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routing-arp-prefer-local=false
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
 priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
 priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
@@ -17965,7 +17978,7 @@ priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metada
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
@@ -17976,7 +17989,7 @@ priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
 ])
@@ -17992,29 +18005,29 @@ ovn-appctl evpn/vtep-arp-list > arp_after
 check diff -q arp_before arp_after
 
 # Remove remote workload ARP entries and check ovn-controller's state.
-check ip neigh del dev br-10 172.16.1.50
-check ip neigh del dev br-10 172.16.1.60
-check ip neigh del dev br-10 172.16.1.70
+check ip neigh del dev $BR_NAME 172.16.1.50
+check ip neigh del dev $BR_NAME 172.16.1.60
+check ip neigh del dev $BR_NAME 172.16.1.70
 
-check ip -6 neigh del dev br-10 172:16::50
-check ip -6 neigh del dev br-10 172:16::60
-check ip -6 neigh del dev br-10 172:16::70
+check ip -6 neigh del dev $BR_NAME 172:16::50
+check ip -6 neigh del dev $BR_NAME 172:16::60
+check ip -6 neigh del dev $BR_NAME 172:16::70
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
 ])
@@ -18022,13 +18035,13 @@ priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:
 # Re-add the remote workload ARPs, remove the router, check that flows are
 # removed (vtep-arp-list should still list the ARPs as they're learned on
 # the logical switch that still exists).
-check ip neigh add dev br-10 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
-check ip neigh add dev br-10 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
-check ip neigh add dev br-10 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
 
-check ip -6 neigh add dev br-10 172:16::50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
-check ip -6 neigh add dev br-10 172:16::60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
-check ip -6 neigh add dev br-10 172:16::70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
  VNI: 10, MAC: f0:00:0f:16:10:50, IP: 172.16.1.50, dp_key: $dp_key
@@ -18040,7 +18053,7 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
 priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
 priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
@@ -18051,7 +18064,7 @@ priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metada
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
@@ -18072,11 +18085,11 @@ AT_CHECK_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], 
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
-                   awk '{print $7, $8}' | sort], [0], [dnl
+                   awk '{print $[7], $[8]}' | sort], [0], [dnl
 ])
 
 AS_BOX([L2 EVPN ARP advertising])
@@ -18094,40 +18107,40 @@ check_row_count Advertised_MAC_Binding 1 ip='172\:16\:\:10' mac='f0\:00\:0f\:16\
 check_row_count Advertised_MAC_Binding 1 ip='172\:16\:\:1' mac='f0\:00\:0f\:16\:01\:01' datapath=$ls_evpn_uuid
 check_row_count Advertised_MAC_Binding 4
 
-AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'])
-AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'])
-AT_CHECK([ip -6 neigh show dev br-10 nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'])
-AT_CHECK([ip -6 neigh show dev br-10 nud noarp | grep -q '172:16::1 lladdr f0:00:0f:16:01:01 NOARP'])
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'])
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::1 lladdr f0:00:0f:16:01:01 NOARP'])
 
-OVS_WAIT_FOR_OUTPUT([bridge fdb show | grep "lo-10" | grep "f0:00:0f:16:01" | sort], [0], [dnl
-f0:00:0f:16:01:01 dev lo-10 master br-10 static
-f0:00:0f:16:01:01 dev lo-10 vlan 1 master br-10 static
-f0:00:0f:16:01:10 dev lo-10 master br-10 static
-f0:00:0f:16:01:10 dev lo-10 vlan 1 master br-10 static
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:01 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:01 dev $LO_NAME vlan 1 master $BR_NAME static
+f0:00:0f:16:01:10 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:10 dev $LO_NAME vlan 1 master $BR_NAME static
 ])
 
 check ovn-nbctl --wait=hv lsp-add ls-evpn workload2 \
     -- lsp-set-addresses workload2 "f0:00:0f:16:01:20 172.16.1.20 172:16::20"
 
 check_row_count Advertised_MAC_Binding 1 ip='172.16.1.20' mac='f0\:00\:0f\:16\:01\:20' datapath=$ls_evpn_uuid
-AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.20 lladdr f0:00:0f:16:01:20 NOARP'])
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.20 lladdr f0:00:0f:16:01:20 NOARP'])
 
 check_row_count Advertised_MAC_Binding 1 ip='172\:16\:\:20' mac='f0\:00\:0f\:16\:01\:20' datapath=$ls_evpn_uuid
-AT_CHECK([ip -6 neigh show dev br-10 nud noarp | grep -q '172:16::20 lladdr f0:00:0f:16:01:20 NOARP'])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::20 lladdr f0:00:0f:16:01:20 NOARP'])
 
 check ovn-nbctl --wait=hv lsp-del workload2
-AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.20 lladdr f0:00:0f:16:01:20 NOARP'], [1])
-AT_CHECK([ip -6 neigh show dev br-10 nud noarp | grep -q '172:16::20 lladdr f0:00:0f:16:01:20 NOARP'], [1])
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.20 lladdr f0:00:0f:16:01:20 NOARP'], [1])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::20 lladdr f0:00:0f:16:01:20 NOARP'], [1])
 
 check ovn-nbctl --wait=hv lsp-del workload1
 check_row_count Advertised_MAC_Binding 2
-AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
-AT_CHECK([ip -6 neigh show dev br-10 nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
 
 check ovn-nbctl --wait=hv lrp-del lr-ls-evpn
 check_row_count Advertised_MAC_Binding 0
-AT_CHECK([ip neigh show dev br-10 nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'], [1])
-AT_CHECK([ip -6 neigh show dev br-10 nud noarp | grep -q '172:16::1 lladdr f0:00:0f:16:01:01 NOARP'], [1])
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'], [1])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::1 lladdr f0:00:0f:16:01:01 NOARP'], [1])
 
 check ovn-nbctl --wait=hv ls-del ls-evpn
 check ovn-nbctl --wait=hv lr-del lr
@@ -18142,6 +18155,10 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+])
+
+EVPN_SWITCH_TESTS([default])
+EVPN_SWITCH_TESTS([custom])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Router reroute policies - output port])

@@ -31,13 +31,20 @@ static const char *neighbor_interface_prefixes[] = {
     [NEIGH_IFACE_LOOPBACK] = "lo-",
 };
 
+static const char *neighbor_opt_name[] = {
+    [NEIGH_IFACE_BRIDGE] = "dynamic-routing-bridge-ifname",
+    [NEIGH_IFACE_VXLAN] = "dynamic-routing-vxlan-ifname",
+    [NEIGH_IFACE_LOOPBACK] = "dynamic-routing-advertise-ifname",
+};
+
 static void neighbor_interface_monitor_destroy(
     struct neighbor_interface_monitor *);
 static bool neighbor_interface_with_vni_exists(
     struct vector *monitored_interfaces,
     uint32_t vni);
 static struct neighbor_interface_monitor *
-neighbor_interface_monitor_alloc(enum neighbor_family family,
+neighbor_interface_monitor_alloc(struct local_datapath *ld,
+                                 enum neighbor_family family,
                                  enum neighbor_interface_type type,
                                  uint32_t vni);
 static void neighbor_collect_mac_to_advertise(
@@ -98,22 +105,22 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
         }
 
         struct neighbor_interface_monitor *vxlan =
-            neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+            neighbor_interface_monitor_alloc(ld, NEIGH_AF_BRIDGE,
                                              NEIGH_IFACE_VXLAN, vni);
         vector_push(n_ctx_out->monitored_interfaces, &vxlan);
 
         struct neighbor_interface_monitor *lo =
-            neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+            neighbor_interface_monitor_alloc(ld, NEIGH_AF_BRIDGE,
                                              NEIGH_IFACE_LOOPBACK, vni);
         vector_push(n_ctx_out->monitored_interfaces, &lo);
 
         struct neighbor_interface_monitor *br_v4 =
-            neighbor_interface_monitor_alloc(NEIGH_AF_INET,
+            neighbor_interface_monitor_alloc(ld, NEIGH_AF_INET,
                                              NEIGH_IFACE_BRIDGE, vni);
         vector_push(n_ctx_out->monitored_interfaces, &br_v4);
 
         struct neighbor_interface_monitor *br_v6 =
-            neighbor_interface_monitor_alloc(NEIGH_AF_INET6,
+            neighbor_interface_monitor_alloc(ld, NEIGH_AF_INET6,
                                              NEIGH_IFACE_BRIDGE, vni);
         vector_push(n_ctx_out->monitored_interfaces, &br_v6);
 
@@ -193,7 +200,8 @@ neighbor_interface_with_vni_exists(struct vector *monitored_interfaces,
 }
 
 static struct neighbor_interface_monitor *
-neighbor_interface_monitor_alloc(enum neighbor_family family,
+neighbor_interface_monitor_alloc(struct local_datapath *ld,
+                                 enum neighbor_family family,
                                  enum neighbor_interface_type type,
                                  uint32_t vni)
 {
@@ -204,8 +212,15 @@ neighbor_interface_monitor_alloc(enum neighbor_family family,
         .type = type,
         .vni = vni,
     };
-    snprintf(nim->if_name, sizeof nim->if_name, "%s%"PRIu32,
-             neighbor_interface_prefixes[type], vni);
+
+    const char *if_name = smap_get(&ld->datapath->external_ids,
+                                   neighbor_opt_name[type]);
+    if (if_name) {
+        snprintf(nim->if_name, sizeof nim->if_name, "%s", if_name);
+    } else {
+        snprintf(nim->if_name, sizeof nim->if_name, "%s%"PRIu32,
+                 neighbor_interface_prefixes[type], vni);
+    }
     return nim;
 }
 

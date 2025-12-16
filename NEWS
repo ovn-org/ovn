@@ -78,6 +78,8 @@ Post v25.09.0
      ports instead of per-chassis ports, reducing port count for large scale
      environments. Default is disabled.
    - Add fallback support for Network Function.
+   - Introduce the capability to specify EVPN device names using Logical_Switch
+     other_config column.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

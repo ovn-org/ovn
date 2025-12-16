@@ -795,6 +795,27 @@
       <column name="external_ids" key="neutron:network_name">
         Another name for the logical switch.
       </column>
+
+      <column name="other_config" key="dynamic-routing-bridge-ifname">
+       Set the interface name for the bridge used for EVPN integration.
+       The default name is <code>br-$vni</code>.
+       Only relevant if <ref column="other_config" key="dynamic-routing-vni"
+                             table="Logical_switch"/> is set to valid VNI.
+      </column>
+
+      <column name="other_config" key="dynamic-routing-vxlan-ifname">
+       Set the interface name for the vxlan device used for EVPN integration.
+       The default name is <code>vxlan-$vni</code>.
+       Only relevant if <ref column="other_config" key="dynamic-routing-vni"
+                             table="Logical_switch"/> is set to valid VNI.
+      </column>
+
+      <column name="other_config" key="dynamic-routing-advertise-ifname">
+       Set the interface name for the advertise device used for EVPN
+       integration. The default name is <code>lo-$vni</code>.
+       Only relevant if <ref column="other_config" key="dynamic-routing-vni"
+                             table="Logical_switch"/> is set to valid VNI.
+      </column>
     </group>
 
     <group title="IP Address Assignment">
