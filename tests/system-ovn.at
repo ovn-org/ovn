@@ -20993,3 +20993,399 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /connection dropped.*/d"])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL CT translation - UDP fragmentation])
+AT_KEYWORDS([acl_ct_translation_udp_fragmentation])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+
+CHECK_CONNTRACK()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Set the minimal fragment size for userspace DP.
+ovs-appctl dpctl/ipf-set-min-frag v4 500
+
+check ovn-nbctl ls-add internal
+check ovn-nbctl lsp-add internal client \
+    -- lsp-set-addresses client "f0:00:00:01:02:03 172.16.1.3"
+check ovn-nbctl lsp-add internal server \
+    -- lsp-set-addresses server "f0:00:0f:01:02:03 172.16.1.2"
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-int, "172.16.1.3/24", "f0:00:00:01:02:03", \
+         "172.16.1.1")
+NS_EXEC([client], [ip l set dev client mtu 900])
+
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
+         "172.16.1.1")
+NS_EXEC([server], [ip l set dev server mtu 900])
+
+# Create data file for traffic testing (8000 bytes will be fragmented with MTU 900)
+printf %8000s > datafile
+
+# Create port group with both client and server
+client_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=client)
+server_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=server)
+check ovn-nbctl pg-add internal_vms $client_uuid $server_uuid
+
+# ACL rules - allow outgoing traffic
+check ovn-nbctl acl-add internal_vms from-lport 1002 "inport == @internal_vms && ip4 && udp" allow-related
+check ovn-nbctl acl-add internal_vms from-lport 1002 "inport == @internal_vms && ip4" allow-related
+
+# ACL rules - allow incoming UDP on specific ports
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && ip4 && udp && udp.dst == 5060" allow-related
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && ip4 && udp && udp.dst == 5061" allow-related
+
+# Allow ARP
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && arp" allow-related
+
+# Drop rule
+check ovn-nbctl --log --severity=info acl-add internal_vms to-lport 100 "outport == @internal_vms" drop
+
+# Enable ACL CT translation for fragmentation handling
+check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=true
+
+check ovn-nbctl --wait=hv sync
+check ovs-appctl dpctl/flush-conntrack
+
+# Start tcpdump to capture IP fragments on both sides
+NETNS_START_TCPDUMP([server], [-U -i server -Q in -nn ip and '(ip[[6:2]] & 0x3fff != 0)'], [tcpdump-udp-server])
+NETNS_START_TCPDUMP([client], [-U -i client -Q in -nn ip and '(ip[[6:2]] & 0x3fff != 0)'], [tcpdump-udp-client])
+
+# Start UDP listeners on both sides
+NETNS_DAEMONIZE([server], [nc -l -N -u 172.16.1.2 5060 > udp_server.rcvd], [server.pid])
+NETNS_DAEMONIZE([client], [nc -l -N -u 172.16.1.3 5061 > udp_client.rcvd], [client.pid])
+
+# Client sends to server (will be fragmented due to MTU 900)
+NS_CHECK_EXEC([client], [cat datafile | nc -w 1 -u 172.16.1.2 5060], [0], [ignore], [ignore])
+
+# Server sends to client (will be fragmented due to MTU 900)
+NS_CHECK_EXEC([server], [cat datafile | nc -w 1 -u 172.16.1.3 5061], [0], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([test -s udp_server.rcvd])
+OVS_WAIT_UNTIL([test -s udp_client.rcvd])
+
+# Verify both sides received data
+check cmp datafile udp_server.rcvd
+check cmp datafile udp_client.rcvd
+
+# Verify IP fragments were received on both sides (at least 5 fragments confirms fragmentation)
+OVS_WAIT_UNTIL([test $(cat tcpdump-udp-server.tcpdump | wc -l) -ge 5])
+OVS_WAIT_UNTIL([test $(cat tcpdump-udp-client.tcpdump | wc -l) -ge 5])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/WARN|netdev@ovs-netdev: execute.*/d
+/dpif|WARN|system@ovs-system: execute.*/d
+"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL CT translation - TCP traffic])
+AT_KEYWORDS([acl_ct_translation_tcp_fragmentation])
+
+CHECK_CONNTRACK()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add internal
+check ovn-nbctl lsp-add internal client \
+    -- lsp-set-addresses client "f0:00:00:01:02:03 172.16.1.3"
+check ovn-nbctl lsp-add internal server \
+    -- lsp-set-addresses server "f0:00:0f:01:02:03 172.16.1.2"
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-int, "172.16.1.3/24", "f0:00:00:01:02:03", \
+         "172.16.1.1")
+
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
+         "172.16.1.1")
+
+# Create data file for traffic testing
+printf %8000s > datafile
+
+# Create port group with both client and server
+client_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=client)
+server_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=server)
+check ovn-nbctl pg-add internal_vms $client_uuid $server_uuid
+
+# ACL rules - allow outgoing traffic
+check ovn-nbctl acl-add internal_vms from-lport 1002 "inport == @internal_vms && ip4 && tcp" allow-related
+check ovn-nbctl acl-add internal_vms from-lport 1002 "inport == @internal_vms && ip4" allow-related
+
+# ACL rules - allow incoming TCP on specific ports
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && ip4 && tcp && tcp.dst == 8080" allow-related
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && ip4 && tcp && tcp.dst == 8081" allow-related
+
+# Allow ARP
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && arp" allow-related
+
+# Drop rule
+check ovn-nbctl --log --severity=info acl-add internal_vms to-lport 100 "outport == @internal_vms" drop
+
+# Enable ACL CT translation
+check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=true
+
+check ovn-nbctl --wait=hv sync
+check ovs-appctl dpctl/flush-conntrack
+
+# Test client -> server direction
+NETNS_DAEMONIZE([server], [nc -l -N 172.16.1.2 8080 > tcp_server.rcvd], [server.pid])
+NS_CHECK_EXEC([client], [nc -w 1 172.16.1.2 8080 < datafile], [0], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([test -s tcp_server.rcvd])
+check cmp datafile tcp_server.rcvd
+
+# Clean up first direction
+kill $(cat server.pid) 2>/dev/null || true
+
+# Test server -> client direction
+NETNS_DAEMONIZE([client], [nc -l -N 172.16.1.3 8081 > tcp_client.rcvd], [client.pid])
+NS_CHECK_EXEC([server], [nc -w 1 172.16.1.3 8081 < datafile], [0], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([test -s tcp_client.rcvd])
+check cmp datafile tcp_client.rcvd
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL CT translation - negative test])
+AT_KEYWORDS([acl_ct_translation_udp_fragmentation_negative])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+
+CHECK_CONNTRACK()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add internal
+check ovn-nbctl lsp-add internal client \
+    -- lsp-set-addresses client "f0:00:00:01:02:03 172.16.1.3"
+check ovn-nbctl lsp-add internal server \
+    -- lsp-set-addresses server "f0:00:0f:01:02:03 172.16.1.2"
+
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-int, "172.16.1.3/24", "f0:00:00:01:02:03", \
+         "172.16.1.1")
+
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "172.16.1.2/24", "f0:00:0f:01:02:03", \
+         "172.16.1.1")
+
+# Create port group with both client and server
+client_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=client)
+server_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=server)
+check ovn-nbctl pg-add internal_vms $client_uuid $server_uuid
+
+# ACL rules - allow outgoing traffic
+check ovn-nbctl acl-add internal_vms from-lport 1002 "inport == @internal_vms && ip4 && udp" allow-related
+check ovn-nbctl acl-add internal_vms from-lport 1002 "inport == @internal_vms && ip4" allow-related
+
+# ACL rules - allow incoming UDP ONLY on port 5060 (NOT 4000)
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && ip4 && udp && udp.dst == 5060" allow-related
+
+# Allow ARP
+check ovn-nbctl acl-add internal_vms to-lport 1002 "outport == @internal_vms && arp" allow-related
+
+# Drop rule - this should drop traffic on port 4000
+check ovn-nbctl --log --severity=info acl-add internal_vms to-lport 100 "outport == @internal_vms" drop
+
+# Enable ACL CT translation
+check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=true
+
+check ovn-nbctl --wait=hv sync
+check ovs-appctl dpctl/flush-conntrack
+
+# Start tcpdump to capture any incoming packets on server
+NETNS_START_TCPDUMP([server], [-U -i server -Q in -nn udp port 4000], [tcpdump-drop-server])
+
+# Start UDP listener on server (on port 4000 which is NOT allowed by ACLs)
+NETNS_DAEMONIZE([server], [nc -l -N -u 172.16.1.2 4000 > udp_drop.rcvd], [drop_server.pid])
+
+# Client sends to server on disallowed port
+NS_CHECK_EXEC([client], [echo "test" | nc -w 1 -u 172.16.1.2 4000], [0], [ignore], [ignore])
+
+# Wait a bit for any packets to arrive
+sleep 2
+
+# Verify server did NOT receive any data (file should be empty or not exist)
+AT_CHECK([test ! -s udp_drop.rcvd], [0])
+
+# Verify tcpdump captured no packets (traffic was dropped by ACL)
+AT_CHECK([test $(cat tcpdump-drop-server.tcpdump | wc -l) -eq 0], [0])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL CT translation with DHCP traffic])
+AT_KEYWORDS([acl_ct_translation_dhcp])
+AT_SKIP_IF([test $HAVE_DHCPD = no])
+AT_SKIP_IF([test $HAVE_DHCLIENT = no])
+
+CHECK_CONNTRACK()
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller
+start_daemon ovn-controller
+
+# Create logical switch
+check ovn-nbctl ls-add ls1
+
+# Create DHCP server port
+check ovn-nbctl lsp-add ls1 dhcp-server \
+    -- lsp-set-addresses dhcp-server "00:00:00:00:02:00 192.168.1.2"
+
+# Create DHCP client port
+check ovn-nbctl lsp-add ls1 dhcp-client \
+    -- lsp-set-addresses dhcp-client "00:00:00:00:02:01"
+
+# Add OVS ports
+ADD_NAMESPACES(server, client)
+ADD_VETH(server, server, br-int, "192.168.1.2/24", "00:00:00:00:02:00")
+ADD_VETH(client, client, br-int, "0.0.0.0/0", "00:00:00:00:02:01")
+
+# Bind logical ports to OVS ports
+check ovs-vsctl set Interface ovs-server external_ids:iface-id=dhcp-server
+check ovs-vsctl set Interface ovs-client external_ids:iface-id=dhcp-client
+
+# Create port group with both ports
+server_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=dhcp-server)
+client_uuid=$(ovn-nbctl --bare --columns=_uuid find logical_switch_port name=dhcp-client)
+check ovn-nbctl pg-add dhcp_vms $server_uuid $client_uuid
+
+# Add ACL rules - allow outgoing traffic from both ports
+check ovn-nbctl acl-add dhcp_vms from-lport 1002 "inport == @dhcp_vms && ip4" allow-related
+check ovn-nbctl acl-add dhcp_vms from-lport 1002 "inport == @dhcp_vms && udp" allow-related
+
+# Add ACL rules for DHCP traffic (ports 67 and 68)
+check ovn-nbctl acl-add dhcp_vms to-lport 1002 "outport == @dhcp_vms && ip4 && udp && udp.dst == 67" allow-related
+check ovn-nbctl acl-add dhcp_vms to-lport 1002 "outport == @dhcp_vms && ip4 && udp && udp.dst == 68" allow-related
+
+# Allow ARP and broadcast
+check ovn-nbctl acl-add dhcp_vms to-lport 1002 "outport == @dhcp_vms && arp" allow-related
+
+# Add drop rule
+check ovn-nbctl --log --severity=info acl-add dhcp_vms to-lport 100 "outport == @dhcp_vms" drop
+
+# Enable ACL CT translation
+check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=true
+
+# Wait for flows to be installed
+check ovn-nbctl --wait=hv sync
+
+# Setup DHCP server configuration
+DHCP_TEST_DIR="$ovs_base/dhcp-test"
+mkdir -p $DHCP_TEST_DIR
+
+cat > $DHCP_TEST_DIR/dhcpd.conf <<EOF
+subnet 192.168.1.0 netmask 255.255.255.0 {
+  range 192.168.1.100 192.168.1.100;
+  option routers 192.168.1.2;
+  option broadcast-address 192.168.1.255;
+  default-lease-time 60;
+  max-lease-time 120;
+}
+EOF
+
+touch $DHCP_TEST_DIR/dhcpd.leases
+chown root:dhcpd $DHCP_TEST_DIR $DHCP_TEST_DIR/dhcpd.leases
+chmod 775 $DHCP_TEST_DIR
+chmod 664 $DHCP_TEST_DIR/dhcpd.leases
+
+# Start dhcpd as DHCP server in the server namespace
+NETNS_DAEMONIZE([server], [dhcpd -4 -f -cf $DHCP_TEST_DIR/dhcpd.conf server > $DHCP_TEST_DIR/dhcpd.log 2>&1], [dhcpd.pid])
+
+# Give dhcpd time to start
+sleep 1
+
+# Request IP via DHCP using dhclient
+NS_CHECK_EXEC([client], [dhclient -1 -v -lf $DHCP_TEST_DIR/dhclient.lease -pf $DHCP_TEST_DIR/dhclient.pid client], [0], [ignore], [ignore])
+# Register cleanup handler to kill dhclient when test exits
+on_exit 'kill $(cat $DHCP_TEST_DIR/dhclient.pid) 2>/dev/null || true'
+
+# Verify client got an IP address from DHCP
+NS_CHECK_EXEC([client], [ip addr show client | grep -q "192.168.1.100"], [0])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+"])
+AT_CLEANUP
+])

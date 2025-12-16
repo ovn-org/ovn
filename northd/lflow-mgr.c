@@ -184,6 +184,7 @@ struct ovn_lflow {
     struct ovn_dp_group *dpg;    /* Link to unique Sb datapath group. */
     const char *where;
     const char *flow_desc;
+    bool acl_ct_translation;     /* Use CT-based L4 field translation. */
 
     struct uuid sb_uuid;         /* SB DB row uuid, specified by northd. */
     struct ovs_list referenced_by;  /* List of struct lflow_ref_node. */
@@ -725,7 +726,7 @@ lflow_ref_sync_lflows(struct lflow_ref *lflow_ref,
  * then it may corrupt the hmap.  Caller should ensure thread safety
  * for such scenarios.
  */
-static void
+static struct ovn_lflow *
 lflow_table_add_lflow__(struct lflow_table *lflow_table,
                        const struct ovn_synced_datapath *sdp,
                        const unsigned long *dp_bitmap, size_t dp_bitmap_len,
@@ -798,9 +799,10 @@ lflow_table_add_lflow__(struct lflow_table *lflow_table,
     ovn_dp_group_add_with_reference(lflow, sdp, dp_bitmap, dp_bitmap_len);
 
     lflow_hash_unlock(hash_lock);
+    return lflow;
 }
 
-void
+struct ovn_lflow *
 lflow_table_add_lflow(struct lflow_table_add_args *args)
 {
     /* It is invalid for both args->dp_bitmap and args->sdp to be
@@ -811,11 +813,17 @@ lflow_table_add_lflow(struct lflow_table_add_args *args)
         args->sdp = NULL;
     }
 
-    lflow_table_add_lflow__(args->table, args->sdp, args->dp_bitmap,
-                            args->dp_bitmap_len, args->stage, args->priority,
-                            args->match, args->actions, args->io_port,
-                            args->ctrl_meter, args->stage_hint, args->where,
-                            args->flow_desc, args->lflow_ref);
+    struct ovn_lflow *lflow = lflow_table_add_lflow__(args->table, args->sdp,
+                                    args->dp_bitmap, args->dp_bitmap_len,
+                                    args->stage, args->priority, args->match,
+                                    args->actions, args->io_port,
+                                    args->ctrl_meter, args->stage_hint,
+                                    args->where, args->flow_desc,
+                                    args->lflow_ref);
+    if (lflow) {
+        lflow->acl_ct_translation = args->acl_ct_translation;
+    }
+    return lflow;
 }
 
 struct ovn_dp_group *
@@ -945,6 +953,7 @@ ovn_lflow_init(struct ovn_lflow *lflow,
     lflow->stage_hint = stage_hint;
     lflow->ctrl_meter = ctrl_meter;
     lflow->flow_desc = flow_desc;
+    lflow->acl_ct_translation = false;
     lflow->dpg = NULL;
     lflow->where = where;
     lflow->sb_uuid = sbuuid;
@@ -1122,12 +1131,20 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         sbrec_logical_flow_set_match(sbflow, lflow->match);
         sbrec_logical_flow_set_actions(sbflow, lflow->actions);
         sbrec_logical_flow_set_flow_desc(sbflow, lflow->flow_desc);
-        if (lflow->io_port) {
+
+        /* Set tags for io_port and/or acl_ct_translation if needed. */
+        if (lflow->io_port || lflow->acl_ct_translation) {
             struct smap tags = SMAP_INITIALIZER(&tags);
-            smap_add(&tags, "in_out_port", lflow->io_port);
+            if (lflow->io_port) {
+                smap_add(&tags, "in_out_port", lflow->io_port);
+            }
+            if (lflow->acl_ct_translation) {
+                smap_add(&tags, "acl_ct_translation", "true");
+            }
             sbrec_logical_flow_set_tags(sbflow, &tags);
             smap_destroy(&tags);
         }
+
         sbrec_logical_flow_set_controller_meter(sbflow, lflow->ctrl_meter);
 
         /* Trim the source locator lflow->where, which looks something like
@@ -1191,6 +1208,21 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                     sbrec_logical_flow_update_external_ids_setkey(
                         sbflow, "source", where);
                 }
+            }
+        }
+
+        /* Update acl_ct_translation marker in tags if needed.
+         * This must be outside ovn_internal_version_changed check because
+         * the option can be enabled/disabled at runtime. */
+        bool cur_has_ct_trans = smap_get_bool(&sbflow->tags,
+                                              "acl_ct_translation", false);
+        if (lflow->acl_ct_translation != cur_has_ct_trans) {
+            if (lflow->acl_ct_translation) {
+                sbrec_logical_flow_update_tags_setkey(
+                    sbflow, "acl_ct_translation", "true");
+            } else {
+                sbrec_logical_flow_update_tags_delkey(
+                    sbflow, "acl_ct_translation");
             }
         }
     }

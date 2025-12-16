@@ -327,6 +327,29 @@
         </p>
       </column>
 
+      <column name="options" key="acl_ct_translation">
+        <p>
+          If set to <code>true</code>, <code>ovn-northd</code> will enable
+          connection tracking based L4 field translation for stateful ACLs.
+          When enabled, ACL matches on L4 port fields (tcp/udp/sctp) use
+          connection tracking state instead of packet headers. This allows
+          proper handling of IP fragmentation in userspace datapaths (e.g.,
+          DPDK) where fragments are not automatically reassembled during
+          connection tracking lookup.
+        </p>
+        <p>
+          <em>Important:</em> Enabling this option breaks hardware offloading
+          of flows. It also disables the multicast conntrack bypass, which
+          means multicast traffic (including DHCP) will go through connection
+          tracking. This may have a performance impact on multicast-heavy
+          workloads. Only enable this option if you need to handle fragmented
+          traffic with stateful ACLs in userspace datapaths.
+        </p>
+        <p>
+          The default value is <code>false</code>.
+        </p>
+      </column>
+
       <column name="options" key="default_acl_drop">
         <p>
           If set to <code>true</code>., <code>ovn-northd</code> will

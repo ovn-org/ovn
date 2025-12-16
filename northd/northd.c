@@ -83,11 +83,17 @@ static bool check_lsp_is_up;
 static bool install_ls_lb_from_router;
 
 /* Use common zone for SNAT and DNAT if this option is set to "true". */
-static bool use_common_zone = false;
+static bool use_common_zone;
 
 /* If this option is 'true' northd will make use of ct.inv match fields.
  * Otherwise, it will avoid using it.  The default is true. */
 static bool use_ct_inv_match = true;
+
+/* If this option is 'true' northd will flag the related ACL flows to use
+ * connection tracking fields to properly handle IP fragments. By default this
+ * option is set to 'true'.
+ */
+static bool acl_ct_translation = true;
 
 /* If this option is 'true' northd will implicitly add a lowest-priority
  * drop rule in the ACL stage of logical switches that have at least one
@@ -6298,11 +6304,20 @@ build_ls_stateful_rec_pre_acls(
                       "(udp && udp.src == 546 && udp.dst == 547)", "next;",
                       lflow_ref);
 
-        /* Do not send multicast packets to conntrack. */
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110, "eth.mcast",
-                      "next;", lflow_ref);
-        ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, "eth.mcast",
-                      "next;", lflow_ref);
+        /* Do not send multicast packets to conntrack unless ACL CT
+         * translation is enabled.  When translation is active, L4 port
+         * fields are rewritten to their CT equivalents (e.g. udp.dst ->
+         * ct_udp.dst), which requires ct.trk to be set.  Skipping CT
+         * for multicast would leave ct.trk unset and cause all
+         * CT-translated ACL matches to fail for multicast traffic
+         * (including DHCP).  The trade-off is a potential multicast
+         * performance cost that should be documented. */
+        if (!acl_ct_translation) {
+            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL, 110, "eth.mcast",
+                          "next;", lflow_ref);
+            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, "eth.mcast",
+                          "next;", lflow_ref);
+        }
 
         /* Ingress and Egress Pre-ACL Table (Priority 100).
          *
@@ -7278,6 +7293,11 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         match_tier_len = match->length;
     }
 
+    /* Check if this ACL needs CT translation for fragment handling.
+     * All stateful ACLs are marked when the option is enabled; the actual
+     * translation only affects L4 port fields in ovn-controller. */
+    bool needs_ct_trans = has_stateful && acl_ct_translation;
+
     if (!has_stateful
         || !strcmp(acl->action, "pass")
         || !strcmp(acl->action, "allow-stateless")) {
@@ -7295,6 +7315,7 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
 
         ds_put_cstr(actions, "next;");
         ds_put_format(match, "(%s)", acl->match);
+        /* Stateless ACLs don't need CT translation. */
         ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
                       ds_cstr(actions), lflow_ref, WITH_HINT(&acl->header_));
         return;
@@ -7363,8 +7384,15 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
                           (uint8_t) acl->network_function_group->id);
         }
         ds_put_cstr(actions, "next;");
-        ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
-                      ds_cstr(actions), lflow_ref, WITH_HINT(&acl->header_));
+        if (needs_ct_trans) {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_), WITH_CT_TRANSLATION);
+        } else {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_));
+        }
 
         /* Match on traffic in the request direction for an established
          * connection tracking entry that has not been marked for
@@ -7393,8 +7421,15 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
                           (uint8_t) acl->network_function_group->id);
         }
         ds_put_cstr(actions, "next;");
-        ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
-                      ds_cstr(actions), lflow_ref, WITH_HINT(&acl->header_));
+        if (needs_ct_trans) {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_), WITH_CT_TRANSLATION);
+        } else {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_));
+        }
     } else if (!strcmp(acl->action, "drop")
                || !strcmp(acl->action, "reject")) {
         if (acl->network_function_group) {
@@ -7419,8 +7454,15 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         build_acl_sample_label_action(actions, acl, acl->sample_new, NULL,
                                       obs_stage);
         ds_put_cstr(actions, "next;");
-        ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
-                      ds_cstr(actions), lflow_ref, WITH_HINT(&acl->header_));
+        if (needs_ct_trans) {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_), WITH_CT_TRANSLATION);
+        } else {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_));
+        }
         /* For an existing connection without ct_mark.blocked set, we've
          * encountered a policy change. ACLs previously allowed
          * this connection and we committed the connection tracking
@@ -7445,8 +7487,15 @@ consider_acl(struct lflow_table *lflows, const struct ovn_datapath *od,
         ds_put_format(actions,
                       "ct_commit { ct_mark.blocked = 1; "
                       "ct_label.obs_point_id = %"PRIu32"; }; next;", obs_pid);
-        ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
-                      ds_cstr(actions), lflow_ref, WITH_HINT(&acl->header_));
+        if (needs_ct_trans) {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_), WITH_CT_TRANSLATION);
+        } else {
+            ovn_lflow_add(lflows, od, stage, priority, ds_cstr(match),
+                          ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&acl->header_));
+        }
     }
 }
 
@@ -20655,6 +20704,9 @@ ovnnb_db_run(struct northd_input *input_data,
 
     use_ct_inv_match = smap_get_bool(input_data->nb_options,
                                      "use_ct_inv_match", true);
+    acl_ct_translation = smap_get_bool(input_data->nb_options,
+                                       "acl_ct_translation",
+                                       true);
 
     /* deprecated, use --event instead */
     controller_event_en = smap_get_bool(input_data->nb_options,
