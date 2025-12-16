@@ -6,8 +6,6 @@
 #include "northd.h"
 #include "ovsdb-idl.h"
 
-#define IDL_LOOP_MAX_DURATION_MS 500
-
 struct northd_engine_context {
     int64_t next_run_ms;
     uint64_t nb_idl_duration_ms;

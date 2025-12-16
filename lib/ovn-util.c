@@ -73,6 +73,39 @@ void set_idl_probe_interval(struct ovsdb_idl *idl, const char *remote,
     ovsdb_idl_set_probe_interval(idl, interval);
 }
 
+struct ovsdb_idl_txn *
+run_idl_loop(struct ovsdb_idl_loop *idl_loop, const char *name,
+             uint64_t *idl_duration)
+{
+    unsigned long long duration, start = time_msec();
+    unsigned int seqno = UINT_MAX;
+    struct ovsdb_idl_txn *txn;
+    int n = 0;
+
+    /* Accumulate database changes as long as there are some,
+     * but no longer than "IDL_LOOP_MAX_DURATION_MS". */
+    while (seqno != ovsdb_idl_get_seqno(idl_loop->idl)
+           && time_msec() - start < IDL_LOOP_MAX_DURATION_MS) {
+        seqno = ovsdb_idl_get_seqno(idl_loop->idl);
+        ovsdb_idl_run(idl_loop->idl);
+        n++;
+    }
+
+    txn = ovsdb_idl_loop_run(idl_loop);
+
+    duration = time_msec() - start;
+    *idl_duration = duration;
+    /* ovsdb_idl_run() is called at least 2 times.  Once directly and
+     * once in the ovsdb_idl_loop_run().  n > 2 means that we received
+     * data on at least 2 subsequent calls. */
+    if (n > 2 || duration > 100) {
+        VLOG(duration > IDL_LOOP_MAX_DURATION_MS ? VLL_INFO : VLL_DBG,
+             "%s IDL run: %d iterations in %lld ms", name, n + 1, duration);
+    }
+
+    return txn;
+}
+
 static void
 add_ipv4_netaddr(struct lport_addresses *laddrs, ovs_be32 addr,
                  unsigned int plen)

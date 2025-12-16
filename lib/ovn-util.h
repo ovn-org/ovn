@@ -40,6 +40,8 @@
 #define GENEVE_TUNNEL_OVERHEAD 38
 #define VXLAN_TUNNEL_OVERHEAD 30
 
+#define IDL_LOOP_MAX_DURATION_MS 500
+
 struct eth_addr;
 struct nbrec_logical_router;
 struct nbrec_logical_router_port;
@@ -159,6 +161,10 @@ void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
 
 void set_idl_probe_interval(struct ovsdb_idl *idl, const char *remote,
                             int interval);
+
+struct ovsdb_idl_txn *run_idl_loop(struct ovsdb_idl_loop *idl_loop,
+                                          const char *name,
+                                          uint64_t *idl_duration);
 
 #define OVN_MAX_DP_KEY ((1u << 24) - 1)
 #define OVN_MAX_DP_GLOBAL_NUM ((1u << 16) - 1)
