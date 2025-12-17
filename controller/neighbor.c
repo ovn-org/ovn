@@ -21,9 +21,12 @@
 #include "local_data.h"
 #include "lport.h"
 #include "openvswitch/ofp-parse.h"
+#include "openvswitch/vlog.h"
 #include "ovn-sb-idl.h"
 
 #include "neighbor.h"
+
+VLOG_DEFINE_THIS_MODULE(neighbor);
 
 static const char *neighbor_interface_prefixes[] = {
     [NEIGH_IFACE_BRIDGE] = "br-",
@@ -43,10 +46,9 @@ static bool neighbor_interface_with_vni_exists(
     struct vector *monitored_interfaces,
     uint32_t vni);
 static struct neighbor_interface_monitor *
-neighbor_interface_monitor_alloc(struct local_datapath *ld,
-                                 enum neighbor_family family,
+neighbor_interface_monitor_alloc(enum neighbor_family family,
                                  enum neighbor_interface_type type,
-                                 uint32_t vni);
+                                 uint32_t vni, const char *if_name);
 static void neighbor_collect_mac_to_advertise(
     const struct neighbor_ctx_in *, struct hmap *neighbors,
     struct sset *advertised_pbs, const struct sbrec_datapath_binding *);
@@ -83,6 +85,23 @@ advertise_neigh_find(const struct hmap *neighbors, struct eth_addr mac,
     return NULL;
 }
 
+static void
+neigh_parse_device_name(struct sset *device_names, struct local_datapath *ld,
+                        enum neighbor_interface_type type, uint32_t vni)
+{
+    const char *names = smap_get_def(&ld->datapath->external_ids,
+                                     neighbor_opt_name[type], "");
+    sset_clear(device_names);
+    sset_from_delimited_string(device_names, names, ",");
+    if (sset_is_empty(device_names)) {
+        /* Default device name if not specified. */
+        char if_name[IFNAMSIZ + 1];
+        snprintf(if_name, sizeof if_name, "%s%"PRIu32,
+                 neighbor_interface_prefixes[type], vni);
+        sset_add(device_names, if_name);
+    }
+}
+
 void
 neighbor_run(struct neighbor_ctx_in *n_ctx_in,
              struct neighbor_ctx_out *n_ctx_out)
@@ -104,25 +123,48 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
             continue;
         }
 
-        struct neighbor_interface_monitor *vxlan =
-            neighbor_interface_monitor_alloc(ld, NEIGH_AF_BRIDGE,
-                                             NEIGH_IFACE_VXLAN, vni);
-        vector_push(n_ctx_out->monitored_interfaces, &vxlan);
+        struct sset device_names = SSET_INITIALIZER(&device_names);
+        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_VXLAN, vni);
+        const char *name;
+        SSET_FOR_EACH (name, &device_names) {
+            struct neighbor_interface_monitor *vxlan =
+                neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+                                                 NEIGH_IFACE_VXLAN, vni, name);
+            vector_push(n_ctx_out->monitored_interfaces, &vxlan);
+        }
 
+        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_LOOPBACK, vni);
+        if (sset_count(&device_names) > 1) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Datapath "UUID_FMT" too many names provided "
+                              "for loopback device",
+                         UUID_ARGS(&ld->datapath->header_.uuid));
+        }
         struct neighbor_interface_monitor *lo =
-            neighbor_interface_monitor_alloc(ld, NEIGH_AF_BRIDGE,
-                                             NEIGH_IFACE_LOOPBACK, vni);
+            neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+                                             NEIGH_IFACE_LOOPBACK, vni,
+                                             SSET_FIRST(&device_names));
         vector_push(n_ctx_out->monitored_interfaces, &lo);
 
+        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_BRIDGE, vni);
+        if (sset_count(&device_names) > 1) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Datapath "UUID_FMT" too many names provided "
+                              "for bridge device",
+                         UUID_ARGS(&ld->datapath->header_.uuid));
+        }
         struct neighbor_interface_monitor *br_v4 =
-            neighbor_interface_monitor_alloc(ld, NEIGH_AF_INET,
-                                             NEIGH_IFACE_BRIDGE, vni);
+            neighbor_interface_monitor_alloc(NEIGH_AF_INET,
+                                             NEIGH_IFACE_BRIDGE, vni,
+                                             SSET_FIRST(&device_names));
         vector_push(n_ctx_out->monitored_interfaces, &br_v4);
 
         struct neighbor_interface_monitor *br_v6 =
-            neighbor_interface_monitor_alloc(ld, NEIGH_AF_INET6,
-                                             NEIGH_IFACE_BRIDGE, vni);
+            neighbor_interface_monitor_alloc(NEIGH_AF_INET6,
+                                             NEIGH_IFACE_BRIDGE, vni,
+                                             SSET_FIRST(&device_names));
         vector_push(n_ctx_out->monitored_interfaces, &br_v6);
+        sset_destroy(&device_names);
 
         enum neigh_redistribute_mode mode =
             parse_neigh_dynamic_redistribute(&ld->datapath->external_ids);
@@ -200,10 +242,9 @@ neighbor_interface_with_vni_exists(struct vector *monitored_interfaces,
 }
 
 static struct neighbor_interface_monitor *
-neighbor_interface_monitor_alloc(struct local_datapath *ld,
-                                 enum neighbor_family family,
+neighbor_interface_monitor_alloc(enum neighbor_family family,
                                  enum neighbor_interface_type type,
-                                 uint32_t vni)
+                                 uint32_t vni, const char *if_name)
 {
     struct neighbor_interface_monitor *nim = xmalloc(sizeof *nim);
     *nim = (struct neighbor_interface_monitor) {
@@ -212,15 +253,8 @@ neighbor_interface_monitor_alloc(struct local_datapath *ld,
         .type = type,
         .vni = vni,
     };
+    snprintf(nim->if_name, sizeof nim->if_name, "%s", if_name);
 
-    const char *if_name = smap_get(&ld->datapath->external_ids,
-                                   neighbor_opt_name[type]);
-    if (if_name) {
-        snprintf(nim->if_name, sizeof nim->if_name, "%s", if_name);
-    } else {
-        snprintf(nim->if_name, sizeof nim->if_name, "%s%"PRIu32,
-                 neighbor_interface_prefixes[type], vni);
-    }
     return nim;
 }
 
