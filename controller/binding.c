@@ -783,6 +783,16 @@ update_active_pb_ras_pd(const struct sbrec_port_binding *pb,
     }
 }
 
+/* Check the patch port needs CT zone based on enable_router_port_acl.
+ * Returns true if the patch port should be added to local_lports for
+ * CT zone allocation.
+ */
+static bool
+patch_port_needs_ct_zone(const struct sbrec_port_binding *pb)
+{
+    return smap_get_bool(&pb->options, "enable_router_port_acl", false);
+}
+
 static bool is_ext_id_changed(const struct smap *a, const struct smap *b,
                               const char *key);
 static struct local_binding *local_binding_create(
@@ -2233,6 +2243,11 @@ binding_run(struct binding_ctx_in *b_ctx_in, struct binding_ctx_out *b_ctx_out)
         case LP_PATCH:
             update_related_lport(pb, b_ctx_out);
             consider_patch_port_for_local_datapaths(pb, b_ctx_in, b_ctx_out);
+            /* Check if this patch port needs CT zone allocation and add it
+             * to local_lports if required. */
+            if (patch_port_needs_ct_zone(pb)) {
+                update_local_lports(pb->logical_port, b_ctx_out);
+            }
             break;
 
         case LP_VTEP:
@@ -3139,6 +3154,20 @@ handle_updated_port(struct binding_ctx_in *b_ctx_in,
         update_related_lport(pb, b_ctx_out);
         handled = consider_patch_port_for_local_datapaths(pb, b_ctx_in,
                                                               b_ctx_out);
+        /* Handle dynamic changes to enable_router_port_acl option.
+         * Check CT zone requirement if options updated. */
+        if (sbrec_port_binding_is_updated(pb,
+                                          SBREC_PORT_BINDING_COL_OPTIONS)) {
+            tracked_datapath_lport_add(pb, TRACKED_RESOURCE_UPDATED,
+                b_ctx_out->tracked_dp_bindings);
+            if (patch_port_needs_ct_zone(pb)) {
+                update_local_lports(pb->logical_port, b_ctx_out);
+            } else {
+                /* Option was removed, remove from local_lports to
+                 * release CT zone */
+                remove_local_lports(pb->logical_port, b_ctx_out);
+            }
+        }
         break;
 
     case LP_VTEP:
