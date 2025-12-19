@@ -304,6 +304,7 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
                 continue;
             }
             uuidset_delete(&sb_uuid_set, node);
+            continue;
         }
         struct sbrec_logical_dp_group *dp_group = sbflow->logical_dp_group;
         struct ovn_datapath *logical_datapath_od = NULL;
@@ -333,10 +334,6 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         if (!logical_datapath_od) {
             /* This lflow has no valid logical datapaths. */
             sbrec_logical_flow_delete(sbflow);
-            continue;
-        }
-
-        if (search_mode != LFLOW_TABLE_SEARCH_FIELDS) {
             continue;
         }
 
