@@ -4212,7 +4212,8 @@ encode_FWD_GROUP(const struct ovnact_fwd_group *fwd_group,
 
         if (fwd_group->liveness) {
             /* Find the openflow port number of the tunnel port */
-            if (!ep->tunnel_ofport(ep->aux, port_name, &ofport)) {
+            if (!ep->tunnel_ofport ||
+                !ep->tunnel_ofport(ep->aux, port_name, &ofport)) {
                 ds_destroy(&ds);
                 return;
             }
