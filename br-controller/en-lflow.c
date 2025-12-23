@@ -27,6 +27,7 @@
 #include "en-lflow.h"
 #include "en-bridge-data.h"
 #include "include/ovn/actions.h"
+#include "lib/extend-table.h"
 #include "lib/inc-proc-eng.h"
 #include "lib/lflow-conj-ids.h"
 #include "lib/ovn-br-idl.h"
@@ -48,6 +49,17 @@ struct ed_type_lflow_output_data {
     /* conjunction ID usage information of lflows */
     struct conj_ids conj_ids;
 
+    /* Since we use the common action parsing code between ovn-controller
+     * and br-controller, ovnacts_encode() expects to pass a
+     * group table and meter table for the actions - ct_lb, select, log and
+     * set_meter.  Until we have a separate action parsing definitions
+     * for br-controller, we just maintain these tables and pass it in
+     * the 'struct ovnact_encode_params' in the ovnact_encode() to make
+     * coverity happy and to avoid probable NULL dereferncing.
+     * */
+    struct ovn_extend_table group_table;
+    struct ovn_extend_table meter_table;
+
     /* Data which is persistent and not cleared during
      * full recompute. */
     struct lflow_output_persistent_data pd;
@@ -61,6 +73,8 @@ struct lflow_ctx_in {
 
 struct lflow_ctx_out {
     struct conj_ids *conj_ids;
+    struct ovn_extend_table *group_table;
+    struct ovn_extend_table *meter_table;
 };
 
 struct lookup_port_aux {
@@ -90,7 +104,8 @@ static void add_matches_to_flow_table(const struct ovnbrrec_logical_flow *,
                                       struct hmap *matches,
                                       uint8_t ptable,
                                       uint8_t output_ptable,
-                                      struct ofpbuf *ovnacts);
+                                      struct ofpbuf *ovnacts,
+                                      struct lflow_ctx_out *);
 
 void *en_lflow_output_init(struct engine_node *node OVS_UNUSED,
                            struct engine_arg *arg OVS_UNUSED)
@@ -98,6 +113,8 @@ void *en_lflow_output_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_lflow_output_data *lflow_data = xzalloc(sizeof *lflow_data);
     ovn_init_symtab(&lflow_data->pd.symtab);
     lflow_conj_ids_init(&lflow_data->conj_ids);
+    ovn_extend_table_init(&lflow_data->group_table, "group-table", 0);
+    ovn_extend_table_init(&lflow_data->meter_table, "meter-table", 0);
     br_controller_extend_symtab(&lflow_data->pd.symtab);
 
     return lflow_data;
@@ -108,6 +125,8 @@ void en_lflow_output_cleanup(void *data_)
     struct ed_type_lflow_output_data *lflow_data = data_;
     lflow_conj_ids_destroy(&lflow_data->conj_ids);
     expr_symtab_destroy(&lflow_data->pd.symtab);
+    ovn_extend_table_destroy(&lflow_data->group_table);
+    ovn_extend_table_destroy(&lflow_data->meter_table);
     shash_destroy(&lflow_data->pd.symtab);
 }
 
@@ -164,6 +183,8 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->brrec_lflow_table = lflow_table;
     l_ctx_in->symtab = &lflow_data->pd.symtab;
     l_ctx_out->conj_ids = &lflow_data->conj_ids;
+    l_ctx_out->group_table = &lflow_data->group_table;
+    l_ctx_out->meter_table = &lflow_data->meter_table;
 }
 
 static void
@@ -251,7 +272,7 @@ consider_logical_flow(const struct ovnbrrec_logical_flow *lflow,
 
     add_matches_to_flow_table(lflow, br, matches, ptable,
                               BR_OFTABLE_SAVE_INPORT,
-                              &ovnacts);
+                              &ovnacts, l_ctx_out);
 
 done:
     expr_destroy(expr);
@@ -312,7 +333,8 @@ static void
 add_matches_to_flow_table(const struct ovnbrrec_logical_flow *lflow,
                           const struct ovn_bridge *br,
                           struct hmap *matches, uint8_t ptable,
-                          uint8_t output_ptable, struct ofpbuf *ovnacts)
+                          uint8_t output_ptable, struct ofpbuf *ovnacts,
+                          struct lflow_ctx_out *l_ctx_out)
 {
     struct lookup_port_aux aux = {
         .lflow = lflow,
@@ -327,6 +349,8 @@ add_matches_to_flow_table(const struct ovnbrrec_logical_flow *lflow,
         .aux = &aux,
         .is_switch = true,
         .lflow_uuid = lflow->header_.uuid,
+        .group_table = l_ctx_out->group_table,
+        .meter_table = l_ctx_out->meter_table,
 
         .pipeline = OVNACT_P_INGRESS,
         .ingress_ptable = BR_OFTABLE_LOG_INGRESS_PIPELINE,
