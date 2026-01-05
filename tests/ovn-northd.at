@@ -19030,3 +19030,31 @@ check ovn-nbctl --wait=sb sync
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policies - explicit output-port without nexthop])
+ovn_start
+
+dnl Test with a simple reroute policy with an explicit output-port set.
+check ovn-nbctl                                                          \
+    -- lr-add lr0                                                        \
+    -- lrp-add lr0 lrp1 00:00:00:00:00:01 1.1.1.1/24                     \
+    -- lrp-add lr0 lrp2 00:00:00:00:00:02 2.2.2.1/24                     \
+    -- --output-port=lrp2 lr-policy-add lr0 100 "ip4.src == 42.42.42.42" \
+                                        reroute 3.3.3.3
+
+dnl Clear the nexthops. This shouldn't crash or produce any lflows.
+uuid=$(fetch_column nb:logical_router_policy _uuid priority=100)
+check ovn-nbctl clear logical_router_policy $uuid nexthops
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl dump-flows lr0 > lr0flows])
+AT_CAPTURE_FILE([lr0flows])
+
+AT_CHECK([grep "lr_in_policy[[^_]]" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

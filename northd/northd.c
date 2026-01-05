@@ -14768,6 +14768,11 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
             for (size_t j = 0; j < n_nexthops; j++) {
                 char *nexthop = rule->n_nexthops
                     ? rule->nexthops[j] : rule->nexthop;
+
+                if (!nexthop || !nexthop[0]) {
+                    continue;
+                }
+
                 struct ovn_port *out_port = NULL;
                 bool is_ipv4 = strchr(nexthop, '.') ? true : false;
 
