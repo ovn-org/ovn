@@ -4340,6 +4340,12 @@ ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
 static bool
 ovn_port_assign_requested_tnl_id(struct ovn_port *op)
 {
+    /* Skip the assignment for CR port, as it references the same nbrp as the
+     * LRP and the tunnel key should be reserved by the original port only. */
+    if (is_cr_port(op)) {
+        return true;
+    }
+
     const struct smap *options = (op->nbsp
                                   ? &op->nbsp->options
                                   : &op->nbrp->options);
