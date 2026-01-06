@@ -257,6 +257,7 @@ main(int argc, char *argv[])
     ovsdb_idl_loop_destroy(&vtep_idl_loop);
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
 
+    free(ovn_version);
     free(ovnsb_remote);
     free(vtep_remote);
     free(default_db_);
