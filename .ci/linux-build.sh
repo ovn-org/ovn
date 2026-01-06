@@ -69,12 +69,18 @@ function configure_ovn()
     { cat config.log; exit 1; }
 }
 
+function configure_sanitizers()
+{
+    # If AddressSanitizer and UndefinedBehaviorSanitizer are requested,
+    # enable them, but only for OVN, not for OVS.  However, disable some
+    # optimizations for OVS, to make sanitizer reports user friendly.
+    COMMON_CFLAGS="${COMMON_CFLAGS} -O1 -fno-omit-frame-pointer -fno-common -g"
+    OVN_CFLAGS="${OVN_CFLAGS} -fsanitize=address,undefined"
+}
+
 function configure_gcc()
 {
-    if [ "$ARCH" = "x86_64" ] && [ "$USE_SPARSE" = "yes" ]; then
-        # Enable sparse only for x86_64 architecture.
-        OPTS="$OPTS --enable-sparse"
-    elif [ "$ARCH" = "x86" ]; then
+    if [ "$ARCH" = "x86" ]; then
         # Adding m32 flag directly to CC to avoid any possible issues
         # with API/ABI difference on 'configure' and 'make' stages.
         export CC="$CC -m32"
@@ -87,19 +93,27 @@ function configure_gcc()
             # Install equivalent of gcc-multilib for Fedora.
             sudo dnf -y install glibc-devel.i686
         fi
+
+        return
+    fi
+
+    if [ "$ARCH" = "x86_64" ] && [ "$USE_SPARSE" = "yes" ]; then
+        # Enable sparse only for x86_64 architecture.
+        OPTS="$OPTS --enable-sparse"
+    fi
+
+    if [ "$SANITIZERS" ]; then
+        configure_sanitizers
+        # Unlike for clang we also need to statically link the libraries.
+        # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94328
+        OVN_CFLAGS="${OVN_CFLAGS} -static-libasan -static-libubsan"
     fi
 }
 
 function configure_clang()
 {
-    # If AddressSanitizer and UndefinedBehaviorSanitizer are requested,
-    # enable them, but only for OVN, not for OVS.  However, disable some
-    # optimizations for OVS, to make sanitizer reports user friendly.
     if [ "$SANITIZERS" ]; then
-       # Use the default options configured in tests/atlocal.in,
-       # in UBSAN_OPTIONS.
-       COMMON_CFLAGS="${COMMON_CFLAGS} -O1 -fno-omit-frame-pointer -fno-common -g"
-       OVN_CFLAGS="${OVN_CFLAGS} -fsanitize=address,undefined"
+        configure_sanitizers
     fi
     COMMON_CFLAGS="${COMMON_CFLAGS} -Wno-error=unused-command-line-argument"
 }

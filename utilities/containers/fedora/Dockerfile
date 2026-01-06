@@ -25,8 +25,10 @@ RUN dnf -y update \
         jemalloc-devel \
         kernel-devel \
         kmod \
+        libasan-static \
         libcap-ng-devel \
         libtool \
+        libubsan-static \
         llvm-devel \
         net-tools \
         nfdump \
