@@ -296,18 +296,17 @@ add_ovs_qos_table_entry(struct ovsdb_idl_txn *ovs_idl_txn,
         smap_clear(&external_ids);
     }
 
-    struct ovsrec_queue *queue;
-    size_t i;
-    for (i = 0; i < qos->n_queues; i++) {
-        queue = qos->value_queues[i];
-
-        const char *p = smap_get(&queue->external_ids, "ovn_port");
+    struct ovsrec_queue *queue = NULL;
+    for (size_t i = 0; i < qos->n_queues; i++) {
+        const char *p =
+            smap_get(&qos->value_queues[i]->external_ids, "ovn_port");
         if (p && !strcmp(p, ovn_port)) {
+            queue = qos->value_queues[i];
             break;
         }
     }
 
-    if (i == qos->n_queues) {
+    if (!queue) {
         queue = ovsrec_queue_insert(ovs_idl_txn);
         ovsrec_qos_update_queues_setkey(qos, queue_id, queue);
     }
