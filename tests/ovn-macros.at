@@ -1537,6 +1537,19 @@ check ovn-appctl -t ovn-controller exit $2])
    OVS_WAIT_WHILE([kill -0 $TMPPID 2>/dev/null])
 ])
 
+# OVN_SKIP_MEM_LEAK([leak ...])
+#
+# Skip memory leak, it can be function name, file path etc.
+m4_define([OVN_SKIP_MEM_LEAK],[
+    m4_foreach([def], [$@], [
+        echo "leak:def" >> ovn_leak_suppression.txt
+    ])
+
+    LSAN_OPTIONS=$LSAN_OPTIONS:suppressions=ovn_leak_suppression.txt
+    LSAN_OPTIONS=$LSAN_OPTIONS:print_suppressions=0
+    export LSAN_OPTIONS
+])
+
 m4_define([OFTABLE_PHY_TO_LOG], [0])
 m4_define([OFTABLE_LOG_INGRESS_PIPELINE], [8])
 m4_define([OFTABLE_OUTPUT_LARGE_PKT_DETECT], [41])

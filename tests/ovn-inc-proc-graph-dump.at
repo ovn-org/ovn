@@ -2,6 +2,8 @@ AT_BANNER([OVN Incremental Processing Engine Graph Dump])
 
 AT_SETUP([northd: dump full incremental processing graph])
 AT_KEYWORDS([inc-proc-graph])
+
+OVN_SKIP_MEM_LEAK([ovs_cmdl_long_options_to_short_options])
 AT_CHECK([ovn-northd --dump-inc-proc-graph], [0], [dnl
 digraph "Incremental-Processing-Engine" {
 	rankdir=LR;
@@ -244,6 +246,8 @@ AT_CLEANUP
 
 AT_SETUP([northd: dump partial incremental processing graph (up to datapath_sync)])
 AT_KEYWORDS([inc-proc-graph])
+
+OVN_SKIP_MEM_LEAK([ovs_cmdl_long_options_to_short_options])
 AT_CHECK([ovn-northd --dump-inc-proc-graph=datapath_sync], [0], [dnl
 digraph "Incremental-Processing-Engine" {
 	rankdir=LR;
@@ -278,6 +282,8 @@ AT_CLEANUP
 
 AT_SETUP([controller: dump full incremental processing graph])
 AT_KEYWORDS([inc-proc-graph])
+
+OVN_SKIP_MEM_LEAK([ovs_cmdl_long_options_to_short_options])
 AT_CHECK([ovn-controller --dump-inc-proc-graph], [0], [dnl
 digraph "Incremental-Processing-Engine" {
 	rankdir=LR;
@@ -483,6 +489,8 @@ AT_CLEANUP
 
 AT_SETUP([controller: dump partial incremental processing graph (up to runtime_data)])
 AT_KEYWORDS([inc-proc-graph])
+
+OVN_SKIP_MEM_LEAK([ovs_cmdl_long_options_to_short_options])
 AT_CHECK([ovn-controller --dump-inc-proc-graph=runtime_data], [0], [dnl
 digraph "Incremental-Processing-Engine" {
 	rankdir=LR;
