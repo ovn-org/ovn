@@ -2873,7 +2873,7 @@ exit:
 }
 
 static void
-encode_dhcpv6_server_id_opt(struct ofpbuf *opts, struct eth_addr *mac)
+encode_dhcpv6_server_id_opt(struct ofpbuf *opts, void *user_data)
 {
     /* The Server Identifier option carries a DUID
      * identifying a server between a client and a server.
@@ -2881,15 +2881,15 @@ encode_dhcpv6_server_id_opt(struct ofpbuf *opts, struct eth_addr *mac)
      *
      * We use DUID Based on Link-layer Address [DUID-LL].
      */
-    struct dhcpv6_opt_server_id *server_id =
-            ofpbuf_put_zeros(opts, sizeof *server_id);
-    *server_id = (struct dhcpv6_opt_server_id) {
-            .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
-            .opt.len = htons(DHCP6_OPT_SERVER_ID_LEN - DHCP6_OPT_HEADER_LEN),
-            .duid_type = htons(DHCPV6_DUID_LL),
-            .hw_type = htons(DHCPV6_HW_TYPE_ETH),
-            .mac = *mac
+    struct dhcpv6_opt_server_id server_id = {
+        .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
+        .opt.len = htons(DHCP6_OPT_SERVER_ID_LEN - DHCP6_OPT_HEADER_LEN),
+        .duid_type = htons(DHCPV6_DUID_LL),
+        .hw_type = htons(DHCPV6_HW_TYPE_ETH),
     };
+    memcpy(&server_id.mac, user_data, sizeof server_id.mac);
+
+    ofpbuf_put(opts, &server_id, sizeof server_id);
 }
 
 static bool
