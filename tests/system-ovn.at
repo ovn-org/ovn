@@ -4907,6 +4907,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([enable-stateless-acl-with-lb usage])
 AT_SKIP_IF([test $HAVE_NC = no])
+TAG_UNSTABLE
 
 CHECK_CONNTRACK()
 ovn_start
