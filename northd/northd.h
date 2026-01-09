@@ -31,6 +31,7 @@
 #include "en-ls-arp.h"
 #include "vec.h"
 #include "datapath-sync.h"
+#include "sparse-array.h"
 
 struct northd_input {
     /* Northbound table references */
@@ -101,15 +102,13 @@ struct ovn_datapaths {
     /* Contains struct ovn_datapath elements. */
     struct hmap datapaths;
 
-    /* The array index of each element in 'datapaths'. */
-    struct dynamic_bitmap dps_index_map;
-    struct vector dps;
+    struct sparse_array dps;
 };
 
 static inline size_t
 ods_size(const struct ovn_datapaths *datapaths)
 {
-    return vector_len(&datapaths->dps);
+    return sparse_array_len(&datapaths->dps);
 }
 
 struct ovn_datapath *
@@ -493,8 +492,8 @@ static inline struct ovn_datapath *
 ovn_datapaths_find_by_index(const struct ovn_datapaths *ovn_datapaths,
                             size_t od_index)
 {
-    ovs_assert(od_index <= vector_len(&ovn_datapaths->dps));
-    return vector_get(&ovn_datapaths->dps, od_index, struct ovn_datapath *);
+    ovs_assert(od_index <= (ovn_datapaths->dps.capacity));
+    return sparse_array_get(&ovn_datapaths->dps, od_index);
 }
 
 struct ovn_datapath *ovn_datapath_from_sbrec(

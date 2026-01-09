@@ -1102,8 +1102,8 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
         /* There is only one datapath, so it should be moved out of the
          * group to a single 'od'. */
         size_t index = dynamic_bitmap_scan(&lflow->dpg_bitmap, true, 0);
-        lflow->dp =
-            vector_get(&datapaths->dps, index, struct ovn_datapath *)->sdp;
+        struct ovn_datapath *od = sparse_array_get(&datapaths->dps, index);
+        lflow->dp = od->sdp;
         lflow->dpg = NULL;
     } else {
         lflow->dp = NULL;
@@ -1303,8 +1303,7 @@ ovn_sb_insert_or_update_logical_dp_group(
 
     sb = xmalloc(bitmap_count1(dpg_bitmap, ods_size(datapaths)) * sizeof *sb);
     BITMAP_FOR_EACH_1 (index, ods_size(datapaths), dpg_bitmap) {
-        struct ovn_datapath *od = vector_get(&datapaths->dps, index,
-                                             struct ovn_datapath *);
+        struct ovn_datapath *od = sparse_array_get(&datapaths->dps, index);
         if (od) {
             sb[n++] = od->sdp->sb_dp;
         }
