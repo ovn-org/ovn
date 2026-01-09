@@ -66,7 +66,7 @@ static void lflow_hash_unlock(struct ovs_mutex *hash_lock);
 static struct sbrec_logical_dp_group *ovn_sb_insert_or_update_logical_dp_group(
     struct ovsdb_idl_txn *ovnsb_txn,
     struct sbrec_logical_dp_group *,
-    const unsigned long *dpg_bitmap,
+    const struct dynamic_bitmap *dpg_bitmap,
     const struct ovn_datapaths *);
 static struct ovn_dp_group *ovn_dp_group_find(
         const struct hmap *dp_groups,
@@ -878,7 +878,7 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
         dpg->dp_group = ovn_sb_insert_or_update_logical_dp_group(
                             ovnsb_txn,
                             can_modify ? sb_group : NULL,
-                            desired_bitmap->map, datapaths);
+                            desired_bitmap, datapaths);
     }
     dpg->dpg_uuid = dpg->dp_group->header_.uuid;
     hmap_insert(dp_groups, &dpg->node, hash_int(desired_bitmap->n_elems, 0));
@@ -1295,14 +1295,14 @@ static struct sbrec_logical_dp_group *
 ovn_sb_insert_or_update_logical_dp_group(
                             struct ovsdb_idl_txn *ovnsb_txn,
                             struct sbrec_logical_dp_group *dp_group,
-                            const unsigned long *dpg_bitmap,
+                            const struct dynamic_bitmap *dpg_bitmap,
                             const struct ovn_datapaths *datapaths)
 {
     const struct sbrec_datapath_binding **sb;
     size_t n = 0, index;
 
-    sb = xmalloc(bitmap_count1(dpg_bitmap, ods_size(datapaths)) * sizeof *sb);
-    BITMAP_FOR_EACH_1 (index, ods_size(datapaths), dpg_bitmap) {
+    sb = xmalloc(dynamic_bitmap_count1(dpg_bitmap) * sizeof *sb);
+    DYNAMIC_BITMAP_FOR_EACH_1 (index, dpg_bitmap) {
         struct ovn_datapath *od = sparse_array_get(&datapaths->dps, index);
         if (od) {
             sb[n++] = od->sdp->sb_dp;
