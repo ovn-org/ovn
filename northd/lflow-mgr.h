@@ -28,8 +28,7 @@ struct ovsdb_idl_row;
 /* lflow map which stores the logical flows. */
 struct lflow_table {
     struct hmap entries; /* hmap of lflows. */
-    struct hmap ls_dp_groups; /* hmap of logical switch dp groups. */
-    struct hmap lr_dp_groups; /* hmap of logical router dp groups. */
+    struct hmap dp_groups[DP_MAX];
     ssize_t max_seen_lflow_size;
 };
 

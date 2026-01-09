@@ -207,8 +207,9 @@ lflow_table_init(struct lflow_table *lflow_table)
 {
     fast_hmap_size_for(&lflow_table->entries,
                        lflow_table->max_seen_lflow_size);
-    ovn_dp_groups_init(&lflow_table->ls_dp_groups);
-    ovn_dp_groups_init(&lflow_table->lr_dp_groups);
+    for (enum ovn_datapath_type i = DP_MIN; i < DP_MAX; i++) {
+        ovn_dp_groups_init(&lflow_table->dp_groups[i]);
+    }
 }
 
 void
@@ -223,8 +224,9 @@ lflow_table_clear(struct lflow_table *lflow_table, bool destroy_all)
         }
     }
 
-    ovn_dp_groups_clear(&lflow_table->ls_dp_groups);
-    ovn_dp_groups_clear(&lflow_table->lr_dp_groups);
+    for (enum ovn_datapath_type i = DP_MIN; i < DP_MAX; i++) {
+        ovn_dp_groups_clear(&lflow_table->dp_groups[i]);
+    }
 }
 
 void
@@ -232,8 +234,9 @@ lflow_table_destroy(struct lflow_table *lflow_table)
 {
     lflow_table_clear(lflow_table, true);
     hmap_destroy(&lflow_table->entries);
-    ovn_dp_groups_destroy(&lflow_table->ls_dp_groups);
-    ovn_dp_groups_destroy(&lflow_table->lr_dp_groups);
+    for (enum ovn_datapath_type i = DP_MIN; i < DP_MAX; i++) {
+        ovn_dp_groups_destroy(&lflow_table->dp_groups[i]);
+    }
     free(lflow_table);
 }
 
@@ -288,12 +291,13 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         }
         const struct ovn_datapaths *datapaths;
         struct hmap *dp_groups;
-        if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
+        enum ovn_datapath_type dp_type =
+            ovn_stage_to_datapath_type(lflow->stage);
+        dp_groups = &lflow_table->dp_groups[dp_type];
+        if (dp_type == DP_SWITCH) {
             datapaths = ls_datapaths;
-            dp_groups = &lflow_table->ls_dp_groups;
         } else {
             datapaths = lr_datapaths;
-            dp_groups = &lflow_table->lr_dp_groups;
         }
         sync_lflow_to_sb(lflow, ovnsb_txn, dp_groups, datapaths,
                          ovn_internal_version_changed,
@@ -366,12 +370,11 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         if (lflow) {
             const struct ovn_datapaths *datapaths;
             struct hmap *dp_groups;
+            dp_groups = &lflow_table->dp_groups[dp_type];
             if (dp_type == DP_SWITCH) {
                 datapaths = ls_datapaths;
-                dp_groups = &lflow_table->ls_dp_groups;
             } else {
                 datapaths = lr_datapaths;
-                dp_groups = &lflow_table->lr_dp_groups;
             }
             sync_lflow_to_sb(lflow, ovnsb_txn, dp_groups, datapaths,
                              ovn_internal_version_changed,
@@ -391,12 +394,13 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         }
         const struct ovn_datapaths *datapaths;
         struct hmap *dp_groups;
-        if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
+        enum ovn_datapath_type dp_type =
+            ovn_stage_to_datapath_type(lflow->stage);
+        dp_groups = &lflow_table->dp_groups[dp_type];
+        if (dp_type == DP_SWITCH) {
             datapaths = ls_datapaths;
-            dp_groups = &lflow_table->ls_dp_groups;
         } else {
             datapaths = lr_datapaths;
-            dp_groups = &lflow_table->lr_dp_groups;
         }
         sync_lflow_to_sb(lflow, ovnsb_txn, dp_groups, datapaths,
                          ovn_internal_version_changed, NULL, dpgrp_table);
@@ -1358,11 +1362,12 @@ lflow_ref_sync_lflows__(struct lflow_ref  *lflow_ref,
 
         struct hmap *dp_groups = NULL;
         const struct ovn_datapaths *datapaths;
-        if (ovn_stage_to_datapath_type(lflow->stage) == DP_SWITCH) {
-            dp_groups = &lflow_table->ls_dp_groups;
+        enum ovn_datapath_type dp_type =
+            ovn_stage_to_datapath_type(lflow->stage);
+        dp_groups = &lflow_table->dp_groups[dp_type];
+        if (dp_type == DP_SWITCH) {
             datapaths = ls_datapaths;
         } else {
-            dp_groups = &lflow_table->lr_dp_groups;
             datapaths = lr_datapaths;
         }
 
