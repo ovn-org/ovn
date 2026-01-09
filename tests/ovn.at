@@ -2406,6 +2406,11 @@ check ovstest test-vector clone
 check ovstest test-vector pointers
 AT_CLEANUP
 
+AT_SETUP([Sparse array operations])
+check ovstest test-sparse-array add
+check ovstest test-sparse-array remove-replace
+AT_CLEANUP
+
 AT_BANNER([OVN end-to-end tests])
 
 OVN_FOR_EACH_NORTHD([

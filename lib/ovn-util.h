@@ -529,6 +529,21 @@ ovn_bitmap_realloc(unsigned long *bitmap, size_t n_bits_old,
     return bitmap;
 }
 
+static inline ssize_t
+dynamic_bitmap_last_set(const struct dynamic_bitmap *db)
+{
+    for (ssize_t i = bitmap_n_longs(db->capacity) - 1; i >= 0; i--) {
+        if (!db->map[i]) {
+            continue;
+        }
+
+        return (BITMAP_ULONG_BITS - 1) - raw_clz64(db->map[i])
+               + (BITMAP_ULONG_BITS * i);
+    }
+
+    return -1;
+}
+
 static inline void
 dynamic_bitmap_alloc(struct dynamic_bitmap *db, size_t n_elems)
 {

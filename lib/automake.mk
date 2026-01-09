@@ -48,6 +48,8 @@ lib_libovn_la_SOURCES = \
 	lib/inc-proc-eng.h \
 	lib/lb.c \
 	lib/lb.h \
+	lib/sparse-array.c \
+	lib/sparse-array.h \
 	lib/stopwatch-names.h \
 	lib/vec.c \
 	lib/vec.h \
