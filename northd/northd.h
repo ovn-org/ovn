@@ -401,9 +401,6 @@ struct ovn_datapath {
     struct hmap_node key_node;  /* Index on 'key'. */
     struct uuid key;            /* (nbs/nbr)->header_.uuid. */
 
-    size_t index;   /* A unique index across all datapaths.
-                     * Datapath indexes start from zero. */
-
     struct ovn_datapaths *datapaths; /* The collection of datapaths that
                                         contains this datapath. */
 

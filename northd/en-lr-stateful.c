@@ -464,7 +464,7 @@ lr_stateful_record_create(struct lr_stateful_table *table,
         xzalloc(sizeof *lr_stateful_rec);
     lr_stateful_rec->nbr_uuid = od->nbr->header_.uuid;
     lr_stateful_rec->lrnat_rec = lrnat_rec;
-    lr_stateful_rec->lr_index = od->index;
+    lr_stateful_rec->lr_index = od->sdp->index;
     lr_stateful_rec->lflow_ref = lflow_ref_create();
 
 

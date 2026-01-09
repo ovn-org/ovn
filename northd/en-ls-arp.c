@@ -130,7 +130,7 @@ ls_arp_record_create(struct ls_arp_table *table,
 {
     struct ls_arp_record *ls_arp_record = xzalloc(sizeof *ls_arp_record);
 
-    ls_arp_record->ls_index = od->index;
+    ls_arp_record->ls_index = od->sdp->index;
     ls_arp_record->nbs_uuid = od->nbs->header_.uuid;
 
     hmapx_init(&ls_arp_record->nat_records);

@@ -333,7 +333,7 @@ ls_stateful_record_create(struct ls_stateful_table *table,
 {
     struct ls_stateful_record *ls_stateful_rec =
         xzalloc(sizeof *ls_stateful_rec);
-    ls_stateful_rec->ls_index = od->index;
+    ls_stateful_rec->ls_index = od->sdp->index;
     ls_stateful_rec->nbs_uuid = od->nbs->header_.uuid;
     uuidset_init(&ls_stateful_rec->related_acls);
     ls_stateful_record_init(ls_stateful_rec, od, ls_pgs);

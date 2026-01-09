@@ -886,7 +886,7 @@ ods_build_array_index(struct ovn_datapaths *datapaths)
      * doesn't matter if they are different on every iteration. */
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &datapaths->datapaths) {
-        od->index = sparse_array_add(&datapaths->dps, od);
+        ovs_assert(!sparse_array_add_at(&datapaths->dps, od, od->sdp->index));
         od->datapaths = datapaths;
     }
 }
@@ -895,7 +895,7 @@ static void
 ods_assign_array_index(struct ovn_datapaths *datapaths,
                        struct ovn_datapath *od)
 {
-    od->index = sparse_array_add(&datapaths->dps, od);
+    ovs_assert(!sparse_array_add_at(&datapaths->dps, od, od->sdp->index));
     od->datapaths = datapaths;
 }
 
@@ -4915,7 +4915,7 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
 
         hmap_remove(&nd->ls_datapaths.datapaths, &od->key_node);
-        sparse_array_remove(&nd->ls_datapaths.dps, od->index);
+        sparse_array_remove(&nd->ls_datapaths.dps, od->sdp->index);
 
         const struct sbrec_ip_multicast *ip_mcast =
             ip_mcast_lookup(ni->sbrec_ip_mcast_by_dp, od->sdp->sb_dp);
@@ -5225,7 +5225,7 @@ northd_handle_lr_changes(const struct northd_input *ni,
         }
 
         hmap_remove(&nd->lr_datapaths.datapaths, &od->key_node);
-        sparse_array_remove(&nd->lr_datapaths.dps, od->index);
+        sparse_array_remove(&nd->lr_datapaths.dps, od->sdp->index);
 
         hmapx_add(&nd->trk_data.trk_routers.deleted, od);
     }

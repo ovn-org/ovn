@@ -376,7 +376,7 @@ lr_nat_record_init(struct lr_nat_record *lrnat_rec,
                    const struct ovn_datapath *od,
                    const struct hmap *lr_ports)
 {
-    lrnat_rec->lr_index = od->index;
+    lrnat_rec->lr_index = od->sdp->index;
     lrnat_rec->nbr_uuid = od->nbr->header_.uuid;
 
     shash_init(&lrnat_rec->snat_ips);

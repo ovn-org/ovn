@@ -655,7 +655,7 @@ ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *lb_dps, size_t n,
 {
     dynamic_bitmap_realloc(&lb_dps->nb_lr_map, n_lr_datapaths);
     for (size_t i = 0; i < n; i++) {
-        dynamic_bitmap_set1(&lb_dps->nb_lr_map, ods[i]->index);
+        dynamic_bitmap_set1(&lb_dps->nb_lr_map, ods[i]->sdp->index);
     }
 }
 
@@ -666,7 +666,7 @@ ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *lb_dps, size_t n,
 {
     dynamic_bitmap_realloc(&lb_dps->nb_ls_map, n_ls_datapaths);
     for (size_t i = 0; i < n; i++) {
-        dynamic_bitmap_set1(&lb_dps->nb_ls_map, ods[i]->index);
+        dynamic_bitmap_set1(&lb_dps->nb_ls_map, ods[i]->sdp->index);
     }
 }
 

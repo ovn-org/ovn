@@ -497,10 +497,10 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
  * L3 is referenced by E1 and E2
  * L4 is referenced by just E2
  *
- * L1->dpg_bitmap = [E1->od->index, E2->od->index]
- * L2->dpg_bitmap = [E1->od->index]
- * L3->dpg_bitmap = [E1->od->index, E2->od->index]
- * L4->dpg_bitmap = [E2->od->index]
+ * L1->dpg_bitmap = [E1->od->sdp->index, E2->od->sdp->index]
+ * L2->dpg_bitmap = [E1->od->sdp->index]
+ * L3->dpg_bitmap = [E1->od->sdp->index, E2->od->sdp->index]
+ * L4->dpg_bitmap = [E2->od->sdp->index]
  *
  *
  * When 'E' gets updated,
@@ -516,10 +516,10 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
  *
  *       bitmap status of all lflows in the lflows table
  *       -----------------------------------------------
- *       L1->dpg_bitmap = [E2->od->index]
+ *       L1->dpg_bitmap = [E2->od->sdp->index]
  *       L2->dpg_bitmap = []
- *       L3->dpg_bitmap = [E2->od->index]
- *       L4->dpg_bitmap = [E2->od->index]
+ *       L3->dpg_bitmap = [E2->od->sdp->index]
+ *       L4->dpg_bitmap = [E2->od->sdp->index]
  *
  *   2.  In step (2), client should generate the logical flows again for 'E1'.
  *       Lets say it calls:
@@ -536,11 +536,11 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
  *
  *       bitmap status of all lflows in the lflow table after end of step (2)
  *       --------------------------------------------------------------------
- *       L1->dpg_bitmap = [E2->od->index]
+ *       L1->dpg_bitmap = [E2->od->sdp->index]
  *       L2->dpg_bitmap = []
- *       L3->dpg_bitmap = [E1->od->index, E2->od->index]
- *       L4->dpg_bitmap = [E2->od->index]
- *       L5->dpg_bitmap = [E1->od->index]
+ *       L3->dpg_bitmap = [E1->od->sdp->index, E2->od->sdp->index]
+ *       L4->dpg_bitmap = [E2->od->sdp->index]
+ *       L5->dpg_bitmap = [E1->od->sdp->index]
  *
  *   3.  In step (3), client should sync the E1's lflows by calling
  *       lflow_ref_sync_lflows(E1->lflow_ref,....);
@@ -717,7 +717,7 @@ lflow_ref_sync_lflows(struct lflow_ref *lflow_ref,
  *
  * If a logical flow L(M, A) for the 'match' and 'actions' already exist then
  *   - It will be no-op if L(M,A) was already added for the same datapath.
- *   - if its a different datapath, then the datapath index (od->index)
+ *   - if its a different datapath, then the datapath index (od->sdp->index)
  *     is set in the lflow dp group bitmap.
  *
  * If 'lflow_ref' is not NULL then
@@ -773,7 +773,7 @@ lflow_table_add_lflow(struct lflow_table *lflow_table,
                 lrn->dpgrp_bitmap = bitmap_clone(dp_bitmap, dp_bitmap_len);
                 lrn->dpgrp_bitmap_len = dp_bitmap_len;
             } else {
-                lrn->dp_index = od->index;
+                lrn->dp_index = od->sdp->index;
             }
             ovs_list_insert(&lflow->referenced_by, &lrn->ref_list_node);
             hmap_insert(&lflow_ref->lflow_ref_nodes, &lrn->ref_node, hash);
@@ -853,7 +853,7 @@ ovn_dp_group_create(struct ovsdb_idl_txn *ovnsb_txn,
         if (!datapath_od || ovn_datapath_is_stale(datapath_od)) {
             break;
         }
-        dynamic_bitmap_set1(&dpg_bitmap, datapath_od->index);
+        dynamic_bitmap_set1(&dpg_bitmap, datapath_od->sdp->index);
     }
     if (!sb_group || i != sb_group->n_datapaths) {
         /* No group or stale group.  Not going to be used. */
@@ -1331,7 +1331,7 @@ ovn_dp_group_add_with_reference(struct ovn_lflow *lflow_ref,
     OVS_REQUIRES(fake_hash_mutex)
 {
     if (od) {
-        dynamic_bitmap_set1(&lflow_ref->dpg_bitmap, od->index);
+        dynamic_bitmap_set1(&lflow_ref->dpg_bitmap, od->sdp->index);
     }
     if (dp_bitmap) {
         dynamic_bitmap_or(&lflow_ref->dpg_bitmap, dp_bitmap, bitmap_len);
