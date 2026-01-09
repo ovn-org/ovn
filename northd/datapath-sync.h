@@ -19,6 +19,7 @@
 #include "openvswitch/hmap.h"
 #include "smap.h"
 #include "hmapx.h"
+#include "sparse-array.h"
 
 /* Datapath syncing API. This file consists of utility functions
  * that can be used when syncing northbound datapath types (e.g.
@@ -75,6 +76,8 @@ struct ovn_synced_datapath {
     struct hmap_node hmap_node;
     const struct ovsdb_idl_row *nb_row;
     const struct sbrec_datapath_binding *sb_dp;
+    size_t index;
+    const struct ovn_synced_datapaths *dps;
     /* This boolean indicates if the synced datapath
      * has a transient sb_dp pointer. If "true", then
      * it means the sb_dp field is the return value of
@@ -94,6 +97,7 @@ struct ovn_synced_datapath {
 
 struct ovn_synced_datapaths {
     struct hmap synced_dps;
+    struct sparse_array dps_array;
 
     struct hmapx new;
     struct hmapx updated;

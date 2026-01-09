@@ -44,6 +44,7 @@ en_datapath_sync_init(struct engine_node *node OVS_UNUSED,
             .deleted = HMAPX_INITIALIZER(&sdps->deleted),
             .updated = HMAPX_INITIALIZER(&sdps->updated),
         };
+        sparse_array_init(&sdps->dps_array, 0);
     }
 
 
@@ -179,6 +180,8 @@ reset_synced_datapaths(struct all_synced_datapaths *all_dps)
             free(sdp);
         }
         clear_tracked_data(synced_datapaths);
+        sparse_array_destroy(&synced_datapaths->dps_array);
+        sparse_array_init(&synced_datapaths->dps_array, 0);
     }
     ovn_destroy_tnlids(&all_dps->dp_tnlids);
     hmap_init(&all_dps->dp_tnlids);
@@ -260,6 +263,16 @@ create_synced_datapath_candidates_from_nb(
 }
 
 static void
+ovn_synced_datapath_add(struct ovn_synced_datapaths *sdps,
+                        struct ovn_synced_datapath *sdp)
+{
+    hmap_insert(&sdps->synced_dps, &sdp->hmap_node,
+                uuid_hash(sdp->sb_dp->nb_uuid));
+    sdp->index = sparse_array_add(&sdps->dps_array, sdp);
+    sdp->dps = sdps;
+}
+
+static void
 assign_requested_tunnel_keys(struct vector *candidate_sdps,
                              struct all_synced_datapaths *all_dps)
 {
@@ -279,9 +292,8 @@ assign_requested_tunnel_keys(struct vector *candidate_sdps,
         }
         sbrec_datapath_binding_set_tunnel_key(candidate->sdp->sb_dp,
                                               candidate->requested_tunnel_key);
-        hmap_insert(&all_dps->synced_dps[candidate->dp_type].synced_dps,
-                    &candidate->sdp->hmap_node,
-                    uuid_hash(candidate->sdp->sb_dp->nb_uuid));
+        ovn_synced_datapath_add(&all_dps->synced_dps[candidate->dp_type],
+                                candidate->sdp);
         candidate->tunnel_key_assigned = true;
     }
 }
@@ -301,9 +313,8 @@ assign_existing_tunnel_keys(struct vector *candidate_sdps,
          */
         if (ovn_add_tnlid(&all_dps->dp_tnlids,
                           candidate->existing_tunnel_key)) {
-            hmap_insert(&all_dps->synced_dps[candidate->dp_type].synced_dps,
-                        &candidate->sdp->hmap_node,
-                        uuid_hash(candidate->sdp->sb_dp->nb_uuid));
+            ovn_synced_datapath_add(&all_dps->synced_dps[candidate->dp_type],
+                                    candidate->sdp);
             candidate->tunnel_key_assigned = true;
         }
     }
@@ -329,9 +340,8 @@ allocate_tunnel_keys(struct vector *candidate_sdps,
         }
         sbrec_datapath_binding_set_tunnel_key(candidate->sdp->sb_dp,
                                               tunnel_key);
-        hmap_insert(&all_dps->synced_dps[candidate->dp_type].synced_dps,
-                    &candidate->sdp->hmap_node,
-                    uuid_hash(candidate->sdp->sb_dp->nb_uuid));
+        ovn_synced_datapath_add(&all_dps->synced_dps[candidate->dp_type],
+                                candidate->sdp);
         candidate->tunnel_key_assigned = true;
     }
 }
@@ -377,6 +387,7 @@ datapath_sync_unsynced_datapath_handler(
             return EN_UNHANDLED;
         }
         hmap_remove(&synced_datapaths->synced_dps, &sdp->hmap_node);
+        sparse_array_remove(&synced_datapaths->dps_array, sdp->index);
         hmapx_add(&synced_datapaths->deleted, sdp);
         ovn_free_tnlid(&all_dps->dp_tnlids,
                        sdp->sb_dp->tunnel_key);
@@ -413,8 +424,7 @@ datapath_sync_unsynced_datapath_handler(
         sbrec_datapath_binding_set_tunnel_key(sb_dp, tunnel_key);
         sdp = synced_datapath_alloc(udp, sb_dp, true);
         synced_datapath_set_sb_fields(sb_dp, udp);
-        hmap_insert(&synced_datapaths->synced_dps, &sdp->hmap_node,
-                    uuid_hash(&udp->nb_row->uuid));
+        ovn_synced_datapath_add(synced_datapaths, sdp);
         hmapx_add(&synced_datapaths->new, sdp);
         ret = EN_HANDLED_UPDATED;
     }
@@ -642,6 +652,7 @@ synced_datapaths_cleanup(struct ovn_synced_datapaths *synced_datapaths)
         free(sdp);
     }
     hmap_destroy(&synced_datapaths->synced_dps);
+    sparse_array_destroy(&synced_datapaths->dps_array);
 }
 
 void en_datapath_sync_cleanup(void *data)
