@@ -17,6 +17,7 @@
 
 #include "datapath-sync.h"
 #include "ovsdb-idl-provider.h"
+#include "ovn-sb-idl.h"
 #include "uuid.h"
 
 static const char *ovn_datapath_strings[] = {
@@ -140,4 +141,30 @@ ovn_unsynced_datapath_map_clear_tracked_data(
         free(udp);
         hmapx_delete(&map->deleted, node);
     }
+}
+
+struct ovn_synced_datapath *
+ovn_synced_datapath_from_sb(const struct ovn_synced_datapaths *datapaths,
+                            const struct sbrec_datapath_binding *sb_dp)
+{
+    struct ovn_synced_datapath *sdp;
+    struct uuid nb_uuid;
+
+    /* Don't reference sb_dp->nb_uuid directly here. The nb_uuid column was
+     * a later addition to the Datapath_Binding table. We might be
+     * referencing a record that does not have this column set, so use
+     * the helper function instead.
+     */
+    if (!datapath_get_nb_uuid(sb_dp, &nb_uuid)) {
+        return NULL;
+    }
+
+    uint32_t hash = uuid_hash(&nb_uuid);
+    HMAP_FOR_EACH_WITH_HASH (sdp, hmap_node, hash, &datapaths->synced_dps) {
+        if (uuid_equals(&sdp->nb_row->uuid, &nb_uuid)) {
+            return sdp;
+        }
+    }
+
+    return NULL;
 }

@@ -120,4 +120,8 @@ ovn_unsynced_datapath_find(const struct ovn_unsynced_datapath_map *,
 void ovn_unsynced_datapath_map_clear_tracked_data(
     struct ovn_unsynced_datapath_map *);
 
+struct ovn_synced_datapath *
+ovn_synced_datapath_from_sb(const struct ovn_synced_datapaths *datapaths,
+                            const struct sbrec_datapath_binding *sb_dp);
+
 #endif /* DATAPATH_SYNC_H */

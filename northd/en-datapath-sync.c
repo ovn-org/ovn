@@ -97,32 +97,6 @@ find_synced_datapath_from_udp(
     return NULL;
 }
 
-static struct ovn_synced_datapath *
-find_synced_datapath_from_sb(const struct hmap *datapaths,
-                             const struct sbrec_datapath_binding *sb_dp)
-{
-    struct ovn_synced_datapath *sdp;
-    struct uuid nb_uuid;
-
-    /* Don't reference sb_dp->nb_uuid directly here. The nb_uuid column was
-     * a later addition to the Datapath_Binding table. We might be
-     * referencing a record that does not have this column set, so use
-     * the helper function instead.
-     */
-    if (!datapath_get_nb_uuid(sb_dp, &nb_uuid)) {
-        return NULL;
-    }
-
-    uint32_t hash = uuid_hash(&nb_uuid);
-    HMAP_FOR_EACH_WITH_HASH (sdp, hmap_node, hash, datapaths) {
-        if (uuid_equals(&sdp->nb_row->uuid, &nb_uuid)) {
-            return sdp;
-        }
-    }
-
-    return NULL;
-}
-
 struct candidate_sdp {
     struct ovn_synced_datapath *sdp;
     uint32_t requested_tunnel_key;
@@ -524,8 +498,7 @@ datapath_sync_sb_datapath_binding(struct engine_node *node, void *data)
             return EN_UNHANDLED;
         }
         struct ovn_synced_datapath *sdp =
-            find_synced_datapath_from_sb(
-                    &all_dps->synced_dps[dp_type].synced_dps, sb_dp);
+            ovn_synced_datapath_from_sb(&all_dps->synced_dps[dp_type], sb_dp);
         if (sbrec_datapath_binding_is_deleted(sb_dp)) {
             if (sdp) {
                 /* The SB datapath binding was deleted, but we still have a
