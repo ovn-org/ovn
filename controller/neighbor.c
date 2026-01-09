@@ -91,7 +91,6 @@ neigh_parse_device_name(struct sset *device_names, struct local_datapath *ld,
 {
     const char *names = smap_get_def(&ld->datapath->external_ids,
                                      neighbor_opt_name[type], "");
-    sset_clear(device_names);
     sset_from_delimited_string(device_names, names, ",");
     if (sset_is_empty(device_names)) {
         /* Default device name if not specified. */
@@ -123,7 +122,7 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
             continue;
         }
 
-        struct sset device_names = SSET_INITIALIZER(&device_names);
+        struct sset device_names;
         neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_VXLAN, vni);
         const char *name;
         SSET_FOR_EACH (name, &device_names) {
@@ -132,6 +131,7 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
                                                  NEIGH_IFACE_VXLAN, vni, name);
             vector_push(n_ctx_out->monitored_interfaces, &vxlan);
         }
+        sset_destroy(&device_names);
 
         neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_LOOPBACK, vni);
         if (sset_count(&device_names) > 1) {
@@ -145,6 +145,7 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
                                              NEIGH_IFACE_LOOPBACK, vni,
                                              SSET_FIRST(&device_names));
         vector_push(n_ctx_out->monitored_interfaces, &lo);
+        sset_destroy(&device_names);
 
         neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_BRIDGE, vni);
         if (sset_count(&device_names) > 1) {

@@ -432,10 +432,13 @@
 
       <dt><code>external_ids:ovn-evpn-local-ip</code></dt>
       <dd>
-        IP address used as a source address for the EVPN traffic leaving this
-        OVN setup. There is currently support only for single IP address
-        being specified. NOTE: this feature is experimental and may be subject
-        to removal/change in the future.
+        IP address list used as a source addresses for the EVPN traffic
+        leaving this OVN setup. The <code>ovn-evpn-local-ip</code>
+        can be specified by the CMS according to the following syntax:
+        <code>external_ids:ovn-evpn-local-ip=vni0-IPv4,vni1-IPv4,
+        vni1-IPv6,IPv4,IPv6</code>, where if no VNI value is specified,
+        OVN will use the provided IP as default IP. NOTE: this feature
+        is experimental and may be subject to removal/change in the future.
       </dd>
     </dl>
 

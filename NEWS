@@ -80,6 +80,8 @@ Post v25.09.0
    - Add fallback support for Network Function.
    - Introduce the capability to specify EVPN device names using Logical_Switch
      other_config column.
+   - Introduce the capability to specify multiple ips for ovn-evpn-local-ip
+     option.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------
