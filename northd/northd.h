@@ -266,6 +266,7 @@ struct lflow_input {
     /* Indexes */
     struct ovsdb_idl_index *sbrec_mcast_group_by_name_dp;
 
+    const struct ovn_synced_datapaths *dps;
     const struct ovn_datapaths *ls_datapaths;
     const struct ovn_datapaths *lr_datapaths;
     const struct hmap *ls_ports;

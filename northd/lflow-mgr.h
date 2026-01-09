@@ -40,8 +40,7 @@ void lflow_table_expand(struct lflow_table *);
 void lflow_table_set_size(struct lflow_table *, size_t);
 void lflow_table_sync_to_sb(struct lflow_table *,
                             struct ovsdb_idl_txn *ovnsb_txn,
-                            const struct ovn_datapaths *ls_datapaths,
-                            const struct ovn_datapaths *lr_datapaths,
+                            const struct ovn_synced_datapaths dps[DP_MAX],
                             bool ovn_internal_version_changed,
                             const struct sbrec_logical_flow_table *,
                             const struct sbrec_logical_dp_group_table *);
@@ -61,16 +60,14 @@ void lflow_ref_unlink_lflows(struct lflow_ref *);
 bool lflow_ref_resync_flows(struct lflow_ref *,
                             struct lflow_table *lflow_table,
                             struct ovsdb_idl_txn *ovnsb_txn,
-                            const struct ovn_datapaths *ls_datapaths,
-                            const struct ovn_datapaths *lr_datapaths,
+                            const struct ovn_synced_datapaths dps[DP_MAX],
                             bool ovn_internal_version_changed,
                             const struct sbrec_logical_flow_table *,
                             const struct sbrec_logical_dp_group_table *);
 bool lflow_ref_sync_lflows(struct lflow_ref *,
                            struct lflow_table *lflow_table,
                            struct ovsdb_idl_txn *ovnsb_txn,
-                           const struct ovn_datapaths *ls_datapaths,
-                           const struct ovn_datapaths *lr_datapaths,
+                           const struct ovn_synced_datapaths dps[DP_MAX],
                            bool ovn_internal_version_changed,
                            const struct sbrec_logical_flow_table *,
                            const struct sbrec_logical_dp_group_table *);
@@ -188,7 +185,7 @@ struct ovn_dp_group *ovn_dp_group_create(
     struct ovsdb_idl_txn *ovnsb_txn, struct hmap *dp_groups,
     struct sbrec_logical_dp_group *sb_group,
     const struct dynamic_bitmap *desired_bitmap,
-    const struct ovn_datapaths *datapaths);
+    const struct ovn_synced_datapaths *datapaths);
 
 static inline void
 inc_ovn_dp_group_ref(struct ovn_dp_group *dpg)

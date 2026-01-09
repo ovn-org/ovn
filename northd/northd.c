@@ -19440,8 +19440,7 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
     lflow_table_expand(lflows);
 
     stopwatch_start(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
-    lflow_table_sync_to_sb(lflows, ovnsb_txn, input_data->ls_datapaths,
-                           input_data->lr_datapaths,
+    lflow_table_sync_to_sb(lflows, ovnsb_txn, input_data->dps,
                            input_data->ovn_internal_version_changed,
                            input_data->sbrec_logical_flow_table,
                            input_data->sbrec_logical_dp_group_table);
@@ -19496,8 +19495,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         /* Make sure 'op' is an lsp and not lrp. */
         ovs_assert(op->nbsp);
         bool handled = lflow_ref_resync_flows(
-            op->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
+            op->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19525,8 +19523,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                                  lflows);
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(
-            op->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
+            op->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19539,8 +19536,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                               &match, &actions, lflows);
             handled = lflow_ref_sync_lflows(
                 op->stateful_lflow_ref, lflows, ovnsb_txn,
-                lflow_input->ls_datapaths,
-                lflow_input->lr_datapaths,
+                lflow_input->dps,
                 lflow_input->ovn_internal_version_changed,
                 lflow_input->sbrec_logical_flow_table,
                 lflow_input->sbrec_logical_dp_group_table);
@@ -19585,8 +19581,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         /* Sync the newly added flows to SB. */
         bool handled = lflow_ref_sync_lflows(
-            op->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
+            op->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19597,8 +19592,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                               &match, &actions, lflows);
             handled = lflow_ref_sync_lflows(
                 op->stateful_lflow_ref, lflows, ovnsb_txn,
-                lflow_input->ls_datapaths,
-                lflow_input->lr_datapaths,
+                lflow_input->dps,
                 lflow_input->ovn_internal_version_changed,
                 lflow_input->sbrec_logical_flow_table,
                 lflow_input->sbrec_logical_dp_group_table);
@@ -19657,8 +19651,7 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
         lb_dps = hmapx_node->data;
 
         lflow_ref_resync_flows(
-            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
+            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19697,8 +19690,7 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(
-            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
+            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19737,7 +19729,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
         /* Sync the new flows to SB. */
         handled = lflow_ref_sync_lflows(
             lr_stateful_rec->lflow_ref, lflows, ovnsb_txn,
-            lflow_input->ls_datapaths, lflow_input->lr_datapaths,
+            lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19761,7 +19753,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
             handled = lflow_ref_sync_lflows(
                 op->stateful_lflow_ref, lflows, ovnsb_txn,
-                lflow_input->ls_datapaths, lflow_input->lr_datapaths,
+                lflow_input->dps,
                 lflow_input->ovn_internal_version_changed,
                 lflow_input->sbrec_logical_flow_table,
                 lflow_input->sbrec_logical_dp_group_table);
@@ -19778,7 +19770,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
                 handled = lflow_ref_sync_lflows(
                     op->peer->stateful_lflow_ref, lflows, ovnsb_txn,
-                    lflow_input->ls_datapaths, lflow_input->lr_datapaths,
+                    lflow_input->dps,
                     lflow_input->ovn_internal_version_changed,
                     lflow_input->sbrec_logical_flow_table,
                     lflow_input->sbrec_logical_dp_group_table);
@@ -19835,8 +19827,7 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(
             ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
-            lflow_input->ls_datapaths,
-            lflow_input->lr_datapaths,
+            lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);
@@ -19850,8 +19841,7 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         if (!lflow_ref_resync_flows(
                     ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
-                    lflow_input->ls_datapaths,
-                    lflow_input->lr_datapaths,
+                    lflow_input->dps,
                     lflow_input->ovn_internal_version_changed,
                     lflow_input->sbrec_logical_flow_table,
                     lflow_input->sbrec_logical_dp_group_table)) {
@@ -19881,7 +19871,7 @@ lflow_handle_ls_arp_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         bool handled = lflow_ref_sync_lflows(
             ls_arp_record->lflow_ref, lflows, ovnsb_txn,
-            lflow_input->ls_datapaths, lflow_input->lr_datapaths,
+            lflow_input->dps,
             lflow_input->ovn_internal_version_changed,
             lflow_input->sbrec_logical_flow_table,
             lflow_input->sbrec_logical_dp_group_table);

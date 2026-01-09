@@ -406,6 +406,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_lflow, &en_sampling_app, NULL);
 
+    /* en_lflow adjusts for datapath changes via its handler for en_northd.
+     * We can use engine_noop_handler for the en_datapath_sync input as a
+     * result.
+     */
+    engine_add_input(&en_lflow, &en_datapath_sync, engine_noop_handler);
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
     /* No need for an explicit handler for port_groups in the en_lflow node.
      * Stateful configuration changes are passed through the en_ls_stateful
@@ -441,6 +446,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
 
     engine_add_input(&en_sync_to_sb_lb, &en_global_config,
                      node_global_config_handler);
+    engine_add_input(&en_sync_to_sb_lb, &en_datapath_sync,
+                     engine_noop_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_northd,
                      sync_to_sb_lb_northd_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_sb_load_balancer,

@@ -126,6 +126,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_logical_dp_group [[style=filled, shape=box, fillcolor=white, label="SB_logical_dp_group"]];
 	sync_to_sb_lb [[style=filled, shape=box, fillcolor=white, label="sync_to_sb_lb"]];
 	global_config -> sync_to_sb_lb [[label="node_global_config_handler"]];
+	datapath_sync -> sync_to_sb_lb [[label="engine_noop_handler"]];
 	northd -> sync_to_sb_lb [[label="sync_to_sb_lb_northd_handler"]];
 	SB_load_balancer -> sync_to_sb_lb [[label="sync_to_sb_lb_sb_load_balancer"]];
 	SB_logical_dp_group -> sync_to_sb_lb [[label=""]];
@@ -187,6 +188,7 @@ digraph "Incremental-Processing-Engine" {
 	group_ecmp_route -> lflow [[label="lflow_group_ecmp_route_change_handler"]];
 	global_config -> lflow [[label="node_global_config_handler"]];
 	sampling_app -> lflow [[label=""]];
+	datapath_sync -> lflow [[label="engine_noop_handler"]];
 	northd -> lflow [[label="lflow_northd_handler"]];
 	port_group -> lflow [[label="engine_noop_handler"]];
 	lr_stateful -> lflow [[label="lflow_lr_stateful_handler"]];

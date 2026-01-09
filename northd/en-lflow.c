@@ -29,6 +29,7 @@
 #include "en-meters.h"
 #include "en-sampling-app.h"
 #include "en-group-ecmp-route.h"
+#include "en-datapath-sync.h"
 #include "lflow-mgr.h"
 
 #include "lib/inc-proc-eng.h"
@@ -69,6 +70,8 @@ lflow_get_input_data(struct engine_node *node,
         engine_get_input_data("multicast_igmp", node);
     struct ic_learned_svc_monitors_data *ic_learned_svc_monitors_data =
         engine_get_input_data("ic_learned_svc_monitors", node);
+    struct all_synced_datapaths *all_dps =
+        engine_get_input_data("datapath_sync", node);
 
     lflow_input->sbrec_logical_flow_table =
         EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
@@ -115,6 +118,7 @@ lflow_get_input_data(struct engine_node *node,
     struct ed_type_sampling_app_data *sampling_app_data =
         engine_get_input_data("sampling_app", node);
     lflow_input->sampling_apps = &sampling_app_data->apps;
+    lflow_input->dps = all_dps->synced_dps;
 }
 
 enum engine_node_state
@@ -269,8 +273,7 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
     if (!lflow_ref_resync_flows(mcast_igmp_data->lflow_ref,
                                 lflow_data->lflow_table,
                                 eng_ctx->ovnsb_idl_txn,
-                                lflow_input.ls_datapaths,
-                                lflow_input.lr_datapaths,
+                                lflow_input.dps,
                                 lflow_input.ovn_internal_version_changed,
                                 lflow_input.sbrec_logical_flow_table,
                                 lflow_input.sbrec_logical_dp_group_table)) {
@@ -285,8 +288,7 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
     if (!lflow_ref_sync_lflows(mcast_igmp_data->lflow_ref,
                                lflow_data->lflow_table,
                                eng_ctx->ovnsb_idl_txn,
-                               lflow_input.ls_datapaths,
-                               lflow_input.lr_datapaths,
+                               lflow_input.dps,
                                lflow_input.ovn_internal_version_changed,
                                lflow_input.sbrec_logical_flow_table,
                                lflow_input.sbrec_logical_dp_group_table)) {
@@ -326,8 +328,7 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
 
         bool handled = lflow_ref_sync_lflows(
             route_node->lflow_ref, lflow_data->lflow_table,
-            eng_ctx->ovnsb_idl_txn, lflow_input.ls_datapaths,
-            lflow_input.lr_datapaths,
+            eng_ctx->ovnsb_idl_txn, lflow_input.dps,
             lflow_input.ovn_internal_version_changed,
             lflow_input.sbrec_logical_flow_table,
             lflow_input.sbrec_logical_dp_group_table);
@@ -348,8 +349,7 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
 
         bool handled = lflow_ref_sync_lflows(
             route_node->lflow_ref, lflow_data->lflow_table,
-            eng_ctx->ovnsb_idl_txn, lflow_input.ls_datapaths,
-            lflow_input.lr_datapaths,
+            eng_ctx->ovnsb_idl_txn, lflow_input.dps,
             lflow_input.ovn_internal_version_changed,
             lflow_input.sbrec_logical_flow_table,
             lflow_input.sbrec_logical_dp_group_table);
@@ -383,8 +383,7 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
             ic_learned_svc_monitors_data->lflow_ref,
             lflow_data->lflow_table,
             eng_ctx->ovnsb_idl_txn,
-            lflow_input.ls_datapaths,
-            lflow_input.lr_datapaths,
+            lflow_input.dps,
             lflow_input.ovn_internal_version_changed,
             lflow_input.sbrec_logical_flow_table,
             lflow_input.sbrec_logical_dp_group_table)) {
@@ -401,8 +400,7 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
             ic_learned_svc_monitors_data->lflow_ref,
             lflow_data->lflow_table,
             eng_ctx->ovnsb_idl_txn,
-            lflow_input.ls_datapaths,
-            lflow_input.lr_datapaths,
+            lflow_input.dps,
             lflow_input.ovn_internal_version_changed,
             lflow_input.sbrec_logical_flow_table,
             lflow_input.sbrec_logical_dp_group_table)) {
