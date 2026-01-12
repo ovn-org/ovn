@@ -2375,6 +2375,9 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
 
     ofpbuf_clear(egress_ofpacts);
 
+    /* For egress flooding, we only need one tunnel per remote chassis.
+     * Using chassis_tunnel_find() which returns the first tunnel is sufficient
+     * since we just need to reach the remote chassis once per flood. */
     const struct sbrec_chassis *chassis;
     SBREC_CHASSIS_TABLE_FOR_EACH (chassis, ctx->chassis_table) {
         if (!smap_get_bool(&chassis->other_config, "is-remote", false)) {
@@ -2402,7 +2405,46 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
 
         ofpact_put_OUTPUT(egress_ofpacts)->port = tun->ofport;
         prev = tun;
+    }
 
+    if (egress_ofpacts->size > 0) {
+        match_init_catchall(&match);
+        /* Match if the packet wasn't already received from tunnel.
+         * This prevents from looping it back to the tunnel again. */
+        match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, 0,
+                             MLF_RX_FROM_TUNNEL);
+        ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
+                        &match, egress_ofpacts, hc_uuid);
+    }
+
+    /* For ingress, we need to handle ALL tunnels to remote chassis because
+     * ARP replies and ND NA responses could arrive on any tunnel.  A remote
+     * chassis may have multiple tunnels (e.g., multiple encap IPs). */
+    struct chassis_tunnel *tun;
+    HMAP_FOR_EACH (tun, hmap_node, ctx->chassis_tunnels) {
+        /* Do not create flows for Geneve if the TLV negotiation is not
+         * finished.
+         */
+        if (tun->type == GENEVE && !ctx->mff_ovn_geneve) {
+            continue;
+        }
+
+        char *chassis_name = NULL;
+        if (!encaps_tunnel_id_parse(tun->chassis_id, &chassis_name,
+                                    NULL, NULL)) {
+            continue;
+        }
+
+        /* Look up the chassis record and check if it's a remote chassis. */
+        const struct sbrec_chassis *remote_chassis =
+            chassis_lookup_by_name(ctx->sbrec_chassis_by_name, chassis_name);
+        free(chassis_name);
+
+        if (!remote_chassis ||
+            !smap_get_bool(&remote_chassis->other_config,
+                           "is-remote", false)) {
+            continue;
+        }
 
         ofpbuf_clear(&ingress_ofpacts);
         put_load(1, MFF_LOG_FLAGS, MLF_RX_FROM_TUNNEL_BIT, 1,
@@ -2424,7 +2466,7 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
                                         ctx->mff_ovn_geneve);
 
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120,
-                        chassis->header_.uuid.parts[0],
+                        remote_chassis->header_.uuid.parts[0],
                         &match, &ingress_ofpacts, hc_uuid);
 
         /* Add match on ND NA coming from remote chassis. */
@@ -2438,18 +2480,8 @@ physical_eval_remote_chassis_flows(const struct physical_ctx *ctx,
                                         ctx->mff_ovn_geneve);
 
         ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 120,
-                        chassis->header_.uuid.parts[0],
+                        remote_chassis->header_.uuid.parts[0],
                         &match, &ingress_ofpacts, hc_uuid);
-    }
-
-    if (egress_ofpacts->size > 0) {
-        match_init_catchall(&match);
-        /* Match if the packet wasn't already received from tunnel.
-         * This prevents from looping it back to the tunnel again. */
-        match_set_reg_masked(&match, MFF_LOG_FLAGS - MFF_REG0, 0,
-                             MLF_RX_FROM_TUNNEL);
-        ofctrl_add_flow(flow_table, OFTABLE_FLOOD_REMOTE_CHASSIS, 100, 0,
-                        &match, egress_ofpacts, hc_uuid);
     }
 
     ofpbuf_uninit(&ingress_ofpacts);

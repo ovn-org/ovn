@@ -51,6 +51,7 @@ struct physical_debug {
 struct physical_ctx {
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath;
+    struct ovsdb_idl_index *sbrec_chassis_by_name;
     const struct sbrec_port_binding_table *port_binding_table;
     const struct ovsrec_interface_table *ovs_interface_table;
     const struct sbrec_multicast_group_table *mc_group_table;
