@@ -4654,6 +4654,7 @@ static void init_physical_ctx(struct engine_node *node,
     parse_encap_ips(ovs_table, &p_ctx->n_encap_ips, &p_ctx->encap_ips);
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
+    p_ctx->sbrec_chassis_by_name = sbrec_chassis_by_name;
     p_ctx->port_binding_table = port_binding_table;
     p_ctx->ovs_interface_table = ovs_interface_table;
     p_ctx->mc_group_table = multicast_group_table;

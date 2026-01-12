@@ -3657,6 +3657,71 @@ AT_CHECK_UNQUOTED([grep "cookie=$hv3_cookie," phy_to_log_flows], [0], [dnl
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 
+AT_SETUP([Remote chassis flood flows - multiple tunnels per chassis])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11 24 geneve
+
+check ovs-vsctl set open . external_ids:ovn-is-interconn=true
+
+# Add a remote chassis with TWO encap IPs (two tunnels).
+# This tests that ingress flows are created for ALL tunnels to a remote
+# chassis, not just the first one found.
+check ovn-sbctl chassis-add hv2 geneve 192.168.0.12
+check_uuid ovn-sbctl --id=@encap create Encap type=geneve ip=192.168.0.13 \
+    -- add Chassis hv2 encaps @encap
+check ovn-sbctl set chassis hv2 other_config:is-remote=true
+
+check ovn-nbctl --wait=hv sync
+
+# Wait for both tunnels to be created by checking ovn-chassis-id external_ids.
+# Each tunnel port should have ovn-chassis-id=hv2@<remote_ip>%<local_ip>.
+ovs-vsctl list port
+ovs-vsctl list interface
+OVS_WAIT_UNTIL([
+    test "$(ovs-vsctl --bare --columns external_ids list port | \
+            grep -c 'ovn-chassis-id=hv2@')" -eq 2
+])
+
+chassis_cookie() {
+    ovn-debug uuid-to-cookie $(fetch_column chassis _uuid name=$1)
+}
+
+ovs-ofctl dump-flows --names --no-stats br-int table=OFTABLE_PHY_TO_LOG > phy_to_log_flows
+ovs-ofctl dump-flows --names --no-stats br-int table=OFTABLE_FLOOD_REMOTE_CHASSIS > flood_flows
+
+# Check that egress flood flow outputs to only ONE tunnel (first found).
+# We should have exactly one output action to hv2.
+AT_CHECK([grep -c 'output:"ovn-hv2' flood_flows], [0], [dnl
+1
+])
+
+# Check that ingress flows exist for BOTH tunnels to hv2.
+# Each tunnel should have ARP and ND NA ingress flows.
+hv2_cookie="$(chassis_cookie hv2)"
+
+# Count total ingress flows with hv2's cookie - should be 4 (2 tunnels x 2 flows each)
+AT_CHECK([grep -c "cookie=$hv2_cookie," phy_to_log_flows], [0], [dnl
+4
+])
+
+# Verify we have ARP flows for both tunnel ports
+AT_CHECK([grep "cookie=$hv2_cookie," phy_to_log_flows | grep -c "arp,.*in_port=\"ovn-hv2"], [0], [dnl
+2
+])
+
+# Verify we have ND NA flows for both tunnel ports
+AT_CHECK([grep "cookie=$hv2_cookie," phy_to_log_flows | grep -c "icmp6,.*in_port=\"ovn-hv2"], [0], [dnl
+2
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 AT_SETUP([ovn-cntroller exit - Cleanup])
 ovn_start
 
