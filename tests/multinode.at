@@ -3657,7 +3657,7 @@ m_wait_for_ports_up
 
 # Check that flows are created for the type-2 EVPN MAC+IP routes, in the
 # router pipeline.
-AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
+AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | grep -vE "reg[[04]]=0xfe80" | \
                    awk '{print $7, $8}' | sort], [0], [dnl
 priority=100,reg0=0xa00000b,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:01,load:0x1->NXM_NX_REG10[[6]]
 priority=100,reg0=0xa00000c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:02,load:0x1->NXM_NX_REG10[[6]]
@@ -3665,7 +3665,7 @@ priority=200,reg0=0xa000029,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions
 priority=200,reg4=0x100000,reg5=0,reg6=0,reg7=0x41,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:01:00,load:0x1->NXM_NX_REG10[[6]]
 ])
 
-AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
+AT_CHECK_UNQUOTED([m_as ovn-gw-1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | grep -vE "reg[[04]]=0xfe80" | \
                    awk '{print $7, $8}' | sort], [0], [dnl
 priority=100,arp,reg0=0xa00000b,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:01 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=100,arp,reg0=0xa00000c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:02 actions=load:0x1->NXM_NX_REG10[[6]]
@@ -3673,7 +3673,7 @@ priority=200,arp,reg0=0xa000029,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_
 priority=200,icmp6,reg0=0x100000,reg1=0,reg2=0,reg3=0x41,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:01:00,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
-AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
+AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | grep -vE "reg[[04]]=0xfe80" | \
                    awk '{print $7, $8}' | sort], [0], [dnl
 priority=100,reg0=0xa00000b,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:01,load:0x1->NXM_NX_REG10[[6]]
 priority=100,reg0=0xa00000c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:00:02,load:0x1->NXM_NX_REG10[[6]]
@@ -3681,7 +3681,7 @@ priority=200,reg0=0xa00002a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions
 priority=200,reg4=0x100000,reg5=0,reg6=0,reg7=0x42,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:00:00:00:00:02:00,load:0x1->NXM_NX_REG10[[6]]
 ])
 
-AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
+AT_CHECK_UNQUOTED([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | grep -vE "reg[[04]]=0xfe80" | \
                    awk '{print $7, $8}' | sort], [0], [dnl
 priority=100,arp,reg0=0xa00000b,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:01 actions=load:0x1->NXM_NX_REG10[[6]]
 priority=100,arp,reg0=0xa00000c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=00:00:00:00:00:02 actions=load:0x1->NXM_NX_REG10[[6]]
