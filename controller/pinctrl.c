@@ -49,7 +49,6 @@
 #include "ovn/lex.h"
 #include "lib/acl-log.h"
 #include "lib/ip-mcast-index.h"
-#include "lib/mac-binding-index.h"
 #include "lib/mcast-group-index.h"
 #include "lib/ovn-l7.h"
 #include "lib/ovn-util.h"
@@ -64,7 +63,6 @@
 #include "ip-mcast.h"
 #include "ovn-sb-idl.h"
 #include "ovn-dns.h"
-#include "garp_rarp.h"
 
 VLOG_DEFINE_THIS_MODULE(pinctrl);
 
@@ -161,12 +159,10 @@ VLOG_DEFINE_THIS_MODULE(pinctrl);
 static struct ovs_mutex pinctrl_mutex = OVS_MUTEX_INITIALIZER;
 static struct seq *pinctrl_handler_seq;
 static struct seq *pinctrl_main_seq;
-static uint64_t main_seq;
 
-#define ARP_ND_DEF_MAX_TIMEOUT    16000
-
-static long long int arp_nd_max_timeout = ARP_ND_DEF_MAX_TIMEOUT;
-static bool arp_nd_continuous;
+#define GARP_RARP_DEF_MAX_TIMEOUT    16000
+static long long int garp_rarp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
+static bool garp_rarp_continuous;
 
 static void *pinctrl_handler(void *arg);
 
@@ -184,7 +180,9 @@ struct pinctrl {
 
 static struct pinctrl pinctrl;
 
-static bool pinctrl_is_sb_commited(int64_t commit_cfg, int64_t cur_cfg);
+/* DNS query statistics */
+static struct dns_stats dns_statistics = {0};
+
 static void init_buffered_packets_ctx(void);
 static void destroy_buffered_packets_ctx(void);
 static void
@@ -208,13 +206,13 @@ static void run_put_mac_bindings(
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
     OVS_REQUIRES(pinctrl_mutex);
-static void wait_put_mac_bindings(void);
+static void wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void send_mac_binding_buffered_pkts(struct rconn *swconn)
     OVS_REQUIRES(pinctrl_mutex);
 
-static void pinctrl_activation_strategy_handler(const struct match *md);
+static void pinctrl_rarp_activation_strategy_handler(const struct match *md);
 
-static void pinctrl_split_buf_action_handler(
+static void pinctrl_mg_split_buff_handler(
         struct rconn *swconn, struct dp_packet *pkt,
         const struct match *md, struct ofpbuf *userdata);
 
@@ -227,19 +225,22 @@ static void run_activated_ports(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
     const struct sbrec_chassis *chassis);
 
-static void init_send_arps_nds(void);
-static void destroy_send_arps_nds(void);
+static void init_send_garps_rarps(void);
+static void destroy_send_garps_rarps(void);
 static void send_garp_rarp_wait(long long int send_garp_rarp_time);
-static void send_arp_nd_wait(long long int send_arp_nd_time);
 static void send_garp_rarp_prepare(
-    const struct sbrec_ecmp_nexthop_table *ecmp_nh_table,
-    const struct sbrec_chassis *chassis,
+    struct ovsdb_idl_txn *ovnsb_idl_txn,
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+    const struct ovsrec_bridge *,
+    const struct sbrec_chassis *,
+    const struct hmap *local_datapaths,
+    const struct sset *active_tunnels,
     const struct ovsrec_open_vswitch_table *ovs_table)
     OVS_REQUIRES(pinctrl_mutex);
 static void send_garp_rarp_run(struct rconn *swconn,
-                               long long int *send_garp_rarp_time);
-static void send_arp_nd_run(struct rconn *swconn,
-                            long long int *send_arp_nd_time)
+                               long long int *send_garp_rarp_time)
     OVS_REQUIRES(pinctrl_mutex);
 static void pinctrl_handle_nd_na(struct rconn *swconn,
                                  const struct flow *ip_flow,
@@ -258,10 +259,16 @@ static void pinctrl_handle_nd_ns(struct rconn *swconn,
                                  const struct ofputil_packet_in *pin,
                                  struct ofpbuf *userdata,
                                  const struct ofpbuf *continuation);
+static void pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
+                                             const struct flow *in_flow,
+                                             struct dp_packet *pkt_in,
+                                             struct ofputil_packet_in *pin,
+                                             struct ofpbuf *userdata,
+                                             struct ofpbuf *continuation);
 static void
 pinctrl_handle_event(struct ofpbuf *userdata)
     OVS_REQUIRES(pinctrl_mutex);
-static void wait_controller_event(void);
+static void wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void init_ipv6_ras(void);
 static void destroy_ipv6_ras(void);
 static void ipv6_ra_wait(long long int send_ipv6_ra_time);
@@ -306,9 +313,9 @@ static void run_put_vport_bindings(
     struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
-    const struct sbrec_chassis *chassis, int64_t cur_cfg)
+    const struct sbrec_chassis *chassis)
     OVS_REQUIRES(pinctrl_mutex);
-static void wait_put_vport_bindings(void);
+static void wait_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void pinctrl_handle_bind_vport(const struct flow *md,
                                       struct ofpbuf *userdata);
 static void pinctrl_handle_svc_check(struct rconn *swconn,
@@ -341,6 +348,10 @@ static void pinctrl_compose_ipv6(struct dp_packet *packet,
                                  uint8_t ip_proto, uint8_t ttl,
                                  uint16_t ip_payload_len);
 
+static void
+put_load(uint64_t value, enum mf_field_id dst, int ofs, int n_bits,
+         struct ofpbuf *ofpacts);
+
 static void notify_pinctrl_main(void);
 static void notify_pinctrl_handler(void);
 
@@ -357,7 +368,8 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
 static void bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                             const struct sbrec_bfd_table *bfd_table,
                             struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                            const struct sbrec_chassis *chassis)
+                            const struct sbrec_chassis *chassis,
+                            const struct sset *active_tunnels)
                             OVS_REQUIRES(pinctrl_mutex);
 static void init_fdb_entries(void);
 static void destroy_fdb_entries(void);
@@ -368,23 +380,19 @@ static void run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
                         struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                        struct fdb *fdb, uint64_t cur_cfg)
+                        const struct fdb *fdb)
                         OVS_REQUIRES(pinctrl_mutex);
 static void run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                        struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
-                        uint64_t cur_cfg)
+                        struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac)
                         OVS_REQUIRES(pinctrl_mutex);
-static void wait_put_fdbs(void);
+static void wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn);
 static void pinctrl_handle_put_fdb(const struct flow *md,
                                    const struct flow *headers)
                                    OVS_REQUIRES(pinctrl_mutex);
 
-static void set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *);
-
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
-COVERAGE_DEFINE(pinctrl_drop_put_fdb);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
 COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
@@ -542,7 +550,7 @@ void
 pinctrl_init(void)
 {
     init_put_mac_bindings();
-    init_send_arps_nds();
+    init_send_garps_rarps();
     init_ipv6_ras();
     init_ipv6_prefixd();
     init_buffered_packets_ctx();
@@ -557,7 +565,6 @@ pinctrl_init(void)
     pinctrl.mac_binding_can_timestamp = false;
     pinctrl_handler_seq = seq_create();
     pinctrl_main_seq = seq_create();
-    main_seq = seq_read(pinctrl_main_seq);
 
     latch_init(&pinctrl.pinctrl_thread_exit);
     pinctrl.pinctrl_thread = ovs_thread_create("ovn_pinctrl", pinctrl_handler,
@@ -709,8 +716,6 @@ pinctrl_forward_pkt(struct rconn *swconn, int64_t dp_key,
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(in_port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     put_load(out_port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
-    /* Avoid re-injecting packet already consumed. */
-    put_load(1, MFF_LOG_FLAGS, MLF_IGMP_IGMP_SNOOP_INJECT_BIT, 1, &ofpacts);
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
@@ -1339,9 +1344,8 @@ fill_ipv6_prefix_state(struct ovsdb_idl_txn *ovnsb_idl_txn,
 {
     bool changed = false;
 
-    const struct peer_ports *peers;
-    VECTOR_FOR_EACH_PTR (&ld->peer_ports, peers) {
-        const struct sbrec_port_binding *pb = peers->local;
+    for (size_t i = 0; i < ld->n_peer_ports; i++) {
+        const struct sbrec_port_binding *pb = ld->peer_ports[i].local;
         struct ipv6_prefixd_state *pfd;
 
         if (!smap_get_bool(&pb->options, "ipv6_prefix", false)) {
@@ -1427,6 +1431,7 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      const struct shash *local_active_ports_ipv6_pd,
                      const struct sbrec_chassis *chassis,
+                     const struct sset *active_tunnels,
                      const struct hmap *local_datapaths)
     OVS_REQUIRES(pinctrl_mutex)
 {
@@ -1455,8 +1460,9 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
 
         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
-        bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
-                                                  chassis, redirect_name);
+        bool resident = lport_is_chassis_resident(
+                sbrec_port_binding_by_name, chassis, active_tunnels,
+                redirect_name);
         free(redirect_name);
         if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
             !resident) {
@@ -1551,7 +1557,8 @@ OVS_REQUIRES(pinctrl_mutex)
         return;
     }
 
-    buffered_packets_packet_data_enqueue(bp, pin, continuation);
+    struct bp_packet_data *pd = bp_packet_data_create(pin, continuation);
+    buffered_packets_packet_data_enqueue(bp, pd);
 
     /* There is a chance that the MAC binding was already created. */
     notify_pinctrl_main();
@@ -2867,7 +2874,7 @@ exit:
 }
 
 static void
-encode_dhcpv6_server_id_opt(struct ofpbuf *opts, void *user_data)
+encode_dhcpv6_server_id_opt(struct ofpbuf *opts, struct eth_addr *mac)
 {
     /* The Server Identifier option carries a DUID
      * identifying a server between a client and a server.
@@ -2875,15 +2882,15 @@ encode_dhcpv6_server_id_opt(struct ofpbuf *opts, void *user_data)
      *
      * We use DUID Based on Link-layer Address [DUID-LL].
      */
-    struct dhcpv6_opt_server_id server_id = {
-        .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
-        .opt.len = htons(DHCP6_OPT_SERVER_ID_LEN - DHCP6_OPT_HEADER_LEN),
-        .duid_type = htons(DHCPV6_DUID_LL),
-        .hw_type = htons(DHCPV6_HW_TYPE_ETH),
+    struct dhcpv6_opt_server_id *server_id =
+            ofpbuf_put_zeros(opts, sizeof *server_id);
+    *server_id = (struct dhcpv6_opt_server_id) {
+            .opt.code = htons(DHCPV6_OPT_SERVER_ID_CODE),
+            .opt.len = htons(DHCP6_OPT_SERVER_ID_LEN - DHCP6_OPT_HEADER_LEN),
+            .duid_type = htons(DHCPV6_DUID_LL),
+            .hw_type = htons(DHCPV6_HW_TYPE_ETH),
+            .mac = *mac
     };
-    memcpy(&server_id.mac, user_data, sizeof server_id.mac);
-
-    ofpbuf_put(opts, &server_id, sizeof server_id);
 }
 
 static bool
@@ -3366,6 +3373,9 @@ pinctrl_handle_dns_lookup(
     uint32_t success = 0;
     bool send_refuse = false;
 
+    /* Track total DNS queries received */
+    dns_statistics.total_queries++;
+
     /* Parse result field. */
     const struct mf_field *f;
     enum ofperr ofperr = nx_pull_header(userdata, NULL, &f, NULL);
@@ -3392,6 +3402,7 @@ pinctrl_handle_dns_lookup(
     /* Check that the packet stores at least the minimal headers. */
     if (dp_packet_l4_size(pkt_in) < (UDP_HEADER_LEN + DNS_HEADER_LEN)) {
         VLOG_WARN_RL(&rl, "truncated dns packet");
+        dns_statistics.error_truncated++;
         goto exit;
     }
 
@@ -3399,17 +3410,20 @@ pinctrl_handle_dns_lookup(
     struct dns_header const *in_dns_header = dp_packet_get_udp_payload(pkt_in);
     if (!in_dns_header) {
         VLOG_WARN_RL(&rl, "truncated dns packet");
+        dns_statistics.error_truncated++;
         goto exit;
     }
 
     /* Check if it is DNS request or not */
     if (in_dns_header->lo_flag & 0x80) {
         /* It's a DNS response packet which we are not interested in */
+        dns_statistics.skipped_not_request++;
         goto exit;
     }
 
     /* Check if at least one query request is present */
     if (!in_dns_header->qdcount) {
+        dns_statistics.error_no_query++;
         goto exit;
     }
 
@@ -3431,6 +3445,7 @@ pinctrl_handle_dns_lookup(
         uint8_t label_len = in_dns_data[idx++];
         if (in_dns_data + idx + label_len > end) {
             ds_destroy(&query_name);
+            dns_statistics.error_parse_failure++;
             goto exit;
         }
         ds_put_buffer(&query_name, (const char *) in_dns_data + idx, label_len);
@@ -3449,6 +3464,20 @@ pinctrl_handle_dns_lookup(
     }
 
     uint16_t query_type = ntohs(get_unaligned_be16((void *) in_dns_data));
+
+    /* Track query type statistics */
+    if (query_type == DNS_QUERY_TYPE_A) {
+        dns_statistics.query_type_a++;
+    } else if (query_type == DNS_QUERY_TYPE_AAAA) {
+        dns_statistics.query_type_aaaa++;
+    } else if (query_type == DNS_QUERY_TYPE_PTR) {
+        dns_statistics.query_type_ptr++;
+    } else if (query_type == DNS_QUERY_TYPE_ANY) {
+        dns_statistics.query_type_any++;
+    } else {
+        dns_statistics.query_type_other++;
+    }
+
     /* Supported query types - A, AAAA, ANY and PTR */
     if (!(query_type == DNS_QUERY_TYPE_A || query_type == DNS_QUERY_TYPE_AAAA
           || query_type == DNS_QUERY_TYPE_ANY
@@ -3467,8 +3496,10 @@ pinctrl_handle_dns_lookup(
                                              &ovn_owned);
     ds_destroy(&query_name);
     if (!answer_data) {
+        dns_statistics.cache_misses++;
         goto exit;
     }
+    dns_statistics.cache_hits++;
 
 
     uint16_t ancount = 0;
@@ -3511,6 +3542,7 @@ pinctrl_handle_dns_lookup(
         if (ovn_owned && (query_type == DNS_QUERY_TYPE_AAAA ||
             query_type == DNS_QUERY_TYPE_A) && !ancount) {
             send_refuse = true;
+            dns_statistics.unsupported_ovn_owned++;
         }
 
         destroy_lport_addresses(&ip_addrs);
@@ -3595,18 +3627,86 @@ pinctrl_handle_dns_lookup(
     pin->packet_len = dp_packet_size(&pkt_out);
 
     success = 1;
+    dns_statistics.responses_sent++;
 exit:
     if (!ofperr) {
         union mf_subvalue sv;
         sv.u8_val = success;
         mf_write_subfield(&dst, &sv, &pin->flow_metadata);
-
-        /* Indicate that this packet is from ovn-controller. */
-        set_from_ctrl_flag_in_pkt_metadata(pin);
-
     }
     queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
     dp_packet_uninit(pkt_out_ptr);
+}
+
+/* DNS Statistics Functions */
+void
+pinctrl_get_dns_stats(struct ds *output)
+{
+    if (!output) {
+        return;
+    }
+
+    ds_put_cstr(output, "DNS Query Statistics\n");
+    ds_put_cstr(output, "====================\n\n");
+
+    ds_put_format(output, "%-30s: %"PRIu64"\n", "Total queries received",
+                  dns_statistics.total_queries);
+
+    ds_put_cstr(output, "\nQuery Types:\n");
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "A (IPv4)",
+                  dns_statistics.query_type_a);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "AAAA (IPv6)",
+                  dns_statistics.query_type_aaaa);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "PTR (Reverse DNS)",
+                  dns_statistics.query_type_ptr);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "ANY",
+                  dns_statistics.query_type_any);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Other/Unsupported",
+                  dns_statistics.query_type_other);
+
+    ds_put_cstr(output, "\nCache Performance:\n");
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Cache hits (answer found)",
+                  dns_statistics.cache_hits);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Cache misses (no answer)",
+                  dns_statistics.cache_misses);
+
+    ds_put_cstr(output, "\nProcessing Errors (packets reinjected):\n");
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Truncated/malformed packets",
+                  dns_statistics.error_truncated);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Skipped (not DNS request)",
+                  dns_statistics.skipped_not_request);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "No query section",
+                  dns_statistics.error_no_query);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Query parse failure",
+                  dns_statistics.error_parse_failure);
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "OVN-owned unsupported type",
+                  dns_statistics.unsupported_ovn_owned);
+
+    ds_put_cstr(output, "\nResponses:\n");
+    ds_put_format(output, "  %-28s: %"PRIu64"\n", "Responses sent",
+                  dns_statistics.responses_sent);
+
+    /* Sanity check metrics */
+    uint64_t total_processed = dns_statistics.cache_hits +
+                               dns_statistics.cache_misses +
+                               dns_statistics.error_truncated +
+                               dns_statistics.skipped_not_request +
+                               dns_statistics.error_no_query +
+                               dns_statistics.error_parse_failure;
+
+    ds_put_format(output, "\n%-30s: %"PRIu64"\n", "Total processed",
+                  total_processed);
+
+    if (total_processed != dns_statistics.total_queries) {
+        ds_put_format(output, "WARNING: Total mismatch (expected %"PRIu64")\n",
+                      dns_statistics.total_queries);
+    }
+}
+
+void
+pinctrl_clear_dns_stats(void)
+{
+    memset(&dns_statistics, 0, sizeof(dns_statistics));
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -3747,6 +3847,12 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
                               &userdata);
         break;
 
+    case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:
+    case ACTION_OPCODE_PUT_ICMP6_FRAG_MTU:
+        pinctrl_handle_put_icmp_frag_mtu(swconn, &headers, &packet, &pin,
+                                         &userdata, &continuation);
+        break;
+
     case ACTION_OPCODE_EVENT:
         ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_handle_event(&userdata);
@@ -3778,31 +3884,16 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
-    case ACTION_OPCODE_ACTIVATION_STRATEGY:
+    case ACTION_OPCODE_ACTIVATION_STRATEGY_RARP:
         ovs_mutex_lock(&pinctrl_mutex);
-        pinctrl_activation_strategy_handler(&pin.flow_metadata);
+        pinctrl_rarp_activation_strategy_handler(&pin.flow_metadata);
         ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
-    /* Deprecated actions. */
-    case ACTION_OPCODE_SPLIT_BUF_ACTION: {
-        char *opc_str = ovnact_op_to_string(ntohl(ah->opcode));
-        VLOG_WARN_RL(&rl, "pinctrl received deprecated packet-in | opcode=%s",
-                     opc_str);
-        free(opc_str);
-        pinctrl_split_buf_action_handler(swconn, &packet, &pin.flow_metadata,
-                                         &userdata);
+    case ACTION_OPCODE_MG_SPLIT_BUF:
+        pinctrl_mg_split_buff_handler(swconn, &packet, &pin.flow_metadata,
+                                      &userdata);
         break;
-    }
-
-    case ACTION_OPCODE_PUT_ICMP4_FRAG_MTU:
-    case ACTION_OPCODE_PUT_ICMP6_FRAG_MTU: {
-        char *opc_str = ovnact_op_to_string(ntohl(ah->opcode));
-        VLOG_WARN_RL(&rl, "pinctrl received deprecated packet-in | opcode=%s",
-                     opc_str);
-        free(opc_str);
-        break;
-    }
 
     default:
         VLOG_WARN_RL(&rl, "unrecognized packet-in opcode %"PRIu32,
@@ -3905,24 +3996,17 @@ pinctrl_handler(void *arg_)
     static long long int send_ipv6_ra_time = LLONG_MAX;
     /* Next GARP/RARP announcement in ms. */
     static long long int send_garp_rarp_time = LLONG_MAX;
-    static long long int send_arp_nd_time = LLONG_MAX;
     /* Next multicast query (IGMP) in ms. */
     static long long int send_mcast_query_time = LLONG_MAX;
     static long long int svc_monitors_next_run_time = LLONG_MAX;
     static long long int send_prefixd_time = LLONG_MAX;
 
     while (!latch_is_set(&pctrl->pinctrl_thread_exit)) {
-        ovsrcu_quiesce_end();
-
         long long int bfd_time = LLONG_MAX;
-        bool lock_failed = false;
 
-        if (!ovs_mutex_trylock(&pinctrl_mutex)) {
-            ip_mcast_snoop_run();
-            ovs_mutex_unlock(&pinctrl_mutex);
-        } else {
-            lock_failed = true;
-        }
+        ovs_mutex_lock(&pinctrl_mutex);
+        ip_mcast_snoop_run();
+        ovs_mutex_unlock(&pinctrl_mutex);
 
         rconn_run(swconn);
         new_seq = seq_read(pinctrl_handler_seq);
@@ -3947,50 +4031,35 @@ pinctrl_handler(void *arg_)
             }
 
             if (may_inject_pkts()) {
-                if (!ovs_mutex_trylock(&pinctrl_mutex)) {
-                    send_arp_nd_run(swconn, &send_arp_nd_time);
-                    send_ipv6_ras(swconn, &send_ipv6_ra_time);
-                    send_ipv6_prefixd(swconn, &send_prefixd_time);
-                    send_mac_binding_buffered_pkts(swconn);
-                    bfd_monitor_send_msg(swconn, &bfd_time);
-                    ovs_mutex_unlock(&pinctrl_mutex);
-                } else {
-                    lock_failed = true;
-                }
+                ovs_mutex_lock(&pinctrl_mutex);
                 send_garp_rarp_run(swconn, &send_garp_rarp_time);
+                send_ipv6_ras(swconn, &send_ipv6_ra_time);
+                send_ipv6_prefixd(swconn, &send_prefixd_time);
+                send_mac_binding_buffered_pkts(swconn);
+                bfd_monitor_send_msg(swconn, &bfd_time);
+                ovs_mutex_unlock(&pinctrl_mutex);
+
                 ip_mcast_querier_run(swconn, &send_mcast_query_time);
             }
 
-            if (!ovs_mutex_trylock(&pinctrl_mutex)) {
-                svc_monitors_run(swconn, &svc_monitors_next_run_time);
-                ovs_mutex_unlock(&pinctrl_mutex);
-            } else {
-                lock_failed = true;
-            }
+            ovs_mutex_lock(&pinctrl_mutex);
+            svc_monitors_run(swconn, &svc_monitors_next_run_time);
+            ovs_mutex_unlock(&pinctrl_mutex);
         }
 
-        if (lock_failed) {
-            /* Wait for 5 msecs before waking to avoid degrading the
-             * lock to a spinlock. */
-            poll_timer_wait(5);
-        } else {
-            rconn_run_wait(swconn);
-            rconn_recv_wait(swconn);
-            if (rconn_is_connected(swconn)) {
-                send_garp_rarp_wait(send_garp_rarp_time);
-                send_arp_nd_wait(send_arp_nd_time);
-                ipv6_ra_wait(send_ipv6_ra_time);
-                ip_mcast_querier_wait(send_mcast_query_time);
-                svc_monitors_wait(svc_monitors_next_run_time);
-                ipv6_prefixd_wait(send_prefixd_time);
-                bfd_monitor_wait(bfd_time);
-            }
-            seq_wait(pinctrl_handler_seq, new_seq);
-
-            latch_wait(&pctrl->pinctrl_thread_exit);
+        rconn_run_wait(swconn);
+        rconn_recv_wait(swconn);
+        if (rconn_is_connected(swconn)) {
+            send_garp_rarp_wait(send_garp_rarp_time);
+            ipv6_ra_wait(send_ipv6_ra_time);
+            ip_mcast_querier_wait(send_mcast_query_time);
+            svc_monitors_wait(svc_monitors_next_run_time);
+            ipv6_prefixd_wait(send_prefixd_time);
+            bfd_monitor_wait(bfd_time);
         }
+        seq_wait(pinctrl_handler_seq, new_seq);
 
-        ovsrcu_quiesce_start();
+        latch_wait(&pctrl->pinctrl_thread_exit);
         poll_block();
     }
 
@@ -4057,6 +4126,7 @@ pinctrl_update(const struct ovsdb_idl *idl)
 void
 pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
+            struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_port_binding_by_name,
             struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
@@ -4067,28 +4137,28 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             const struct sbrec_service_monitor_table *svc_mon_table,
             const struct sbrec_mac_binding_table *mac_binding_table,
             const struct sbrec_bfd_table *bfd_table,
-            const struct sbrec_ecmp_nexthop_table *ecmp_nh_table,
+            const struct ovsrec_bridge *br_int,
             const struct sbrec_chassis *chassis,
             const struct hmap *local_datapaths,
+            const struct sset *active_tunnels,
             const struct shash *local_active_ports_ipv6_pd,
             const struct shash *local_active_ports_ras,
-            const struct ovsrec_open_vswitch_table *ovs_table,
-            int64_t cur_cfg)
+            const struct ovsrec_open_vswitch_table *ovs_table)
 {
     ovs_mutex_lock(&pinctrl_mutex);
-
-    main_seq = seq_read(pinctrl_main_seq);
-
     run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_key,
                          sbrec_mac_binding_by_lport_ip);
     run_put_vport_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
-                           sbrec_port_binding_by_key, chassis, cur_cfg);
-    send_garp_rarp_prepare(ecmp_nh_table, chassis, ovs_table);
+                           sbrec_port_binding_by_key, chassis);
+    send_garp_rarp_prepare(ovnsb_idl_txn, sbrec_port_binding_by_datapath,
+                           sbrec_port_binding_by_name,
+                           sbrec_mac_binding_by_lport_ip, br_int, chassis,
+                           local_datapaths, active_tunnels, ovs_table);
     prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
-                         local_datapaths);
+                         active_tunnels, local_datapaths);
     controller_event_run(ovnsb_idl_txn, ce_table, chassis);
     ip_mcast_sync(ovnsb_idl_txn, chassis, local_datapaths,
                   sbrec_datapath_binding_by_key,
@@ -4103,10 +4173,9 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
-                    chassis);
+                    chassis, active_tunnels);
     run_put_fdbs(ovnsb_idl_txn, sbrec_port_binding_by_key,
-                 sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac,
-                 cur_cfg);
+                 sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac);
     run_activated_ports(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                         sbrec_port_binding_by_key, chassis);
     ovs_mutex_unlock(&pinctrl_mutex);
@@ -4138,7 +4207,6 @@ struct ipv6_ra_state {
     struct ipv6_ra_config *config;
     int64_t port_key;
     int64_t metadata;
-    bool preserved;
     bool delete_me;
 };
 
@@ -4273,6 +4341,18 @@ ipv6_ra_calc_next_announce(time_t min_interval, time_t max_interval)
 
     return time_msec() + min_interval_ms +
         random_range(max_interval_ms - min_interval_ms);
+}
+
+static void
+put_load(uint64_t value, enum mf_field_id dst, int ofs, int n_bits,
+         struct ofpbuf *ofpacts)
+{
+    struct ofpact_set_field *sf = ofpact_put_set_field(ofpacts,
+                                                       mf_from_id(dst), NULL,
+                                                       NULL);
+    ovs_be64 n_value = htonll(value);
+    bitwise_copy(&n_value, 8, 0, sf->value, sf->field->n_bytes, ofs, n_bits);
+    bitwise_one(ofpact_set_field_mask(sf), sf->field->n_bytes, ofs, n_bits);
 }
 
 static void
@@ -4452,9 +4532,6 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
-    if (ra->preserved) {
-        put_load(1, MFF_LOG_FLAGS, MLF_OVERRIDE_LOCAL_ONLY_BIT, 1, &ofpacts);
-    }
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
     resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
@@ -4565,11 +4642,8 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
          * router port is connected to. The RA is injected
          * into that logical switch port.
          */
-        ra->port_key  = peer->tunnel_key;
-        ra->metadata  = peer->datapath->tunnel_key;
-        ra->preserved = (!strcmp(pb->type,"l2gateway") ||
-                        !strcmp(pb->type,"l3gateway") ||
-                        !strcmp(pb->type,"chassisredirect"));
+        ra->port_key = peer->tunnel_key;
+        ra->metadata = peer->datapath->tunnel_key;
         ra->delete_me = false;
 
         /* pinctrl_handler thread will send the IPv6 RAs. */
@@ -4596,24 +4670,14 @@ void
 pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
 {
     ovs_mutex_lock(&pinctrl_mutex);
-    if (ovnsb_idl_txn) {
-        wait_put_mac_bindings();
-        wait_controller_event();
-        wait_put_vport_bindings();
-        wait_put_fdbs();
-        seq_wait(pinctrl_main_seq, main_seq);
-    }
+    wait_put_mac_bindings(ovnsb_idl_txn);
+    wait_controller_event(ovnsb_idl_txn);
+    wait_put_vport_bindings(ovnsb_idl_txn);
+    int64_t new_seq = seq_read(pinctrl_main_seq);
+    seq_wait(pinctrl_main_seq, new_seq);
+    wait_put_fdbs(ovnsb_idl_txn);
     wait_activated_ports();
     ovs_mutex_unlock(&pinctrl_mutex);
-}
-
-#define PINCTRL_CFG_INTERVAL 100
-
-static bool
-pinctrl_is_sb_commited(int64_t commit_cfg, int64_t cur_cfg)
-{
-    return (INT64_MAX - commit_cfg < PINCTRL_CFG_INTERVAL &&
-            cur_cfg < PINCTRL_CFG_INTERVAL) || cur_cfg > commit_cfg;
 }
 
 /* Called by ovn-controller. */
@@ -4624,7 +4688,7 @@ pinctrl_destroy(void)
     pthread_join(pinctrl.pinctrl_thread, NULL);
     latch_destroy(&pinctrl.pinctrl_thread_exit);
     rconn_destroy(pinctrl.swconn);
-    destroy_send_arps_nds();
+    destroy_send_garps_rarps();
     destroy_ipv6_ras();
     destroy_ipv6_prefixd();
     destroy_buffered_packets_ctx();
@@ -4669,7 +4733,6 @@ init_put_mac_bindings(void)
 static void
 destroy_put_mac_bindings(void)
 {
-    mac_bindings_clear(&put_mac_bindings);
     hmap_destroy(&put_mac_bindings);
 }
 
@@ -4704,15 +4767,13 @@ pinctrl_handle_put_mac_binding(const struct flow *md,
                      ? random_range(MAX_MAC_BINDING_DELAY_MSEC) + 1
                      : 0;
     long long timestamp = time_msec() + delay;
-    mac_binding_add(&put_mac_bindings, mb_data, NULL, timestamp);
+    mac_binding_add(&put_mac_bindings, mb_data, timestamp);
 
     /* We can send the buffered packet once the main ovn-controller
      * thread calls pinctrl_run() and it writes the mac_bindings stored
      * in 'put_mac_bindings' hmap into the Southbound MAC_Binding table. */
     notify_pinctrl_main();
 }
-
-#define READY_PACKETS_VEC_CAPACITY_THRESHOLD 1024
 
 /* Called with in the pinctrl_handler thread context. */
 static void
@@ -4721,20 +4782,93 @@ send_mac_binding_buffered_pkts(struct rconn *swconn)
 {
     enum ofp_version version = rconn_get_version(swconn);
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
-    struct vector *rpd = &buffered_packets_ctx.ready_packets_data;
 
     struct bp_packet_data *pd;
-    VECTOR_FOR_EACH_PTR (rpd, pd) {
+    LIST_FOR_EACH_POP (pd, node, &buffered_packets_ctx.ready_packets_data) {
         queue_msg(swconn, ofputil_encode_resume(&pd->pin, pd->continuation,
                                                 proto));
         bp_packet_data_destroy(pd);
     }
 
-    vector_clear(rpd);
-    if (vector_capacity(rpd) >= READY_PACKETS_VEC_CAPACITY_THRESHOLD) {
-        VLOG_DBG("The ready_packets_data vector capacity (%"PRIuSIZE") "
-                 "is over threshold.", vector_capacity(rpd));
-        vector_shrink_to_fit(rpd);
+    ovs_list_init(&buffered_packets_ctx.ready_packets_data);
+}
+
+/* Update or add an IP-MAC binding for 'logical_port'.
+ * Caller should make sure that 'ovnsb_idl_txn' is valid. */
+static void
+mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                      struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                      const char *logical_port,
+                      const struct sbrec_datapath_binding *dp,
+                      struct eth_addr ea, const char *ip,
+                      bool update_only)
+{
+    /* Convert ethernet argument to string form for database. */
+    char mac_string[ETH_ADDR_STRLEN + 1];
+    snprintf(mac_string, sizeof mac_string, ETH_ADDR_FMT, ETH_ADDR_ARGS(ea));
+
+    const struct sbrec_mac_binding *b =
+            mac_binding_lookup(sbrec_mac_binding_by_lport_ip,
+                               logical_port, ip);
+    if (!b) {
+        if (update_only) {
+            return;
+        }
+        b = sbrec_mac_binding_insert(ovnsb_idl_txn);
+        sbrec_mac_binding_set_logical_port(b, logical_port);
+        sbrec_mac_binding_set_ip(b, ip);
+        sbrec_mac_binding_set_datapath(b, dp);
+    }
+
+    if (strcmp(b->mac, mac_string)) {
+        sbrec_mac_binding_set_mac(b, mac_string);
+
+        /* For backward compatibility check if timestamp column is available
+         * in SB DB. */
+        if (pinctrl.mac_binding_can_timestamp) {
+            sbrec_mac_binding_set_timestamp(b, time_wall_msec());
+        }
+    }
+}
+
+/* Simulate the effect of a GARP on local datapaths, i.e., create MAC_Bindings
+ * on peer router datapaths.
+ */
+static void
+send_garp_locally(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                  struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                  const struct hmap *local_datapaths,
+                  const struct sbrec_port_binding *in_pb,
+                  struct eth_addr ea, ovs_be32 ip)
+{
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
+    const struct local_datapath *ldp =
+        get_local_datapath(local_datapaths, in_pb->datapath->tunnel_key);
+
+    ovs_assert(ldp);
+    for (size_t i = 0; i < ldp->n_peer_ports; i++) {
+        const struct sbrec_port_binding *local = ldp->peer_ports[i].local;
+        const struct sbrec_port_binding *remote = ldp->peer_ports[i].remote;
+
+        /* Skip "ingress" port. */
+        if (local == in_pb) {
+            continue;
+        }
+
+        bool update_only = !smap_get_bool(&remote->datapath->external_ids,
+                                          "always_learn_from_arp_request",
+                                          true);
+
+        struct ds ip_s = DS_EMPTY_INITIALIZER;
+
+        ip_format_masked(ip, OVS_BE32_MAX, &ip_s);
+        mac_binding_add_to_sb(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
+                              remote->logical_port, remote->datapath,
+                              ea, ds_cstr(&ip_s), update_only);
+        ds_destroy(&ip_s);
     }
 }
 
@@ -4836,20 +4970,24 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
             continue;
         }
 
-        mac_binding_add(&recent_mbs, mb_data, smb, 0);
+        mac_binding_add(&recent_mbs, mb_data, 0);
 
-        const struct sbrec_port_binding *cr_pb =
-            lport_get_cr_port(sbrec_port_binding_by_name, pb, NULL);
-        if (!cr_pb ||
-            cr_pb->datapath->tunnel_key != smb->datapath->tunnel_key ||
-            strcmp(cr_pb->type, "chassisredirect")) {
+        const char *redirect_port =
+            smap_get(&pb->options, "chassis-redirect-port");
+        if (!redirect_port) {
+            continue;
+        }
+
+        pb = lport_lookup_by_name(sbrec_port_binding_by_name, redirect_port);
+        if (!pb || pb->datapath->tunnel_key != smb->datapath->tunnel_key ||
+            strcmp(pb->type, "chassisredirect")) {
             continue;
         }
 
         /* Add the same entry also for chassisredirect port as the buffered
          * traffic might be buffered on the cr port. */
-        mb_data.port_key = cr_pb->tunnel_key;
-        mac_binding_add(&recent_mbs, mb_data, smb, 0);
+        mb_data.port_key = pb->tunnel_key;
+        mac_binding_add(&recent_mbs, mb_data, 0);
     }
 
     buffered_packets_ctx_run(&buffered_packets_ctx, &recent_mbs,
@@ -4867,9 +5005,13 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
 }
 
 static void
-wait_put_mac_bindings(void)
+wait_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn)
     OVS_REQUIRES(pinctrl_mutex)
 {
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
     struct mac_binding *mb;
     HMAP_FOR_EACH (mb, hmap_node, &put_mac_bindings) {
         poll_timer_wait_until(mb->timestamp);
@@ -4885,12 +5027,9 @@ wait_put_mac_bindings(void)
  * are needed for switches and routers on the broadcast segment to update
  * their port-mac and ARP tables.
  */
-
-struct arp_nd_data {
-    struct hmap_node hmap_node;
+struct garp_rarp_data {
     struct eth_addr ea;          /* Ethernet address of port. */
-    struct in6_addr src_ip;      /* IP address of port. */
-    struct in6_addr dst_ip;      /* Destination IP address */
+    ovs_be32 ipv4;               /* Ipv4 address of port. */
     long long int announce_time; /* Next announcement in ms. */
     int backoff;                 /* Backoff timeout for the next
                                   * announcement (in msecs). */
@@ -4898,172 +5037,205 @@ struct arp_nd_data {
     uint32_t port_key;           /* Port to inject the GARP into. */
 };
 
-static struct hmap send_arp_nd_data;
+/* Contains GARPs/RARPs to be sent. Protected by pinctrl_mutex*/
+static struct shash send_garp_rarp_data;
 
 static void
-init_send_arps_nds(void)
+init_send_garps_rarps(void)
 {
-    hmap_init(&send_arp_nd_data);
+    shash_init(&send_garp_rarp_data);
 }
 
 static void
-destroy_send_arps_nds(void)
+destroy_send_garps_rarps(void)
 {
-    struct arp_nd_data *e;
-    HMAP_FOR_EACH_POP (e, hmap_node, &send_arp_nd_data) {
-        free(e);
-    }
-    hmap_destroy(&send_arp_nd_data);
+    shash_destroy_free_data(&send_garp_rarp_data);
 }
 
-static uint32_t
-arp_nd_data_get_hash(const struct in6_addr *dst_ip, const uint32_t dp_key,
-                     const uint32_t port_key)
+/* Runs with in the main ovn-controller thread context. */
+static void
+add_garp_rarp(const char *name, const struct eth_addr ea, ovs_be32 ip,
+              uint32_t dp_key, uint32_t port_key)
 {
-    uint32_t hash = 0;
-    hash = hash_add_in6_addr(hash, dst_ip);
-    hash = hash_add(hash, dp_key);
-    hash = hash_add(hash, port_key);
+    struct garp_rarp_data *garp_rarp = xmalloc(sizeof *garp_rarp);
+    garp_rarp->ea = ea;
+    garp_rarp->ipv4 = ip;
+    garp_rarp->announce_time = time_msec() + 1000;
+    garp_rarp->backoff = 1000; /* msec. */
+    garp_rarp->dp_key = dp_key;
+    garp_rarp->port_key = port_key;
+    shash_add(&send_garp_rarp_data, name, garp_rarp);
 
-    return hash_finish(hash, 24);
-}
-
-static struct arp_nd_data *
-arp_nd_find_data(const struct sbrec_port_binding *pb,
-                 const struct in6_addr *nexthop)
-{
-    uint32_t hash = arp_nd_data_get_hash(nexthop, pb->datapath->tunnel_key,
-                                         pb->tunnel_key);
-
-    struct arp_nd_data *e;
-    HMAP_FOR_EACH_WITH_HASH (e, hmap_node, hash, &send_arp_nd_data) {
-        if (ipv6_addr_equals(&e->dst_ip, nexthop) &&
-            e->port_key == pb->tunnel_key) {
-            return e;
-        }
-    }
-
-    return NULL;
-}
-
-static struct arp_nd_data *
-arp_nd_alloc_data(const struct eth_addr ea,
-                  struct in6_addr src_ip, struct in6_addr dst_ip,
-                  const struct sbrec_port_binding *pb)
-{
-    struct arp_nd_data *e = xmalloc(sizeof *e);
-    e->ea = ea;
-    e->src_ip = src_ip;
-    e->dst_ip = dst_ip;
-    e->announce_time = time_msec() + 1000;
-    e->backoff = 1000; /* msec. */
-    e->dp_key = pb->datapath->tunnel_key;
-    e->port_key = pb->tunnel_key;
-
-    uint32_t hash = arp_nd_data_get_hash(&e->dst_ip, e->dp_key, e->port_key);
-    hmap_insert(&send_arp_nd_data, &e->hmap_node, hash);
+    /* Notify pinctrl_handler so that it can wakeup and process
+     * these GARP/RARP requests. */
     notify_pinctrl_handler();
-
-    return e;
 }
 
+/* Add or update a vif for which GARPs need to be announced. */
 static void
-arp_nd_sync_data(const struct sbrec_ecmp_nexthop_table *ecmp_nh_table)
+send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                      struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                      const struct hmap *local_datapaths,
+                      const struct sbrec_port_binding *binding_rec,
+                      struct shash *nat_addresses,
+                      long long int garp_max_timeout,
+                      bool garp_continuous)
 {
-    struct hmap arp_nd_active = HMAP_INITIALIZER(&arp_nd_active);
+    volatile struct garp_rarp_data *garp_rarp = NULL;
 
-    const struct sbrec_ecmp_nexthop *sb_ecmp_nexthop;
-    SBREC_ECMP_NEXTHOP_TABLE_FOR_EACH (sb_ecmp_nexthop, ecmp_nh_table) {
-        struct in6_addr nexthop;
-        if (!ip46_parse(sb_ecmp_nexthop->nexthop, &nexthop)) {
-            continue;
-        }
-
-        struct arp_nd_data *e = arp_nd_find_data(sb_ecmp_nexthop->port,
-                                                 &nexthop);
-        if (e) {
-            hmap_remove(&send_arp_nd_data, &e->hmap_node);
-            uint32_t hash = arp_nd_data_get_hash(&e->dst_ip, e->dp_key,
-                                                 e->port_key);
-            hmap_insert(&arp_nd_active, &e->hmap_node, hash);
-        }
-    }
-
-    destroy_send_arps_nds();
-    init_send_arps_nds();
-    hmap_swap(&arp_nd_active, &send_arp_nd_data);
-}
-
-
-/* Add or update a vif for which ARPs need to be announced. */
-static void
-send_arp_nd_update(const struct sbrec_port_binding *pb, const char *nexthop,
-                   long long int max_arp_timeout, bool continuous_arp_nd)
-{
-    struct in6_addr dst_ip;
-    if (!ip46_parse(nexthop, &dst_ip)) {
+    /* Skip localports as they don't need to be announced */
+    if (!strcmp(binding_rec->type, "localport")) {
         return;
     }
 
-    struct arp_nd_data *e = arp_nd_find_data(pb, &dst_ip);
-    if (!e) {
+    /* Update GARP for NAT IP if it exists.  Consider port bindings with type
+     * "l3gateway" for logical switch ports attached to gateway routers, and
+     * port bindings with type "patch" for logical switch ports attached to
+     * distributed gateway ports. */
+    if (!strcmp(binding_rec->type, "l3gateway")
+        || !strcmp(binding_rec->type, "patch")) {
+        struct lport_addresses *laddrs = NULL;
+        while ((laddrs = shash_find_and_delete(nat_addresses,
+                                               binding_rec->logical_port))) {
+            int i;
+            for (i = 0; i < laddrs->n_ipv4_addrs; i++) {
+                char *name = xasprintf("%s-%s", binding_rec->logical_port,
+                                                laddrs->ipv4_addrs[i].addr_s);
+                garp_rarp = shash_find_data(&send_garp_rarp_data, name);
+                if (garp_rarp) {
+                    garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
+                    garp_rarp->port_key = binding_rec->tunnel_key;
+                    if (garp_max_timeout != garp_rarp_max_timeout ||
+                        garp_continuous != garp_rarp_continuous) {
+                        /* reset backoff */
+                        garp_rarp->announce_time = time_msec() + 1000;
+                        garp_rarp->backoff = 1000; /* msec. */
+                    }
+                } else if (ovnsb_idl_txn) {
+                    add_garp_rarp(name, laddrs->ea,
+                                  laddrs->ipv4_addrs[i].addr,
+                                  binding_rec->datapath->tunnel_key,
+                                  binding_rec->tunnel_key);
+                    send_garp_locally(ovnsb_idl_txn,
+                                      sbrec_mac_binding_by_lport_ip,
+                                      local_datapaths, binding_rec, laddrs->ea,
+                                      laddrs->ipv4_addrs[i].addr);
+
+                }
+                free(name);
+            }
+            /*
+             * Send RARPs even if we do not have a ipv4 address as it e.g.
+             * happens on ipv6 only ports.
+             */
+            if (laddrs->n_ipv4_addrs == 0) {
+                    char *name = xasprintf("%s-noip",
+                                           binding_rec->logical_port);
+                    garp_rarp = shash_find_data(&send_garp_rarp_data, name);
+                    if (garp_rarp) {
+                        garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
+                        garp_rarp->port_key = binding_rec->tunnel_key;
+                        if (garp_max_timeout != garp_rarp_max_timeout ||
+                            garp_continuous != garp_rarp_continuous) {
+                            /* reset backoff */
+                            garp_rarp->announce_time = time_msec() + 1000;
+                            garp_rarp->backoff = 1000; /* msec. */
+                        }
+                    } else {
+                        add_garp_rarp(name, laddrs->ea,
+                                      0, binding_rec->datapath->tunnel_key,
+                                      binding_rec->tunnel_key);
+                    }
+                    free(name);
+            }
+            destroy_lport_addresses(laddrs);
+            free(laddrs);
+        }
+        return;
+    }
+
+    /* Update GARP for vif if it exists. */
+    garp_rarp = shash_find_data(&send_garp_rarp_data,
+                                binding_rec->logical_port);
+    if (garp_rarp) {
+        garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
+        garp_rarp->port_key = binding_rec->tunnel_key;
+        if (garp_max_timeout != garp_rarp_max_timeout ||
+            garp_continuous != garp_rarp_continuous) {
+            /* reset backoff */
+            garp_rarp->announce_time = time_msec() + 1000;
+            garp_rarp->backoff = 1000; /* msec. */
+        }
+        return;
+    }
+
+    /* Add GARP for new vif. */
+    int i;
+    for (i = 0; i < binding_rec->n_mac; i++) {
         struct lport_addresses laddrs;
-        if (!extract_lsp_addresses(pb->mac[0], &laddrs)) {
-            return;
+        ovs_be32 ip = 0;
+        if (!extract_lsp_addresses(binding_rec->mac[i], &laddrs)) {
+            continue;
         }
 
         if (laddrs.n_ipv4_addrs) {
-            arp_nd_alloc_data(laddrs.ea,
-                              in6_addr_mapped_ipv4(laddrs.ipv4_addrs[0].addr),
-                              dst_ip, pb);
-        } else if (laddrs.n_ipv6_addrs) {
-            arp_nd_alloc_data(laddrs.ea, laddrs.ipv6_addrs[0].addr,
-                              dst_ip, pb);
+            ip = laddrs.ipv4_addrs[0].addr;
         }
+
+        add_garp_rarp(binding_rec->logical_port,
+                      laddrs.ea, ip,
+                      binding_rec->datapath->tunnel_key,
+                      binding_rec->tunnel_key);
+        if (ip) {
+            send_garp_locally(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
+                              local_datapaths, binding_rec, laddrs.ea, ip);
+        }
+
         destroy_lport_addresses(&laddrs);
-    } else if (max_arp_timeout != arp_nd_max_timeout ||
-               continuous_arp_nd != arp_nd_continuous) {
-        /* reset backoff */
-        e->announce_time = time_msec() + 1000;
-        e->backoff = 1000; /* msec. */
-        notify_pinctrl_handler();
+        break;
     }
 }
 
-void
-send_self_originated_neigh_packet(struct rconn *swconn,
-                                  uint32_t dp_key, uint32_t port_key,
-                                  struct eth_addr eth,
-                                  struct in6_addr *local,
-                                  struct in6_addr *target,
-                                  uint8_t table_id)
+/* Remove a vif from GARP announcements. */
+static void
+send_garp_rarp_delete(const char *lport)
 {
+    struct garp_rarp_data *garp_rarp = shash_find_and_delete
+                                       (&send_garp_rarp_data, lport);
+    free(garp_rarp);
+    notify_pinctrl_handler();
+}
+
+/* Called with in the pinctrl_handler thread context. */
+static long long int
+send_garp_rarp(struct rconn *swconn, struct garp_rarp_data *garp_rarp,
+               long long int current_time)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (current_time < garp_rarp->announce_time) {
+        return garp_rarp->announce_time;
+    }
+
+    /* Compose a GARP request packet. */
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-    if (!local) {
-        compose_rarp(&packet, eth);
-    } else if (IN6_IS_ADDR_V4MAPPED(local)) {
-        compose_arp(&packet, ARP_OP_REQUEST, eth, eth_addr_zero, true,
-                    in6_addr_get_mapped_ipv4(local),
-                    in6_addr_get_mapped_ipv4(target));
+    if (garp_rarp->ipv4) {
+        compose_arp(&packet, ARP_OP_REQUEST, garp_rarp->ea, eth_addr_zero,
+                    true, garp_rarp->ipv4, garp_rarp->ipv4);
     } else {
-        compose_nd_ns(&packet, eth, local, target);
+        compose_rarp(&packet, garp_rarp->ea);
     }
 
     /* Inject GARP request. */
     uint64_t ofpacts_stub[4096 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     enum ofp_version version = rconn_get_version(swconn);
-    put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    if (table_id == OFTABLE_LOCAL_OUTPUT) {
-        put_load(port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
-    } else {
-        put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
-    }
+    put_load(garp_rarp->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
+    put_load(garp_rarp->port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = table_id;
+    resubmit->table_id = OFTABLE_LOG_INGRESS_PIPELINE;
 
     struct ofputil_packet_out po = {
         .packet = dp_packet_data(&packet),
@@ -5077,59 +5249,18 @@ send_self_originated_neigh_packet(struct rconn *swconn,
     queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
     dp_packet_uninit(&packet);
     ofpbuf_uninit(&ofpacts);
-}
-
-/* Called with in the pinctrl_handler thread context. */
-static long long int
-send_garp_rarp(struct rconn *swconn, struct garp_rarp_node *garp_rarp,
-               long long int current_time, long long int max_timeout,
-               bool continuous)
-{
-    long long int announce_time, old_announce_time;
-    int backoff, old_backoff;
-
-    atomic_read(&garp_rarp->announce_time, &announce_time);
-    atomic_read(&garp_rarp->backoff, &backoff);
-    old_announce_time = announce_time;
-    old_backoff = backoff;
-    if (current_time < announce_time) {
-        return announce_time;
-    }
-
-    /* Compose and inject a GARP request packet. */
-    if (garp_rarp->ipv4) {
-        struct in6_addr addr;
-        in6_addr_set_mapped_ipv4(&addr, garp_rarp->ipv4);
-        send_self_originated_neigh_packet(swconn,
-                                          garp_rarp->dp_key,
-                                          garp_rarp->port_key,
-                                          garp_rarp->ea, &addr, &addr,
-                                          OFTABLE_LOG_INGRESS_PIPELINE);
-    } else {
-        send_self_originated_neigh_packet(swconn,
-                                          garp_rarp->dp_key,
-                                          garp_rarp->port_key,
-                                          garp_rarp->ea, NULL, NULL,
-                                          OFTABLE_LOG_INGRESS_PIPELINE);
-    }
 
     /* Set the next announcement.  At most 5 announcements are sent for a
      * vif if garp_rarp_max_timeout is not specified otherwise cap the max
      * timeout to garp_rarp_max_timeout. */
-    if (continuous || backoff < max_timeout) {
-        announce_time = current_time + backoff;
+    if (garp_rarp_continuous || garp_rarp->backoff < garp_rarp_max_timeout) {
+        garp_rarp->announce_time = current_time + garp_rarp->backoff;
     } else {
-        announce_time = LLONG_MAX;
+        garp_rarp->announce_time = LLONG_MAX;
     }
-    backoff = MIN(max_timeout, backoff * 2);
+    garp_rarp->backoff = MIN(garp_rarp_max_timeout, garp_rarp->backoff * 2);
 
-    bool cmp = atomic_compare_exchange_strong(&garp_rarp->announce_time,
-                                              &old_announce_time,
-                                              announce_time);
-    atomic_compare_exchange_strong(&garp_rarp->backoff, &old_backoff,
-                                   backoff);
-
-    return cmp ? announce_time : old_announce_time;
+    return garp_rarp->announce_time;
 }
 
 static void
@@ -5771,7 +5902,7 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct local_datapath *local_dp =
             get_local_datapath(local_datapaths, ip_ms->dp_key);
 
-        if (!local_dp || !local_dp->is_switch) {
+        if (!local_dp) {
             continue;
         }
 
@@ -6163,94 +6294,264 @@ ip_mcast_querier_wait(long long int query_time)
     }
 }
 
+/* Get localnet vifs, local l3gw ports and ofport for localnet patch ports. */
+static void
+get_localnet_vifs_l3gwports(
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct ovsrec_bridge *br_int,
+    const struct sbrec_chassis *chassis,
+    const struct hmap *local_datapaths,
+    struct sset *localnet_vifs,
+    struct sset *local_l3gw_ports)
+{
+    for (int i = 0; i < br_int->n_ports; i++) {
+        const struct ovsrec_port *port_rec = br_int->ports[i];
+        if (!strcmp(port_rec->name, br_int->name)) {
+            continue;
+        }
+        const char *tunnel_id = smap_get(&port_rec->external_ids,
+                                          "ovn-chassis-id");
+        if (tunnel_id &&
+                encaps_tunnel_id_match(tunnel_id, chassis->name, NULL, NULL)) {
+            continue;
+        }
+        const char *localnet = smap_get(&port_rec->external_ids,
+                                        "ovn-localnet-port");
+        if (localnet) {
+            continue;
+        }
+        for (int j = 0; j < port_rec->n_interfaces; j++) {
+            const struct ovsrec_interface *iface_rec = port_rec->interfaces[j];
+            if (!iface_rec->n_ofport) {
+                continue;
+            }
+            /* Get localnet vif. */
+            const char *iface_id = smap_get(&iface_rec->external_ids,
+                                            "iface-id");
+            if (!iface_id) {
+                continue;
+            }
+            const struct sbrec_port_binding *pb
+                = lport_lookup_by_name(sbrec_port_binding_by_name, iface_id);
+            if (!pb || pb->chassis != chassis) {
+                continue;
+            }
+            if (!iface_rec->link_state ||
+                    strcmp(iface_rec->link_state, "up")) {
+                continue;
+            }
+            struct local_datapath *ld
+                = get_local_datapath(local_datapaths,
+                                     pb->datapath->tunnel_key);
+            if (ld && ld->localnet_port) {
+                sset_add(localnet_vifs, iface_id);
+            }
+        }
+    }
+
+    struct sbrec_port_binding *target = sbrec_port_binding_index_init_row(
+        sbrec_port_binding_by_datapath);
+
+    const struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        const struct sbrec_port_binding *pb;
+
+        if (!ld->localnet_port) {
+            continue;
+        }
+
+        /* Get l3gw ports.  Consider port bindings with type "l3gateway"
+         * that connect to gateway routers (if local), and consider port
+         * bindings of type "patch" since they might connect to
+         * distributed gateway ports with NAT addresses. */
+
+        sbrec_port_binding_index_set_datapath(target, ld->datapath);
+        SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
+                                           sbrec_port_binding_by_datapath) {
+            if ((!strcmp(pb->type, "l3gateway") && pb->chassis == chassis)
+                || !strcmp(pb->type, "patch")) {
+                sset_add(local_l3gw_ports, pb->logical_port);
+            }
+        }
+    }
+    sbrec_port_binding_index_destroy_row(target);
+}
+
+
+/* Extracts the mac, IPv4 and IPv6 addresses, and logical port from
+ * 'addresses' which should be of the format 'MAC [IP1 IP2 ..]
+ * [is_chassis_resident("LPORT_NAME")]', where IPn should be a valid IPv4
+ * or IPv6 address, and stores them in the 'ipv4_addrs' and 'ipv6_addrs'
+ * fields of 'laddrs'.  The logical port name is stored in 'lport'.
+ *
+ * Returns true if at least 'MAC' is found in 'address', false otherwise.
+ *
+ * The caller must call destroy_lport_addresses() and free(*lport). */
+static bool
+extract_addresses_with_port(const char *addresses,
+                            struct lport_addresses *laddrs,
+                            char **lport)
+{
+    int ofs;
+    if (!extract_addresses(addresses, laddrs, &ofs)) {
+        return false;
+    } else if (!addresses[ofs]) {
+        return true;
+    }
+
+    struct lexer lexer;
+    lexer_init(&lexer, addresses + ofs);
+    lexer_get(&lexer);
+
+    if (lexer.error || lexer.token.type != LEX_T_ID
+        || !lexer_match_id(&lexer, "is_chassis_resident")) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_INFO_RL(&rl, "invalid syntax '%s' in address", addresses);
+        lexer_destroy(&lexer);
+        return true;
+    }
+
+    if (!lexer_match(&lexer, LEX_T_LPAREN)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_INFO_RL(&rl, "Syntax error: expecting '(' after "
+                          "'is_chassis_resident' in address '%s'", addresses);
+        lexer_destroy(&lexer);
+        return false;
+    }
+
+    if (lexer.token.type != LEX_T_STRING) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_INFO_RL(&rl,
+                    "Syntax error: expecting quoted string after "
+                    "'is_chassis_resident' in address '%s'", addresses);
+        lexer_destroy(&lexer);
+        return false;
+    }
+
+    *lport = xstrdup(lexer.token.s);
+
+    lexer_get(&lexer);
+    if (!lexer_match(&lexer, LEX_T_RPAREN)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_INFO_RL(&rl, "Syntax error: expecting ')' after quoted string in "
+                          "'is_chassis_resident()' in address '%s'",
+                          addresses);
+        lexer_destroy(&lexer);
+        return false;
+    }
+
+    lexer_destroy(&lexer);
+    return true;
+}
+
+static void
+consider_nat_address(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const char *nat_address,
+                     const struct sbrec_port_binding *pb,
+                     struct sset *nat_address_keys,
+                     const struct sbrec_chassis *chassis,
+                     const struct sset *active_tunnels,
+                     struct shash *nat_addresses)
+{
+    struct lport_addresses *laddrs = xmalloc(sizeof *laddrs);
+    char *lport = NULL;
+    if (!extract_addresses_with_port(nat_address, laddrs, &lport)
+        || (!lport && !strcmp(pb->type, "patch"))
+        || (lport && !lport_is_chassis_resident(
+                sbrec_port_binding_by_name, chassis,
+                active_tunnels, lport))) {
+        destroy_lport_addresses(laddrs);
+        free(laddrs);
+        free(lport);
+        return;
+    }
+    free(lport);
+
+    int i;
+    for (i = 0; i < laddrs->n_ipv4_addrs; i++) {
+        char *name = xasprintf("%s-%s", pb->logical_port,
+                                        laddrs->ipv4_addrs[i].addr_s);
+        sset_add(nat_address_keys, name);
+        free(name);
+    }
+    if (laddrs->n_ipv4_addrs == 0) {
+        char *name = xasprintf("%s-noip", pb->logical_port);
+        sset_add(nat_address_keys, name);
+        free(name);
+    }
+    shash_add(nat_addresses, pb->logical_port, laddrs);
+}
+
+static void
+get_nat_addresses_and_keys(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                           struct sset *nat_address_keys,
+                           struct sset *local_l3gw_ports,
+                           const struct sbrec_chassis *chassis,
+                           const struct sset *active_tunnels,
+                           struct shash *nat_addresses)
+{
+    const char *gw_port;
+    SSET_FOR_EACH(gw_port, local_l3gw_ports) {
+        const struct sbrec_port_binding *pb;
+
+        pb = lport_lookup_by_name(sbrec_port_binding_by_name, gw_port);
+        if (!pb) {
+            continue;
+        }
+
+        if (pb->n_nat_addresses) {
+            for (int i = 0; i < pb->n_nat_addresses; i++) {
+                consider_nat_address(sbrec_port_binding_by_name,
+                                     pb->nat_addresses[i], pb,
+                                     nat_address_keys, chassis,
+                                     active_tunnels,
+                                     nat_addresses);
+            }
+        } else {
+            /* Continue to support options:nat-addresses for version
+             * upgrade. */
+            const char *nat_addresses_options = smap_get(&pb->options,
+                                                         "nat-addresses");
+            if (nat_addresses_options) {
+                consider_nat_address(sbrec_port_binding_by_name,
+                                     nat_addresses_options, pb,
+                                     nat_address_keys, chassis,
+                                     active_tunnels,
+                                     nat_addresses);
+            }
+        }
+    }
+}
+
 static void
 send_garp_rarp_wait(long long int send_garp_rarp_time)
 {
     /* Set the poll timer for next garp/rarp only if there is data to
      * be sent. */
-    if (!cmap_is_empty(&garp_rarp_get_data()->data)) {
+    if (!shash_is_empty(&send_garp_rarp_data)) {
         poll_timer_wait_until(send_garp_rarp_time);
-    }
-}
-
-static void
-send_arp_nd_wait(long long int send_arp_nd_time)
-{
-    /* Set the poll timer for next arp packet only if there is data to
-     * be sent. */
-    if (hmap_count(&send_arp_nd_data)) {
-        poll_timer_wait_until(send_arp_nd_time);
     }
 }
 
 /* Called with in the pinctrl_handler thread context. */
 static void
 send_garp_rarp_run(struct rconn *swconn, long long int *send_garp_rarp_time)
+    OVS_REQUIRES(pinctrl_mutex)
 {
-    const struct garp_rarp_data *garp_rarp_data = garp_rarp_get_data();
-    if (cmap_is_empty(&garp_rarp_data->data)) {
+    if (shash_is_empty(&send_garp_rarp_data)) {
         return;
     }
 
     /* Send GARPs, and update the next announcement. */
+    struct shash_node *iter;
     long long int current_time = time_msec();
     *send_garp_rarp_time = LLONG_MAX;
-    struct garp_rarp_node *garp;
-    CMAP_FOR_EACH (garp, cmap_node, &garp_rarp_data->data) {
-        long long int next_announce = send_garp_rarp(
-            swconn, garp, current_time, garp_rarp_data->max_timeout,
-            garp_rarp_data->continuous);
+    SHASH_FOR_EACH (iter, &send_garp_rarp_data) {
+        long long int next_announce = send_garp_rarp(swconn, iter->data,
+                                                     current_time);
         if (*send_garp_rarp_time > next_announce) {
             *send_garp_rarp_time = next_announce;
-        }
-    }
-}
-
-static long long int
-send_arp_nd(struct rconn *swconn, struct arp_nd_data *e,
-            long long int current_time)
-    OVS_REQUIRES(pinctrl_mutex)
-{
-    if (current_time < e->announce_time) {
-        return e->announce_time;
-    }
-
-    /* Compose a ARP request packet. */
-    send_self_originated_neigh_packet(swconn,
-                                      e->dp_key, e->port_key,
-                                      e->ea, &e->src_ip, &e->dst_ip,
-                                      OFTABLE_LOCAL_OUTPUT);
-
-    /* Set the next announcement.  At most 5 announcements are sent for a
-     * vif if arp_nd_max_timeout is not specified otherwise cap the max
-     * timeout to arp_nd_max_timeout. */
-    if (arp_nd_continuous || e->backoff < arp_nd_max_timeout) {
-        e->announce_time = current_time + e->backoff;
-    } else {
-        e->announce_time = LLONG_MAX;
-    }
-    e->backoff = MIN(arp_nd_max_timeout, e->backoff * 2);
-
-    return e->announce_time;
-}
-
-static void
-send_arp_nd_run(struct rconn *swconn, long long int *send_arp_nd_time)
-    OVS_REQUIRES(pinctrl_mutex)
-{
-    if (!hmap_count(&send_arp_nd_data)) {
-        return;
-    }
-
-    /* Send ARPs, and update the next announcement. */
-    long long int current_time = time_msec();
-    *send_arp_nd_time = LLONG_MAX;
-
-    struct arp_nd_data *e;
-    HMAP_FOR_EACH (e, hmap_node, &send_arp_nd_data) {
-        long long int next_announce = send_arp_nd(swconn, e, current_time);
-        if (*send_arp_nd_time > next_announce) {
-            *send_arp_nd_time = next_announce;
         }
     }
 }
@@ -6258,50 +6559,104 @@ send_arp_nd_run(struct rconn *swconn, long long int *send_arp_nd_time)
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
  * thread context. */
 static void
-send_garp_rarp_prepare(const struct sbrec_ecmp_nexthop_table *ecmp_nh_table,
+send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                       struct ovsdb_idl_index *sbrec_port_binding_by_datapath,
+                       struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                       struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                       const struct ovsrec_bridge *br_int,
                        const struct sbrec_chassis *chassis,
+                       const struct hmap *local_datapaths,
+                       const struct sset *active_tunnels,
                        const struct ovsrec_open_vswitch_table *ovs_table)
     OVS_REQUIRES(pinctrl_mutex)
 {
-    unsigned long long max_arp_nd_timeout = ARP_ND_DEF_MAX_TIMEOUT;
-    bool continuous_arp_nd = true;
+    struct sset localnet_vifs = SSET_INITIALIZER(&localnet_vifs);
+    struct sset local_l3gw_ports = SSET_INITIALIZER(&local_l3gw_ports);
+    struct sset nat_ip_keys = SSET_INITIALIZER(&nat_ip_keys);
+    struct shash nat_addresses;
+    unsigned long long garp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
+    bool garp_continuous = false;
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
     if (cfg) {
-
-        max_arp_nd_timeout = smap_get_ullong(
-                &cfg->external_ids, "arp-nd-max-timeout-sec",
-                ARP_ND_DEF_MAX_TIMEOUT / 1000) * 1000;
-        continuous_arp_nd = !!max_arp_nd_timeout;
-    }
-
-
-    if (garp_rarp_data_changed()) {
-        /* Notify pinctrl_handler so that it can wakeup and process
-         * these GARP/RARP requests. */
-        notify_pinctrl_handler();
-    }
-
-    arp_nd_sync_data(ecmp_nh_table);
-
-    const struct sbrec_ecmp_nexthop *sb_ecmp_nexthop;
-    SBREC_ECMP_NEXTHOP_TABLE_FOR_EACH (sb_ecmp_nexthop, ecmp_nh_table) {
-        const struct sbrec_port_binding *pb = sb_ecmp_nexthop->port;
-        if (pb && !strcmp(pb->type, "l3gateway") && pb->chassis == chassis) {
-            send_arp_nd_update(pb, sb_ecmp_nexthop->nexthop,
-                               max_arp_nd_timeout, continuous_arp_nd);
+        garp_max_timeout = smap_get_ullong(
+                &cfg->external_ids, "garp-max-timeout-sec", 0) * 1000;
+        garp_continuous = !!garp_max_timeout;
+        if (!garp_max_timeout) {
+            garp_max_timeout = GARP_RARP_DEF_MAX_TIMEOUT;
         }
     }
 
-    arp_nd_max_timeout = max_arp_nd_timeout;
-    arp_nd_continuous = continuous_arp_nd;
+    shash_init(&nat_addresses);
+
+    get_localnet_vifs_l3gwports(sbrec_port_binding_by_datapath,
+                                sbrec_port_binding_by_name,
+                                br_int, chassis, local_datapaths,
+                                &localnet_vifs, &local_l3gw_ports);
+
+    get_nat_addresses_and_keys(sbrec_port_binding_by_name,
+                               &nat_ip_keys, &local_l3gw_ports,
+                               chassis, active_tunnels,
+                               &nat_addresses);
+    /* For deleted ports and deleted nat ips, remove from
+     * send_garp_rarp_data. */
+    struct shash_node *iter;
+    SHASH_FOR_EACH_SAFE (iter, &send_garp_rarp_data) {
+        if (!sset_contains(&localnet_vifs, iter->name) &&
+            !sset_contains(&nat_ip_keys, iter->name)) {
+            send_garp_rarp_delete(iter->name);
+        }
+    }
+
+    /* Update send_garp_rarp_data. */
+    const char *iface_id;
+    SSET_FOR_EACH (iface_id, &localnet_vifs) {
+        const struct sbrec_port_binding *pb = lport_lookup_by_name(
+            sbrec_port_binding_by_name, iface_id);
+        if (pb && !smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+            send_garp_rarp_update(ovnsb_idl_txn,
+                                  sbrec_mac_binding_by_lport_ip,
+                                  local_datapaths, pb, &nat_addresses,
+                                  garp_max_timeout, garp_continuous);
+        }
+    }
+
+    /* Update send_garp_rarp_data for nat-addresses. */
+    const char *gw_port;
+    SSET_FOR_EACH (gw_port, &local_l3gw_ports) {
+        const struct sbrec_port_binding *pb
+            = lport_lookup_by_name(sbrec_port_binding_by_name, gw_port);
+        if (pb && !smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+            send_garp_rarp_update(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
+                                  local_datapaths, pb, &nat_addresses,
+                                  garp_max_timeout, garp_continuous);
+        }
+    }
+
+    /* pinctrl_handler thread will send the GARPs. */
+
+    sset_destroy(&localnet_vifs);
+    sset_destroy(&local_l3gw_ports);
+
+    SHASH_FOR_EACH_SAFE (iter, &nat_addresses) {
+        struct lport_addresses *laddrs = iter->data;
+        destroy_lport_addresses(laddrs);
+        shash_delete(&nat_addresses, iter);
+        free(laddrs);
+    }
+    shash_destroy(&nat_addresses);
+
+    sset_destroy(&nat_ip_keys);
+
+    garp_rarp_max_timeout = garp_max_timeout;
+    garp_rarp_continuous = garp_continuous;
 }
 
 static bool
 may_inject_pkts(void)
 {
     return (!shash_is_empty(&ipv6_ras) ||
-            !cmap_is_empty(&garp_rarp_get_data()->data) ||
+            !shash_is_empty(&send_garp_rarp_data) ||
             ipv6_prefixd_should_inject() ||
             !ovs_list_is_empty(&mcast_query_list) ||
             buffered_packets_ctx_is_ready_to_send(&buffered_packets_ctx) ||
@@ -6525,9 +6880,81 @@ exit:
     dp_packet_uninit(pkt_out_ptr);
 }
 
+/* Called with in the pinctrl_handler thread context. */
+/* XXX: This handler can be removed in next version (25.03). */
 static void
-wait_controller_event(void)
+pinctrl_handle_put_icmp_frag_mtu(struct rconn *swconn,
+                                 const struct flow *in_flow,
+                                 struct dp_packet *pkt_in,
+                                 struct ofputil_packet_in *pin,
+                                 struct ofpbuf *userdata,
+                                 struct ofpbuf *continuation)
 {
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    struct dp_packet *pkt_out = NULL;
+
+    /* This action only works for ICMPv4/v6 packets. */
+    if (!is_icmpv4(in_flow, NULL) && !is_icmpv6(in_flow, NULL)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl,
+                     "put_icmp(4/6)_frag_mtu action on non-ICMPv4/v6 packet");
+        goto exit;
+    }
+
+    pkt_out = dp_packet_clone(pkt_in);
+    pkt_out->l2_5_ofs = pkt_in->l2_5_ofs;
+    pkt_out->l2_pad_size = pkt_in->l2_pad_size;
+    pkt_out->l3_ofs = pkt_in->l3_ofs;
+    pkt_out->l4_ofs = pkt_in->l4_ofs;
+
+    if (is_icmpv4(in_flow, NULL)) {
+        ovs_be16 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
+        if (!mtu) {
+            goto exit;
+        }
+
+        struct ip_header *nh = dp_packet_l3(pkt_out);
+        struct icmp_header *ih = dp_packet_l4(pkt_out);
+        ovs_be16 old_frag_mtu = ih->icmp_fields.frag.mtu;
+        ih->icmp_fields.frag.mtu = *mtu;
+        ih->icmp_csum = recalc_csum16(ih->icmp_csum, old_frag_mtu, *mtu);
+        nh->ip_csum = 0;
+        nh->ip_csum = csum(nh, sizeof *nh);
+    } else {
+        ovs_be32 *mtu = ofpbuf_try_pull(userdata, sizeof *mtu);
+        if (!mtu) {
+            goto exit;
+        }
+
+        struct icmp6_data_header *ih = dp_packet_l4(pkt_out);
+        put_16aligned_be32(ih->icmp6_data.be32, *mtu);
+
+        /* compute checksum and set correct mtu */
+        ih->icmp6_base.icmp6_cksum = 0;
+        uint32_t csum = packet_csum_pseudoheader6(dp_packet_l3(pkt_out));
+        uint32_t size = (uint8_t *)dp_packet_tail(pkt_out) - (uint8_t *)ih;
+        ih->icmp6_base.icmp6_cksum = csum_finish(
+                csum_continue(csum, ih, size));
+    }
+
+    pin->packet = dp_packet_data(pkt_out);
+    pin->packet_len = dp_packet_size(pkt_out);
+
+exit:
+    queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
+    if (pkt_out) {
+        dp_packet_delete(pkt_out);
+    }
+}
+
+static void
+wait_controller_event(struct ovsdb_idl_txn *ovnsb_idl_txn)
+{
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
     for (size_t i = 0; i < OVN_EVENT_MAX; i++) {
         if (!hmap_is_empty(&event_table[i])) {
             poll_immediate_wake();
@@ -6647,12 +7074,44 @@ struct put_vport_binding {
 
     uint32_t vport_parent_key;
 
-    /* Current commit cfg number. */
-    int64_t cfg;
+    /* This vport record Only relevant if "new_record" is true. */
+    bool new_record;
 };
 
 /* Contains "struct put_vport_binding"s. */
 static struct hmap put_vport_bindings;
+
+/*
+ * Validate if the vport_binding record that was added
+ * by the pinctrl thread is still relevant and needs
+ * to be updated in the SBDB or not.
+ *
+ * vport_binding record is only relevant and needs to be updated in SB if:
+ *   2. The put_vport_binding:new_record is true:
+ *       The new_record will be set to "true" when this vport record is created
+ *       by function "pinctrl_handle_bind_vport".
+ *
+ *       After the first attempt to bind this vport to the chassis and
+ *       virtual_parent by function "run_put_vport_bindings" we will set the
+ *       value of vpb:new_record to "false" and keep it in "put_vport_bindings"
+ *
+ *       After the second attempt of binding the vpb it will be removed by
+ *       this function.
+ *
+ *       The above guarantees that we will try to bind the vport twice in
+ *       a certain amount of time.
+ *
+*/
+static bool
+is_vport_binding_relevant(struct put_vport_binding *vpb)
+{
+
+    if (vpb->new_record) {
+        vpb->new_record = false;
+        return true;
+    }
+    return false;
+}
 
 static void
 init_put_vport_bindings(void)
@@ -6661,20 +7120,28 @@ init_put_vport_bindings(void)
 }
 
 static void
-destroy_put_vport_bindings(void)
+flush_put_vport_bindings(bool force_flush)
 {
     struct put_vport_binding *vport_b;
     HMAP_FOR_EACH_SAFE (vport_b, hmap_node, &put_vport_bindings) {
-        hmap_remove(&put_vport_bindings, &vport_b->hmap_node);
-        free(vport_b);
+        if (!is_vport_binding_relevant(vport_b) || force_flush) {
+            hmap_remove(&put_vport_bindings, &vport_b->hmap_node);
+            free(vport_b);
+        }
     }
+}
+
+static void
+destroy_put_vport_bindings(void)
+{
+    flush_put_vport_bindings(true);
     hmap_destroy(&put_vport_bindings);
 }
 
 static void
-wait_put_vport_bindings(void)
+wait_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn)
 {
-    if (!hmap_is_empty(&put_vport_bindings)) {
+    if (ovnsb_idl_txn && !hmap_is_empty(&put_vport_bindings)) {
         poll_immediate_wake();
     }
 }
@@ -6691,9 +7158,6 @@ pinctrl_find_put_vport_binding(uint32_t dp_key, uint32_t vport_key,
     }
     return NULL;
 }
-
-#define VPORT_BACKOFF_INTERVAL 1000ll
-#define VPORT_MAX_POSTPONE 10000ll
 
 static void
 run_put_vport_binding(struct ovsdb_idl_txn *ovnsb_idl_txn OVS_UNUSED,
@@ -6715,56 +7179,18 @@ run_put_vport_binding(struct ovsdb_idl_txn *ovnsb_idl_txn OVS_UNUSED,
     }
 
     /* pinctrl module updates the port binding only for type 'virtual'. */
-    if (strcmp(pb->type, "virtual")) {
-        return;
-    }
-
-    const struct sbrec_port_binding *parent = lport_lookup_by_key(
+    if (!strcmp(pb->type, "virtual")) {
+        const struct sbrec_port_binding *parent = lport_lookup_by_key(
         sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
         vpb->dp_key, vpb->vport_parent_key);
-    if (!parent) {
-        return;
+        if (parent) {
+            VLOG_INFO("Claiming virtual lport %s for this chassis "
+                       "with the virtual parent %s",
+                       pb->logical_port, parent->logical_port);
+            sbrec_port_binding_set_chassis(pb, chassis);
+            sbrec_port_binding_set_virtual_parent(pb, parent->logical_port);
+        }
     }
-
-    if (pb->chassis == chassis && !strcmp(pb->virtual_parent,
-                                          parent->logical_port)) {
-        VLOG_DBG("Virtual port %s is already claimed by this chassis.",
-                 pb->logical_port);
-        return;
-    }
-
-    long long timewall_now = time_wall_msec();
-    long long last_claim = ovn_smap_get_llong(&pb->options,
-                                              "vport-last-claim", 0);
-    long long backoff = ovn_smap_get_llong(&pb->options, "vport-backoff", 0);
-
-    struct smap options;
-    smap_clone(&options, &pb->options);
-
-    long long next_backoff;
-    if (timewall_now >= last_claim + backoff) {
-        sbrec_port_binding_set_chassis(pb, chassis);
-        sbrec_port_binding_set_virtual_parent(pb, parent->logical_port);
-
-        next_backoff = VPORT_BACKOFF_INTERVAL;
-        smap_remove(&options, "vport-last-claim");
-        smap_add_format(&options, "vport-last-claim", "%lld", timewall_now);
-
-        VLOG_INFO("Claiming virtual lport %s for this chassis "
-                  "with the virtual parent %s",
-                  pb->logical_port, parent->logical_port);
-    } else {
-        next_backoff = MIN(backoff + VPORT_BACKOFF_INTERVAL,
-                           VPORT_MAX_POSTPONE);
-        VLOG_INFO("Postponing virtual lport %s claim by %lld ms",
-                  pb->logical_port, next_backoff);
-    }
-
-    smap_remove(&options, "vport-backoff");
-    smap_add_format(&options, "vport-backoff", "%lld", next_backoff);
-
-    sbrec_port_binding_set_options(pb, &options);
-    smap_destroy(&options);
 }
 
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
@@ -6773,24 +7199,20 @@ static void
 run_put_vport_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                       struct ovsdb_idl_index *sbrec_port_binding_by_key,
-                      const struct sbrec_chassis *chassis, int64_t cur_cfg)
+                      const struct sbrec_chassis *chassis)
     OVS_REQUIRES(pinctrl_mutex)
 {
     if (!ovnsb_idl_txn) {
         return;
     }
 
-    struct put_vport_binding *vpb;
-    HMAP_FOR_EACH_SAFE (vpb, hmap_node, &put_vport_bindings) {
-        if (vpb->cfg >= 0 && pinctrl_is_sb_commited(vpb->cfg, cur_cfg)) {
-            hmap_remove(&put_vport_bindings, &vpb->hmap_node);
-            free(vpb);
-        } else {
-            run_put_vport_binding(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
-                                  sbrec_port_binding_by_key, chassis, vpb);
-            vpb->cfg = cur_cfg;
-        }
+    const struct put_vport_binding *vpb;
+    HMAP_FOR_EACH (vpb, hmap_node, &put_vport_bindings) {
+        run_put_vport_binding(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
+                              sbrec_port_binding_by_key, chassis, vpb);
     }
+
+    flush_put_vport_bindings(false);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -6828,7 +7250,7 @@ pinctrl_handle_bind_vport(
     vpb->dp_key = dp_key;
     vpb->vport_key = vport_key;
     vpb->vport_parent_key = vport_parent_key;
-    vpb->cfg = -1;
+    vpb->new_record = true;
     notify_pinctrl_main();
 }
 
@@ -6848,14 +7270,6 @@ enum svc_monitor_status {
 enum svc_monitor_protocol {
     SVC_MON_PROTO_TCP,
     SVC_MON_PROTO_UDP,
-    SVC_MON_PROTO_ICMP,
-};
-
-enum svc_monitor_type {
-    /* load balancer */
-    SVC_MON_TYPE_LB,
-    /* network function */
-    SVC_MON_TYPE_NF,
 };
 
 /* Service monitor health checks. */
@@ -6870,7 +7284,6 @@ struct svc_monitor {
     /* key */
     struct in6_addr ip;
     uint32_t dp_key;
-    uint32_t input_port_key;
     uint32_t port_key;
     uint32_t proto_port; /* tcp/udp port */
 
@@ -6903,16 +7316,12 @@ struct svc_monitor {
     int n_failures;
 
     enum svc_monitor_protocol protocol;
-    enum svc_monitor_type type;
     enum svc_monitor_state state;
     enum svc_monitor_status status;
     struct dp_packet pkt;
 
     uint32_t seq_no;
     ovs_be16 tp_src;
-
-    ovs_be16 icmp_id;
-    ovs_be16 icmp_seq_no;
 
     bool delete;
 };
@@ -6979,114 +7388,61 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     const struct sbrec_service_monitor *sb_svc_mon;
     SBREC_SERVICE_MONITOR_TABLE_FOR_EACH (sb_svc_mon, svc_mon_table) {
-        enum svc_monitor_type mon_type;
-        if (sb_svc_mon->type && !strcmp(sb_svc_mon->type,
-                                        "network-function")) {
-            mon_type = SVC_MON_TYPE_NF;
-        } else {
-            mon_type = SVC_MON_TYPE_LB;
-        }
-
-        enum svc_monitor_protocol protocol;
-        if (!strcmp(sb_svc_mon->protocol, "udp")) {
-            protocol = SVC_MON_PROTO_UDP;
-        } else if (!strcmp(sb_svc_mon->protocol, "icmp")) {
-            protocol = SVC_MON_PROTO_ICMP;
-        } else {
-            protocol = SVC_MON_PROTO_TCP;
-        }
-
         const struct sbrec_port_binding *pb
             = lport_lookup_by_name(sbrec_port_binding_by_name,
                                    sb_svc_mon->logical_port);
-        const struct sbrec_port_binding *input_pb = NULL;
-        if (!pb || sb_svc_mon->remote) {
+        if (!pb) {
             continue;
         }
 
-        if ((pb->chassis != our_chassis) || (pb->n_up && !pb->up[0])) {
+        if (pb->chassis != our_chassis) {
             continue;
         }
 
-        struct in6_addr ip_addr_src, ip_addr;
-        ovs_be32 ip4_src, ip4;
-        bool is_src_ipv4 = ip_parse(sb_svc_mon->src_ip, &ip4_src);
+        struct in6_addr ip_addr;
+        ovs_be32 ip4;
         bool is_ipv4 = ip_parse(sb_svc_mon->ip, &ip4);
-
-        /* Skip if source and destination IP address families do not match. */
-        if (is_src_ipv4 != is_ipv4) {
-             continue;
-        }
-
         if (is_ipv4) {
-            ip_addr_src = in6_addr_mapped_ipv4(ip4_src);
             ip_addr = in6_addr_mapped_ipv4(ip4);
-        } else if (!ipv6_parse(sb_svc_mon->ip, &ip_addr)
-                  || !ipv6_parse(sb_svc_mon->src_ip, &ip_addr_src)) {
+        } else if (!ipv6_parse(sb_svc_mon->ip, &ip_addr)) {
             continue;
         }
 
         struct eth_addr ea;
         bool mac_found = false;
+        for (size_t i = 0; i < pb->n_mac && !mac_found; i++) {
+            struct lport_addresses laddrs;
 
-        if (mon_type == SVC_MON_TYPE_NF) {
-            if (protocol != SVC_MON_PROTO_ICMP) {
-                continue;
-            }
-            input_pb = lport_lookup_by_name(sbrec_port_binding_by_name,
-                                            sb_svc_mon->logical_input_port);
-            if (!input_pb) {
-                continue;
-            }
-            if (input_pb->chassis != our_chassis) {
-                continue;
-            }
-            if (strcmp(sb_svc_mon->mac, "")) {
-                if (eth_addr_from_string(sb_svc_mon->mac, &ea)) {
-                    mac_found = true;
-                }
-            }
-        } else {
-            if (protocol != SVC_MON_PROTO_TCP &&
-                protocol != SVC_MON_PROTO_UDP) {
+            if (!extract_lsp_addresses(pb->mac[i], &laddrs)) {
                 continue;
             }
 
-            for (size_t i = 0; i < pb->n_mac && !mac_found; i++) {
-                struct lport_addresses laddrs;
-
-                if (!extract_lsp_addresses(pb->mac[i], &laddrs)) {
-                    continue;
-                }
-
-                if (is_ipv4) {
-                    for (size_t j = 0; j < laddrs.n_ipv4_addrs; j++) {
-                        if (ip4 == laddrs.ipv4_addrs[j].addr) {
-                            ea = laddrs.ea;
-                            mac_found = true;
-                            break;
-                        }
-                    }
-                } else {
-                    for (size_t j = 0; j < laddrs.n_ipv6_addrs; j++) {
-                        if (IN6_ARE_ADDR_EQUAL(&ip_addr,
-                                               &laddrs.ipv6_addrs[j].addr)) {
-                            ea = laddrs.ea;
-                            mac_found = true;
-                            break;
-                        }
+            if (is_ipv4) {
+                for (size_t j = 0; j < laddrs.n_ipv4_addrs; j++) {
+                    if (ip4 == laddrs.ipv4_addrs[j].addr) {
+                        ea = laddrs.ea;
+                        mac_found = true;
+                        break;
                     }
                 }
-
-                if (!mac_found && !laddrs.n_ipv4_addrs &&
-                    !laddrs.n_ipv6_addrs) {
-                    /* IP address(es) are not configured. Use the first mac. */
-                    ea = laddrs.ea;
-                    mac_found = true;
+            } else {
+                for (size_t j = 0; j < laddrs.n_ipv6_addrs; j++) {
+                    if (IN6_ARE_ADDR_EQUAL(&ip_addr,
+                                           &laddrs.ipv6_addrs[j].addr)) {
+                        ea = laddrs.ea;
+                        mac_found = true;
+                        break;
+                    }
                 }
-
-                destroy_lport_addresses(&laddrs);
             }
+
+            if (!mac_found && !laddrs.n_ipv4_addrs && !laddrs.n_ipv6_addrs) {
+                /* IP address(es) are not configured. Use the first mac. */
+                ea = laddrs.ea;
+                mac_found = true;
+            }
+
+            destroy_lport_addresses(&laddrs);
         }
 
         if (!mac_found) {
@@ -7095,10 +7451,16 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         uint32_t dp_key = pb->datapath->tunnel_key;
         uint32_t port_key = pb->tunnel_key;
-        uint32_t input_port_key = input_pb ? input_pb->tunnel_key : UINT32_MAX;
         uint32_t hash =
             hash_bytes(&ip_addr, sizeof ip_addr,
                        hash_3words(dp_key, port_key, sb_svc_mon->port));
+
+        enum svc_monitor_protocol protocol;
+        if (!sb_svc_mon->protocol || strcmp(sb_svc_mon->protocol, "udp")) {
+            protocol = SVC_MON_PROTO_TCP;
+        } else {
+            protocol = SVC_MON_PROTO_UDP;
+        }
 
         svc_mon = pinctrl_find_svc_monitor(dp_key, port_key, &ip_addr,
                                            sb_svc_mon->port, protocol, hash);
@@ -7106,16 +7468,13 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
         if (!svc_mon) {
             svc_mon = xmalloc(sizeof *svc_mon);
             svc_mon->dp_key = dp_key;
-            svc_mon->input_port_key = input_port_key;
             svc_mon->port_key = port_key;
             svc_mon->proto_port = sb_svc_mon->port;
             svc_mon->ip = ip_addr;
-            svc_mon->src_ip = ip_addr_src;
             svc_mon->is_ip6 = !is_ipv4;
             svc_mon->state = SVC_MON_S_INIT;
             svc_mon->status = SVC_MON_ST_UNKNOWN;
             svc_mon->protocol = protocol;
-            svc_mon->type = mon_type;
 
             smap_init(&svc_mon->options);
             svc_mon->interval =
@@ -7130,6 +7489,7 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
             svc_mon->n_failures = 0;
 
             eth_addr_from_string(sb_svc_mon->src_mac, &svc_mon->src_mac);
+            ip46_parse(sb_svc_mon->src_ip, &svc_mon->src_ip);
 
             hmap_insert(&svc_monitors_map, &svc_mon->hmap_node, hash);
             ovs_list_push_back(&svc_monitors, &svc_mon->list_node);
@@ -7728,7 +8088,8 @@ static void
 bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct sbrec_bfd_table *bfd_table,
                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                const struct sbrec_chassis *chassis)
+                const struct sbrec_chassis *chassis,
+                const struct sset *active_tunnels)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct bfd_entry *entry;
@@ -7760,8 +8121,9 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
 
         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
-        bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
-                                                  chassis, redirect_name);
+        bool resident = lport_is_chassis_resident(
+                sbrec_port_binding_by_name, chassis, active_tunnels,
+                redirect_name);
         free(redirect_name);
         if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
             !resident) {
@@ -8007,84 +8369,10 @@ svc_monitor_send_udp_health_check(struct rconn *swconn,
 }
 
 static void
-svc_monitor_send_icmp_health_check__(struct rconn *swconn,
-                                     struct svc_monitor *svc_mon)
-{
-    uint64_t packet_stub[128 / 8];
-    struct dp_packet packet;
-    dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
-
-    if (!svc_mon->is_ip6) {
-        /* IPv4 ICMP health check */
-        pinctrl_compose_ipv4(&packet, svc_mon->src_mac, svc_mon->ea,
-                             in6_addr_get_mapped_ipv4(&svc_mon->src_ip),
-                             in6_addr_get_mapped_ipv4(&svc_mon->ip),
-                             IPPROTO_ICMP, 255, ICMP_HEADER_LEN);
-
-        struct icmp_header *ih = dp_packet_l4(&packet);
-        ih->icmp_fields.echo.id = svc_mon->icmp_id;
-        ih->icmp_fields.echo.seq = svc_mon->icmp_seq_no;
-
-        uint8_t icmp_code = 0;
-        packet_set_icmp(&packet, ICMP4_ECHO_REQUEST, icmp_code);
-
-        ih->icmp_csum = 0;
-        ih->icmp_csum = csum(ih, sizeof *ih);
-    } else {
-        /* IPv6 ICMP health check */
-        pinctrl_compose_ipv6(&packet, svc_mon->src_mac, svc_mon->ea,
-                             &svc_mon->src_ip, &svc_mon->ip,
-                             IPPROTO_ICMPV6, 255, ICMP6_DATA_HEADER_LEN);
-
-        struct icmp6_data_header *ih6 = dp_packet_l4(&packet);
-        ih6->icmp6_base.icmp6_type = ICMP6_ECHO_REQUEST;
-        ih6->icmp6_base.icmp6_code = 0;
-        ih6->icmp6_base.icmp6_cksum = 0;
-
-        /* Set the echo ID and sequence number in the data section */
-        ih6->icmp6_data.be16[0] = svc_mon->icmp_id;
-        ih6->icmp6_data.be16[1] = svc_mon->icmp_seq_no;
-
-        /* Calculate checksum for ICMPv6 */
-        uint32_t icmpv6_csum = packet_csum_pseudoheader6(
-            dp_packet_l3(&packet));
-        ih6->icmp6_base.icmp6_cksum = csum_finish(csum_continue(icmpv6_csum,
-                                                  ih6, ICMP6_DATA_HEADER_LEN));
-    }
-
-    uint64_t ofpacts_stub[4096 / 8];
-    struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
-    enum ofp_version version = rconn_get_version(swconn);
-    put_load(svc_mon->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    put_load(svc_mon->input_port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
-    put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY, 1, &ofpacts);
-    struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
-    resubmit->in_port = OFPP_CONTROLLER;
-    resubmit->table_id = OFTABLE_LOCAL_OUTPUT;
-
-    struct ofputil_packet_out po = {
-        .packet = dp_packet_data(&packet),
-        .packet_len = dp_packet_size(&packet),
-        .buffer_id = UINT32_MAX,
-        .ofpacts = ofpacts.data,
-        .ofpacts_len = ofpacts.size,
-    };
-    match_set_in_port(&po.flow_metadata, OFPP_CONTROLLER);
-    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
-    queue_msg(swconn, ofputil_encode_packet_out(&po, proto));
-    dp_packet_uninit(&packet);
-    ofpbuf_uninit(&ofpacts);
-}
-
-static void
 svc_monitor_send_health_check(struct rconn *swconn,
                               struct svc_monitor *svc_mon)
 {
-    if (svc_mon->protocol == SVC_MON_PROTO_ICMP) {
-        svc_mon->icmp_id = (OVS_FORCE ovs_be16) random_uint16();
-        svc_mon->icmp_seq_no = (OVS_FORCE ovs_be16) random_uint16();
-        svc_monitor_send_icmp_health_check__(swconn, svc_mon);
-    } else if (svc_mon->protocol == SVC_MON_PROTO_TCP) {
+    if (svc_mon->protocol == SVC_MON_PROTO_TCP) {
         svc_mon->seq_no = random_uint32();
         svc_mon->tp_src = htons(get_random_src_port());
         svc_monitor_send_tcp_health_check__(swconn, svc_mon,
@@ -8124,25 +8412,22 @@ svc_monitors_run(struct rconn *swconn,
             break;
 
         case SVC_MON_S_WAITING:
-            if (current_time >= svc_mon->wait_time) {
-                svc_mon->next_send_time = current_time + svc_mon->interval;
-                next_run_time = svc_mon->next_send_time;
-                if (svc_mon->protocol ==  SVC_MON_PROTO_UDP) {
-                    svc_mon->n_success++;
-                    svc_mon->state = SVC_MON_S_ONLINE;
-                    goto online;
-                } else {
+            if (current_time > svc_mon->wait_time) {
+                if (svc_mon->protocol ==  SVC_MON_PROTO_TCP) {
                     svc_mon->n_failures++;
                     svc_mon->state = SVC_MON_S_OFFLINE;
-                    goto offline;
+                } else {
+                    svc_mon->n_success++;
+                    svc_mon->state = SVC_MON_S_ONLINE;
                 }
+                svc_mon->next_send_time = current_time + svc_mon->interval;
+                next_run_time = svc_mon->next_send_time;
             } else {
                 next_run_time = svc_mon->wait_time;
             }
             break;
 
         case SVC_MON_S_ONLINE:
-            online:
             if (svc_mon->n_success >= svc_mon->success_count) {
                 svc_mon->status = SVC_MON_ST_ONLINE;
                 svc_mon->n_success = 0;
@@ -8158,7 +8443,6 @@ svc_monitors_run(struct rconn *swconn,
             break;
 
         case SVC_MON_S_OFFLINE:
-            offline:
             if (svc_mon->n_failures >= svc_mon->failure_count) {
                 svc_mon->status = SVC_MON_ST_OFFLINE;
                 svc_mon->n_success = 0;
@@ -8194,42 +8478,6 @@ svc_monitors_wait(long long int svc_monitors_next_run_time)
     if (!ovs_list_is_empty(&svc_monitors)) {
         poll_timer_wait_until(svc_monitors_next_run_time);
     }
-}
-
-static void
-pinctrl_handle_icmp_svc_check(struct dp_packet *pkt_in,
-                              struct svc_monitor *svc_mon)
-{
-    if (!svc_mon->is_ip6) {
-        /* IPv4 ICMP echo reply */
-        struct icmp_header *ih = dp_packet_l4(pkt_in);
-
-        if (!ih) {
-            return;
-        }
-
-        if ((ih->icmp_fields.echo.id != svc_mon->icmp_id) ||
-            (ih->icmp_fields.echo.seq != svc_mon->icmp_seq_no)) {
-            return;
-        }
-    } else {
-        /* IPv6 ICMP echo reply */
-        struct icmp6_data_header *ih6 = dp_packet_l4(pkt_in);
-
-        if (!ih6) {
-            return;
-        }
-
-        /* For ICMPv6 echo reply, check ID and sequence in the data section */
-        if ((ih6->icmp6_data.be16[0] != svc_mon->icmp_id) ||
-            (ih6->icmp6_data.be16[1] != svc_mon->icmp_seq_no)) {
-            return;
-        }
-    }
-
-    svc_mon->n_success++;
-    svc_mon->state = SVC_MON_S_ONLINE;
-    svc_mon->next_send_time = time_msec() + svc_mon->interval;
 }
 
 static bool
@@ -8288,7 +8536,6 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
     uint32_t dp_key = ntohll(md->flow.metadata);
     uint32_t port_key = md->flow.regs[MFF_LOG_INPORT - MFF_REG0];
     struct in6_addr ip_addr;
-    struct in6_addr dst_ip_addr;
     struct eth_header *in_eth = dp_packet_data(pkt_in);
     uint8_t ip_proto;
 
@@ -8304,12 +8551,10 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
         }
 
         ip_addr = in6_addr_mapped_ipv4(ip_flow->nw_src);
-        dst_ip_addr = in6_addr_mapped_ipv4(ip_flow->nw_dst);
         ip_proto = in_ip->ip_proto;
     } else {
         struct ovs_16aligned_ip6_hdr *in_ip = dp_packet_l3(pkt_in);
         ip_addr = ip_flow->ipv6_src;
-        dst_ip_addr = ip_flow->ipv6_dst;
         ip_proto = in_ip->ip6_nxt;
     }
 
@@ -8340,6 +8585,7 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
         }
         pinctrl_handle_tcp_svc_check(swconn, pkt_in, svc_mon);
     } else {
+        struct udp_header *orig_uh;
         const char *end =
             (char *)dp_packet_l4(pkt_in) + dp_packet_l4_size(pkt_in);
 
@@ -8350,64 +8596,17 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
             return;
         }
 
-        /* Handle ICMP ECHO REQUEST probes for Network Function services */
+        const void *in_ip = dp_packet_get_icmp_payload(pkt_in);
+        if (!in_ip) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl, "Original IP datagram not present in "
+                         "ICMP packet");
+            return;
+        }
+
         if (in_eth->eth_type == htons(ETH_TYPE_IP)) {
             struct icmp_header *ih = l4h;
             /* It's ICMP packet. */
-            if (ih->icmp_type == ICMP4_ECHO_REQUEST && ih->icmp_code == 0) {
-                uint32_t hash = hash_bytes(&dst_ip_addr, sizeof dst_ip_addr,
-                                           hash_3words(dp_key, port_key, 0));
-                struct svc_monitor *svc_mon =
-                    pinctrl_find_svc_monitor(dp_key, port_key, &dst_ip_addr, 0,
-                                             SVC_MON_PROTO_ICMP, hash);
-                if (!svc_mon) {
-                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
-                        1, 5);
-                    VLOG_WARN_RL(&rl, "handle service check: Service monitor "
-                                 "not found for ICMP request");
-                    return;
-                }
-                if (svc_mon->type == SVC_MON_TYPE_NF) {
-                    pinctrl_handle_icmp_svc_check(pkt_in, svc_mon);
-                }
-                return;
-            }
-        } else if (in_eth->eth_type == htons(ETH_TYPE_IPV6)) {
-            struct icmp6_data_header *ih6 = l4h;
-            /* It's ICMPv6 packet. */
-            if (ih6->icmp6_base.icmp6_type == ICMP6_ECHO_REQUEST &&
-                ih6->icmp6_base.icmp6_code == 0) {
-                uint32_t hash = hash_bytes(&dst_ip_addr, sizeof dst_ip_addr,
-                                           hash_3words(dp_key, port_key, 0));
-                struct svc_monitor *svc_mon =
-                    pinctrl_find_svc_monitor(dp_key, port_key, &dst_ip_addr, 0,
-                                             SVC_MON_PROTO_ICMP, hash);
-                if (!svc_mon) {
-                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
-                        1, 5);
-                    VLOG_WARN_RL(&rl, "handle service check: Service monitor "
-                                 "not found for ICMPv6 request");
-                    return;
-                }
-                if (svc_mon->type == SVC_MON_TYPE_NF) {
-                    pinctrl_handle_icmp_svc_check(pkt_in, svc_mon);
-                }
-                return;
-            }
-        }
-
-        /* Handle ICMP errors for LB services */
-        struct udp_header *orig_uh = NULL;
-        if (in_eth->eth_type == htons(ETH_TYPE_IP)) {
-            struct icmp_header *ih = l4h;
-            const void *in_ip = dp_packet_get_icmp_payload(pkt_in);
-            if (!in_ip) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-                VLOG_WARN_RL(&rl, "Original IP datagram not present in "
-                             "ICMP packet");
-                return;
-            }
-
             if (ih->icmp_type != ICMP4_DST_UNREACH || ih->icmp_code != 3) {
                 return;
             }
@@ -8429,14 +8628,6 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
                 return;
             }
         } else {
-            const void *in_ip = dp_packet_get_icmp_payload(pkt_in);
-            if (!in_ip) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-                VLOG_WARN_RL(&rl, "Original IP datagram not present in "
-                             "ICMP packet");
-                return;
-            }
-
             struct icmp6_header *ih6 = l4h;
             if (ih6->icmp6_type != 1 || ih6->icmp6_code != 4) {
                 return;
@@ -8447,7 +8638,6 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
                 VLOG_WARN_RL(&rl, "Invalid original IP datagram length "
                              "present in ICMP packet");
-                return;
             }
 
             orig_uh = (struct udp_header *) (ip6_hdr + 1);
@@ -8618,7 +8808,7 @@ tag_port_as_activated_in_engine(struct activated_port *ap) {
 }
 
 static void
-pinctrl_activation_strategy_handler(const struct match *md)
+pinctrl_rarp_activation_strategy_handler(const struct match *md)
     OVS_REQUIRES(pinctrl_mutex)
 {
     /* Tag the port as activated in-memory. */
@@ -8637,9 +8827,8 @@ pinctrl_activation_strategy_handler(const struct match *md)
 }
 
 static void
-pinctrl_split_buf_action_handler(struct rconn *swconn, struct dp_packet *pkt,
-                                 const struct match *md,
-                                 struct ofpbuf *userdata)
+pinctrl_mg_split_buff_handler(struct rconn *swconn, struct dp_packet *pkt,
+                              const struct match *md, struct ofpbuf *userdata)
 {
     ovs_be32 *index = ofpbuf_try_pull(userdata, sizeof *index);
     if (!index) {
@@ -8648,10 +8837,10 @@ pinctrl_split_buf_action_handler(struct rconn *swconn, struct dp_packet *pkt,
         return;
     }
 
-    ovs_be32 *outport = ofpbuf_try_pull(userdata, sizeof *outport);
-    if (!outport) {
+    ovs_be32 *mg = ofpbuf_try_pull(userdata, sizeof *mg);
+    if (!mg) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-        VLOG_WARN_RL(&rl, "%s: missing outport tunnel_key field", __func__);
+        VLOG_WARN_RL(&rl, "%s: missing multicast group field", __func__);
         return;
     }
 
@@ -8673,7 +8862,7 @@ pinctrl_split_buf_action_handler(struct rconn *swconn, struct dp_packet *pkt,
     ofpact_put_set_field(&ofpacts, pkt_mark_field, &pkt_mark_value, NULL);
 
     put_load(ntohl(*index), MFF_REG6, 0, 32, &ofpacts);
-    put_load(ntohl(*outport), MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(ntohl(*mg), MFF_LOG_OUTPORT, 0, 32, &ofpacts);
 
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
@@ -8710,7 +8899,6 @@ init_fdb_entries(void)
 static void
 destroy_fdb_entries(void)
 {
-    fdbs_clear(&put_fdbs);
     hmap_destroy(&put_fdbs);
 }
 
@@ -8735,7 +8923,7 @@ run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-            struct fdb *fdb, uint64_t cur_cfg)
+            const struct fdb *fdb)
 {
     /* Convert ethernet argument to string form for database. */
     char mac_string[ETH_ADDR_STRLEN + 1];
@@ -8745,52 +8933,39 @@ run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
     /* Update or add an FDB entry. */
     const struct sbrec_port_binding *sb_entry_pb = NULL;
     const struct sbrec_port_binding *new_entry_pb = NULL;
-    bool skip_fdb_update = false;
     const struct sbrec_fdb *sb_fdb =
             fdb_lookup(sbrec_fdb_by_dp_key_mac, fdb->data.dp_key, mac_string);
-
     if (!sb_fdb) {
         sb_fdb = sbrec_fdb_insert(ovnsb_idl_txn);
         sbrec_fdb_set_dp_key(sb_fdb, fdb->data.dp_key);
         sbrec_fdb_set_mac(sb_fdb, mac_string);
     } else {
+        /* check whether sb_fdb->port_key is vif or localnet type */
+        sb_entry_pb = lport_lookup_by_key(
+            sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
+            sb_fdb->dp_key, sb_fdb->port_key);
         new_entry_pb = lport_lookup_by_key(
             sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
             fdb->data.dp_key, fdb->data.port_key);
-
-        if (new_entry_pb && !strcmp(new_entry_pb->type, "localnet")) {
-            /* Have the commit fail if sb_fdb->port_key gets updated by other
-             * controller, to avoid overwriting a vif. */
-            sbrec_fdb_verify_port_key(sb_fdb);
-            sb_entry_pb = lport_lookup_by_key(
-                sbrec_datapath_binding_by_key, sbrec_port_binding_by_key,
-                sb_fdb->dp_key, sb_fdb->port_key);
-            /* Do not have localnet overwrite a previous vif entry */
-            if (sb_entry_pb && !strcmp(sb_entry_pb->type, "")) {
-                skip_fdb_update = true;
-            }
-        }
     }
-
-    if (!skip_fdb_update) {
+    /* Do not have localnet overwrite a previous vif entry */
+    if (!sb_entry_pb || !new_entry_pb || strcmp(sb_entry_pb->type, "") ||
+        strcmp(new_entry_pb->type, "localnet")) {
         sbrec_fdb_set_port_key(sb_fdb, fdb->data.port_key);
-        fdb->cfg = cur_cfg;
-        /* For backward compatibility check if timestamp column is available
-         * in SB DB. */
-        if (pinctrl.fdb_can_timestamp) {
-            sbrec_fdb_set_timestamp(sb_fdb, time_wall_msec());
-        }
-    } else {
-        fdb_remove(&put_fdbs, fdb);
     }
 
+    /* For backward compatibility check if timestamp column is available
+     * in SB DB. */
+    if (pinctrl.fdb_can_timestamp) {
+        sbrec_fdb_set_timestamp(sb_fdb, time_wall_msec());
+    }
 }
 
 static void
 run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
              struct ovsdb_idl_index *sbrec_port_binding_by_key,
              struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac, uint64_t cur_cfg)
+             struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac)
              OVS_REQUIRES(pinctrl_mutex)
 {
     if (!ovnsb_idl_txn) {
@@ -8800,21 +8975,24 @@ run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
     long long now = time_msec();
     struct fdb *fdb;
     HMAP_FOR_EACH_SAFE (fdb, hmap_node, &put_fdbs) {
-        if (fdb->cfg >= 0 && pinctrl_is_sb_commited(fdb->cfg, cur_cfg)) {
-            fdb_remove(&put_fdbs, fdb);
-        } else if (now >= fdb->timestamp) {
+        if (now >= fdb->timestamp) {
             run_put_fdb(ovnsb_idl_txn, sbrec_fdb_by_dp_key_mac,
                         sbrec_port_binding_by_key,
-                        sbrec_datapath_binding_by_key, fdb, cur_cfg);
+                        sbrec_datapath_binding_by_key, fdb);
+            fdb_remove(&put_fdbs, fdb);
         }
     }
 }
 
 
 static void
-wait_put_fdbs(void)
+wait_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn)
     OVS_REQUIRES(pinctrl_mutex)
 {
+    if (!ovnsb_idl_txn) {
+        return;
+    }
+
     struct fdb *fdb;
     HMAP_FOR_EACH (fdb, hmap_node, &put_fdbs) {
         poll_timer_wait_until(fdb->timestamp);
@@ -8827,7 +9005,7 @@ pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
                        OVS_REQUIRES(pinctrl_mutex)
 {
     if (hmap_count(&put_fdbs) >= MAX_FDB_ENTRIES) {
-        COVERAGE_INC(pinctrl_drop_put_fdb);
+        COVERAGE_INC(pinctrl_drop_put_mac_binding);
         return;
     }
 
@@ -8841,25 +9019,4 @@ pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
     long long timestamp = time_msec() + delay;
     fdb_add(&put_fdbs, fdb_data, timestamp);
     notify_pinctrl_main();
-}
-
-/* This function sets the register bit 'MLF_FROM_CTRL_BIT'
- * in the register 'MFF_LOG_FLAGS' to indicate that this packet
- * is generated/sent by ovn-controller.
- * ovn-northd can add logical flows to match on "flags.from_ctrl".
- */
-static void
-set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *pin)
-{
-    const struct mf_field *f = mf_from_id(MFF_LOG_FLAGS);
-
-    struct mf_subfield dst = {
-        .field = f,
-        .ofs = MLF_FROM_CTRL_BIT,
-        .n_bits = 1,
-    };
-
-    union mf_subvalue sv;
-    sv.u8_val = 1;
-    mf_write_subfield(&dst, &sv, &pin->flow_metadata);
 }

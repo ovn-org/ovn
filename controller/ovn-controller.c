@@ -41,14 +41,13 @@
 #include "lb.h"
 #include "lflow.h"
 #include "lflow-cache.h"
-#include "lib/lflow-conj-ids.h"
+#include "lflow-conj-ids.h"
 #include "lib/vswitch-idl.h"
-#include "lib/ovsdb-types.h"
 #include "local_data.h"
 #include "lport.h"
 #include "memory.h"
 #include "ofctrl.h"
-#include "lib/ofctrl-seqno.h"
+#include "ofctrl-seqno.h"
 #include "openvswitch/vconn.h"
 #include "openvswitch/vlog.h"
 #include "ovn/actions.h"
@@ -89,18 +88,6 @@
 #include "lib/dns-resolve.h"
 #include "ct-zone.h"
 #include "ovn-dns.h"
-#include "acl-ids.h"
-#include "route.h"
-#include "route-exchange.h"
-#include "route-table-notify.h"
-#include "garp_rarp.h"
-#include "host-if-monitor.h"
-#include "neighbor.h"
-#include "neighbor-exchange.h"
-#include "neighbor-table-notify.h"
-#include "evpn-arp.h"
-#include "evpn-binding.h"
-#include "evpn-fdb.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -113,7 +100,6 @@ static unixctl_cb_func debug_pause_execution;
 static unixctl_cb_func debug_resume_execution;
 static unixctl_cb_func debug_status_execution;
 static unixctl_cb_func debug_dump_local_bindings;
-static unixctl_cb_func debug_dump_local_datapaths;
 static unixctl_cb_func debug_dump_related_lports;
 static unixctl_cb_func debug_dump_local_template_vars;
 static unixctl_cb_func debug_dump_local_mac_bindings;
@@ -121,7 +107,9 @@ static unixctl_cb_func debug_dump_peer_ports;
 static unixctl_cb_func debug_dump_lflow_conj_ids;
 static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func lflow_cache_show_stats_cmd;
+static unixctl_cb_func dns_show_stats_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
+static unixctl_cb_func debug_ignore_startup_delay;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
 #define DEFAULT_DATAPATH "system"
@@ -149,7 +137,7 @@ struct br_int_remote {
 static char *parse_options(int argc, char *argv[]);
 OVS_NO_RETURN static void usage(void);
 
-/* SSL/TLS options. */
+/* SSL options */
 static const char *ssl_private_key_file;
 static const char *ssl_certificate_file;
 static const char *ssl_ca_cert_file;
@@ -226,7 +214,7 @@ static char *get_file_system_id(void)
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
-                   const struct simap *local_ifaces,
+                   const struct sset *local_ifaces,
                    const struct shash *local_bindings,
                    struct hmap *local_datapaths,
                    bool monitor_all)
@@ -244,10 +232,6 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      *
      * Monitor Template_Var for local chassis.
      *
-     * Monitor ECMP_Nexthop for local datapaths.
-     *
-     * Monitor Advertised/Learned_Route for local datapaths.
-     *
      * We always monitor patch ports because they allow us to see the linkages
      * between related logical datapaths.  That way, when we know that we have
      * a VIF on a particular logical switch, we immediately know to monitor all
@@ -264,10 +248,6 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition igmp = OVSDB_IDL_CONDITION_INIT(&igmp);
     struct ovsdb_idl_condition chprv = OVSDB_IDL_CONDITION_INIT(&chprv);
     struct ovsdb_idl_condition tv = OVSDB_IDL_CONDITION_INIT(&tv);
-    struct ovsdb_idl_condition nh = OVSDB_IDL_CONDITION_INIT(&nh);
-    struct ovsdb_idl_condition ar = OVSDB_IDL_CONDITION_INIT(&ar);
-    struct ovsdb_idl_condition lr = OVSDB_IDL_CONDITION_INIT(&lr);
-    struct ovsdb_idl_condition amb = OVSDB_IDL_CONDITION_INIT(&amb);
 
     /* Always monitor all logical datapath groups. Otherwise, DPG updates may
      * be received *after* the lflows using it are seen by ovn-controller.
@@ -275,20 +255,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      * avoid the unnecessarily extra wake-ups of ovn-controller. */
     ovsdb_idl_condition_add_clause_true(&ldpg);
 
-    /* Always monitor all learned routes. Otherwise, when we have a new local
-     * datapath we directly try to learn routes from the vrf (if it exists).
-     * If we then do not know all learned routes of this datapath we can get
-     * duplicates.
-     * XXX: This should be optimized, e.g. if we find a way to defer to learn
-     * routes until db conditions are updated. */
-    ovsdb_idl_condition_add_clause_true(&lr);
-
     if (monitor_all) {
-        /* Monitor all Southbound tables unconditionally.  Do that even for
-         * tables that could be easily filtered by chassis name (like
-         * Chassis_Private).  That's because the current ovsdb-server
-         * implementation uses a cache whose efficiency significantly
-         * decreases when monitor conditions are present. */
         ovsdb_idl_condition_add_clause_true(&pb);
         ovsdb_idl_condition_add_clause_true(&lf);
         ovsdb_idl_condition_add_clause_true(&mb);
@@ -300,9 +267,6 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&igmp);
         ovsdb_idl_condition_add_clause_true(&chprv);
         ovsdb_idl_condition_add_clause_true(&tv);
-        ovsdb_idl_condition_add_clause_true(&nh);
-        ovsdb_idl_condition_add_clause_true(&ar);
-        ovsdb_idl_condition_add_clause_true(&amb);
         goto out;
     }
 
@@ -356,27 +320,18 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
          */
         sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l2gateway");
         sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l3gateway");
-
-        /* Monitor all advertised routes during startup.
-         * Otherwise, once we claim a port on startup we do not yet know the
-         * routes to advertise and might wrongly delete already installed
-         * ones. */
-        ovsdb_idl_condition_add_clause_true(&ar);
     }
 
     if (local_ifaces) {
         const char *name;
 
         ovs_assert(local_bindings);
-        const struct simap_node *n;
-        SIMAP_FOR_EACH (n, local_ifaces) {
-            name = n->name;
+        SSET_FOR_EACH (name, local_ifaces) {
             /* Skip the VIFs we bound already, we should have a local datapath
              * for those. */
             const struct sbrec_port_binding *local_pb
                 = local_binding_get_primary_pb(local_bindings, name);
-            if (local_pb && get_lport_type(local_pb) == LP_VIF &&
-                local_pb->chassis == chassis) {
+            if (local_pb && get_lport_type(local_pb) == LP_VIF) {
                 continue;
             }
             sbrec_port_binding_add_clause_logical_port(&pb, OVSDB_F_EQ, name);
@@ -400,10 +355,6 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
             sbrec_dns_add_clause_datapaths(&dns, OVSDB_F_INCLUDES, &uuid, 1);
             sbrec_ip_multicast_add_clause_datapath(&ip_mcast, OVSDB_F_EQ,
                                                    uuid);
-            sbrec_ecmp_nexthop_add_clause_datapath(&nh, OVSDB_F_EQ, uuid);
-            sbrec_advertised_route_add_clause_datapath(&ar, OVSDB_F_EQ, uuid);
-            sbrec_advertised_mac_binding_add_clause_datapath(&amb, OVSDB_F_EQ,
-                                                             uuid);
         }
 
         /* Datapath groups are immutable, which means a new group record is
@@ -431,11 +382,6 @@ out:;
         sb_table_set_req_mon_condition(ovnsb_idl, igmp_group, &igmp),
         sb_table_set_req_mon_condition(ovnsb_idl, chassis_private, &chprv),
         sb_table_set_opt_mon_condition(ovnsb_idl, chassis_template_var, &tv),
-        sb_table_set_opt_mon_condition(ovnsb_idl, ecmp_nexthop, &nh),
-        sb_table_set_opt_mon_condition(ovnsb_idl, advertised_route, &ar),
-        sb_table_set_opt_mon_condition(ovnsb_idl, learned_route, &lr),
-        sb_table_set_opt_mon_condition(ovnsb_idl, advertised_mac_binding,
-                                       &amb),
     };
 
     unsigned int expected_cond_seqno = 0;
@@ -455,10 +401,6 @@ out:;
     ovsdb_idl_condition_destroy(&igmp);
     ovsdb_idl_condition_destroy(&chprv);
     ovsdb_idl_condition_destroy(&tv);
-    ovsdb_idl_condition_destroy(&nh);
-    ovsdb_idl_condition_destroy(&ar);
-    ovsdb_idl_condition_destroy(&lr);
-    ovsdb_idl_condition_destroy(&amb);
     return expected_cond_seqno;
 }
 
@@ -556,79 +498,6 @@ create_br_datapath(struct ovsdb_idl_txn *ovs_idl_txn,
     return dp;
 }
 
-#define N_FLOW_TABLES 255
-
-static void
-update_flow_table_prefixes(struct ovsdb_idl_txn *ovs_idl_txn,
-                           const struct ovsrec_bridge *br_int)
-{
-    const struct ovsdb_type *server_type;
-    struct ds ds = DS_EMPTY_INITIALIZER;
-    const char *prefixes[] = {
-        "ip_src", "ip_dst", "ipv6_src", "ipv6_dst",
-    };
-    struct ovsrec_flow_table *ft;
-    size_t max_prefixes;
-    size_t i;
-
-    /* We must not attempt setting more prefixes than our IDL supports.
-     * Note: This should be a build time assertion, but IDL structures
-     * are not defined as constants. */
-    ovs_assert(
-        ARRAY_SIZE(prefixes) <=
-        ovsrec_flow_table_columns[OVSREC_FLOW_TABLE_COL_PREFIXES].type.n_max);
-
-    server_type = ovsrec_flow_table_prefixes_server_type(
-                                ovsdb_idl_txn_get_idl(ovs_idl_txn));
-    if (!server_type) {
-        /* Not connected or not in the server's schema somehow. */
-        return;
-    }
-
-    max_prefixes = MIN(server_type->n_max, ARRAY_SIZE(prefixes));
-    if (br_int->n_flow_tables == N_FLOW_TABLES &&
-        br_int->value_flow_tables[0]->n_prefixes == max_prefixes) {
-        /* Already up to date.  Ideally, we would check every table,
-         * but it seems excessive. */
-        return;
-    }
-
-    for (i = 1; i < br_int->n_flow_tables; i++) {
-        if (br_int->value_flow_tables[i] != br_int->value_flow_tables[0]) {
-            break;
-        }
-    }
-    if (i == N_FLOW_TABLES) {
-        /* Correct number of flow tables and all pointing to the same row. */
-        ft = br_int->value_flow_tables[0];
-    } else {
-        /* Unexpected configuration.  Let's create a new flow table row.
-         * Old ones will be garbage collected by the database. */
-        struct ovsrec_flow_table *values[N_FLOW_TABLES];
-        int64_t keys[N_FLOW_TABLES];
-
-        ft = ovsrec_flow_table_insert(ovs_idl_txn);
-        for (i = 0; i < ARRAY_SIZE(values); i++) {
-            keys[i] = i;
-            values[i] = ft;
-        }
-        ovsrec_bridge_set_flow_tables(br_int, keys, values,
-                                      ARRAY_SIZE(values));
-    }
-
-    ds_put_cstr(&ds, "Setting flow table prefixes:");
-    for (i = 0 ; i < max_prefixes; i++) {
-        ds_put_char(&ds, ' ');
-        ds_put_cstr(&ds, prefixes[i]);
-        ds_put_char(&ds, ',');
-    }
-    ds_chomp(&ds, ',');
-    VLOG_INFO("%s.", ds_cstr_ro(&ds));
-    ds_destroy(&ds);
-
-    ovsrec_flow_table_set_prefixes(ft, prefixes, max_prefixes);
-}
-
 static const struct ovsrec_bridge *
 get_br_int(const struct ovsrec_bridge_table *bridge_table,
            const struct ovsrec_open_vswitch_table *ovs_table)
@@ -705,8 +574,6 @@ process_br_int(struct ovsdb_idl_txn *ovs_idl_txn,
                                                     datapath_type);
                 }
             }
-
-            update_flow_table_prefixes(ovs_idl_txn, br_int);
         }
     }
     *br_int_ = br_int;
@@ -848,8 +715,7 @@ static void
 store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
              const struct sbrec_chassis_private *chassis,
              const struct ovsrec_bridge *br_int,
-             unsigned int delay_nb_cfg_report,
-             bool enable_ch_nb_cfg_update)
+             unsigned int delay_nb_cfg_report)
 {
     struct ofctrl_acked_seqnos *acked_nb_cfg_seqnos =
         ofctrl_acked_seqnos_get(ofctrl_seq_type_nb_cfg);
@@ -871,8 +737,7 @@ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
 
     long long ts_now = time_wall_msec();
 
-    if (sb_txn && chassis && cur_cfg != chassis->nb_cfg
-        && enable_ch_nb_cfg_update) {
+    if (sb_txn && chassis && cur_cfg != chassis->nb_cfg) {
         sbrec_chassis_private_set_nb_cfg(chassis, cur_cfg);
         sbrec_chassis_private_set_nb_cfg_timestamp(chassis, ts_now);
 
@@ -908,20 +773,6 @@ get_transport_zones(const struct ovsrec_open_vswitch_table *ovs_table)
                                          "ovn-transport-zones", "");
 }
 
-static bool
-get_ovn_cleanup_on_exit(const struct ovsrec_open_vswitch_table *ovs_table)
-{
-    const struct ovsrec_open_vswitch *cfg =
-        ovsrec_open_vswitch_table_first(ovs_table);
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    if (!cfg || !chassis_id) {
-        return false;
-    }
-
-    return get_chassis_external_id_value_bool(&cfg->external_ids, chassis_id,
-                                              "ovn-cleanup-on-exit", true);
-}
-
 static void
 ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 {
@@ -943,11 +794,8 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_ports);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_name);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_fail_mode);
-    ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_flow_tables);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_other_config);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_bridge_col_external_ids);
-    ovsdb_idl_add_table(ovs_idl, &ovsrec_table_flow_table);
-    ovsdb_idl_add_column(ovs_idl, &ovsrec_flow_table_col_prefixes);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_ssl);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_bootstrap_ca_cert);
     ovsdb_idl_add_column(ovs_idl, &ovsrec_ssl_col_ca_cert);
@@ -983,7 +831,6 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_options);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_ofport);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_external_ids);
-    ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_link_speed);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);
@@ -997,6 +844,57 @@ ctrl_register_ovs_idl(struct ovsdb_idl *ovs_idl)
      * OVS.bridge.external_ids be reflected. Currently, we don't
      * track that column which should be addressed in the future. */
 }
+
+#define SB_NODES \
+    SB_NODE(sb_global, "sb_global") \
+    SB_NODE(chassis, "chassis") \
+    SB_NODE(ha_chassis_group, "ha_chassis_group") \
+    SB_NODE(encap, "encap") \
+    SB_NODE(address_set, "address_set") \
+    SB_NODE(port_group, "port_group") \
+    SB_NODE(multicast_group, "multicast_group") \
+    SB_NODE(datapath_binding, "datapath_binding") \
+    SB_NODE(logical_dp_group, "logical_dp_group") \
+    SB_NODE(port_binding, "port_binding") \
+    SB_NODE(mac_binding, "mac_binding") \
+    SB_NODE(logical_flow, "logical_flow") \
+    SB_NODE(dhcp_options, "dhcp_options") \
+    SB_NODE(dhcpv6_options, "dhcpv6_options") \
+    SB_NODE(dns, "dns") \
+    SB_NODE(load_balancer, "load_balancer") \
+    SB_NODE(fdb, "fdb") \
+    SB_NODE(meter, "meter") \
+    SB_NODE(static_mac_binding, "static_mac_binding") \
+    SB_NODE(chassis_template_var, "chassis_template_var")
+
+enum sb_engine_node {
+#define SB_NODE(NAME, NAME_STR) SB_##NAME,
+    SB_NODES
+#undef SB_NODE
+};
+
+#define SB_NODE(NAME, NAME_STR) ENGINE_FUNC_SB(NAME);
+    SB_NODES
+#undef SB_NODE
+
+#define OVS_NODES \
+    OVS_NODE(open_vswitch, "open_vswitch") \
+    OVS_NODE(bridge, "bridge") \
+    OVS_NODE(port, "port") \
+    OVS_NODE(interface, "interface") \
+    OVS_NODE(qos, "qos") \
+    OVS_NODE(queue, "queue") \
+    OVS_NODE(flow_sample_collector_set, "flow_sample_collector_set")
+
+enum ovs_engine_node {
+#define OVS_NODE(NAME, NAME_STR) OVS_##NAME,
+    OVS_NODES
+#undef OVS_NODE
+};
+
+#define OVS_NODE(NAME, NAME_STR) ENGINE_FUNC_OVS(NAME);
+    OVS_NODES
+#undef OVS_NODE
 
 struct ed_type_ofctrl_is_connected {
     bool connected;
@@ -1015,8 +913,8 @@ en_ofctrl_is_connected_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static enum engine_node_state
-en_ofctrl_is_connected_run(struct engine_node *node OVS_UNUSED, void *data)
+static void
+en_ofctrl_is_connected_run(struct engine_node *node, void *data)
 {
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     struct ed_type_ofctrl_is_connected *of_data = data;
@@ -1028,9 +926,10 @@ en_ofctrl_is_connected_run(struct engine_node *node OVS_UNUSED, void *data)
             ofctrl_seqno_flush();
             if_status_mgr_clear(ctrl_ctx->if_mgr);
         }
-        return EN_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
+        return;
     }
-    return EN_UNCHANGED;
+    engine_set_node_state(node, EN_UNCHANGED);
 }
 
 struct ed_type_if_status_mgr {
@@ -1051,7 +950,7 @@ en_if_status_mgr_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static enum engine_node_state
+static void
 en_if_status_mgr_run(struct engine_node *node, void *data_)
 {
     enum engine_node_state state = EN_UNCHANGED;
@@ -1066,23 +965,21 @@ en_if_status_mgr_run(struct engine_node *node, void *data_)
             state = EN_UPDATED;
         }
     }
-    return state;
+    engine_set_node_state(node, state);
 }
 
-static enum engine_input_handler_result
-if_status_mgr_ovs_interface_handler(struct engine_node *node OVS_UNUSED,
-                                    void *data)
+static bool
+if_status_mgr_ovs_interface_handler(struct engine_node *node, void *data)
 {
     struct ed_type_if_status_mgr *data_ = data;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     const struct ovsrec_interface *iface;
     OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface, data_->iface_table) {
         if (if_status_mgr_iface_update(data_->manager, iface)) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
-    return result;
+    return true;
 }
 
 /* This engine node is to wrap the OVS_interface input and maintain a copy of
@@ -1151,26 +1048,22 @@ en_ovs_interface_shadow_clear_tracked_data(void *data_)
     }
 }
 
-static enum engine_node_state
+static void
 en_ovs_interface_shadow_run(struct engine_node *node, void *data_)
 {
     struct ed_type_ovs_interface_shadow *data = data_;
     const struct ovsrec_interface_table *iface_table =
         EN_OVSDB_GET(engine_get_input("OVS_interface", node));
     data->iface_table = iface_table;
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 ovs_interface_shadow_ovs_interface_handler(struct engine_node *node,
                                            void *data_)
 {
-    enum engine_node_state state = en_ovs_interface_shadow_run(node, data_);
-    if (state == EN_UPDATED) {
-        return EN_HANDLED_UPDATED;
-    } else {
-        return EN_HANDLED_UNCHANGED;
-    }
+    en_ovs_interface_shadow_run(node, data_);
+    return true;
 }
 
 struct ed_type_activated_ports {
@@ -1208,8 +1101,8 @@ en_activated_ports_clear_tracked_data(void *data)
     en_activated_ports_cleanup(data);
 }
 
-static enum engine_node_state
-en_activated_ports_run(struct engine_node *node OVS_UNUSED, void *data_)
+static void
+en_activated_ports_run(struct engine_node *node, void *data_)
 {
     struct ed_type_activated_ports *data = data_;
     enum engine_node_state state = EN_UNCHANGED;
@@ -1217,7 +1110,7 @@ en_activated_ports_run(struct engine_node *node OVS_UNUSED, void *data_)
     if (data->activated_ports) {
         state = EN_UPDATED;
     }
-    return state;
+    engine_set_node_state(node, state);
 }
 
 struct ed_type_postponed_ports {
@@ -1243,8 +1136,8 @@ en_postponed_ports_cleanup(void *data_)
     data->postponed_ports = NULL;
 }
 
-static enum engine_node_state
-en_postponed_ports_run(struct engine_node *node OVS_UNUSED, void *data_)
+static void
+en_postponed_ports_run(struct engine_node *node, void *data_)
 {
     struct ed_type_postponed_ports *data = data_;
     enum engine_node_state state = EN_UNCHANGED;
@@ -1252,7 +1145,7 @@ en_postponed_ports_run(struct engine_node *node OVS_UNUSED, void *data_)
     if (!sset_is_empty(data->postponed_ports)) {
         state = EN_UPDATED;
     }
-    return state;
+    engine_set_node_state(node, state);
 }
 
 struct ed_type_runtime_data {
@@ -1265,9 +1158,8 @@ struct ed_type_runtime_data {
      * hypervisor.  These logical ports include the VIFs (and their child
      * logical ports, if any) that belong to VMs running on the hypervisor,
      * l2gateway ports for which options:l2gateway-chassis designates the
-     * local hypervisor, and localnet ports.
-     * The value is mapped to enum binding_local_lport_status. */
-    struct simap local_lports;
+     * local hypervisor, and localnet ports. */
+    struct sset local_lports;
 
     /* Port bindings that are relevant to the local chassis (VIFs bound
      * localy, patch ports).
@@ -1371,7 +1263,7 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_runtime_data *data = xzalloc(sizeof *data);
 
     hmap_init(&data->local_datapaths);
-    simap_init(&data->local_lports);
+    sset_init(&data->local_lports);
     related_lports_init(&data->related_lports);
     sset_init(&data->active_tunnels);
     hmap_init(&data->qos_map);
@@ -1391,7 +1283,7 @@ en_runtime_data_cleanup(void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
 
-    simap_destroy(&rt_data->local_lports);
+    sset_destroy(&rt_data->local_lports);
     related_lports_destroy(&rt_data->related_lports);
     sset_destroy(&rt_data->active_tunnels);
     destroy_qos_map(&rt_data->qos_map);
@@ -1498,14 +1390,14 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->localnet_learn_fdb_changed = false;
 }
 
-static enum engine_node_state
+static void
 en_runtime_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
     struct hmap *local_datapaths = &rt_data->local_datapaths;
     struct shash *local_active_ipv6_pd = &rt_data->local_active_ports_ipv6_pd;
     struct shash *local_active_ras = &rt_data->local_active_ports_ras;
-    struct simap *local_lports = &rt_data->local_lports;
+    struct sset *local_lports = &rt_data->local_lports;
     struct sset *active_tunnels = &rt_data->active_tunnels;
 
     static bool first_run = true;
@@ -1517,13 +1409,13 @@ en_runtime_data_run(struct engine_node *node, void *data)
         shash_clear(local_active_ipv6_pd);
         shash_clear(local_active_ras);
         local_binding_data_destroy(&rt_data->lbinding_data);
-        simap_destroy(local_lports);
+        sset_destroy(local_lports);
         related_lports_destroy(&rt_data->related_lports);
         sset_destroy(active_tunnels);
         destroy_qos_map(&rt_data->qos_map);
         smap_destroy(&rt_data->local_iface_ids);
         hmap_init(local_datapaths);
-        simap_init(local_lports);
+        sset_init(local_lports);
         related_lports_init(&rt_data->related_lports);
         sset_init(active_tunnels);
         hmap_init(&rt_data->qos_map);
@@ -1555,7 +1447,7 @@ en_runtime_data_run(struct engine_node *node, void *data)
     binding_run(&b_ctx_in, &b_ctx_out);
     rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
 struct ed_type_sb_ro {
@@ -1570,18 +1462,17 @@ en_sb_ro_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-static enum engine_node_state
-en_sb_ro_run(struct engine_node *node OVS_UNUSED, void *data)
+static void
+en_sb_ro_run(struct engine_node *node, void *data)
 {
     struct ed_type_sb_ro *sb_ro_data = data;
     bool sb_readonly = !engine_get_context()->ovnsb_idl_txn;
     if (sb_ro_data->sb_readonly != sb_readonly) {
         sb_ro_data->sb_readonly = sb_readonly;
         if (!sb_ro_data->sb_readonly) {
-            return EN_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
-    return EN_UNCHANGED;
 }
 
 static void
@@ -1589,11 +1480,10 @@ en_sb_ro_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static enum engine_input_handler_result
+static bool
 runtime_data_sb_ro_handler(struct engine_node *node, void *data)
 {
     const struct sbrec_chassis *chassis = NULL;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     struct ovsrec_open_vswitch_table *ovs_table =
         (struct ovsrec_open_vswitch_table *)EN_OVSDB_GET(
@@ -1613,59 +1503,60 @@ runtime_data_sb_ro_handler(struct engine_node *node, void *data)
     }
     if (chassis) {
         struct ed_type_runtime_data *rt_data = data;
+        bool sb_readonly = !engine_get_context()->ovnsb_idl_txn;
         struct controller_engine_ctx *ctrl_ctx =
             engine_get_context()->client_ctx;
 
-        if (if_status_handle_claims(ctrl_ctx->if_mgr, &rt_data->lbinding_data,
-                                    chassis, &rt_data->tracked_dp_bindings,
-                                    pb_table)) {
-            result = EN_HANDLED_UPDATED;
+        if (if_status_handle_claims(ctrl_ctx->if_mgr,
+                                    &rt_data->lbinding_data,
+                                    chassis,
+                                    &rt_data->tracked_dp_bindings,
+                                    pb_table, sb_readonly)) {
+            engine_set_node_state(node, EN_UPDATED);
             rt_data->tracked = true;
         }
     }
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 runtime_data_ovs_interface_shadow_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
     struct binding_ctx_in b_ctx_in;
     struct binding_ctx_out b_ctx_out;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
     init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
     rt_data->tracked = true;
     b_ctx_out.tracked_dp_bindings = &rt_data->tracked_dp_bindings;
 
     if (!binding_handle_ovs_interface_changes(&b_ctx_in, &b_ctx_out)) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     if (b_ctx_out.local_lports_changed) {
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
         rt_data->local_lports_changed = b_ctx_out.local_lports_changed;
     }
 
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data = data;
     struct binding_ctx_in b_ctx_in;
     struct binding_ctx_out b_ctx_out;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
     init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
     if (!b_ctx_in.chassis_rec) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     rt_data->tracked = true;
     b_ctx_out.tracked_dp_bindings = &rt_data->tracked_dp_bindings;
 
     if (!binding_handle_port_binding_changes(&b_ctx_in, &b_ctx_out)) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     rt_data->local_lports_changed = b_ctx_out.local_lports_changed;
@@ -1676,13 +1567,13 @@ runtime_data_sb_port_binding_handler(struct engine_node *node, void *data)
             b_ctx_out.local_lports_changed ||
             b_ctx_out.localnet_learn_fdb_changed ||
             !hmap_is_empty(b_ctx_out.tracked_dp_bindings)) {
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
                                          void *data OVS_UNUSED)
 {
@@ -1696,7 +1587,7 @@ runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
         if (sbrec_datapath_binding_is_deleted(dp)) {
             if (get_local_datapath(&rt_data->local_datapaths,
                                    dp->tunnel_key)) {
-                return EN_UNHANDLED;
+                return false;
             }
 
         }
@@ -1710,12 +1601,12 @@ runtime_data_sb_datapath_binding_handler(struct engine_node *node OVS_UNUSED,
              */
             if (get_local_datapath_no_hash(&rt_data->local_datapaths,
                                            dp->tunnel_key)) {
-                return EN_UNHANDLED;
+                return false;
             }
         }
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
 static void
@@ -1819,7 +1710,7 @@ en_template_vars_init(struct engine_node *node OVS_UNUSED,
     return tv_data;
 }
 
-static enum engine_node_state
+static void
 en_template_vars_run(struct engine_node *node, void *data)
 {
     struct ed_type_template_vars *tv_data = data;
@@ -1840,15 +1731,14 @@ en_template_vars_run(struct engine_node *node, void *data)
     smap_clear(&tv_data->local_templates);
     template_vars_init(sbrec_chassis_template_var_index_by_chassis,
                        chassis, &tv_data->local_templates);
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 template_vars_sb_chassis_template_var_handler(struct engine_node *node,
                                               void *data)
 {
     struct ed_type_template_vars *tv_data = data;
-    enum engine_input_handler_result result;
 
     const struct sbrec_chassis_template_var_table *tv_table =
         EN_OVSDB_GET(engine_get_input("SB_chassis_template_var", node));
@@ -1866,13 +1756,13 @@ template_vars_sb_chassis_template_var_handler(struct engine_node *node,
 
     if (!sset_is_empty(&tv_data->new) || !sset_is_empty(&tv_data->deleted) ||
             !sset_is_empty(&tv_data->updated)) {
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     } else {
-        result = EN_HANDLED_UNCHANGED;
+        engine_set_node_state(node, EN_UNCHANGED);
     }
 
     tv_data->change_tracked = true;
-    return result;
+    return true;
 }
 
 static void
@@ -2010,7 +1900,7 @@ addr_sets_update(const struct sbrec_address_set_table *address_set_table,
     }
 }
 
-static enum engine_node_state
+static void
 en_addr_sets_run(struct engine_node *node, void *data)
 {
     struct ed_type_addr_sets *as = data;
@@ -2024,14 +1914,13 @@ en_addr_sets_run(struct engine_node *node, void *data)
     addr_sets_init(as_table, &as->addr_sets);
 
     as->change_tracked = false;
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 addr_sets_sb_address_set_handler(struct engine_node *node, void *data)
 {
     struct ed_type_addr_sets *as = data;
-    enum engine_input_handler_result result;
 
     struct sbrec_address_set_table *as_table =
         (struct sbrec_address_set_table *)EN_OVSDB_GET(
@@ -2042,13 +1931,13 @@ addr_sets_sb_address_set_handler(struct engine_node *node, void *data)
 
     if (!sset_is_empty(&as->new) || !sset_is_empty(&as->deleted) ||
             !shash_is_empty(&as->updated)) {
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     } else {
-        result = EN_HANDLED_UNCHANGED;
+        engine_set_node_state(node, EN_UNCHANGED);
     }
 
     as->change_tracked = true;
-    return result;
+    return true;
 }
 
 struct ed_type_port_groups{
@@ -2198,7 +2087,7 @@ en_port_groups_clear_tracked_data(void *data_)
     pg->change_tracked = false;
 }
 
-static enum engine_node_state
+static void
 en_port_groups_run(struct engine_node *node, void *data)
 {
     struct ed_type_port_groups *pg = data;
@@ -2215,14 +2104,13 @@ en_port_groups_run(struct engine_node *node, void *data)
     port_groups_init(pg_table, &rt_data->related_lports.lport_names,
                      &pg->port_group_ssets, &pg->port_groups_cs_local);
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 port_groups_sb_port_group_handler(struct engine_node *node, void *data)
 {
     struct ed_type_port_groups *pg = data;
-    enum engine_input_handler_result result;
 
     const struct sbrec_port_group_table *pg_table =
         EN_OVSDB_GET(engine_get_input("SB_port_group", node));
@@ -2236,16 +2124,16 @@ port_groups_sb_port_group_handler(struct engine_node *node, void *data)
 
     if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
             !sset_is_empty(&pg->updated)) {
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     } else {
-        result = EN_HANDLED_UNCHANGED;
+        engine_set_node_state(node, EN_UNCHANGED);
     }
 
     pg->change_tracked = true;
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 port_groups_runtime_data_handler(struct engine_node *node, void *data)
 {
     const struct sbrec_port_group_table *pg_table =
@@ -2255,10 +2143,8 @@ port_groups_runtime_data_handler(struct engine_node *node, void *data)
     struct ed_type_runtime_data *rt_data =
         engine_get_input_data("runtime_data", node);
 
-    enum engine_input_handler_result result;
-
     if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     if (hmap_is_empty(&rt_data->tracked_dp_bindings)) {
@@ -2300,12 +2186,12 @@ port_groups_runtime_data_handler(struct engine_node *node, void *data)
 out:
     if (!sset_is_empty(&pg->new) || !sset_is_empty(&pg->deleted) ||
             !sset_is_empty(&pg->updated)) {
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     } else {
-        result = EN_HANDLED_UNCHANGED;
+        engine_set_node_state(node, EN_UNCHANGED);
     }
     pg->change_tracked = true;
-    return result;
+    return true;
 }
 
 static void *
@@ -2334,7 +2220,7 @@ en_ct_zones_cleanup(void *data)
     ct_zone_ctx_destroy(&ct_zones_data->ctx);
 }
 
-static enum engine_node_state
+static void
 en_ct_zones_run(struct engine_node *node, void *data)
 {
     struct ed_type_ct_zones *ct_zones_data = data;
@@ -2357,13 +2243,13 @@ en_ct_zones_run(struct engine_node *node, void *data)
                          &rt_data->lbinding_data.lports);
 
     ct_zones_data->recomputed = true;
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
 /* Handles datapath binding changes for the ct_zones engine.
  * Returns false if the datapath is deleted or if the requested snat
  * ct zone doesn't match with the ct_zones data. */
-static enum engine_input_handler_result
+static bool
 ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
 {
     struct ed_type_ct_zones *ct_zones_data = data;
@@ -2383,19 +2269,19 @@ ct_zones_datapath_binding_handler(struct engine_node *node, void *data)
         if (sbrec_datapath_binding_is_deleted(dp) ||
             sbrec_datapath_binding_is_new(dp)) {
             /* Fall back to full recompute of ct_zones engine. */
-            return EN_UNHANDLED;
+            return false;
         }
 
         if (!ct_zone_handle_dp_update(&ct_zones_data->ctx, local_dp,
                                       &rt_data->lbinding_data.lports)) {
-            return EN_UNHANDLED;
+            return false;
         }
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 ct_zones_runtime_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data =
@@ -2405,7 +2291,7 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
 
     /* There is no tracked data. Fall back to full recompute of ct_zones. */
     if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     struct ed_type_ct_zones *ct_zones_data = data;
@@ -2422,7 +2308,7 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
     HMAP_FOR_EACH (tdp, node, tracked_dp_bindings) {
         if (tdp->tracked_type == TRACKED_RESOURCE_NEW) {
             /* A new datapath has been added. Fall back to full recompute. */
-            return EN_UNHANDLED;
+            return false;
         }
 
         struct shash_node *shash_node;
@@ -2431,24 +2317,20 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
             if (strcmp(t_lport->pb->type, "")
                 && strcmp(t_lport->pb->type, "localport")
                 && strcmp(t_lport->pb->type, "l3gateway")
-                && strcmp(t_lport->pb->type, "localnet")
-                && strcmp(t_lport->pb->type, "patch")) {
+                && strcmp(t_lport->pb->type, "localnet")) {
                 /* We allocate zone-id's only to VIF, localport, l3gateway,
-                 * localnet and patch (enabled ACL) lports. */
+                 * and localnet lports. */
+                if (sbrec_port_binding_is_updated(t_lport->pb,
+                                              SBREC_PORT_BINDING_COL_TYPE)) {
+                    updated |= ct_zone_handle_port_update(&ct_zones_data->ctx,
+                                               t_lport->pb,
+                                               false, &scan_start,
+                                               min_ct_zone, max_ct_zone);
+                }
+
                 continue;
             }
 
-            /* For patch ports without ACL flag, delete the ct_zone. */
-            if (!strcmp(t_lport->pb->type, "patch") &&
-                !smap_get_bool(&t_lport->pb->options,
-                               "enable_router_port_acl", false)) {
-                updated |= ct_zone_handle_port_update(&ct_zones_data->ctx,
-                                                      t_lport->pb,
-                                                      false, &scan_start,
-                                                      min_ct_zone,
-                                                      max_ct_zone);
-                continue;
-            }
             bool port_updated =
                     t_lport->tracked_type == TRACKED_RESOURCE_NEW ||
                     t_lport->tracked_type == TRACKED_RESOURCE_UPDATED;
@@ -2459,7 +2341,11 @@ ct_zones_runtime_data_handler(struct engine_node *node, void *data)
         }
     }
 
-    return updated ? EN_HANDLED_UPDATED : EN_HANDLED_UNCHANGED;
+    if (updated) {
+        engine_set_node_state(node, EN_UPDATED);
+    }
+
+    return true;
 }
 
 /* The data in the ct_zones node is always valid (i.e., no stale pointers). */
@@ -2486,23 +2372,26 @@ en_mff_ovn_geneve_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static enum engine_node_state
-en_mff_ovn_geneve_run(struct engine_node *node OVS_UNUSED, void *data)
+static void
+en_mff_ovn_geneve_run(struct engine_node *node, void *data)
 {
     struct ed_type_mff_ovn_geneve *ed_mff_ovn_geneve = data;
     enum mf_field_id mff_ovn_geneve = ofctrl_get_mf_field_id();
     if (ed_mff_ovn_geneve->mff_ovn_geneve != mff_ovn_geneve) {
         ed_mff_ovn_geneve->mff_ovn_geneve = mff_ovn_geneve;
-        return EN_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
+        return;
     }
-    return EN_UNCHANGED;
+    engine_set_node_state(node, EN_UNCHANGED);
 }
 
 /* Stores the load balancers that are applied to the datapath 'dp'. */
 struct load_balancers_by_dp {
     struct hmap_node node;
     const struct sbrec_datapath_binding *dp;
-    struct vector dp_lbs; /* Vector of const struct sbrec_load_balancer *. */
+    const struct sbrec_load_balancer **dp_lbs;
+    size_t n_allocated_dp_lbs;
+    size_t n_dp_lbs;
 };
 
 static struct load_balancers_by_dp *
@@ -2512,8 +2401,6 @@ load_balancers_by_dp_create(struct hmap *lbs,
     struct load_balancers_by_dp *lbs_by_dp = xzalloc(sizeof *lbs_by_dp);
 
     lbs_by_dp->dp = dp;
-    lbs_by_dp->dp_lbs =
-        VECTOR_EMPTY_INITIALIZER(const struct sbrec_load_balancer *);
     hmap_insert(lbs, &lbs_by_dp->node, hash_uint64(dp->tunnel_key));
     return lbs_by_dp;
 }
@@ -2525,7 +2412,7 @@ load_balancers_by_dp_destroy(struct load_balancers_by_dp *lbs_by_dp)
         return;
     }
 
-    vector_destroy(&lbs_by_dp->dp_lbs);
+    free(lbs_by_dp->dp_lbs);
     free(lbs_by_dp);
 }
 
@@ -2563,7 +2450,12 @@ load_balancers_by_dp_add_one(const struct hmap *local_datapaths,
         lbs_by_dp = load_balancers_by_dp_create(lbs, ldp->datapath);
     }
 
-    vector_push(&lbs_by_dp->dp_lbs, &lb);
+    if (lbs_by_dp->n_dp_lbs == lbs_by_dp->n_allocated_dp_lbs) {
+        lbs_by_dp->dp_lbs = x2nrealloc(lbs_by_dp->dp_lbs,
+                                       &lbs_by_dp->n_allocated_dp_lbs,
+                                       sizeof *lbs_by_dp->dp_lbs);
+    }
+    lbs_by_dp->dp_lbs[lbs_by_dp->n_dp_lbs++] = lb;
 }
 
 /* Builds and returns a hmap of 'load_balancers_by_dp', one record for each
@@ -2663,9 +2555,9 @@ lb_data_removed_five_tuples_add(struct ed_type_lb_data *lb_data,
 
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *vip = &lb->vips[i];
+        for (size_t j = 0; j < vip->n_backends; j++) {
+            struct ovn_lb_backend *backend = &vip->backends[j];
 
-        const struct ovn_lb_backend *backend;
-        VECTOR_FOR_EACH_PTR (&vip->backends, backend) {
             ovn_lb_5tuple_add(&lb_data->removed_tuples, vip, backend,
                               lb->proto);
         }
@@ -2683,9 +2575,10 @@ lb_data_removed_five_tuples_remove(struct ed_type_lb_data *lb_data,
 
     for (size_t i = 0; i < lb->n_vips; i++) {
         struct ovn_lb_vip *vip = &lb->vips[i];
+        for (size_t j = 0; j < vip->n_backends; j++) {
+            struct ovn_lb_backend *backend = &vip->backends[j];
 
-        const struct ovn_lb_backend *backend;
-        VECTOR_FOR_EACH_PTR (&vip->backends, backend) {
+
             struct ovn_lb_5tuple tuple;
             ovn_lb_5tuple_init(&tuple, vip, backend, lb->proto);
             ovn_lb_5tuple_find_and_delete(&lb_data->removed_tuples, &tuple);
@@ -2744,15 +2637,15 @@ lb_data_local_lb_remove(struct ed_type_lb_data *lb_data,
 
 static bool
 lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
-                           struct uuidset *objs_todo, const void *in_arg,
+                           struct ovs_list *objs_todo, const void *in_arg,
                            void *out_arg)
 {
     const struct lb_data_ctx_in *ctx_in = in_arg;
     struct ed_type_lb_data *lb_data = out_arg;
 
-    struct uuidset_node *ofrn;
-    UUIDSET_FOR_EACH (ofrn, objs_todo) {
-        struct uuid *uuid = &ofrn->uuid;
+    struct object_to_resources_list_node *resource_lb_uuid;
+    LIST_FOR_EACH_POP (resource_lb_uuid, list_node, objs_todo) {
+        struct uuid *uuid = &resource_lb_uuid->obj_uuid;
 
         VLOG_DBG("Reprocess LB "UUID_FMT" for resource type: %s, name: %s",
                  UUID_ARGS(uuid), objdep_type_name(type), res_name);
@@ -2760,6 +2653,7 @@ lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
         struct ovn_controller_lb *lb =
             ovn_controller_lb_find(&lb_data->local_lbs, uuid);
         if (!lb) {
+            free(resource_lb_uuid);
             continue;
         }
 
@@ -2768,13 +2662,14 @@ lb_data_handle_changed_ref(enum objdep_type type, const char *res_name,
         const struct sbrec_load_balancer *sbrec_lb =
             sbrec_load_balancer_table_get_for_uuid(ctx_in->lb_table, uuid);
         if (!lb_is_local(sbrec_lb, ctx_in->local_datapaths)) {
+            free(resource_lb_uuid);
             continue;
         }
 
         lb_data_local_lb_add(lb_data, sbrec_lb, ctx_in->template_vars, true);
-    }
 
-    uuidset_destroy(objs_todo);
+        free(resource_lb_uuid);
+    }
     return true;
 }
 
@@ -2797,7 +2692,7 @@ en_lb_data_init(struct engine_node *node OVS_UNUSED,
     return lb_data;
 }
 
-static enum engine_node_state
+static void
 en_lb_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = data;
@@ -2827,10 +2722,10 @@ en_lb_data_run(struct engine_node *node, void *data)
                              &tv_data->local_templates, false);
     }
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 lb_data_sb_load_balancer_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = data;
@@ -2848,9 +2743,11 @@ lb_data_sb_load_balancer_handler(struct engine_node *node, void *data)
         if (!sbrec_load_balancer_is_new(sbrec_lb)) {
             lb = ovn_controller_lb_find(&lb_data->local_lbs,
                                         &sbrec_lb->header_.uuid);
-            if (lb) {
-                lb_data_local_lb_remove(lb_data, lb);
+            if (!lb) {
+                continue;
             }
+
+            lb_data_local_lb_remove(lb_data, lb);
         }
 
         if (sbrec_load_balancer_is_deleted(sbrec_lb) ||
@@ -2866,13 +2763,13 @@ lb_data_sb_load_balancer_handler(struct engine_node *node, void *data)
     if (!uuidset_is_empty(&lb_data->deleted) ||
         !uuidset_is_empty(&lb_data->updated) ||
         !uuidset_is_empty(&lb_data->new)) {
-        return EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lb_data_template_var_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lb_data *lb_data = data;
@@ -2882,10 +2779,9 @@ lb_data_template_var_handler(struct engine_node *node, void *data)
         engine_get_input_data("template_vars", node);
     const struct sbrec_load_balancer_table *lb_table =
         EN_OVSDB_GET(engine_get_input("SB_load_balancer", node));
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     if (!tv_data->change_tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     const struct lb_data_ctx_in ctx_in = {
@@ -2903,10 +2799,10 @@ lb_data_template_var_handler(struct engine_node *node, void *data)
                                       res_name, lb_data_handle_changed_ref,
                                       &lb_data->objs_processed,
                                       &ctx_in, lb_data, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (res_name, &tv_data->updated) {
@@ -2915,10 +2811,10 @@ lb_data_template_var_handler(struct engine_node *node, void *data)
                                       res_name, lb_data_handle_changed_ref,
                                       &lb_data->objs_processed,
                                       &ctx_in, lb_data, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (res_name, &tv_data->new) {
@@ -2927,19 +2823,19 @@ lb_data_template_var_handler(struct engine_node *node, void *data)
                                       res_name, lb_data_handle_changed_ref,
                                       &lb_data->objs_processed,
                                       &ctx_in, lb_data, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
 
     lb_data->change_tracked = true;
 
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lb_data_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct ed_type_lb_data *lb_data = data;
@@ -2953,12 +2849,12 @@ lb_data_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
     /* There are no tracked data. Fall back to full recompute of
      * lb_ct_tuple. */
     if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
     if (hmap_is_empty(tracked_dp_bindings)) {
-        return EN_HANDLED_UNCHANGED;
+        return true;
     }
 
     struct hmap *lbs = NULL;
@@ -2980,8 +2876,8 @@ lb_data_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
             continue;
         }
 
-        const struct sbrec_load_balancer *sbrec_lb;
-        VECTOR_FOR_EACH (&lbs_by_dp->dp_lbs, sbrec_lb) {
+        for (size_t i = 0; i < lbs_by_dp->n_dp_lbs; i++) {
+            const struct sbrec_load_balancer *sbrec_lb = lbs_by_dp->dp_lbs[i];
             struct ovn_controller_lb *lb =
                 ovn_controller_lb_find(&lb_data->local_lbs,
                                        &sbrec_lb->header_.uuid);
@@ -2999,10 +2895,10 @@ lb_data_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
     if (!uuidset_is_empty(&lb_data->deleted) ||
         !uuidset_is_empty(&lb_data->updated) ||
         !uuidset_is_empty(&lb_data->new)) {
-        return EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
 static void
@@ -3047,7 +2943,7 @@ mac_binding_add_sb(struct mac_cache_data *data,
         return;
     }
 
-    mac_binding_add(&data->mac_bindings, mb_data, smb, 0);
+    mac_binding_add(&data->mac_bindings, mb_data, 0);
 }
 
 static void
@@ -3101,7 +2997,7 @@ mac_cache_mb_handle_for_datapath(struct mac_cache_data *data,
                                  const struct sbrec_datapath_binding *dp,
                                  struct ovsdb_idl_index *sbrec_mb_by_dp)
 {
-    bool has_threshold = !!mac_cache_threshold_find(data, dp->tunnel_key);
+    bool has_threshold = mac_cache_threshold_find(data, dp->tunnel_key);
 
     struct sbrec_mac_binding *mb_index_row =
             sbrec_mac_binding_index_init_row(sbrec_mb_by_dp);
@@ -3124,11 +3020,11 @@ mac_cache_fdb_handle_for_datapath(struct mac_cache_data *data,
                                   const struct sbrec_datapath_binding *dp,
                                   struct ovsdb_idl_index *sbrec_fdb_by_dp_key)
 {
-    bool has_threshold = !!mac_cache_threshold_find(data, dp->tunnel_key);
+    bool has_threshold = mac_cache_threshold_find(data, dp->tunnel_key);
 
     struct sbrec_fdb *fdb_index_row =
             sbrec_fdb_index_init_row(sbrec_fdb_by_dp_key);
-    sbrec_fdb_index_set_dp_key(fdb_index_row, dp->tunnel_key);
+    sbrec_fdb_set_dp_key(fdb_index_row, dp->tunnel_key);
 
     const struct sbrec_fdb *fdb;
     SBREC_FDB_FOR_EACH_EQUAL (fdb, fdb_index_row, sbrec_fdb_by_dp_key) {
@@ -3155,7 +3051,7 @@ en_mac_cache_init(struct engine_node *node OVS_UNUSED,
     return cache_data;
 }
 
-static enum engine_node_state
+static void
 en_mac_cache_run(struct engine_node *node, void *data)
 {
     struct mac_cache_data *cache_data = data;
@@ -3190,10 +3086,10 @@ en_mac_cache_run(struct engine_node *node, void *data)
                                           sbrec_fdb_by_dp_key);
     }
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
 {
     struct mac_cache_data *cache_data = data;
@@ -3205,6 +3101,10 @@ mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
 
     const struct sbrec_mac_binding *sbrec_mb;
     SBREC_MAC_BINDING_TABLE_FOR_EACH_TRACKED (sbrec_mb, mb_table) {
+        if (!sb_mac_binding_updated(sbrec_mb)) {
+            continue;
+        }
+
         if (!sbrec_mac_binding_is_new(sbrec_mb)) {
             mac_binding_remove_sb(cache_data, sbrec_mb);
         }
@@ -3222,13 +3122,13 @@ mac_cache_sb_mac_binding_handler(struct engine_node *node, void *data)
     }
 
     if (hmap_count(&cache_data->mac_bindings) != previous_size) {
-        return EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 mac_cache_sb_fdb_handler(struct engine_node *node, void *data)
 {
     struct mac_cache_data *cache_data = data;
@@ -3242,6 +3142,10 @@ mac_cache_sb_fdb_handler(struct engine_node *node, void *data)
     struct local_datapath *local_dp;
     const struct sbrec_fdb *sbrec_fdb;
     SBREC_FDB_TABLE_FOR_EACH_TRACKED (sbrec_fdb, fdb_table) {
+        if (!sb_fdb_updated(sbrec_fdb)) {
+            continue;
+        }
+
         if (!sbrec_fdb_is_new(sbrec_fdb)) {
             fdb_remove_sb(cache_data, sbrec_fdb);
         }
@@ -3258,13 +3162,13 @@ mac_cache_sb_fdb_handler(struct engine_node *node, void *data)
     }
 
     if (hmap_count(&cache_data->fdbs) != previous_size) {
-        return EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 mac_cache_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct mac_cache_data *cache_data = data;
@@ -3281,7 +3185,7 @@ mac_cache_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
 
     /* There are no tracked data. Fall back to full recompute. */
     if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     size_t previous_mb_size = hmap_count(&cache_data->mac_bindings);
@@ -3306,13 +3210,13 @@ mac_cache_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
 
     if (hmap_count(&cache_data->mac_bindings) != previous_mb_size ||
         hmap_count(&cache_data->fdbs) != previous_fdb_size) {
-        return EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 mac_cache_sb_datapath_binding_handler(struct engine_node *node, void *data)
 {
     struct mac_cache_data *cache_data = data;
@@ -3359,10 +3263,10 @@ mac_cache_sb_datapath_binding_handler(struct engine_node *node, void *data)
 
     if (hmap_count(&cache_data->mac_bindings) != previous_mb_size ||
         hmap_count(&cache_data->fdbs) != previous_fdb_size) {
-        return EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
 
@@ -3392,7 +3296,7 @@ en_bfd_chassis_init(struct engine_node *node OVS_UNUSED,
     return data;
 }
 
-static enum engine_node_state
+static void
 en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     struct ed_type_bfd_chassis *bfd_chassis = data;
@@ -3411,7 +3315,7 @@ en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
     sset_clear(&bfd_chassis->bfd_chassis);
     bfd_calculate_chassis(chassis, ha_chassis_grp_table,
                           &bfd_chassis->bfd_chassis);
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
 static void
@@ -3428,7 +3332,7 @@ en_dns_cache_init(struct engine_node *node OVS_UNUSED,
     return NULL;
 }
 
-static enum engine_node_state
+static void
 en_dns_cache_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct sbrec_dns_table *dns_table =
@@ -3436,10 +3340,10 @@ en_dns_cache_run(struct engine_node *node, void *data OVS_UNUSED)
 
     ovn_dns_sync_cache(dns_table);
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 dns_cache_sb_dns_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct sbrec_dns_table *dns_table =
@@ -3447,7 +3351,8 @@ dns_cache_sb_dns_handler(struct engine_node *node, void *data OVS_UNUSED)
 
     ovn_dns_update_cache(dns_table);
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 static void
@@ -3465,10 +3370,6 @@ struct ed_type_non_vif_data {
     struct simap patch_ofports; /* simap of patch ovs ports. */
     struct hmap chassis_tunnels; /* hmap of 'struct chassis_tunnel' from the
                                   * tunnel OVS ports. */
-    struct flow_based_tunnel flow_tunnels[TUNNEL_TYPE_MAX];
-                                 /* Array of flow-based tunnels indexed by
-                                  * tunnel type. */
-    bool use_flow_based_tunnels; /* Enable flow-based tunnels. */
 };
 
 static void *
@@ -3478,8 +3379,6 @@ en_non_vif_data_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_non_vif_data *data = xzalloc(sizeof *data);
     simap_init(&data->patch_ofports);
     hmap_init(&data->chassis_tunnels);
-    flow_based_tunnels_init(data->flow_tunnels);
-    data->use_flow_based_tunnels = false;
     return data;
 }
 
@@ -3489,20 +3388,16 @@ en_non_vif_data_cleanup(void *data OVS_UNUSED)
     struct ed_type_non_vif_data *ed_non_vif_data = data;
     simap_destroy(&ed_non_vif_data->patch_ofports);
     chassis_tunnels_destroy(&ed_non_vif_data->chassis_tunnels);
-    flow_based_tunnels_destroy(ed_non_vif_data->flow_tunnels);
 }
 
-static enum engine_node_state
+static void
 en_non_vif_data_run(struct engine_node *node, void *data)
 {
     struct ed_type_non_vif_data *ed_non_vif_data = data;
     simap_destroy(&ed_non_vif_data->patch_ofports);
     chassis_tunnels_destroy(&ed_non_vif_data->chassis_tunnels);
-    flow_based_tunnels_destroy(ed_non_vif_data->flow_tunnels);
-
     simap_init(&ed_non_vif_data->patch_ofports);
     hmap_init(&ed_non_vif_data->chassis_tunnels);
-    flow_based_tunnels_init(ed_non_vif_data->flow_tunnels);
 
     const struct ovsrec_open_vswitch_table *ovs_table =
         EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
@@ -3522,28 +3417,18 @@ en_non_vif_data_run(struct engine_node *node, void *data)
         = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
     ovs_assert(chassis);
 
-    ed_non_vif_data->use_flow_based_tunnels =
-        is_flow_based_tunnels_enabled(ovs_table, chassis);
-
-    local_nonvif_data_run(br_int, chassis,
-                          &ed_non_vif_data->patch_ofports,
-                          &ed_non_vif_data->chassis_tunnels,
-                          ed_non_vif_data->flow_tunnels);
-
-    return EN_UPDATED;
+    local_nonvif_data_run(br_int, chassis, &ed_non_vif_data->patch_ofports,
+                          &ed_non_vif_data->chassis_tunnels);
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct ovsrec_interface_table *iface_table =
         EN_OVSDB_GET(engine_get_input("OVS_interface", node));
 
-    if (local_nonvif_data_handle_ovs_iface_changes(iface_table)) {
-        return EN_HANDLED_UNCHANGED;
-    } else {
-        return EN_UNHANDLED;
-    }
+    return local_nonvif_data_handle_ovs_iface_changes(iface_table);
 }
 
 struct ed_type_northd_options {
@@ -3553,8 +3438,6 @@ struct ed_type_northd_options {
                          * switch (i.e with localnet port) should
                          * be tunnelled or sent via the localnet
                          * port.  Default value is 'false'. */
-    bool register_consolidation;
-    bool enable_ch_nb_cfg_update;
 };
 
 
@@ -3571,7 +3454,7 @@ en_northd_options_cleanup(void *data OVS_UNUSED)
 {
 }
 
-static enum engine_node_state
+static void
 en_northd_options_run(struct engine_node *node, void *data)
 {
     struct ed_type_northd_options *n_opts = data;
@@ -3592,22 +3475,10 @@ en_northd_options_run(struct engine_node *node, void *data)
                             false)
             : false;
 
-    n_opts->register_consolidation =
-        sb_global
-        ? smap_get_bool(&sb_global->options, "register_consolidation",
-                        false)
-        : false;
-
-    n_opts->enable_ch_nb_cfg_update =
-        sb_global
-        ? smap_get_bool(&sb_global->options, "enable_chassis_nb_cfg_update",
-                        true)
-        : true;
-
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 {
     struct ed_type_northd_options *n_opts = data;
@@ -3615,7 +3486,6 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_sb_global", node));
     const struct sbrec_sb_global *sb_global =
         sbrec_sb_global_table_first(sb_global_table);
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     bool explicit_arp_ns_output =
             sb_global
@@ -3625,7 +3495,7 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (explicit_arp_ns_output != n_opts->explicit_arp_ns_output) {
         n_opts->explicit_arp_ns_output = explicit_arp_ns_output;
-        result =  EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
     bool always_tunnel =
@@ -3636,32 +3506,10 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (always_tunnel != n_opts->always_tunnel) {
         n_opts->always_tunnel = always_tunnel;
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
 
-    bool register_consolidation =
-        sb_global
-        ? smap_get_bool(&sb_global->options, "register_consolidation",
-                        false)
-        : false;
-
-    if (register_consolidation != n_opts->register_consolidation) {
-        n_opts->register_consolidation = register_consolidation;
-        result = EN_HANDLED_UPDATED;
-    }
-
-    bool enable_ch_nb_cfg_update =
-        sb_global
-        ? smap_get_bool(&sb_global->options, "enable_chassis_nb_cfg_update",
-                        true)
-        : true;
-
-    if (enable_ch_nb_cfg_update != n_opts->enable_ch_nb_cfg_update) {
-        n_opts->enable_ch_nb_cfg_update = enable_ch_nb_cfg_update;
-        result = EN_HANDLED_UPDATED;
-    }
-
-    return result;
+    return true;
 }
 
 struct ed_type_dhcp_options {
@@ -3689,7 +3537,7 @@ en_dhcp_options_cleanup(void *data)
     dhcp_opts_destroy(&dhcp_opts->v6_opts);
 }
 
-static enum engine_node_state
+static void
 en_dhcp_options_run(struct engine_node *node, void *data)
 {
     struct ed_type_dhcp_options *dhcp_opts = data;
@@ -3714,7 +3562,7 @@ en_dhcp_options_run(struct engine_node *node, void *data)
        dhcp_opt_add(&dhcp_opts->v6_opts, dhcpv6_opt_row->name,
                     dhcpv6_opt_row->code, dhcpv6_opt_row->type);
     }
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
 struct lflow_output_persistent_data {
@@ -3890,7 +3738,6 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->localnet_learn_fdb_changed = rt_data->localnet_learn_fdb_changed;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
     l_ctx_in->explicit_arp_ns_output = n_opts->explicit_arp_ns_output;
-    l_ctx_in->register_consolidation = n_opts->register_consolidation;
     l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
     l_ctx_in->dhcp_opts = &dhcp_opts->v4_opts;
     l_ctx_in->dhcpv6_opts = &dhcp_opts->v6_opts;
@@ -3948,7 +3795,7 @@ en_lflow_output_cleanup(void *data)
     flow_collector_ids_destroy(&flow_output_data->collector_ids);
 }
 
-static enum engine_node_state
+static void
 en_lflow_output_run(struct engine_node *node, void *data)
 {
     const struct ovsrec_open_vswitch_table *ovs_table =
@@ -4009,10 +3856,10 @@ en_lflow_output_run(struct engine_node *node, void *data)
     init_lflow_ctx(node, fo, &l_ctx_in, &l_ctx_out);
     lflow_run(&l_ctx_in, &l_ctx_out);
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_logical_flow_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lflow_output *fo = data;
@@ -4020,14 +3867,13 @@ lflow_output_sb_logical_flow_handler(struct engine_node *node, void *data)
     struct lflow_ctx_out l_ctx_out;
     init_lflow_ctx(node, fo, &l_ctx_in, &l_ctx_out);
 
-    if (lflow_handle_changed_flows(&l_ctx_in, &l_ctx_out)) {
-        return EN_HANDLED_UPDATED;
-    }
+    bool handled = lflow_handle_changed_flows(&l_ctx_in, &l_ctx_out);
 
-    return EN_UNHANDLED;
+    engine_set_node_state(node, EN_UPDATED);
+    return handled;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_flow_sample_collector_set_handler(struct engine_node *node,
                                                void *data OVS_UNUSED)
 {
@@ -4041,13 +3887,13 @@ lflow_output_flow_sample_collector_set_handler(struct engine_node *node,
     const struct ovsrec_open_vswitch *cfg =
         ovsrec_open_vswitch_table_first(ovs_table);
     if (!cfg) {
-        return EN_HANDLED_UNCHANGED;
+        return true;
     }
 
     const struct ovsrec_bridge *br_int;
     br_int = get_bridge(bridge_table, br_int_name(ovs_table));
     if (!br_int) {
-        return EN_HANDLED_UNCHANGED;
+        return true;
     }
 
     const struct ovsrec_flow_sample_collector_set *set;
@@ -4058,11 +3904,12 @@ lflow_output_flow_sample_collector_set_handler(struct engine_node *node,
             flow_collector_ids_clear(&lfo->collector_ids);
             flow_collector_ids_init_from_table(&lfo->collector_ids,
                                                flow_collector_table);
-            return EN_UNHANDLED;
+            return false;
         }
     }
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 static void
@@ -4123,7 +3970,7 @@ pflow_output_get_debug(struct engine_node *node, struct physical_debug *debug)
                                          "debug_drop_domain_id", 0);
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_mac_binding_handler(struct engine_node *node, void *data)
 {
     struct ovsdb_idl_index *sbrec_port_binding_by_name =
@@ -4143,10 +3990,11 @@ lflow_output_sb_mac_binding_handler(struct engine_node *node, void *data)
     lflow_handle_changed_mac_bindings(sbrec_port_binding_by_name,
             mac_binding_table, local_datapaths, &lfo->flow_table);
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_static_mac_binding_handler(struct engine_node *node,
                                            void *data)
 {
@@ -4167,10 +4015,11 @@ lflow_output_sb_static_mac_binding_handler(struct engine_node *node,
     lflow_handle_changed_static_mac_bindings(sbrec_port_binding_by_name,
         smb_table, local_datapaths, &lfo->flow_table);
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_multicast_group_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lflow_output *lfo = data;
@@ -4179,13 +4028,14 @@ lflow_output_sb_multicast_group_handler(struct engine_node *node, void *data)
     struct lflow_ctx_out l_ctx_out;
     init_lflow_ctx(node, lfo, &l_ctx_in, &l_ctx_out);
     if (!lflow_handle_changed_mc_groups(&l_ctx_in, &l_ctx_out)) {
-        return EN_UNHANDLED;
+        return false;
     }
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_port_binding_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lflow_output *lfo = data;
@@ -4194,13 +4044,14 @@ lflow_output_sb_port_binding_handler(struct engine_node *node, void *data)
     struct lflow_ctx_out l_ctx_out;
     init_lflow_ctx(node, lfo, &l_ctx_in, &l_ctx_out);
     if (!lflow_handle_changed_port_bindings(&l_ctx_in, &l_ctx_out)) {
-        return EN_UNHANDLED;
+        return false;
     }
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_addr_sets_handler(struct engine_node *node, void *data)
 {
     struct ed_type_addr_sets *as_data =
@@ -4214,10 +4065,9 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
 
     bool changed;
     const char *ref_name;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     if (!as_data->change_tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     SSET_FOR_EACH (ref_name, &as_data->deleted) {
@@ -4226,10 +4076,10 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
                                       lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     struct shash_node *shash_node;
@@ -4245,11 +4095,11 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
                                           lflow_handle_changed_ref,
                                           l_ctx_out.objs_processed,
                                           &l_ctx_in, &l_ctx_out, &changed)) {
-                return EN_UNHANDLED;
+                return false;
             }
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (ref_name, &as_data->new) {
@@ -4258,17 +4108,17 @@ lflow_output_addr_sets_handler(struct engine_node *node, void *data)
                                       lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
 
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_port_groups_handler(struct engine_node *node, void *data)
 {
     struct ed_type_port_groups *pg_data =
@@ -4282,10 +4132,9 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
 
     bool changed;
     const char *ref_name;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     if (!pg_data->change_tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     SSET_FOR_EACH (ref_name, &pg_data->deleted) {
@@ -4294,10 +4143,10 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
                                       lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (ref_name, &pg_data->updated) {
@@ -4306,10 +4155,10 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
                                       lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (ref_name, &pg_data->new) {
@@ -4318,17 +4167,17 @@ lflow_output_port_groups_handler(struct engine_node *node, void *data)
                                       lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
 
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_template_vars_handler(struct engine_node *node, void *data)
 {
     struct ed_type_template_vars *tv_data =
@@ -4341,10 +4190,9 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
 
     const char *res_name;
     bool changed;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
     if (!tv_data->change_tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     SSET_FOR_EACH (res_name, &tv_data->deleted) {
@@ -4353,10 +4201,10 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
                                       res_name, lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (res_name, &tv_data->updated) {
@@ -4365,10 +4213,10 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
                                       res_name, lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
     SSET_FOR_EACH (res_name, &tv_data->new) {
@@ -4377,17 +4225,17 @@ lflow_output_template_vars_handler(struct engine_node *node, void *data)
                                       res_name, lflow_handle_changed_ref,
                                       l_ctx_out.objs_processed,
                                       &l_ctx_in, &l_ctx_out, &changed)) {
-            return EN_UNHANDLED;
+            return false;
         }
         if (changed) {
-            result = EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
         }
     }
 
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_runtime_data_handler(struct engine_node *node,
                                   void *data OVS_UNUSED)
 {
@@ -4397,14 +4245,15 @@ lflow_output_runtime_data_handler(struct engine_node *node,
     /* There is no tracked data. Fall back to full recompute of
      * flow_output. */
     if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
     if (hmap_is_empty(tracked_dp_bindings)) {
-        return rt_data->local_lports_changed
-               ? EN_HANDLED_UPDATED
-               : EN_HANDLED_UNCHANGED;
+        if (rt_data->local_lports_changed) {
+            engine_set_node_state(node, EN_UPDATED);
+        }
+        return true;
     }
 
     struct lflow_ctx_in l_ctx_in;
@@ -4417,7 +4266,7 @@ lflow_output_runtime_data_handler(struct engine_node *node,
         if (tdp->tracked_type == TRACKED_RESOURCE_NEW) {
             if (!lflow_add_flows_for_datapath(tdp->dp, &l_ctx_in,
                                               &l_ctx_out)) {
-                return EN_UNHANDLED;
+                return false;
             }
         }
         struct shash_node *shash_node;
@@ -4426,22 +4275,23 @@ lflow_output_runtime_data_handler(struct engine_node *node,
             if (!lflow_handle_flows_for_lport(
                     lport->pb, &l_ctx_in, &l_ctx_out,
                     lport->tracked_type == TRACKED_RESOURCE_REMOVED)) {
-                return EN_UNHANDLED;
+                return false;
             }
         }
     }
 
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_lb_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lflow_output *fo = data;
     struct ed_type_lb_data *lb_data = engine_get_input_data("lb_data", node);
 
     if (!lb_data->change_tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     struct lflow_ctx_in l_ctx_in;
@@ -4453,10 +4303,11 @@ lflow_output_lb_data_handler(struct engine_node *node, void *data)
                                             &lb_data->updated,
                                             &lb_data->new);
 
-    return handled ? EN_HANDLED_UPDATED : EN_UNHANDLED;
+    engine_set_node_state(node, EN_UPDATED);
+    return handled;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_fdb_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lflow_output *fo = data;
@@ -4466,10 +4317,11 @@ lflow_output_sb_fdb_handler(struct engine_node *node, void *data)
 
     bool handled = lflow_handle_changed_fdbs(&l_ctx_in, &l_ctx_out);
 
-    return handled ? EN_HANDLED_UPDATED : EN_UNHANDLED;
+    engine_set_node_state(node, EN_UPDATED);
+    return handled;
 }
 
-static enum engine_input_handler_result
+static bool
 lflow_output_sb_meter_handler(struct engine_node *node, void *data)
 {
     struct ed_type_lflow_output *fo = data;
@@ -4480,11 +4332,12 @@ lflow_output_sb_meter_handler(struct engine_node *node, void *data)
     SBREC_METER_TABLE_FOR_EACH_TRACKED (iter, meter_table) {
         if (ovn_extend_table_desired_lookup_by_name(&fo->meter_table,
                                                     iter->name)) {
-            return EN_HANDLED_UPDATED;
+            engine_set_node_state(node, EN_UPDATED);
+            break;
         }
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
 struct ed_type_pflow_output {
@@ -4516,61 +4369,7 @@ parse_encap_ips(const struct ovsrec_open_vswitch_table *ovs_table,
     }
     *n_encap_ips = sset_count(&encap_ip_set);
     sset_destroy(&encap_ip_set);
-
-    /* Move the default encap IP, if configured, to the first so that it will
-     * have index 0, because we use index as encap-id and we need 0 to be the
-     * default encap-id. */
-    const char *encap_ip_default =
-        get_chassis_external_id_value(&cfg->external_ids, chassis_id,
-                                      "ovn-encap-ip-default", NULL);
-    if (encap_ip_default) {
-        for (size_t i = 0; i < *n_encap_ips; i++) {
-            if (!strcmp(encap_ip_default, (*encap_ips)[i])) {
-                const char *tmp = (*encap_ips)[0];
-                (*encap_ips)[0] = (*encap_ips)[i];
-                (*encap_ips)[i] = tmp;
-                break;
-            }
-        }
-    }
 }
-
-struct ed_type_evpn_vtep_binding {
-    /* Contains 'struct evpn_binding'. */
-    struct hmap bindings;
-    /* Contains pointers to 'struct evpn_binding'. */
-    struct hmapx updated_bindings;
-    /* Contains 'flow_uuid' from removed 'struct evpn_binding'. */
-    struct uuidset removed_bindings;
-    /* Contains 'struct evpn_datapath'. */
-    struct hmap datapaths;
-    /* Contains 'struct evpn_multicast_group'. */
-    struct hmap multicast_groups;
-    /* Contains pointers to 'struct evpn_multicast_group'. */
-    struct hmapx updated_multicast_groups;
-    /* Contains 'flow_uuid' from removed 'struct evpn_multicast_group'. */
-    struct uuidset removed_multicast_groups;
-    /* Contains 'struct tnlid_node". */
-    struct hmap tunnel_keys;
-};
-
-struct ed_type_evpn_fdb {
-    /* Contains 'struct evpn_fdb'. */
-    struct hmap fdbs;
-    /* Contains pointers to 'struct evpn_fdb'. */
-    struct hmapx updated_fdbs;
-    /* Contains 'flow_uuid' from removed 'struct evpn_fdb'. */
-    struct uuidset removed_fdbs;
-};
-
-struct ed_type_evpn_arp {
-    /* Contains 'struct evpn_arp'. */
-    struct hmap arps;
-    /* Contains pointers to 'struct evpn_arp'. */
-    struct hmapx updated_arps;
-    /* Contains 'flow_uuid' from removed 'struct evpn_arps'. */
-    struct uuidset removed_arps;
-};
 
 static void init_physical_ctx(struct engine_node *node,
                               struct ed_type_runtime_data *rt_data,
@@ -4626,19 +4425,9 @@ static void init_physical_ctx(struct engine_node *node,
     struct ed_type_northd_options *n_opts =
         engine_get_input_data("northd_options", node);
 
-    struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_input_data("evpn_vtep_binding", node);
-
-    struct ed_type_evpn_fdb *efdb_data =
-        engine_get_input_data("evpn_fdb", node);
-
-    struct ed_type_evpn_arp *earp_data =
-        engine_get_input_data("evpn_arp", node);
-
     parse_encap_ips(ovs_table, &p_ctx->n_encap_ips, &p_ctx->encap_ips);
     p_ctx->sbrec_port_binding_by_name = sbrec_port_binding_by_name;
     p_ctx->sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath;
-    p_ctx->sbrec_chassis_by_name = sbrec_chassis_by_name;
     p_ctx->port_binding_table = port_binding_table;
     p_ctx->ovs_interface_table = ovs_interface_table;
     p_ctx->mc_group_table = multicast_group_table;
@@ -4647,24 +4436,18 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->chassis = chassis;
     p_ctx->active_tunnels = &rt_data->active_tunnels;
     p_ctx->local_datapaths = &rt_data->local_datapaths;
+    p_ctx->local_lports = &rt_data->local_lports;
     p_ctx->ct_zones = ct_zones;
     p_ctx->mff_ovn_geneve = ed_mff_ovn_geneve->mff_ovn_geneve;
     p_ctx->local_bindings = &rt_data->lbinding_data.bindings;
     p_ctx->patch_ofports = &non_vif_data->patch_ofports;
     p_ctx->chassis_tunnels = &non_vif_data->chassis_tunnels;
-    p_ctx->flow_tunnels = non_vif_data->flow_tunnels;
-    p_ctx->use_flow_based_tunnels = non_vif_data->use_flow_based_tunnels;
     p_ctx->always_tunnel = n_opts->always_tunnel;
-    p_ctx->evpn_bindings = &eb_data->bindings;
-    p_ctx->evpn_multicast_groups = &eb_data->multicast_groups;
-    p_ctx->evpn_fdbs = &efdb_data->fdbs;
-    p_ctx->evpn_arps = &earp_data->arps;
 
     struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
     p_ctx->if_mgr = ctrl_ctx->if_mgr;
 
     pflow_output_get_debug(node, &p_ctx->debug);
-    sset_init(&p_ctx->reprocessed_pbs);
 }
 
 static void
@@ -4674,7 +4457,6 @@ destroy_physical_ctx(struct physical_ctx *p_ctx)
         free((char *)(p_ctx->encap_ips[i]));
     }
     free(p_ctx->encap_ips);
-    sset_destroy(&p_ctx->reprocessed_pbs);
 }
 
 static void *
@@ -4693,7 +4475,7 @@ en_pflow_output_cleanup(void *data OVS_UNUSED)
     ovn_desired_flow_table_destroy(&pfo->flow_table);
 }
 
-static enum engine_node_state
+static void
 en_pflow_output_run(struct engine_node *node, void *data)
 {
     struct ed_type_pflow_output *pfo = data;
@@ -4715,10 +4497,10 @@ en_pflow_output_run(struct engine_node *node, void *data)
     physical_run(&p_ctx, pflow_table);
     destroy_physical_ctx(&p_ctx);
 
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_if_status_mgr_handler(struct engine_node *node,
                                    void *data)
 {
@@ -4734,7 +4516,6 @@ pflow_output_if_status_mgr_handler(struct engine_node *node,
     init_physical_ctx(node, rt_data, non_vif_data, &p_ctx);
 
     const struct ovsrec_interface *iface;
-    enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
     OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface, if_mgr_data->iface_table) {
         const char *iface_id = smap_get(&iface->external_ids, "iface-id");
         if (!iface_id) {
@@ -4755,16 +4536,16 @@ pflow_output_if_status_mgr_handler(struct engine_node *node,
             if (!physical_handle_flows_for_lport(pb, removed, &p_ctx,
                                                  &pfo->flow_table)) {
                 destroy_physical_ctx(&p_ctx);
-                return EN_UNHANDLED;
+                return false;
             }
         }
-        result = EN_HANDLED_UPDATED;
+        engine_set_node_state(node, EN_UPDATED);
     }
     destroy_physical_ctx(&p_ctx);
-    return result;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_sb_port_binding_handler(struct engine_node *node,
                                      void *data)
 {
@@ -4784,24 +4565,20 @@ pflow_output_sb_port_binding_handler(struct engine_node *node,
      */
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, p_ctx.port_binding_table) {
-        /* Trigger a full recompute if type column is updated. */
-        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE)) {
-            destroy_physical_ctx(&p_ctx);
-            return EN_UNHANDLED;
-        }
         bool removed = sbrec_port_binding_is_deleted(pb);
         if (!physical_handle_flows_for_lport(pb, removed, &p_ctx,
                                              &pfo->flow_table)) {
             destroy_physical_ctx(&p_ctx);
-            return EN_UNHANDLED;
+            return false;
         }
     }
 
+    engine_set_node_state(node, EN_UPDATED);
     destroy_physical_ctx(&p_ctx);
-    return EN_HANDLED_UPDATED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_sb_multicast_group_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data =
@@ -4816,11 +4593,12 @@ pflow_output_sb_multicast_group_handler(struct engine_node *node, void *data)
 
     physical_handle_mc_group_changes(&p_ctx, &pfo->flow_table);
 
+    engine_set_node_state(node, EN_UPDATED);
     destroy_physical_ctx(&p_ctx);
-    return EN_HANDLED_UPDATED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_runtime_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_runtime_data *rt_data =
@@ -4831,12 +4609,12 @@ pflow_output_runtime_data_handler(struct engine_node *node, void *data)
     /* There is no tracked data. Fall back to full recompute of
      * pflow_output. */
     if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+        return false;
     }
 
     struct hmap *tracked_dp_bindings = &rt_data->tracked_dp_bindings;
     if (hmap_is_empty(tracked_dp_bindings)) {
-        return EN_HANDLED_UNCHANGED;
+        return true;
     }
 
     struct ed_type_pflow_output *pfo = data;
@@ -4850,7 +4628,7 @@ pflow_output_runtime_data_handler(struct engine_node *node, void *data)
             /* Fall back to full recompute when a local datapath
              * is added or deleted. */
             destroy_physical_ctx(&p_ctx);
-            return EN_UNHANDLED;
+            return false;
         }
 
         struct shash_node *shash_node;
@@ -4861,16 +4639,17 @@ pflow_output_runtime_data_handler(struct engine_node *node, void *data)
             if (!physical_handle_flows_for_lport(lport->pb, removed, &p_ctx,
                                                  &pfo->flow_table)) {
                 destroy_physical_ctx(&p_ctx);
-                return EN_UNHANDLED;
+                return false;
             }
         }
     }
 
+    engine_set_node_state(node, EN_UPDATED);
     destroy_physical_ctx(&p_ctx);
-    return EN_HANDLED_UPDATED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_ct_zones_handler(struct engine_node *node OVS_UNUSED,
                                     void *data OVS_UNUSED)
 {
@@ -4886,16 +4665,16 @@ pflow_output_ct_zones_handler(struct engine_node *node OVS_UNUSED,
      *   - pflow_output handler for the runtime_data adds the physical
      *     flows for the claimed lport.
      * */
-    return ct_zones_data->recomputed ? EN_UNHANDLED : EN_HANDLED_UNCHANGED;
+    return !ct_zones_data->recomputed;
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_activated_ports_handler(struct engine_node *node, void *data)
 {
     struct ed_type_activated_ports *ap =
         engine_get_input_data("activated_ports", node);
     if (!ap->activated_ports) {
-        return EN_HANDLED_UNCHANGED;
+        return true;
     }
 
     struct ed_type_pflow_output *pfo = data;
@@ -4924,16 +4703,17 @@ pflow_output_activated_ports_handler(struct engine_node *node, void *data)
             if (!physical_handle_flows_for_lport(pb, false, &p_ctx,
                                                  &pfo->flow_table)) {
                 destroy_physical_ctx(&p_ctx);
-                return EN_UNHANDLED;
+                return false;
             }
             tag_port_as_activated_in_engine(pp);
         }
     }
+    engine_set_node_state(node, EN_UPDATED);
     destroy_physical_ctx(&p_ctx);
-    return EN_HANDLED_UPDATED;
+    return true;
 }
 
-static enum engine_input_handler_result
+static bool
 pflow_output_debug_handler(struct engine_node *node, void *data)
 {
     struct ed_type_pflow_output *pfo = data;
@@ -4944,59 +4724,10 @@ pflow_output_debug_handler(struct engine_node *node, void *data)
     if (pfo->debug.collector_set_id != debug.collector_set_id ||
         pfo->debug.obs_domain_id != debug.obs_domain_id) {
         pfo->debug = debug;
-        return EN_UNHANDLED;
+        return false;
     }
-    return EN_HANDLED_UPDATED;
-}
-static enum engine_input_handler_result
-pflow_output_evpn_binding_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_pflow_output *pfo = data;
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-    struct ed_type_non_vif_data *non_vif_data =
-        engine_get_input_data("non_vif_data", node);
-    struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_input_data("evpn_vtep_binding", node);
-
-    struct physical_ctx ctx;
-    init_physical_ctx(node, rt_data, non_vif_data, &ctx);
-
-    physical_handle_evpn_binding_changes(&ctx, &pfo->flow_table,
-                                         &eb_data->updated_bindings,
-                                         &eb_data->updated_multicast_groups,
-                                         &eb_data->removed_bindings,
-                                         &eb_data->removed_multicast_groups);
-    destroy_physical_ctx(&ctx);
-    return EN_HANDLED_UPDATED;
-}
-
-static enum engine_input_handler_result
-pflow_output_fdb_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_pflow_output *pfo = data;
-    struct ed_type_evpn_fdb *ef_data =
-        engine_get_input_data("evpn_fdb", node);
-
-    physical_handle_evpn_fdb_changes(&pfo->flow_table, &ef_data->updated_fdbs,
-                                     &ef_data->removed_fdbs);
-    return EN_HANDLED_UPDATED;
-}
-
-static enum engine_input_handler_result
-pflow_output_arp_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_pflow_output *pfo = data;
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-    struct ed_type_evpn_arp *ea_data =
-        engine_get_input_data("evpn_arp", node);
-
-    physical_handle_evpn_arp_changes(&rt_data->local_datapaths,
-                                     &pfo->flow_table,
-                                     &ea_data->updated_arps,
-                                     &ea_data->removed_arps);
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 static void *
@@ -5012,60 +4743,43 @@ en_controller_output_cleanup(void *data OVS_UNUSED)
 
 }
 
-static enum engine_node_state
+static void
 en_controller_output_run(struct engine_node *node OVS_UNUSED,
                          void *data OVS_UNUSED)
 {
-    return EN_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
 }
 
-static enum engine_input_handler_result
-controller_output_pflow_output_handler(struct engine_node *node OVS_UNUSED,
+static bool
+controller_output_pflow_output_handler(struct engine_node *node,
                                        void *data OVS_UNUSED)
 {
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
-controller_output_lflow_output_handler(struct engine_node *node OVS_UNUSED,
+static bool
+controller_output_lflow_output_handler(struct engine_node *node,
                                        void *data OVS_UNUSED)
 {
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
-controller_output_mac_cache_handler(struct engine_node *node OVS_UNUSED,
+static bool
+controller_output_mac_cache_handler(struct engine_node *node,
                                     void *data OVS_UNUSED)
 {
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
-static enum engine_input_handler_result
-controller_output_bfd_chassis_handler(struct engine_node *node OVS_UNUSED,
+static bool
+controller_output_bfd_chassis_handler(struct engine_node *node,
                                     void *data OVS_UNUSED)
 {
-    return EN_HANDLED_UPDATED;
-}
-
-static enum engine_input_handler_result
-controller_output_acl_id_handler(struct engine_node *node OVS_UNUSED,
-                                    void *data OVS_UNUSED)
-{
-    return EN_HANDLED_UPDATED;
-}
-
-static enum engine_input_handler_result
-controller_output_route_exchange_handler(struct engine_node *node OVS_UNUSED,
-                                         void *data OVS_UNUSED)
-{
-    return EN_HANDLED_UPDATED;
-}
-
-static enum engine_input_handler_result
-controller_output_garp_rarp_handler(struct engine_node *node OVS_UNUSED,
-                                    void *data OVS_UNUSED)
-{
-    return EN_HANDLED_UPDATED;
+    engine_set_node_state(node, EN_UPDATED);
+    return true;
 }
 
 /* Handles sbrec_chassis changes.
@@ -5074,7 +4788,7 @@ controller_output_garp_rarp_handler(struct engine_node *node OVS_UNUSED,
  * any flow computation.  Encap changes will also result in
  * sbrec_chassis changes, but we handle encap changes separately.
  */
-static enum engine_input_handler_result
+static bool
 pflow_lflow_output_sb_chassis_handler(struct engine_node *node,
                                       void *data OVS_UNUSED)
 {
@@ -5084,1578 +4798,314 @@ pflow_lflow_output_sb_chassis_handler(struct engine_node *node,
     const struct sbrec_chassis *ch;
     SBREC_CHASSIS_TABLE_FOR_EACH_TRACKED (ch, chassis_table) {
         if (sbrec_chassis_is_deleted(ch) || sbrec_chassis_is_new(ch)) {
-            return EN_UNHANDLED;
+            return false;
         }
     }
 
-    return EN_HANDLED_UNCHANGED;
+    return true;
 }
 
-struct ed_type_route {
-    /* Contains struct tracked_datapath entries for local datapaths subject to
-     * route exchange. */
-    struct hmap tracked_route_datapaths;
+/* Returns false if the northd internal version stored in SB_Global
+ * and ovn-controller internal version don't match.
+ */
+static bool
+check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
+                     const char *version)
+{
+    static bool version_mismatch;
 
-    /* Contains the tracked_ports that in the last run were bound locally. */
-    struct sset tracked_ports_local;
+    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        ovsrec_open_vswitch_table_get(ovs_idl);
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    if (!cfg || !get_chassis_external_id_value_bool(
+                     &cfg->external_ids, chassis_id,
+                     "ovn-match-northd-version", false)) {
+        version_mismatch = false;
+        return true;
+    }
 
-    /* Contains the tracked_ports that in the last run were not bound
-     * locally. */
-    struct sset tracked_ports_remote;
+    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
+    if (!sb) {
+        version_mismatch = true;
+        return false;
+    }
 
-    /* Contains all the currently configured dynamic-routing-port-name values
-     * on all datapaths.
+    const char *northd_version =
+        smap_get_def(&sb->options, "northd_internal_version", "");
+
+    if (strcmp(northd_version, version)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "controller version - %s mismatch with northd "
+                     "version - %s", version, northd_version);
+        version_mismatch = true;
+        return false;
+    }
+
+    /* If there used to be a mismatch and ovn-northd got updated, force a
+     * full recompute.
      */
-    struct sset filtered_ports;
-
-    /* Contains struct advertise_datapath_entry */
-    struct hmap announce_routes;
-
-    struct ovsdb_idl *ovnsb_idl;
-};
-
-static enum engine_node_state
-en_route_run(struct engine_node *node, void *data)
-{
-    struct ed_type_route *re_data = data;
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_chassis", node),
-                "name");
-    const struct sbrec_chassis *chassis
-        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "name");
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-
-    const struct sbrec_advertised_route_table *advertised_route_table =
-        EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
-
-    const struct ovsrec_open_vswitch *cfg
-        = ovsrec_open_vswitch_table_first(ovs_table);
-    const char *dynamic_routing_port_mapping =
-        smap_get(&cfg->external_ids, "dynamic-routing-port-mapping");
-
-    struct route_ctx_in r_ctx_in = {
-        .advertised_route_table = advertised_route_table,
-        .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
-        .chassis = chassis,
-        .dynamic_routing_port_mapping = dynamic_routing_port_mapping,
-        .local_datapaths = &rt_data->local_datapaths,
-        .local_bindings = &rt_data->lbinding_data.bindings,
-    };
-
-    struct route_ctx_out r_ctx_out = {
-        .tracked_re_datapaths = &re_data->tracked_route_datapaths,
-        .tracked_ports_local = &re_data->tracked_ports_local,
-        .filtered_ports = &re_data->filtered_ports,
-        .tracked_ports_remote = &re_data->tracked_ports_remote,
-        .announce_routes = &re_data->announce_routes,
-    };
-
-    route_cleanup(&re_data->announce_routes);
-    tracked_datapaths_clear(r_ctx_out.tracked_re_datapaths);
-    sset_clear(r_ctx_out.tracked_ports_local);
-    sset_clear(r_ctx_out.tracked_ports_remote);
-    sset_clear(r_ctx_out.filtered_ports);
-
-    route_run(&r_ctx_in, &r_ctx_out);
-    return EN_UPDATED;
-}
-
-
-static void *
-en_route_init(struct engine_node *node OVS_UNUSED,
-              struct engine_arg *arg)
-{
-    struct ed_type_route *data = xzalloc(sizeof *data);
-
-    hmap_init(&data->tracked_route_datapaths);
-    sset_init(&data->tracked_ports_local);
-    sset_init(&data->tracked_ports_remote);
-    sset_init(&data->filtered_ports);
-    hmap_init(&data->announce_routes);
-    data->ovnsb_idl = arg->sb_idl;
-
-    return data;
+    if (version_mismatch) {
+        engine_set_force_recompute();
+    }
+    version_mismatch = false;
+    return true;
 }
 
 static void
-en_route_cleanup(void *data)
+br_int_remote_update(struct br_int_remote *remote,
+                     const struct ovsrec_bridge *br_int,
+                     const struct ovsrec_open_vswitch_table *ovs_table)
 {
-    struct ed_type_route *re_data = data;
-
-    tracked_datapaths_destroy(&re_data->tracked_route_datapaths);
-    sset_destroy(&re_data->tracked_ports_local);
-    sset_destroy(&re_data->tracked_ports_remote);
-    sset_destroy(&re_data->filtered_ports);
-    route_cleanup(&re_data->announce_routes);
-    hmap_destroy(&re_data->announce_routes);
-}
-
-static enum engine_input_handler_result
-route_runtime_data_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_route *re_data = data;
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_chassis", node),
-                "name");
-    const struct sbrec_chassis *chassis
-        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "name");
-
-    if (!rt_data->tracked) {
-        return EN_UNHANDLED;
+    if (!br_int) {
+        return;
     }
 
-    /* There are the following cases where we need to handle updates to
-     * runtime_data:
-     * 1. A datapath binding has changed that is already taking part in route
-     *    exchange.
-     * 2. A route-exchange relevant port went form local to remote or the
-     *    other way round.
-     * 3. A tracked_port went from local to remote or the other way round.
+    const struct ovsrec_open_vswitch *cfg =
+            ovsrec_open_vswitch_table_first(ovs_table);
+
+    const char *ext_target =
+            smap_get(&cfg->external_ids, "ovn-bridge-remote");
+    char *target = ext_target
+            ? xstrdup(ext_target)
+            : xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
+
+    if (!remote->target || strcmp(remote->target, target)) {
+        free(remote->target);
+        remote->target = target;
+    } else {
+        free(target);
+    }
+
+    unsigned long long probe_interval =
+            smap_get_ullong(&cfg->external_ids,
+                            "ovn-bridge-remote-probe-interval", 0);
+    remote->probe_interval = MIN(probe_interval / 1000, INT_MAX);
+}
+
+int
+main(int argc, char *argv[])
+{
+    struct unixctl_server *unixctl;
+    struct ovn_exit_args exit_args = {0};
+    struct br_int_remote br_int_remote = {0};
+    int retval;
+
+    /* Read from system-id-override file once on startup. */
+    file_system_id = get_file_system_id();
+
+    ovs_cmdl_proctitle_init(argc, argv);
+    ovn_set_program_name(argv[0]);
+    service_start(&argc, &argv);
+    char *ovs_remote = parse_options(argc, argv);
+    fatal_ignore_sigpipe();
+
+    daemonize_start(true, false);
+
+    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
+    retval = unixctl_server_create(abs_unixctl_path, &unixctl);
+    free(abs_unixctl_path);
+    if (retval) {
+        exit(EXIT_FAILURE);
+    }
+    unixctl_command_register("exit", "", 0, 1, ovn_exit_command_callback,
+                             &exit_args);
+
+    daemonize_complete();
+
+    /* Register ofctrl seqno types. */
+    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
+
+    patch_init();
+    pinctrl_init();
+    lflow_init();
+    mirror_init();
+    vif_plug_provider_initialize();
+    statctrl_init();
+    dns_resolve_init(true);
+
+    /* Connect to OVS OVSDB instance. */
+    struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create(ovs_remote, &ovsrec_idl_class, false, true));
+    ctrl_register_ovs_idl(ovs_idl_loop.idl);
+
+    struct ovsdb_idl_index *ovsrec_port_by_interfaces
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_interfaces);
+    struct ovsdb_idl_index *ovsrec_port_by_name
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_name);
+    struct ovsdb_idl_index *ovsrec_port_by_qos
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_port_col_qos);
+    struct ovsdb_idl_index *ovsrec_interface_by_name
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_interface_col_name);
+    struct ovsdb_idl_index *ovsrec_queue_by_external_ids
+        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
+                                  &ovsrec_queue_col_external_ids);
+    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
+        = ovsdb_idl_index_create2(ovs_idl_loop.idl,
+                                  &ovsrec_flow_sample_collector_set_col_bridge,
+                                  &ovsrec_flow_sample_collector_set_col_id);
+
+    ovsdb_idl_get_initial_snapshot(ovs_idl_loop.idl);
+
+    /* Configure OVN SB database. */
+    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
+        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
+    ovsdb_idl_set_leader_only(ovnsb_idl_loop.idl, false);
+
+    unixctl_command_register("connection-status", "", 0, 0,
+                             ovn_conn_show, ovnsb_idl_loop.idl);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name
+        = chassis_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_chassis_private_by_name
+        = chassis_private_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath
+        = mcast_group_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_meter_by_name
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl, &sbrec_meter_col_name);
+    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_logical_flow_col_logical_datapath);
+    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_logical_flow_col_logical_dp_group);
+    struct ovsdb_idl_index *sbrec_port_binding_by_name
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_logical_port);
+    struct ovsdb_idl_index *sbrec_port_binding_by_key
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_tunnel_key,
+                                  &sbrec_port_binding_col_datapath);
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_datapath);
+    struct ovsdb_idl_index *sbrec_port_binding_by_type
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_type);
+    struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_port_binding_col_requested_chassis);
+    struct ovsdb_idl_index *sbrec_datapath_binding_by_key
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_datapath_binding_col_tunnel_key);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip
+        = mac_binding_by_lport_ip_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_ip_multicast
+        = ip_mcast_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_igmp_group
+        = igmp_group_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_fdb_col_dp_key);
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac
+        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
+                                  &sbrec_fdb_col_mac,
+                                  &sbrec_fdb_col_dp_key);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
+        = mac_binding_by_datapath_index_create(ovnsb_idl_loop.idl);
+    struct ovsdb_idl_index *sbrec_static_mac_binding_by_datapath
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_static_mac_binding_col_datapath);
+    struct ovsdb_idl_index *sbrec_chassis_template_var_index_by_chassis
+        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
+                                  &sbrec_chassis_template_var_col_chassis);
+
+    ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_chassis_private_col_nb_cfg_timestamp);
+
+    /* Omit the external_ids column of all the tables except for -
+     *  - DNS. pinctrl.c uses the external_ids column of DNS,
+     *    which it shouldn't. This should be removed.
+     *
+     *  - Datapath_binding - lflow.c is using this to check if the datapath
+     *                       is switch or not. This should be removed.
      * */
-    struct tracked_datapath *t_dp;
-    HMAP_FOR_EACH (t_dp, node, &rt_data->tracked_dp_bindings) {
-        struct tracked_datapath *re_t_dp =
-            tracked_datapath_find(&re_data->tracked_route_datapaths, t_dp->dp);
 
-        if (re_t_dp) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-
-        struct shash_node *shash_node;
-        SHASH_FOR_EACH (shash_node, &t_dp->lports) {
-            struct tracked_lport *lport = shash_node->data;
-
-            if (route_exchange_find_port(sbrec_port_binding_by_name, chassis,
-                                         lport->pb, NULL)) {
-                /* XXX: Until we get I-P support for route exchange we need to
-                 * request recompute. */
-                return EN_UNHANDLED;
-            }
-
-            /* When the port is removed we went from local to remote,
-             * otherwise it's from remote to local. */
-            struct sset *tracked_ports =
-                lport->tracked_type == TRACKED_RESOURCE_REMOVED
-                ? &re_data->tracked_ports_local
-                : &re_data->tracked_ports_remote;
-
-            const char *name = lport->pb->logical_port;
-            if (sset_contains(tracked_ports, name)) {
-                /* XXX: Until we get I-P support for route exchange we need to
-                 * request recompute. */
-                return EN_UNHANDLED;
-            }
-
-            /* If this logical port name is used to filter on which router
-             * ports learning should happen then process the changes. */
-            if (sset_find(&re_data->filtered_ports, name)) {
-                /* XXX: Until we get I-P support for route exchange we need to
-                * request recompute. */
-                return EN_UNHANDLED;
-            }
-
-            const char *dp_name = smap_get(&lport->pb->options,
-                                           "distributed-port");
-            if (dp_name && sset_contains(tracked_ports, dp_name)) {
-                /* XXX: Until we get I-P support for route exchange we need to
-                 * request recompute. */
-                return EN_UNHANDLED;
-            }
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-route_sb_port_binding_data_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_route *re_data = data;
-    const struct sbrec_port_binding_table *pb_table =
-        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_chassis", node),
-                "name");
-    const struct sbrec_chassis *chassis
-        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "name");
-
-
-    /* There are the following cases where we need to handle updates to the
-     * port_binding table:
-     * 1. The port_binding is part of a router datapath that already takes
-     *    part in route exchange.
-     * 2. The port_binding is now becoming part of route exchange.
-     *
-     * We do not need to handle port_bindings that are tracked_ports and switch
-     * between being local and remote. This is handled as part of the
-     * runtime_data handler. */
-    const struct sbrec_port_binding *sbrec_pb;
-    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (sbrec_pb, pb_table) {
-        struct tracked_datapath *re_t_dp =
-            tracked_datapath_find(&re_data->tracked_route_datapaths,
-                                  sbrec_pb->datapath);
-        if (re_t_dp) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-
-        if (route_exchange_find_port(sbrec_port_binding_by_name,
-                                     chassis, sbrec_pb, NULL)) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-
-        /* If this logical port name is used to filter on which router
-         * ports learning should happen then process the changes. */
-        if (sset_find(&re_data->filtered_ports, sbrec_pb->logical_port)) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-
-        const char *dp_name = smap_get(&sbrec_pb->options, "distributed-port");
-        if (dp_name && sset_contains(&re_data->tracked_ports_local,
-                                     dp_name)) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-        if (dp_name && sset_contains(&re_data->tracked_ports_remote,
-                                     dp_name)) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_route *re_data = data;
-    const struct sbrec_advertised_route_table *advertised_route_table =
-        EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
-
-    /* There are the following cases where we need to handle updates to the
-     * advertised_route table:
-     * 1. The advertised_route is created or deleted and we know about its
-     *    datapath locally.
-     *
-     * Updates to advertised_route can generally be ignored as northd will not
-     * update these entries. For exceptions see below.
-     * We also get update notifications if a referenced port_binding is
-     * updated, but these are handled in the runtime_data handler. */
-    const struct sbrec_advertised_route *sbrec_route;
-    SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH_TRACKED (sbrec_route,
-                                                   advertised_route_table) {
-        struct tracked_datapath *re_t_dp =
-            tracked_datapath_find(&re_data->tracked_route_datapaths,
-                                  sbrec_route->datapath);
-        if (!re_t_dp) {
-            continue;
-        }
-
-        if (sbrec_advertised_route_is_new(sbrec_route) ||
-                sbrec_advertised_route_is_deleted(sbrec_route)) {
-            /* XXX: Until we get I-P support for route exchange we need to
-             * request recompute. */
-            return EN_UNHANDLED;
-        }
-
-        if (sbrec_route->tracked_port) {
-            const char *name = sbrec_route->tracked_port->logical_port;
-            if (!(sset_contains(&re_data->tracked_ports_local, name) ||
-                 sset_contains(&re_data->tracked_ports_remote, name))) {
-                /* Advertised_Routes are generally not changed by northd.
-                 * However if we did not monitor for the Port_Binding
-                 * referenced by tracked_port previously then it would have
-                 * been NULL. If we notice that we have now loaded the
-                 * Port_Binding we need to recompute to correctly update
-                 * the route priority. */
-                return EN_UNHANDLED;
-            }
-        }
-    }
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-route_sb_datapath_binding_handler(struct engine_node *node,
-                                  void *data OVS_UNUSED)
-{
-    const struct sbrec_datapath_binding_table *dp_table =
-        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-
-    const struct sbrec_datapath_binding *dp;
-    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
-        if (sbrec_datapath_binding_is_new(dp) ||
-            sbrec_datapath_binding_is_deleted(dp)) {
-            /* We are reflecting only datapaths that are becoming or are
-             * removed from being local, that is taken care of by runtime_data
-             * handler. */
-            return EN_HANDLED_UNCHANGED;
-        }
-
-        struct local_datapath *ld =
-            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
-        if (!ld || ld->is_switch) {
-            continue;
-        }
-
-        if (sbrec_datapath_binding_is_updated(
-                dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-struct ed_type_route_exchange {
-    /* We need the idl to check if the Learned_Route table exists. */
-    struct ovsdb_idl *sb_idl;
-    /* Set to true when SB is readonly and we have routes that need
-     * to be inserted into SB. */
-    bool sb_changes_pending;
-};
-
-static enum engine_node_state
-en_route_exchange_run(struct engine_node *node, void *data)
-{
-    struct ed_type_route_exchange *re = data;
-
-    struct ovsdb_idl_index *sbrec_learned_route_by_datapath =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_learned_route", node),
-            "datapath");
-
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "name");
-
-    struct ed_type_route *route_data =
-        engine_get_input_data("route", node);
-
-    /* There can not actually be any routes to advertise unless we also have
-     * the Learned_Route table, since they where introduced in the same
-     * release. */
-    if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
-        return EN_STALE;
-    }
-
-    struct route_exchange_ctx_in r_ctx_in = {
-        .ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn,
-        .sbrec_learned_route_by_datapath = sbrec_learned_route_by_datapath,
-        .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
-        .announce_routes = &route_data->announce_routes,
-    };
-    struct route_exchange_ctx_out r_ctx_out = {
-        .sb_changes_pending = false,
-    };
-
-    hmap_init(&r_ctx_out.route_table_watches);
-
-    route_exchange_run(&r_ctx_in, &r_ctx_out);
-    route_table_notify_update_watches(&r_ctx_out.route_table_watches);
-
-    route_table_watch_request_cleanup(&r_ctx_out.route_table_watches);
-    hmap_destroy(&r_ctx_out.route_table_watches);
-
-    re->sb_changes_pending = r_ctx_out.sb_changes_pending;
-
-    return EN_UPDATED;
-}
-
-static enum engine_input_handler_result
-route_exchange_sb_ro_handler(struct engine_node *node OVS_UNUSED, void *data)
-{
-    struct ed_type_route_exchange *re = data;
-    if (re->sb_changes_pending) {
-        return EN_UNHANDLED;
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-
-static void *
-en_route_exchange_init(struct engine_node *node OVS_UNUSED,
-                       struct engine_arg *arg)
-{
-    struct ed_type_route_exchange *re = xzalloc(sizeof *re);
-
-    re->sb_idl = arg->sb_idl;
-    return re;
-}
-
-static void
-en_route_exchange_cleanup(void *data OVS_UNUSED)
-{
-}
-
-struct ed_type_route_table_notify {
-    /* For incremental processing this could be tracked per datapath in
-     * the future. */
-    bool changed;
-};
-
-static enum engine_node_state
-en_route_table_notify_run(struct engine_node *node OVS_UNUSED, void *data)
-{
-    struct ed_type_route_table_notify *rtn = data;
-    enum engine_node_state state;
-    if (rtn->changed) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
-    }
-    rtn->changed = false;
-    return state;
-}
-
-
-static void *
-en_route_table_notify_init(struct engine_node *node OVS_UNUSED,
-                           struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_route_table_notify *rtn = xzalloc(sizeof *rtn);
-    rtn->changed = true;
-    return rtn;
-}
-
-static void
-en_route_table_notify_cleanup(void *data OVS_UNUSED)
-{
-}
-
-struct ed_type_route_exchange_status {
-    bool netlink_trigger_run;
-};
-
-static void *
-en_route_exchange_status_init(struct engine_node *node OVS_UNUSED,
-                              struct engine_arg *arg OVS_UNUSED)
-{
-    return xzalloc(sizeof(struct ed_type_route_exchange_status));
-}
-
-static enum engine_node_state
-en_route_exchange_status_run(struct engine_node *node OVS_UNUSED, void *data)
-{
-    struct ed_type_route_exchange_status *res = data;
-    enum engine_node_state state;
-
-    if (res->netlink_trigger_run) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
-    }
-    res->netlink_trigger_run = false;
-
-    return state;
-}
-
-static void
-en_route_exchange_status_cleanup(void *data OVS_UNUSED)
-{
-}
-
-static enum engine_node_state
-en_garp_rarp_run(struct engine_node *node, void *data_)
-{
-    struct ed_type_garp_rarp *data = data_;
-    struct controller_engine_ctx *ctrl_ctx =
-        engine_get_context()->client_ctx;
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_chassis", node),
-                "name");
-    const struct sbrec_chassis *chassis
-        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    const struct ovsrec_open_vswitch *cfg
-        = ovsrec_open_vswitch_table_first(ovs_table);
-
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "datapath");
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "name");
-    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_mac_binding", node),
-                "lport_ip");
-
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-
-    struct garp_rarp_ctx_in r_ctx_in = {
-        .ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn,
-        .cfg = cfg,
-        .sbrec_port_binding_by_datapath = sbrec_port_binding_by_datapath,
-        .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
-        .sbrec_mac_binding_by_lport_ip = sbrec_mac_binding_by_lport_ip,
-        .chassis = chassis,
-        .active_tunnels = &rt_data->active_tunnels,
-        .local_datapaths = &rt_data->local_datapaths,
-        .data = data,
-        .mgr = ctrl_ctx->if_mgr,
-    };
-
-    garp_rarp_run(&r_ctx_in);
-    return EN_UPDATED;
-}
-
-
-static void *
-en_garp_rarp_init(struct engine_node *node OVS_UNUSED,
-                  struct engine_arg *arg OVS_UNUSED)
-{
-    return garp_rarp_init();
-}
-
-static void
-en_garp_rarp_cleanup(void *data)
-{
-    garp_rarp_cleanup(data);
-}
-
-static enum engine_input_handler_result
-garp_rarp_sb_port_binding_handler(struct engine_node *node,
-                                  void *data_)
-{
-    /* We need to handle a change if there was change on a datapath with
-     * a localnet port.
-     * Also the ha_chassis status of a port binding might change. */
-    struct ed_type_garp_rarp *data = data_;
-
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_chassis", node),
-                "name");
-    const struct sbrec_chassis *chassis
-        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    struct ed_type_runtime_data *rt_data =
-            engine_get_input_data("runtime_data", node);
-    const struct sbrec_port_binding_table *port_binding_table =
-        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-                engine_get_input("SB_port_binding", node),
-                "name");
-    struct controller_engine_ctx *ctrl_ctx = engine_get_context()->client_ctx;
-
-    const struct sbrec_port_binding *pb;
-    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, port_binding_table) {
-        struct local_datapath *ld = get_local_datapath(
-            &rt_data->local_datapaths, pb->datapath->tunnel_key);
-
-        if (!ld) {
-            continue;
-        }
-
-        if (ld->localnet_port) {
-            /* XXX: actually handle this incrementally. */
-            return EN_UNHANDLED;
-        }
-
-        if (sset_contains(&data->non_local_lports, pb->logical_port) &&
-            lport_is_chassis_resident(sbrec_port_binding_by_name, chassis,
-                                      pb->logical_port)) {
-            /* XXX: actually handle this incrementally. */
-            return EN_UNHANDLED;
-        }
-
-        if (sset_contains(&data->local_lports, pb->logical_port) &&
-            !lport_is_chassis_resident(sbrec_port_binding_by_name, chassis,
-                                       pb->logical_port)) {
-            /* XXX: actually handle this incrementally. */
-            return EN_UNHANDLED;
-        }
-
-        /* If the cr_port was updated, bound to a different chassis in idl
-         * and (re)bound to our chassis in runtime data, make sure to reset
-         * garp timers*/
-        if (sbrec_port_binding_is_updated(pb,
-                                          SBREC_PORT_BINDING_COL_CHASSIS) &&
-            if_status_reclaimed(ctrl_ctx->if_mgr, pb->logical_port)) {
-            garp_rarp_node_reset_timers(pb->logical_port);
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-garp_rarp_sb_datapath_binding_handler(struct engine_node *node,
-                                      void *data_ OVS_UNUSED)
-{
-    struct ed_type_runtime_data *rt_data =
-            engine_get_input_data("runtime_data", node);
-
-    const struct sbrec_datapath_binding_table *dp_binding_table =
-        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
-    const struct sbrec_datapath_binding *dp;
-    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_binding_table) {
-        struct local_datapath *ld = get_local_datapath(
-            &rt_data->local_datapaths, dp->tunnel_key);
-        if (!ld || ld->is_switch) {
-            continue;
-        }
-
-        if (sbrec_datapath_binding_is_updated(
-                    dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-garp_rarp_runtime_data_handler(struct engine_node *node, void *data OVS_UNUSED)
-{
-    /* We use two elements from rt_data:
-     * 1. active_tunnels: There is currently not incremental processing for
-     *    this in runtime_data. So we just fall back to a recompute.
-     * 2. local_datapaths: This has incremental processing on the runtime_data
-     *    side. We are only interested in datapaths with a localnet port so
-     *    we just recompute if there is one in there. Otherwise the change is
-     *    irrelevant for us. */
-
-    struct ed_type_runtime_data *rt_data =
-            engine_get_input_data("runtime_data", node);
-
-    /* There are no tracked data. Fall back to full recompute. */
-    if (!rt_data->tracked) {
-        return EN_UNHANDLED;
-    }
-
-    struct tracked_datapath *tdp;
-    HMAP_FOR_EACH (tdp, node, &rt_data->tracked_dp_bindings) {
-        if (tdp->tracked_type == TRACKED_RESOURCE_REMOVED) {
-            /* This is currently not handled incrementally in runtime_data
-             * so it should never happen. Recompute just in case. */
-            return EN_UNHANDLED;
-        }
-
-        struct local_datapath *ld = get_local_datapath(
-            &rt_data->local_datapaths, tdp->dp->tunnel_key);
-
-        if (!ld) {
-            continue;
-        }
-
-        if (ld->localnet_port) {
-            /* XXX: actually handle this incrementally. */
-            return EN_UNHANDLED;
-        }
-
-        /* The localnet port might also have been removed. */
-        struct tracked_lport *tlp;
-        struct shash_node *sn;
-        SHASH_FOR_EACH (sn, &tdp->lports) {
-            tlp = sn->data;
-            if (!strcmp(tlp->pb->type, "localnet")) {
-                return EN_UNHANDLED;
-            }
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-struct ed_type_host_if_monitor {
-    /* For incremental processing this could be tracked per interface in
-     * the future. */
-    bool changed;
-};
-
-static void *
-en_host_if_monitor_init(struct engine_node *node OVS_UNUSED,
-                       struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_host_if_monitor *hifm = xmalloc(sizeof *hifm);
-
-    *hifm = (struct ed_type_host_if_monitor) {
-        .changed = true,
-    };
-    return hifm;
-}
-
-static void
-en_host_if_monitor_cleanup(void *data OVS_UNUSED)
-{
-}
-
-static enum engine_node_state
-en_host_if_monitor_run(struct engine_node *node OVS_UNUSED, void *data)
-{
-    struct ed_type_host_if_monitor *hifm = data;
-    enum engine_node_state state;
-    if (hifm->changed) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
-    }
-    hifm->changed = false;
-    return state;
-}
-
-struct ed_type_neighbor {
-    /* Contains struct neighbor_interface_monitor pointers. */
-    struct vector monitored_interfaces;
-    /* Contains set of PB names that are currently advertised. */
-    struct sset advertised_pbs;
-};
-
-static void *
-en_neighbor_init(struct engine_node *node OVS_UNUSED,
-                 struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_neighbor *data = xzalloc(sizeof *data);
-
-    *data = (struct ed_type_neighbor) {
-        .monitored_interfaces =
-            VECTOR_EMPTY_INITIALIZER(struct neighbor_interface_monitor *),
-        .advertised_pbs = SSET_INITIALIZER(&data->advertised_pbs),
-    };
-    return data;
-}
-
-static void
-en_neighbor_cleanup(void *data)
-{
-    struct ed_type_neighbor *ne_data = data;
-
-    neighbor_cleanup(&ne_data->monitored_interfaces);
-    vector_destroy(&ne_data->monitored_interfaces);
-    sset_destroy(&ne_data->advertised_pbs);
-}
-
-static enum engine_node_state
-en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
-{
-    struct ed_type_neighbor *ne_data = data;
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_port_binding", node),
-            "datapath");
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_port_binding", node),
-            "name");
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_chassis", node),
-            "name");
-    struct ovsdb_idl_index *sbrec_advertised_mac_binding_by_datapath =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_advertised_mac_binding", node),
-            "datapath");
-
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-    const struct sbrec_chassis *chassis =
-        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    struct neighbor_ctx_in n_ctx_in = {
-        .local_datapaths = &rt_data->local_datapaths,
-        .sbrec_pb_by_dp = sbrec_port_binding_by_datapath,
-        .sbrec_amb_by_dp = sbrec_advertised_mac_binding_by_datapath,
-        .sbrec_pb_by_name = sbrec_port_binding_by_name,
-        .chassis = chassis,
-    };
-
-    struct neighbor_ctx_out n_ctx_out = {
-        .monitored_interfaces = &ne_data->monitored_interfaces,
-        .advertised_pbs = &ne_data->advertised_pbs,
-    };
-
-    neighbor_cleanup(&ne_data->monitored_interfaces);
-    sset_clear(&ne_data->advertised_pbs);
-    neighbor_run(&n_ctx_in, &n_ctx_out);
-
-    return EN_UPDATED;
-}
-
-static enum engine_input_handler_result
-neighbor_runtime_data_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_neighbor *ne_data = data;
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-    struct ovsdb_idl_index *sbrec_port_binding_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_port_binding", node),
-            "name");
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    struct ovsdb_idl_index *sbrec_chassis_by_name =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_chassis", node),
-            "name");
-
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    ovs_assert(chassis_id);
-    const struct sbrec_chassis *chassis =
-        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-    ovs_assert(chassis);
-
-    /* There are no tracked data. Fall back to full recompute. */
-    if (!rt_data->tracked) {
-        return EN_UNHANDLED;
-    }
-
-    struct tracked_datapath *tdp;
-    HMAP_FOR_EACH (tdp, node, &rt_data->tracked_dp_bindings) {
-        struct local_datapath *ld =
-            get_local_datapath(&rt_data->local_datapaths, tdp->dp->tunnel_key);
-        if (!ld || !ld->is_switch) {
-            continue;
-        }
-
-        int64_t vni = ovn_smap_get_llong(&tdp->dp->external_ids,
-                                         "dynamic-routing-vni", -1);
-        if (!ovn_is_valid_vni(vni)) {
-            continue;
-        }
-
-        if (tdp->tracked_type == TRACKED_RESOURCE_NEW ||
-            tdp->tracked_type == TRACKED_RESOURCE_REMOVED) {
-            return EN_UNHANDLED;
-        }
-
-        enum neigh_redistribute_mode mode =
-            parse_neigh_dynamic_redistribute(&ld->datapath->external_ids);
-        if (mode == NRM_NONE) {
-            continue;
-        }
-
-        const struct shash_node *shash_node;
-        SHASH_FOR_EACH (shash_node, &tdp->lports) {
-            if (neighbor_is_relevant_port_updated(sbrec_port_binding_by_name,
-                                                  chassis,
-                                                  &ne_data->advertised_pbs,
-                                                  shash_node->data)) {
-                return EN_UNHANDLED;
-            }
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-neighbor_sb_datapath_binding_handler(struct engine_node *node,
-                                     void *data OVS_UNUSED)
-{
-    const struct sbrec_datapath_binding_table *dp_table =
-        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-
-    const struct sbrec_datapath_binding *dp;
-    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
-        if (sbrec_datapath_binding_is_new(dp) ||
-            sbrec_datapath_binding_is_deleted(dp)) {
-            /* We are reflecting only datapaths that are becoming or are
-             * removed from being local, that is taken care of by runtime_data
-             * handler. */
-           return EN_HANDLED_UNCHANGED;
-        }
-
-        struct local_datapath *ld =
-            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
-        if (!ld || !ld->is_switch) {
-            continue;
-        }
-
-        if (sbrec_datapath_binding_is_updated(
-                dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-neighbor_sb_port_binding_handler(struct engine_node *node, void *data)
-{
-    struct ed_type_neighbor *ne_data = data;
-    const struct sbrec_port_binding_table *pb_table =
-        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
-
-    const struct sbrec_port_binding *pb;
-    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, pb_table) {
-        if (sbrec_port_binding_is_new(pb) ||
-            sbrec_port_binding_is_deleted(pb)) {
-            /* The removal and addition is handled via runtime_data. */
-            return EN_HANDLED_UNCHANGED;
-        }
-
-        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_MAC) &&
-            sset_contains(&ne_data->advertised_pbs, pb->logical_port)) {
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-struct ed_type_neighbor_table_notify {
-    /* For incremental processing this could be tracked per interface in
-     * the future. */
-    bool changed;
-};
-
-static void *
-en_neighbor_table_notify_init(struct engine_node *node OVS_UNUSED,
-                              struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_neighbor_table_notify *ntn = xmalloc(sizeof *ntn);
-
-    *ntn = (struct ed_type_neighbor_table_notify) {
-        .changed = true,
-    };
-    return ntn;
-}
-
-static void
-en_neighbor_table_notify_cleanup(void *data OVS_UNUSED)
-{
-}
-
-static enum engine_node_state
-en_neighbor_table_notify_run(struct engine_node *node OVS_UNUSED,
-                             void *data)
-{
-    struct ed_type_neighbor_table_notify *ntn = data;
-    enum engine_node_state state;
-    if (ntn->changed) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
-    }
-    ntn->changed = false;
-    return state;
-}
-
-struct ed_type_neighbor_exchange {
-    /* Contains 'struct evpn_remote_vtep'. */
-    struct hmap remote_vteps;
-    /* Contains 'struct evpn_static_entry', remote FDB entries learned through
-     * EVPN. */
-    struct hmap static_fdbs;
-    /* Contains 'struct evpn_static_entry', remote ARP entries learned through
-     * EVPN. */
-    struct hmap static_arps;
-};
-
-static void *
-en_neighbor_exchange_init(struct engine_node *node OVS_UNUSED,
-                          struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_neighbor_exchange *data = xmalloc(sizeof *data);
-    *data = (struct ed_type_neighbor_exchange) {
-        .remote_vteps = HMAP_INITIALIZER(&data->remote_vteps),
-        .static_fdbs = HMAP_INITIALIZER(&data->static_fdbs),
-        .static_arps = HMAP_INITIALIZER(&data->static_arps),
-    };
-
-    return data;
-}
-
-static void
-en_neighbor_exchange_cleanup(void *data_)
-{
-    struct ed_type_neighbor_exchange *data = data_;
-    evpn_remote_vteps_clear(&data->remote_vteps);
-    evpn_static_entries_clear(&data->static_fdbs);
-    evpn_static_entries_clear(&data->static_arps);
-    hmap_destroy(&data->remote_vteps);
-    hmap_destroy(&data->static_fdbs);
-    hmap_destroy(&data->static_arps);
-}
-
-static enum engine_node_state
-en_neighbor_exchange_run(struct engine_node *node, void *data_)
-{
-    struct ed_type_neighbor_exchange *data = data_;
-    const struct ed_type_neighbor *neighbor_data =
-        engine_get_input_data("neighbor", node);
-
-    evpn_remote_vteps_clear(&data->remote_vteps);
-    evpn_static_entries_clear(&data->static_fdbs);
-    evpn_static_entries_clear(&data->static_arps);
-
-    struct neighbor_exchange_ctx_in n_ctx_in = {
-        .monitored_interfaces = &neighbor_data->monitored_interfaces,
-    };
-    struct neighbor_exchange_ctx_out n_ctx_out = {
-        .neighbor_table_watches =
-            HMAP_INITIALIZER(&n_ctx_out.neighbor_table_watches),
-        .remote_vteps = &data->remote_vteps,
-        .static_fdbs = &data->static_fdbs,
-        .static_arps = &data->static_arps,
-    };
-
-    neighbor_exchange_run(&n_ctx_in, &n_ctx_out);
-    neighbor_table_notify_update_watches(&n_ctx_out.neighbor_table_watches);
-
-    neighbor_table_watch_request_cleanup(&n_ctx_out.neighbor_table_watches);
-    hmap_destroy(&n_ctx_out.neighbor_table_watches);
-
-    return EN_UPDATED;
-}
-
-struct ed_type_neighbor_exchange_status {
-    bool netlink_trigger_run;
-};
-
-static void *
-en_neighbor_exchange_status_init(struct engine_node *node OVS_UNUSED,
-                                 struct engine_arg *arg OVS_UNUSED)
-{
-    return xzalloc(sizeof(struct ed_type_neighbor_exchange_status));
-}
-
-static void
-en_neighbor_exchange_status_cleanup(void *data OVS_UNUSED)
-{
-}
-
-static enum engine_node_state
-en_neighbor_exchange_status_run(struct engine_node *node OVS_UNUSED,
-                                void *data OVS_UNUSED)
-{
-    struct ed_type_neighbor_exchange_status *res = data;
-    enum engine_node_state state;
-
-    if (res->netlink_trigger_run) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
-    }
-    res->netlink_trigger_run = false;
-
-    return state;
-}
-
-static void *
-en_evpn_vtep_binding_init(struct engine_node *node OVS_UNUSED,
-                          struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_evpn_vtep_binding *data = xmalloc(sizeof *data);
-    *data = (struct ed_type_evpn_vtep_binding) {
-        .bindings = HMAP_INITIALIZER(&data->bindings),
-        .updated_bindings = HMAPX_INITIALIZER(&data->updated_bindings),
-        .removed_bindings = UUIDSET_INITIALIZER(&data->removed_bindings),
-        .datapaths = HMAP_INITIALIZER(&data->datapaths),
-        .multicast_groups = HMAP_INITIALIZER(&data->multicast_groups),
-        .updated_multicast_groups =
-            HMAPX_INITIALIZER(&data->updated_multicast_groups),
-        .removed_multicast_groups =
-            UUIDSET_INITIALIZER(&data->removed_multicast_groups),
-        .tunnel_keys = HMAP_INITIALIZER(&data->tunnel_keys),
-    };
-
-    return data;
-}
-
-static void
-en_evpn_vtep_binding_clear_tracked_data(void *data_)
-{
-    struct ed_type_evpn_vtep_binding *data = data_;
-    hmapx_clear(&data->updated_bindings);
-    uuidset_clear(&data->removed_bindings);
-    evpn_datapaths_clear(&data->datapaths);
-    hmapx_clear(&data->updated_multicast_groups);
-    uuidset_clear(&data->removed_multicast_groups);
-}
-
-static void
-en_evpn_vtep_binding_cleanup(void *data_)
-{
-    struct ed_type_evpn_vtep_binding *data = data_;
-    evpn_bindings_destroy(&data->bindings);
-    hmapx_destroy(&data->updated_bindings);
-    uuidset_destroy(&data->removed_bindings);
-    evpn_datapaths_destroy(&data->datapaths);
-    evpn_multicast_groups_destroy(&data->multicast_groups);
-    hmapx_clear(&data->updated_multicast_groups);
-    uuidset_clear(&data->removed_multicast_groups);
-    ovn_destroy_tnlids(&data->tunnel_keys);
-}
-
-static enum engine_node_state
-en_evpn_vtep_binding_run(struct engine_node *node, void *data_)
-{
-    struct ed_type_evpn_vtep_binding *data = data_;
-    const struct ed_type_neighbor_exchange *ne_data =
-        engine_get_input_data("neighbor_exchange", node);
-    const struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
-    const struct ovsrec_bridge_table *bridge_table =
-        EN_OVSDB_GET(engine_get_input("OVS_bridge", node));
-    const struct ovsrec_bridge *br_int = get_br_int(bridge_table, ovs_table);
-
-    struct evpn_binding_ctx_in b_ctx_in = {
-        .br_int = br_int,
-        .local_datapaths = &rt_data->local_datapaths,
-        .remote_vteps = &ne_data->remote_vteps,
-    };
-
-    struct evpn_binding_ctx_out b_ctx_out = {
-        .bindings = &data->bindings,
-        .updated_bindings = &data->updated_bindings,
-        .removed_bindings = &data->removed_bindings,
-        .datapaths = &data->datapaths,
-        .multicast_groups = &data->multicast_groups,
-        .updated_multicast_groups = &data->updated_multicast_groups,
-        .removed_multicast_groups = &data->removed_multicast_groups,
-        .tunnel_keys = &data->tunnel_keys,
-    };
-
-    evpn_binding_run(&b_ctx_in, &b_ctx_out);
-
-    if (hmapx_count(&data->updated_bindings) ||
-        uuidset_count(&data->removed_bindings) ||
-        hmapx_count(&data->updated_multicast_groups) ||
-        uuidset_count(&data->removed_multicast_groups)) {
-        return EN_UPDATED;
-    }
-
-    return EN_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-evpn_vtep_binding_ovs_interface_handler(struct engine_node *node,
-                                        void *data OVS_UNUSED)
-{
-    const struct ovsrec_interface_table *iface_table =
-        EN_OVSDB_GET(engine_get_input("OVS_interface", node));
-
-    const struct ovsrec_interface *iface;
-    OVSREC_INTERFACE_TABLE_FOR_EACH_TRACKED (iface, iface_table) {
-        if (!smap_get_bool(&iface->external_ids, "ovn-evpn-tunnel", false)) {
-            continue;
-        }
-
-        if (ovsrec_interface_is_new(iface) ||
-            ovsrec_interface_is_deleted(iface) ||
-            ovsrec_interface_is_updated(iface, OVSREC_INTERFACE_COL_OFPORT)) {
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-evpn_vtep_binding_datapath_binding_handler(struct engine_node *node,
-                                           void *data OVS_UNUSED)
-{
-    const struct sbrec_datapath_binding_table *dp_table =
-        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
-    const struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
-
-    const struct sbrec_datapath_binding *dp;
-    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
-        if (sbrec_datapath_binding_is_new(dp) ||
-            sbrec_datapath_binding_is_deleted(dp)) {
-            /* The removal and addition is handled via the
-             * en_neighbor_exchange I-P node. */
-            return EN_HANDLED_UNCHANGED;
-        }
-
-        struct local_datapath *ld =
-            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
-        if (!ld || !ld->is_switch) {
-            continue;
-        }
-
-        int64_t vni = ovn_smap_get_llong(&dp->external_ids,
-                                         "dynamic-routing-vni", -1);
-        if (!ovn_is_valid_vni(vni)) {
-            continue;
-        }
-
-        if (sbrec_datapath_binding_is_updated(
-                dp, SBREC_DATAPATH_BINDING_COL_TUNNEL_KEY)) {
-            return EN_UNHANDLED;
-        }
-    }
-
-    return EN_HANDLED_UNCHANGED;
-}
-
-static void *
-en_evpn_fdb_init(struct engine_node *node OVS_UNUSED,
-                 struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_evpn_fdb *data = xmalloc(sizeof *data);
-    *data = (struct ed_type_evpn_fdb) {
-        .fdbs = HMAP_INITIALIZER(&data->fdbs),
-        .updated_fdbs = HMAPX_INITIALIZER(&data->updated_fdbs),
-        .removed_fdbs = UUIDSET_INITIALIZER(&data->removed_fdbs),
-    };
-
-    return data;
-}
-
-static void
-en_evpn_fdb_clear_tracked_data(void *data_)
-{
-    struct ed_type_evpn_fdb *data = data_;
-    hmapx_clear(&data->updated_fdbs);
-    uuidset_clear(&data->removed_fdbs);
-}
-
-static void
-en_evpn_fdb_cleanup(void *data_)
-{
-    struct ed_type_evpn_fdb *data = data_;
-    evpn_fdbs_destroy(&data->fdbs);
-    hmapx_destroy(&data->updated_fdbs);
-    uuidset_destroy(&data->removed_fdbs);
-}
-
-static enum engine_node_state
-en_evpn_fdb_run(struct engine_node *node, void *data_)
-{
-    struct ed_type_evpn_fdb *data = data_;
-    const struct ed_type_neighbor_exchange *ne_data =
-        engine_get_input_data("neighbor_exchange", node);
-    const struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_input_data("evpn_vtep_binding", node);
-
-    struct evpn_fdb_ctx_in f_ctx_in = {
-        .static_fdbs = &ne_data->static_fdbs,
-        .bindings = &eb_data->bindings,
-    };
-
-    struct evpn_fdb_ctx_out f_ctx_out = {
-        .fdbs = &data->fdbs,
-        .updated_fdbs = &data->updated_fdbs,
-        .removed_fdbs = &data->removed_fdbs,
-    };
-
-    evpn_fdb_run(&f_ctx_in, &f_ctx_out);
-
-    if (hmapx_count(&data->updated_fdbs) ||
-        uuidset_count(&data->removed_fdbs)) {
-        return EN_UPDATED;
-    }
-
-    return EN_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-evpn_fdb_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
-{
-    const struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_input_data("evpn_vtep_binding", node);
-
-    if (hmapx_is_empty(&eb_data->updated_bindings) &&
-        uuidset_is_empty(&eb_data->removed_bindings)) {
-        return EN_HANDLED_UNCHANGED;
-    }
-
-    return EN_UNHANDLED;
-}
-
-static void *
-en_evpn_arp_init(struct engine_node *node OVS_UNUSED,
-                 struct engine_arg *arg OVS_UNUSED)
-{
-    struct ed_type_evpn_arp *data = xmalloc(sizeof *data);
-    *data = (struct ed_type_evpn_arp) {
-        .arps = HMAP_INITIALIZER(&data->arps),
-        .updated_arps = HMAPX_INITIALIZER(&data->updated_arps),
-        .removed_arps = UUIDSET_INITIALIZER(&data->removed_arps),
-    };
-
-    return data;
-}
-
-static void
-en_evpn_arp_clear_tracked_data(void *data_)
-{
-    struct ed_type_evpn_arp *data = data_;
-    hmapx_clear(&data->updated_arps);
-    uuidset_clear(&data->removed_arps);
-}
-
-static void
-en_evpn_arp_cleanup(void *data_)
-{
-    struct ed_type_evpn_arp *data = data_;
-    evpn_arps_destroy(&data->arps);
-    hmapx_destroy(&data->updated_arps);
-    uuidset_destroy(&data->removed_arps);
-}
-
-static enum engine_node_state
-en_evpn_arp_run(struct engine_node *node, void *data_)
-{
-    struct ed_type_evpn_arp *data = data_;
-    const struct ed_type_neighbor_exchange *ne_data =
-        engine_get_input_data("neighbor_exchange", node);
-    const struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_input_data("evpn_vtep_binding", node);
-
-    struct evpn_arp_ctx_in f_ctx_in = {
-        .datapaths = &eb_data->datapaths,
-        .static_arps = &ne_data->static_arps,
-    };
-
-    struct evpn_arp_ctx_out f_ctx_out = {
-        .arps = &data->arps,
-        .updated_arps = &data->updated_arps,
-        .removed_arps = &data->removed_arps,
-    };
-
-    evpn_arp_run(&f_ctx_in, &f_ctx_out);
-
-    if (hmapx_count(&data->updated_arps) ||
-        uuidset_count(&data->removed_arps)) {
-        return EN_UPDATED;
-    }
-
-    return EN_UNCHANGED;
-}
-
-static enum engine_input_handler_result
-evpn_arp_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
-{
-    const struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_input_data("evpn_vtep_binding", node);
-
-    if (hmapx_is_empty(&eb_data->updated_bindings) &&
-        uuidset_is_empty(&eb_data->removed_bindings)) {
-        return EN_HANDLED_UNCHANGED;
-    }
-
-    return EN_UNHANDLED;
-}
-
-/* Define engine node functions for nodes that represent SB tables.
- *
- * en_sb_<TABLE_NAME>_run()
- * en_sb_<TABLE_NAME>_init()
- * en_sb_<TABLE_NAME>_cleanup()
- * en_sb_<TABLE_NAME>_compute_failure_info()
- */
-#define SB_NODES \
-    SB_NODE(sb_global) \
-    SB_NODE(chassis) \
-    SB_NODE(ha_chassis_group) \
-    SB_NODE(encap) \
-    SB_NODE(address_set) \
-    SB_NODE(port_group) \
-    SB_NODE(multicast_group) \
-    SB_NODE(datapath_binding) \
-    SB_NODE(logical_dp_group) \
-    SB_NODE(port_binding) \
-    SB_NODE(mac_binding) \
-    SB_NODE(logical_flow) \
-    SB_NODE(dhcp_options) \
-    SB_NODE(dhcpv6_options) \
-    SB_NODE(dns) \
-    SB_NODE(load_balancer) \
-    SB_NODE(fdb) \
-    SB_NODE(meter) \
-    SB_NODE(static_mac_binding) \
-    SB_NODE(chassis_template_var) \
-    SB_NODE(acl_id) \
-    SB_NODE(advertised_route) \
-    SB_NODE(learned_route) \
-    SB_NODE(advertised_mac_binding)
-
-enum sb_engine_node {
-#define SB_NODE(NAME) SB_##NAME,
-    SB_NODES
-#undef SB_NODE
-};
-
-#define SB_NODE(NAME) ENGINE_FUNC_SB(NAME);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_port_binding_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ssl_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_gateway_chassis_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ha_chassis_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_ha_chassis_group_col_external_ids);
+
+    /* We don't want to monitor Connection table at all. So omit all the
+     * columns. */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_external_ids);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_inactivity_probe);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_is_connected);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_max_backoff);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_other_config);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_read_only);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_role);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
+    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
+
+    /* Omit alerts to the Chassis external_ids column, the configuration
+     * from the local open_vswitch table has now being moved to the
+     * other_config column so we no longer need to monitor it */
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
+
+    /* Do not monitor Chassis_Private external_ids */
+    ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                   &sbrec_chassis_private_col_external_ids);
+
+    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, NULL, false);
+
+    stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(PINCTRL_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(PATCH_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(CT_ZONE_COMMIT_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(IF_STATUS_MGR_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(OFCTRL_SEQNO_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
+    stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
+
+    /* Define inc-proc-engine nodes. */
+    ENGINE_NODE(sb_ro, "sb_ro");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(template_vars, "template_vars");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA_IS_VALID(ct_zones, "ct_zones");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ovs_interface_shadow,
+                                      "ovs_interface_shadow");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(runtime_data, "runtime_data");
+    ENGINE_NODE(non_vif_data, "non_vif_data");
+    ENGINE_NODE(mff_ovn_geneve, "mff_ovn_geneve");
+    ENGINE_NODE(ofctrl_is_connected, "ofctrl_is_connected");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(activated_ports, "activated_ports");
+    ENGINE_NODE(postponed_ports, "postponed_ports");
+    ENGINE_NODE(pflow_output, "physical_flow_output");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lflow_output, "logical_flow_output");
+    ENGINE_NODE(controller_output, "controller_output");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(addr_sets, "addr_sets");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(port_groups, "port_groups");
+    ENGINE_NODE(northd_options, "northd_options");
+    ENGINE_NODE(dhcp_options, "dhcp_options");
+    ENGINE_NODE(if_status_mgr, "if_status_mgr");
+    ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
+    ENGINE_NODE(mac_cache, "mac_cache");
+    ENGINE_NODE(bfd_chassis, "bfd_chassis");
+    ENGINE_NODE(dns_cache, "dns_cache");
+
+#define SB_NODE(NAME, NAME_STR) ENGINE_NODE_SB(NAME, NAME_STR);
     SB_NODES
 #undef SB_NODE
 
-/* Define engine node functions for nodes that represent OVS tables.
- *
- * en_ovs_<TABLE_NAME>_run()
- * en_ovs_<TABLE_NAME>_init()
- * en_ovs_<TABLE_NAME>_cleanup()
- * en_ovs_<TABLE_NAME>_compute_failure_info()
- */
-#define OVS_NODES \
-    OVS_NODE(open_vswitch) \
-    OVS_NODE(bridge) \
-    OVS_NODE(port) \
-    OVS_NODE(interface) \
-    OVS_NODE(qos) \
-    OVS_NODE(queue) \
-    OVS_NODE(flow_sample_collector_set)
-
-enum ovs_engine_node {
-#define OVS_NODE(NAME) OVS_##NAME,
-    OVS_NODES
-#undef OVS_NODE
-};
-
-#define OVS_NODE(NAME) ENGINE_FUNC_OVS(NAME);
+#define OVS_NODE(NAME, NAME_STR) ENGINE_NODE_OVS(NAME, NAME_STR);
     OVS_NODES
 #undef OVS_NODE
 
-/* Define engine nodes for SB and OVS tables.
- *
- * struct engine_node en_sb_<TABLE_NAME>
- * struct engine_node en_ovs_<TABLE_NAME>
- *
- * Define nodes as static to avoid sparse errors.
- */
-#define SB_NODE(NAME) static ENGINE_NODE_SB(NAME);
-    SB_NODES
-#undef SB_NODE
-
-#define OVS_NODE(NAME) static ENGINE_NODE_OVS(NAME);
-    OVS_NODES
-#undef OVS_NODE
-
-/* Define engine nodes for other nodes. They should be defined as static to
- * avoid sparse errors. */
-static ENGINE_NODE(sb_ro);
-static ENGINE_NODE(template_vars, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(ct_zones, CLEAR_TRACKED_DATA, IS_VALID);
-static ENGINE_NODE(ovs_interface_shadow, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(runtime_data, CLEAR_TRACKED_DATA, SB_WRITE);
-static ENGINE_NODE(non_vif_data);
-static ENGINE_NODE(mff_ovn_geneve);
-static ENGINE_NODE(ofctrl_is_connected);
-static ENGINE_NODE(activated_ports, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(postponed_ports);
-static ENGINE_NODE(pflow_output);
-static ENGINE_NODE(lflow_output, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(controller_output);
-static ENGINE_NODE(addr_sets, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(port_groups, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(northd_options);
-static ENGINE_NODE(dhcp_options);
-static ENGINE_NODE(if_status_mgr);
-static ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(mac_cache);
-static ENGINE_NODE(bfd_chassis);
-static ENGINE_NODE(dns_cache);
-static ENGINE_NODE(acl_id, IS_VALID);
-static ENGINE_NODE(route);
-static ENGINE_NODE(route_table_notify);
-static ENGINE_NODE(route_exchange, SB_WRITE);
-static ENGINE_NODE(route_exchange_status);
-static ENGINE_NODE(garp_rarp, SB_WRITE);
-static ENGINE_NODE(host_if_monitor);
-static ENGINE_NODE(neighbor);
-static ENGINE_NODE(neighbor_table_notify);
-static ENGINE_NODE(neighbor_exchange);
-static ENGINE_NODE(neighbor_exchange_status);
-static ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(evpn_fdb, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(evpn_arp, CLEAR_TRACKED_DATA);
-
-static void
-inc_proc_ovn_controller_init(
-    struct ovsdb_idl_loop *sb_idl_loop, struct ovsdb_idl_loop *ovs_idl_loop,
-    struct ovsdb_idl_index *sbrec_chassis_by_name,
-    struct ovsdb_idl_index *sbrec_port_binding_by_name,
-    struct ovsdb_idl_index *sbrec_port_binding_by_key,
-    struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
-    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id,
-    struct ovsdb_idl_index *ovsrec_port_by_qos,
-    struct ovsdb_idl_index *ovsrec_interface_by_name,
-    struct ovsdb_idl_index *ovsrec_queue_by_external_ids)
-{
-    /* Define relationships between nodes where first argument is dependent
-     * on the second argument. */
-
+    /* Add dependencies between inc-proc-engine nodes. */
     engine_add_input(&en_template_vars, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_template_vars, &en_sb_chassis, NULL);
     engine_add_input(&en_template_vars, &en_sb_chassis_template_var,
@@ -6667,27 +5117,6 @@ inc_proc_ovn_controller_init(
                      lb_data_template_var_handler);
     engine_add_input(&en_lb_data, &en_runtime_data,
                      lb_data_runtime_data_handler);
-
-    engine_add_input(&en_route, &en_ovs_open_vswitch, NULL);
-    engine_add_input(&en_route, &en_sb_chassis, NULL);
-    engine_add_input(&en_route, &en_sb_port_binding,
-                     route_sb_port_binding_data_handler);
-    engine_add_input(&en_route, &en_runtime_data,
-                     route_runtime_data_handler);
-    engine_add_input(&en_route, &en_sb_advertised_route,
-                     route_sb_advertised_route_data_handler);
-    engine_add_input(&en_route, &en_sb_datapath_binding,
-                     route_sb_datapath_binding_handler);
-
-    engine_add_input(&en_route_exchange, &en_route, NULL);
-    engine_add_input(&en_route_exchange, &en_sb_learned_route,
-                     engine_noop_handler);
-    engine_add_input(&en_route_exchange, &en_sb_port_binding,
-                     engine_noop_handler);
-    engine_add_input(&en_route_exchange, &en_route_table_notify, NULL);
-    engine_add_input(&en_route_exchange, &en_route_exchange_status, NULL);
-    engine_add_input(&en_route_exchange, &en_sb_ro,
-                     route_exchange_sb_ro_handler);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);
@@ -6707,6 +5136,7 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_if_status_mgr, &en_ovs_interface,
                      if_status_mgr_ovs_interface_handler);
     engine_add_input(&en_bfd_chassis, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_bfd_chassis, &en_sb_sb_global, NULL);
     engine_add_input(&en_bfd_chassis, &en_sb_chassis, NULL);
     engine_add_input(&en_bfd_chassis, &en_sb_ha_chassis_group, NULL);
 
@@ -6863,60 +5293,6 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_dns_cache, &en_sb_dns,
                      dns_cache_sb_dns_handler);
 
-    engine_add_input(&en_garp_rarp, &en_ovs_open_vswitch, NULL);
-    engine_add_input(&en_garp_rarp, &en_sb_chassis, NULL);
-    engine_add_input(&en_garp_rarp, &en_sb_port_binding,
-                     garp_rarp_sb_port_binding_handler);
-    engine_add_input(&en_garp_rarp, &en_sb_datapath_binding,
-                     garp_rarp_sb_datapath_binding_handler);
-    /* The mac_binding data is just used in an index to filter duplicates when
-     * inserting data to the southbound. */
-    engine_add_input(&en_garp_rarp, &en_sb_mac_binding, engine_noop_handler);
-    engine_add_input(&en_garp_rarp, &en_runtime_data,
-                     garp_rarp_runtime_data_handler);
-
-    engine_add_input(&en_neighbor, &en_ovs_open_vswitch, NULL);
-    engine_add_input(&en_neighbor, &en_sb_chassis, NULL);
-    engine_add_input(&en_neighbor, &en_sb_advertised_mac_binding, NULL);
-    engine_add_input(&en_neighbor, &en_runtime_data,
-                     neighbor_runtime_data_handler);
-    engine_add_input(&en_neighbor, &en_sb_datapath_binding,
-                     neighbor_sb_datapath_binding_handler);
-    engine_add_input(&en_neighbor, &en_sb_port_binding,
-                     neighbor_sb_port_binding_handler);
-    engine_add_input(&en_neighbor_exchange, &en_neighbor, NULL);
-    engine_add_input(&en_neighbor_exchange, &en_host_if_monitor, NULL);
-    engine_add_input(&en_neighbor_exchange, &en_neighbor_table_notify, NULL);
-    engine_add_input(&en_neighbor_exchange, &en_neighbor_exchange_status,
-                     NULL);
-
-    engine_add_input(&en_evpn_vtep_binding, &en_ovs_open_vswitch, NULL);
-    engine_add_input(&en_evpn_vtep_binding, &en_ovs_bridge, NULL);
-    engine_add_input(&en_evpn_vtep_binding, &en_neighbor_exchange, NULL);
-    /* The runtime_data are needed only for local datapaths, any update of
-     * local datapath will be reflected via en_neighbor_exchange. */
-    engine_add_input(&en_evpn_vtep_binding, &en_runtime_data,
-                     engine_noop_handler);
-    engine_add_input(&en_evpn_vtep_binding, &en_ovs_interface,
-                     evpn_vtep_binding_ovs_interface_handler);
-    engine_add_input(&en_evpn_vtep_binding, &en_sb_datapath_binding,
-                     evpn_vtep_binding_datapath_binding_handler);
-
-    engine_add_input(&en_evpn_fdb, &en_neighbor_exchange, NULL);
-    engine_add_input(&en_evpn_fdb, &en_evpn_vtep_binding,
-                     evpn_fdb_vtep_binding_handler);
-
-    engine_add_input(&en_evpn_arp, &en_neighbor_exchange, NULL);
-    engine_add_input(&en_evpn_arp, &en_evpn_vtep_binding,
-                     evpn_arp_vtep_binding_handler);
-
-    engine_add_input(&en_pflow_output, &en_evpn_vtep_binding,
-                     pflow_output_evpn_binding_handler);
-    engine_add_input(&en_pflow_output, &en_evpn_fdb,
-                     pflow_output_fdb_handler);
-    engine_add_input(&en_pflow_output, &en_evpn_arp,
-                     pflow_output_arp_handler);
-
     engine_add_input(&en_controller_output, &en_dns_cache,
                      NULL);
     engine_add_input(&en_controller_output, &en_lflow_output,
@@ -6927,92 +5303,36 @@ inc_proc_ovn_controller_init(
                      controller_output_mac_cache_handler);
     engine_add_input(&en_controller_output, &en_bfd_chassis,
                      controller_output_bfd_chassis_handler);
-    engine_add_input(&en_controller_output, &en_route_exchange,
-                     controller_output_route_exchange_handler);
-    engine_add_input(&en_controller_output, &en_garp_rarp,
-                     controller_output_garp_rarp_handler);
-
-    engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
-    engine_add_input(&en_controller_output, &en_acl_id,
-                     controller_output_acl_id_handler);
 
     struct engine_arg engine_arg = {
-        .sb_idl = sb_idl_loop->idl,
-        .ovs_idl = ovs_idl_loop->idl,
+        .sb_idl = ovnsb_idl_loop.idl,
+        .ovs_idl = ovs_idl_loop.idl,
     };
     engine_init(&en_controller_output, &engine_arg);
 
     engine_ovsdb_node_add_index(&en_sb_chassis, "name", sbrec_chassis_by_name);
-    struct ovsdb_idl_index *sbrec_multicast_group_by_name_datapath
-        = mcast_group_index_create(sb_idl_loop->idl);
     engine_ovsdb_node_add_index(&en_sb_multicast_group, "name_datapath",
                                 sbrec_multicast_group_by_name_datapath);
-
-    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_datapath
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_logical_flow_col_logical_datapath);
     engine_ovsdb_node_add_index(&en_sb_logical_flow, "logical_datapath",
                                 sbrec_logical_flow_by_logical_datapath);
-
-    struct ovsdb_idl_index *sbrec_logical_flow_by_logical_dp_group
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_logical_flow_col_logical_dp_group);
     engine_ovsdb_node_add_index(&en_sb_logical_flow, "logical_dp_group",
                                 sbrec_logical_flow_by_logical_dp_group);
-
     engine_ovsdb_node_add_index(&en_sb_port_binding, "name",
                                 sbrec_port_binding_by_name);
-
     engine_ovsdb_node_add_index(&en_sb_port_binding, "key",
                                 sbrec_port_binding_by_key);
-
-    struct ovsdb_idl_index *sbrec_port_binding_by_datapath
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_port_binding_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_port_binding, "datapath",
                                 sbrec_port_binding_by_datapath);
-
     engine_ovsdb_node_add_index(&en_sb_datapath_binding, "key",
                                 sbrec_datapath_binding_by_key);
-
-    struct ovsdb_idl_index *sbrec_fdb_by_dp_key
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_fdb_col_dp_key);
     engine_ovsdb_node_add_index(&en_sb_fdb, "dp_key",
                                 sbrec_fdb_by_dp_key);
-
-    struct ovsdb_idl_index *sbrec_mac_binding_by_datapath
-        = mac_binding_by_datapath_index_create(sb_idl_loop->idl);
     engine_ovsdb_node_add_index(&en_sb_mac_binding, "datapath",
                                 sbrec_mac_binding_by_datapath);
-
-    struct ovsdb_idl_index *sbrec_static_mac_binding_by_datapath
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_static_mac_binding_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_static_mac_binding, "datapath",
                                 sbrec_static_mac_binding_by_datapath);
-
-    struct ovsdb_idl_index *sbrec_chassis_template_var_index_by_chassis
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_chassis_template_var_col_chassis);
     engine_ovsdb_node_add_index(&en_sb_chassis_template_var, "chassis",
                                 sbrec_chassis_template_var_index_by_chassis);
-
-    struct ovsdb_idl_index *sbrec_learned_route_index_by_datapath
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_learned_route_col_datapath);
-    engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
-                                sbrec_learned_route_index_by_datapath);
-
-    struct ovsdb_idl_index *sbrec_advertised_mac_binding_index_by_dp
-        = ovsdb_idl_index_create1(sb_idl_loop->idl,
-                                  &sbrec_advertised_mac_binding_col_datapath);
-    engine_ovsdb_node_add_index(&en_sb_advertised_mac_binding, "datapath",
-                                sbrec_advertised_mac_binding_index_by_dp);
-
-    engine_ovsdb_node_add_index(&en_sb_mac_binding, "lport_ip",
-                                sbrec_mac_binding_by_lport_ip);
-
     engine_ovsdb_node_add_index(&en_ovs_flow_sample_collector_set, "id",
                                 ovsrec_flow_sample_collector_set_by_id);
     engine_ovsdb_node_add_index(&en_ovs_port, "qos", ovsrec_port_by_qos);
@@ -7020,288 +5340,6 @@ inc_proc_ovn_controller_init(
                                 ovsrec_interface_by_name);
     engine_ovsdb_node_add_index(&en_ovs_queue, "external_ids",
                                 ovsrec_queue_by_external_ids);
-}
-
-/* Returns false if the northd internal version stored in SB_Global
- * and ovn-controller internal version don't match.
- */
-static bool
-check_northd_version(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
-                     const char *version)
-{
-    static bool version_mismatch;
-
-    const struct ovsrec_open_vswitch *cfg = ovsrec_open_vswitch_first(ovs_idl);
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        ovsrec_open_vswitch_table_get(ovs_idl);
-    const char *chassis_id = get_ovs_chassis_id(ovs_table);
-    if (!cfg || !get_chassis_external_id_value_bool(
-                     &cfg->external_ids, chassis_id,
-                     "ovn-match-northd-version", false)) {
-        version_mismatch = false;
-        return true;
-    }
-
-    const struct sbrec_sb_global *sb = sbrec_sb_global_first(ovnsb_idl);
-    if (!sb) {
-        version_mismatch = true;
-        return false;
-    }
-
-    const char *northd_version =
-        smap_get_def(&sb->options, "northd_internal_version", "");
-
-    if (strcmp(northd_version, version)) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-        VLOG_WARN_RL(&rl, "controller version - %s mismatch with northd "
-                     "version - %s", version, northd_version);
-        version_mismatch = true;
-        return false;
-    }
-
-    /* If there used to be a mismatch and ovn-northd got updated, force a
-     * full recompute.
-     */
-    if (version_mismatch) {
-        engine_set_force_recompute();
-    }
-    version_mismatch = false;
-    return true;
-}
-
-static void
-br_int_remote_update(struct br_int_remote *remote,
-                     const struct ovsrec_bridge *br_int,
-                     const struct ovsrec_open_vswitch_table *ovs_table)
-{
-    if (!br_int) {
-        return;
-    }
-
-    const struct ovsrec_open_vswitch *cfg =
-            ovsrec_open_vswitch_table_first(ovs_table);
-
-    const char *ext_target =
-            smap_get(&cfg->external_ids, "ovn-bridge-remote");
-    char *target = ext_target
-            ? xstrdup(ext_target)
-            : xasprintf("unix:%s/%s.mgmt", ovs_rundir(), br_int->name);
-
-    if (!remote->target || strcmp(remote->target, target)) {
-        free(remote->target);
-        remote->target = target;
-    } else {
-        free(target);
-    }
-
-    unsigned long long probe_interval =
-            smap_get_ullong(&cfg->external_ids,
-                            "ovn-bridge-remote-probe-interval", 0);
-    remote->probe_interval = MIN(probe_interval / 1000, INT_MAX);
-}
-
-static void
-ovsdb_idl_loop_next_cfg_inc(struct ovsdb_idl_loop *idl_loop)
-{
-    if (idl_loop->next_cfg == INT64_MAX) {
-        idl_loop->next_cfg = 0;
-    } else {
-        idl_loop->next_cfg++;
-    }
-}
-
-int
-main(int argc, char *argv[])
-{
-    struct unixctl_server *unixctl;
-    struct ovn_exit_args exit_args = {0};
-    struct br_int_remote br_int_remote = {0};
-    int retval;
-
-    /* Read from system-id-override file once on startup. */
-    file_system_id = get_file_system_id();
-
-    ovs_cmdl_proctitle_init(argc, argv);
-    ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
-    char *ovs_remote = parse_options(argc, argv);
-    fatal_ignore_sigpipe();
-
-    daemonize_start(true, false);
-
-    char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
-    retval = unixctl_server_create(abs_unixctl_path, &unixctl);
-    free(abs_unixctl_path);
-    if (retval) {
-        exit(EXIT_FAILURE);
-    }
-    unixctl_command_register("exit", "", 0, 1, ovn_exit_command_callback,
-                             &exit_args);
-
-    daemonize_complete();
-
-    /* Register ofctrl seqno types. */
-    ofctrl_seq_type_nb_cfg = ofctrl_seqno_add_type();
-
-    patch_init();
-    pinctrl_init();
-    lflow_init();
-    mirror_init();
-    vif_plug_provider_initialize();
-    statctrl_init();
-    dns_resolve_init(true);
-
-    /* Connect to OVS OVSDB instance. */
-    struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create(ovs_remote, &ovsrec_idl_class, false, true));
-    ctrl_register_ovs_idl(ovs_idl_loop.idl);
-
-    struct ovsdb_idl_index *ovsrec_port_by_interfaces
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_port_col_interfaces);
-    struct ovsdb_idl_index *ovsrec_port_by_name
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_port_col_name);
-    struct ovsdb_idl_index *ovsrec_port_by_qos
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_port_col_qos);
-    struct ovsdb_idl_index *ovsrec_interface_by_name
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_interface_col_name);
-    struct ovsdb_idl_index *ovsrec_flow_sample_collector_set_by_id
-        = ovsdb_idl_index_create2(ovs_idl_loop.idl,
-                                  &ovsrec_flow_sample_collector_set_col_bridge,
-                                  &ovsrec_flow_sample_collector_set_col_id);
-    struct ovsdb_idl_index *ovsrec_queue_by_external_ids
-        = ovsdb_idl_index_create1(ovs_idl_loop.idl,
-                                  &ovsrec_queue_col_external_ids);
-
-    ovsdb_idl_get_initial_snapshot(ovs_idl_loop.idl);
-
-    /* Configure OVN SB database. */
-    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
-    ovsdb_idl_set_leader_only(ovnsb_idl_loop.idl, false);
-
-    unixctl_command_register("connection-status", "", 0, 0,
-                             ovn_conn_show, ovnsb_idl_loop.idl);
-
-    struct ovsdb_idl_index *sbrec_chassis_by_name
-        = chassis_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_chassis_private_by_name
-        = chassis_private_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_meter_by_name
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl, &sbrec_meter_col_name);
-    struct ovsdb_idl_index *sbrec_port_binding_by_name
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_logical_port);
-    struct ovsdb_idl_index *sbrec_port_binding_by_key
-        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_tunnel_key,
-                                  &sbrec_port_binding_col_datapath);
-    struct ovsdb_idl_index *sbrec_port_binding_by_type
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_type);
-    struct ovsdb_idl_index *sbrec_port_binding_by_requested_chassis
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_port_binding_col_requested_chassis);
-    struct ovsdb_idl_index *sbrec_datapath_binding_by_key
-        = ovsdb_idl_index_create1(ovnsb_idl_loop.idl,
-                                  &sbrec_datapath_binding_col_tunnel_key);
-    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip
-        = mac_binding_by_lport_ip_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_ip_multicast
-        = ip_mcast_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_igmp_group
-        = igmp_group_index_create(ovnsb_idl_loop.idl);
-    struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac
-        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_fdb_col_mac,
-                                  &sbrec_fdb_col_dp_key);
-    struct ovsdb_idl_index *sbrec_encaps_index_by_ip_and_type
-        = ovsdb_idl_index_create2(ovnsb_idl_loop.idl,
-                                  &sbrec_encap_col_type, &sbrec_encap_col_ip);
-
-    ovsdb_idl_track_add_all(ovnsb_idl_loop.idl);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
-                         &sbrec_chassis_private_col_nb_cfg);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
-                         &sbrec_chassis_private_col_nb_cfg_timestamp);
-    /* Omit the timestamp columns of the MAC_Binding and FDB tables.
-     * ovn-controller doesn't need to react to changes in timestamp
-     * values (it does read them to implement aging).  Therefore we
-     * can disable change tracking and alerting for these columns. */
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_mac_binding_col_timestamp);
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_fdb_col_timestamp);
-
-    /* Omit the external_ids column of all the tables except for -
-     *  - DNS. pinctrl.c uses the external_ids column of DNS,
-     *    which it shouldn't. This should be removed.
-     *
-     *  - Datapath_binding - lflow.c is using this to check if the datapath
-     *                       is switch or not. This should be removed.
-     * */
-
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_logical_flow_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_port_binding_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ssl_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_gateway_chassis_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_ha_chassis_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_ha_chassis_group_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_advertised_route_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_learned_route_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_advertised_mac_binding_col_external_ids);
-
-    /* We don't want to monitor Connection table at all. So omit all the
-     * columns. */
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_inactivity_probe);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_is_connected);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_max_backoff);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_other_config);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_read_only);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_role);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_status);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_connection_col_target);
-
-    /* Omit alerts to the Chassis external_ids column, the configuration
-     * from the local open_vswitch table has now being moved to the
-     * other_config column so we no longer need to monitor it */
-    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
-
-    /* Do not monitor Chassis_Private external_ids */
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_chassis_private_col_external_ids);
-
-    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, NULL, false);
-
-    stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(PINCTRL_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(PATCH_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(CT_ZONE_COMMIT_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(IF_STATUS_MGR_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(IF_STATUS_MGR_UPDATE_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(OFCTRL_SEQNO_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(BFD_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(VIF_PLUG_RUN_STOPWATCH_NAME, SW_MS);
-
-    inc_proc_ovn_controller_init(&ovnsb_idl_loop, &ovs_idl_loop,
-                                 sbrec_chassis_by_name,
-                                 sbrec_port_binding_by_name,
-                                 sbrec_port_binding_by_key,
-                                 sbrec_datapath_binding_by_key,
-                                 sbrec_mac_binding_by_lport_ip,
-                                 ovsrec_flow_sample_collector_set_by_id,
-                                 ovsrec_port_by_qos,
-                                 ovsrec_interface_by_name,
-                                 ovsrec_queue_by_external_ids);
 
     struct ed_type_lflow_output *lflow_output_data =
         engine_get_internal_data(&en_lflow_output);
@@ -7319,17 +5357,10 @@ main(int argc, char *argv[])
         engine_get_internal_data(&en_lb_data);
     struct mac_cache_data *mac_cache_data =
             engine_get_internal_data(&en_mac_cache);
-    struct ed_type_neighbor_exchange *ne_data =
-        engine_get_internal_data(&en_neighbor_exchange);
-    struct ed_type_evpn_vtep_binding *eb_data =
-        engine_get_internal_data(&en_evpn_vtep_binding);
-    struct ed_type_evpn_fdb *efdb_data =
-        engine_get_internal_data(&en_evpn_fdb);
-    struct ed_type_evpn_arp *earp_data =
-        engine_get_internal_data(&en_evpn_arp);
 
     ofctrl_init(&lflow_output_data->group_table,
                 &lflow_output_data->meter_table);
+    ofctrl_seqno_init();
 
     unixctl_command_register("group-table-list", "", 0, 0,
                              extend_table_list,
@@ -7342,22 +5373,6 @@ main(int argc, char *argv[])
     unixctl_command_register("ct-zone-list", "", 0, 0,
                              ct_zone_list,
                              &ct_zones_data->ctx.current);
-
-    unixctl_command_register("evpn/remote-vtep-list", "", 0, 0,
-                             evpn_remote_vtep_list,
-                             &ne_data->remote_vteps);
-    unixctl_command_register("evpn/vtep-binding-list", "", 0, 0,
-                             evpn_vtep_binding_list,
-                             &eb_data->bindings);
-    unixctl_command_register("evpn/vtep-multicast-group-list", "", 0, 0,
-                             evpn_multicast_group_list,
-                             &eb_data->multicast_groups);
-    unixctl_command_register("evpn/vtep-fdb-list", "", 0, 0,
-                             evpn_fdb_list,
-                             &efdb_data->fdbs);
-    unixctl_command_register("evpn/vtep-arp-list", "", 0, 0,
-                             evpn_arp_list,
-                             &earp_data->arps);
 
     struct pending_pkt pending_pkt = { .conn = NULL };
     unixctl_command_register("inject-pkt", "MICROFLOW", 1, 1, inject_pkt,
@@ -7376,6 +5391,9 @@ main(int argc, char *argv[])
     unixctl_command_register("lflow-cache/show-stats", "", 0, 0,
                              lflow_cache_show_stats_cmd,
                              &lflow_output_data->pd);
+
+    unixctl_command_register("dns/show-stats", "", 0, 0,
+                             dns_show_stats_cmd, NULL);
 
     bool reset_ovnsb_idl_min_index = false;
     unixctl_command_register("sb-cluster-state-reset", "", 0, 0,
@@ -7398,10 +5416,6 @@ main(int argc, char *argv[])
                              debug_dump_local_bindings,
                              &runtime_data->lbinding_data);
 
-    unixctl_command_register("debug/dump-local-datapaths", "", 0, 0,
-                             debug_dump_local_datapaths,
-                             &runtime_data->local_datapaths);
-
     unixctl_command_register("debug/dump-related-ports", "", 0, 0,
                              debug_dump_related_lports,
                              &runtime_data->related_lports);
@@ -7421,7 +5435,9 @@ main(int argc, char *argv[])
     unixctl_command_register("debug/dump-mac-bindings", "", 0, 0,
                              debug_dump_local_mac_bindings,
                              &mac_cache_data->mac_bindings);
-    ovn_debug_commands_register();
+
+    unixctl_command_register("debug/ignore-startup-delay", "", 0, 0,
+                             debug_ignore_startup_delay, NULL);
 
     unsigned int ovs_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
@@ -7442,12 +5458,8 @@ main(int argc, char *argv[])
     VLOG_INFO("OVN internal version is : [%s]", ovn_version);
 
     /* Main loop. */
-    int ovnsb_txn_status = 1;
     bool sb_monitor_all = false;
-    struct tracked_acl_ids *tracked_acl_ids = NULL;
     while (!exit_args.exiting) {
-        ovsrcu_quiesce_end();
-
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
@@ -7493,25 +5505,12 @@ main(int argc, char *argv[])
             = ovsdb_idl_loop_run(&ovnsb_idl_loop);
         unsigned int new_ovnsb_cond_seqno
             = ovsdb_idl_get_condition_seqno(ovnsb_idl_loop.idl);
-        if (ovnsb_idl_txn && ovnsb_txn_status == -1) {
-            ovsdb_idl_loop_next_cfg_inc(&ovnsb_idl_loop);
-        }
         if (new_ovnsb_cond_seqno != ovnsb_cond_seqno) {
             if (!new_ovnsb_cond_seqno) {
                 VLOG_INFO("OVNSB IDL reconnected, force recompute.");
                 engine_set_force_recompute();
             }
             ovnsb_cond_seqno = new_ovnsb_cond_seqno;
-        }
-
-        /* Check if we have received all initial dumps of the southbound
-         * based on the monitor condtions we set.
-         * If we have sb_monitor_all that means we have all data that we would
-         * ever need.
-         * In other cases we depend on engine runs. This is handled below. */
-        if (ovnsb_cond_seqno == ovnsb_expected_cond_seqno
-            && ovnsb_expected_cond_seqno != UINT_MAX && sb_monitor_all) {
-            daemon_started_recently_ignore();
         }
 
         struct engine_context eng_ctx = {
@@ -7586,8 +5585,7 @@ main(int argc, char *argv[])
                                       sbrec_chassis_private_by_name,
                                       ovs_table, chassis_id,
                                       br_int, &transport_zones,
-                                      &chassis_private,
-                                      sbrec_encaps_index_by_ip_and_type);
+                                      &chassis_private);
             }
 
             /* If any OVS feature support changed, force a full recompute.
@@ -7615,8 +5613,7 @@ main(int argc, char *argv[])
                 if (ofctrl_run(br_int_remote.target,
                                br_int_remote.probe_interval, ovs_table,
                                ct_zones_data ? &ct_zones_data->ctx.pending
-                                             : NULL,
-                               tracked_acl_ids)) {
+                                             : NULL)) {
                     static struct vlog_rate_limit rl
                             = VLOG_RATE_LIMIT_INIT(1, 1);
 
@@ -7626,35 +5623,13 @@ main(int argc, char *argv[])
                 }
 
                 if (chassis && ovs_feature_set_discovered()) {
-                    encaps_run(ovs_idl_txn, ovnsb_idl_txn, br_int,
+                    encaps_run(ovs_idl_txn, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
                                sbrec_sb_global_first(ovnsb_idl_loop.idl),
                                ovs_table,
                                &transport_zones,
                                bridge_table);
-
-                    struct ed_type_route_table_notify *rtn =
-                        engine_get_internal_data(&en_route_table_notify);
-                    rtn->changed = route_table_notify_run();
-
-                    struct ed_type_host_if_monitor *hifm =
-                        engine_get_internal_data(&en_host_if_monitor);
-                    hifm->changed = host_if_monitor_run();
-
-                    struct ed_type_neighbor_table_notify *ntn =
-                        engine_get_internal_data(&en_neighbor_table_notify);
-                    ntn->changed = neighbor_table_notify_run();
-
-                    struct ed_type_route_exchange_status *rt_res =
-                        engine_get_internal_data(&en_route_exchange_status);
-                    rt_res->netlink_trigger_run =
-                        !!route_exchange_status_run();
-
-                    struct ed_type_neighbor_exchange_status *neigh_res =
-                        engine_get_internal_data(&en_neighbor_exchange_status);
-                    neigh_res->netlink_trigger_run =
-                        !!neighbor_exchange_status_run();
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
@@ -7685,10 +5660,11 @@ main(int argc, char *argv[])
                     bool recompute_allowed = (ovnsb_idl_txn &&
                                               !ofctrl_has_backlog());
                     engine_run(recompute_allowed);
-                    tracked_acl_ids = engine_get_data(&en_acl_id);
-
                     stopwatch_stop(CONTROLLER_LOOP_STOPWATCH_NAME,
                                    time_msec());
+                    if (engine_has_updated()) {
+                        daemon_started_recently_countdown();
+                    }
 
                     ct_zones_data = engine_get_data(&en_ct_zones);
                     bfd_chassis_data = engine_get_data(&en_bfd_chassis);
@@ -7708,8 +5684,7 @@ main(int argc, char *argv[])
                                 ovsrec_interface_table_get(ovs_idl_loop.idl),
                                 br_int, &bfd_chassis_data->bfd_chassis,
                                 chassis, sbrec_sb_global_table_get(
-                                    ovnsb_idl_loop.idl),
-                                ovs_table
+                                    ovnsb_idl_loop.idl)
                             );
                             stopwatch_stop(
                                 BFD_RUN_STOPWATCH_NAME, time_msec());
@@ -7764,6 +5739,7 @@ main(int argc, char *argv[])
                         pinctrl_update(ovnsb_idl_loop.idl);
                         pinctrl_run(ovnsb_idl_txn,
                                     sbrec_datapath_binding_by_key,
+                                    sbrec_port_binding_by_datapath,
                                     sbrec_port_binding_by_key,
                                     sbrec_port_binding_by_name,
                                     sbrec_mac_binding_by_lport_ip,
@@ -7777,15 +5753,13 @@ main(int argc, char *argv[])
                                     sbrec_mac_binding_table_get(
                                         ovnsb_idl_loop.idl),
                                     sbrec_bfd_table_get(ovnsb_idl_loop.idl),
-                                    sbrec_ecmp_nexthop_table_get(
-                                        ovnsb_idl_loop.idl),
-                                    chassis,
+                                    br_int, chassis,
                                     &runtime_data->local_datapaths,
+                                    &runtime_data->active_tunnels,
                                     &runtime_data->local_active_ports_ipv6_pd,
                                     &runtime_data->local_active_ports_ras,
                                     ovsrec_open_vswitch_table_get(
-                                            ovs_idl_loop.idl),
-                                    ovnsb_idl_loop.cur_cfg);
+                                            ovs_idl_loop.idl));
                         stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
                                        time_msec());
                         mirror_run(ovs_idl_txn,
@@ -7797,8 +5771,6 @@ main(int argc, char *argv[])
                          * logical datapath goups changed. */
                         if (engine_node_changed(&en_runtime_data)
                             || engine_node_changed(&en_sb_logical_dp_group)) {
-                            bool had_all_data = ovnsb_cond_seqno ==
-                                                ovnsb_expected_cond_seqno;
                             ovnsb_expected_cond_seqno =
                                 update_sb_monitors(
                                     ovnsb_idl_loop.idl, chassis,
@@ -7806,27 +5778,6 @@ main(int argc, char *argv[])
                                     &runtime_data->lbinding_data.bindings,
                                     &runtime_data->local_datapaths,
                                     sb_monitor_all);
-                            bool condition_changed = ovnsb_cond_seqno !=
-                                                     ovnsb_expected_cond_seqno;
-                            if (had_all_data && condition_changed) {
-                                /* We limit the amount of condition updates
-                                 * that we treat as daemon_started_recently.
-                                 * This allows us to proceed even if there is
-                                 * a continuous reason for monitor updates. */
-                                daemon_started_recently_countdown();
-                            }
-                        }
-                        /* If there is no new expected seqno we have finished
-                         * loading all needed data from southbound. We then
-                         * need to run one more time since we might behave
-                         * differently. */
-                        if (daemon_started_recently()) {
-                            bool condition_changed = ovnsb_cond_seqno !=
-                                                     ovnsb_expected_cond_seqno;
-                            if (!condition_changed) {
-                                daemon_started_recently_ignore();
-                                poll_immediate_wake();
-                            }
                         }
                         if (ovs_idl_txn) {
                             update_qos(sbrec_port_binding_by_name, ovs_idl_txn,
@@ -7839,8 +5790,7 @@ main(int argc, char *argv[])
 
                     mac_cache_data = engine_get_data(&en_mac_cache);
                     if (mac_cache_data) {
-                        statctrl_run(ovnsb_idl_txn, sbrec_port_binding_by_name,
-                                     mac_cache_data);
+                        statctrl_run(ovnsb_idl_txn, mac_cache_data);
                     }
 
                     ofctrl_seqno_update_create(
@@ -7874,18 +5824,11 @@ main(int argc, char *argv[])
                         ofctrl_put(&lflow_output_data->flow_table,
                                    &pflow_output_data->flow_table,
                                    &ct_zones_data->ctx.pending,
-                                   &ct_zones_data->ctx.current,
                                    &lb_data->removed_tuples,
-                                   runtime_data ?
-                                        &runtime_data->local_datapaths : NULL,
                                    sbrec_meter_by_name,
-                                   sbrec_ecmp_nexthop_table_get(
-                                        ovnsb_idl_loop.idl),
                                    ofctrl_seqno_get_req_cfg(),
                                    engine_node_changed(&en_lflow_output),
-                                   engine_node_changed(&en_pflow_output),
-                                   tracked_acl_ids,
-                                   !daemon_started_recently());
+                                   engine_node_changed(&en_pflow_output));
                         stopwatch_stop(OFCTRL_PUT_STOPWATCH_NAME, time_msec());
                     }
                     stopwatch_start(OFCTRL_SEQNO_RUN_STOPWATCH_NAME,
@@ -7924,11 +5867,8 @@ main(int argc, char *argv[])
                 engine_clear_force_recompute();
             }
 
-            struct ed_type_northd_options *n_opts =
-                engine_get_data(&en_northd_options);
             store_nb_cfg(ovnsb_idl_txn, ovs_idl_txn, chassis_private,
-                         br_int, delay_nb_cfg_report,
-                         n_opts ? n_opts->enable_ch_nb_cfg_update : true);
+                         br_int, delay_nb_cfg_report);
 
             if (pending_pkt.conn) {
                 struct ed_type_addr_sets *as_data =
@@ -7966,9 +5906,6 @@ main(int argc, char *argv[])
             }
 
             binding_wait();
-            route_table_notify_wait();
-            host_if_monitor_wait();
-            neighbor_table_notify_wait();
         }
 
         unixctl_server_run(unixctl);
@@ -7978,16 +5915,9 @@ main(int argc, char *argv[])
             poll_immediate_wake();
         }
 
-        ovnsb_txn_status = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
-        if (!ovnsb_txn_status) {
+        if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
             VLOG_INFO("OVNSB commit failed, force recompute next time.");
             engine_set_force_recompute_immediate();
-        } else if (ovnsb_txn_status == 1) {
-            ovsdb_idl_loop_next_cfg_inc(&ovnsb_idl_loop);
-        } else if (ovnsb_txn_status == -1) {
-            /* The commit is still in progress */
-        } else {
-            OVS_NOT_REACHED();
         }
 
         int ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
@@ -8023,21 +5953,17 @@ main(int argc, char *argv[])
 
 loop_done:
         memory_wait();
-        ovsrcu_quiesce_start();
         poll_block();
         if (should_service_stop()) {
             exit_args.exiting = true;
         }
     }
 
-    const struct ovsrec_open_vswitch_table *ovs_table =
-        ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
-    bool restart = exit_args.restart || !get_ovn_cleanup_on_exit(ovs_table);
-    VLOG_INFO("Exiting ovn-controller, resource cleanup: %s",
-              restart ? "False (--restart)" : "True");
+    engine_set_context(NULL);
+    engine_cleanup();
 
     /* It's time to exit.  Clean up the databases if we are not restarting */
-    if (!restart) {
+    if (!exit_args.restart) {
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
@@ -8051,6 +5977,8 @@ loop_done:
 
             const struct ovsrec_bridge_table *bridge_table
                 = ovsrec_bridge_table_get(ovs_idl_loop.idl);
+            const struct ovsrec_open_vswitch_table *ovs_table
+                = ovsrec_open_vswitch_table_get(ovs_idl_loop.idl);
 
             const struct sbrec_port_binding_table *port_binding_table
                 = sbrec_port_binding_table_get(ovnsb_idl_loop.idl);
@@ -8100,25 +6028,17 @@ loop_done:
 
             poll_block();
         }
-        route_exchange_cleanup_vrfs();
     }
-
-    /* The engine cleanup should happen only after threads have been
-     * destroyed and joined in case they are accessing engine data. */
-    pinctrl_destroy();
-    statctrl_destroy();
-
-    engine_set_context(NULL);
-    engine_cleanup();
 
     free(ovn_version);
     lflow_destroy();
     ofctrl_destroy();
-    ofctrl_seqno_destroy();
+    pinctrl_destroy();
     binding_destroy();
     patch_destroy();
     mirror_destroy();
     encaps_destroy();
+    statctrl_destroy();
     if_status_mgr_destroy(if_mgr);
     shash_destroy(&vif_plug_deleted_iface_ids);
     shash_destroy(&vif_plug_changed_iface_ids);
@@ -8137,27 +6057,8 @@ loop_done:
     service_stop();
     ovsrcu_exit();
     dns_resolve_destroy();
-    route_exchange_destroy();
-    route_table_notify_destroy();
 
     exit(retval);
-}
-
-static void
-inc_proc_graph_dump(const char *end_node)
-{
-    struct ovsdb_idl_loop ovs_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create_unconnected(&ovsrec_idl_class, true));
-    struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
-        ovsdb_idl_create_unconnected(&sbrec_idl_class, true));
-
-    inc_proc_ovn_controller_init(&ovnsb_idl_loop, &ovs_idl_loop,
-                                 NULL, NULL, NULL, NULL, NULL,
-                                 NULL, NULL, NULL, NULL);
-    engine_dump_graph(end_node);
-
-    ovsdb_idl_loop_destroy(&ovs_idl_loop);
-    ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
 }
 
 static char *
@@ -8170,7 +6071,6 @@ parse_options(int argc, char *argv[])
         OVN_DAEMON_OPTION_ENUMS,
         SSL_OPTION_ENUMS,
         OPT_ENABLE_DUMMY_VIF_PLUG,
-        OPT_DUMP_INC_PROC_GRAPH,
     };
 
     static struct option long_options[] = {
@@ -8185,8 +6085,6 @@ parse_options(int argc, char *argv[])
         {"chassis", required_argument, NULL, 'n'},
         {"enable-dummy-vif-plug", no_argument, NULL,
          OPT_ENABLE_DUMMY_VIF_PLUG},
-        {"dump-inc-proc-graph", optional_argument, NULL,
-         OPT_DUMP_INC_PROC_GRAPH},
         {NULL, 0, NULL, 0}
     };
     char *short_options = ovs_cmdl_long_options_to_short_options(long_options);
@@ -8235,14 +6133,6 @@ parse_options(int argc, char *argv[])
             stream_ssl_set_ciphers(optarg);
             break;
 
-        case OPT_SSL_CIPHERSUITES:
-            stream_ssl_set_ciphersuites(optarg);
-            break;
-
-        case OPT_SSL_SERVER_NAME:
-            stream_ssl_set_server_name(optarg);
-            break;
-
         case OPT_PEER_CA_CERT:
             stream_ssl_set_peer_ca_cert_file(optarg);
             break;
@@ -8254,14 +6144,6 @@ parse_options(int argc, char *argv[])
         case OPT_ENABLE_DUMMY_VIF_PLUG:
             vif_plug_dummy_enable();
             break;
-
-        /* --dump-inc-proc-graph[=<i-p-node>]: Whether to dump the I-P engine
-         * graph representation in DOT format to stdout.  Optionally only up
-         * to <i-p-node>.
-         */
-        case OPT_DUMP_INC_PROC_GRAPH:
-            inc_proc_graph_dump(optarg);
-            exit(EXIT_SUCCESS);
 
         case 'n':
             free(cli_system_id);
@@ -8402,6 +6284,17 @@ lflow_cache_show_stats_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
 }
 
 static void
+dns_show_stats_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                   const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    pinctrl_get_dns_stats(&ds);
+    unixctl_command_reply(conn, ds_cstr(&ds));
+    ds_destroy(&ds);
+}
+
+static void
 cluster_state_reset_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
                const char *argv[] OVS_UNUSED, void *idl_reset_)
 {
@@ -8480,17 +6373,6 @@ debug_dump_local_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
 }
 
 static void
-debug_dump_local_datapaths(struct unixctl_conn *conn, int argc OVS_UNUSED,
-                           const char *argv[] OVS_UNUSED,
-                           void *local_datapaths)
-{
-    struct ds local_dps_data = DS_EMPTY_INITIALIZER;
-    binding_dump_local_datapaths(local_datapaths, &local_dps_data);
-    unixctl_command_reply(conn, ds_cstr(&local_dps_data));
-    ds_destroy(&local_dps_data);
-}
-
-static void
 debug_dump_related_lports(struct unixctl_conn *conn, int argc OVS_UNUSED,
                           const char *argv[] OVS_UNUSED, void *related_lports)
 {
@@ -8542,4 +6424,12 @@ debug_dump_local_mac_bindings(struct unixctl_conn *conn, int argc OVS_UNUSED,
     mac_bindings_to_string(mac_bindings, &mb_str);
     unixctl_command_reply(conn, ds_cstr(&mb_str));
     ds_destroy(&mb_str);
+}
+
+static void
+debug_ignore_startup_delay(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                           const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    daemon_started_recently_ignore();
+    unixctl_command_reply(conn, NULL);
 }
