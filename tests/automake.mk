@@ -48,7 +48,8 @@ TESTSUITE_AT = \
 	tests/ovn-vif-plug.at \
 	tests/ovn-util.at \
 	tests/ovn-br-controller.at \
-	tests/ovn-inc-proc-graph-dump.at
+	tests/ovn-inc-proc-graph-dump.at \
+	tests/ovn-dns-stats.at
 
 SYSTEM_DPDK_TESTSUITE_AT = \
 	tests/system-dpdk-testsuite.at \
