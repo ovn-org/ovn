@@ -121,6 +121,7 @@ static unixctl_cb_func debug_dump_peer_ports;
 static unixctl_cb_func debug_dump_lflow_conj_ids;
 static unixctl_cb_func lflow_cache_flush_cmd;
 static unixctl_cb_func lflow_cache_show_stats_cmd;
+static unixctl_cb_func dns_show_stats_cmd;
 static unixctl_cb_func debug_delay_nb_cfg_report;
 
 #define DEFAULT_BRIDGE_NAME "br-int"
@@ -7377,6 +7378,9 @@ main(int argc, char *argv[])
                              lflow_cache_show_stats_cmd,
                              &lflow_output_data->pd);
 
+    unixctl_command_register("dns/show-stats", "", 0, 0,
+                             dns_show_stats_cmd, NULL);
+
     bool reset_ovnsb_idl_min_index = false;
     unixctl_command_register("sb-cluster-state-reset", "", 0, 0,
                              cluster_state_reset_cmd,
@@ -8397,6 +8401,17 @@ lflow_cache_show_stats_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
     struct ds ds = DS_EMPTY_INITIALIZER;
 
     lflow_cache_get_stats(lc, &ds);
+    unixctl_command_reply(conn, ds_cstr(&ds));
+    ds_destroy(&ds);
+}
+
+static void
+dns_show_stats_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                   const char *argv[] OVS_UNUSED, void *arg OVS_UNUSED)
+{
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    pinctrl_get_dns_stats(&ds);
     unixctl_command_reply(conn, ds_cstr(&ds));
     ds_destroy(&ds);
 }

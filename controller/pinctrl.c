@@ -184,6 +184,9 @@ struct pinctrl {
 
 static struct pinctrl pinctrl;
 
+/* DNS query statistics */
+static struct dns_stats dns_statistics = {0};
+
 static bool pinctrl_is_sb_commited(int64_t commit_cfg, int64_t cur_cfg);
 static void init_buffered_packets_ctx(void);
 static void destroy_buffered_packets_ctx(void);
@@ -3366,6 +3369,9 @@ pinctrl_handle_dns_lookup(
     uint32_t success = 0;
     bool send_refuse = false;
 
+    /* Track total DNS queries received */
+    dns_statistics.total_queries++;
+
     /* Parse result field. */
     const struct mf_field *f;
     enum ofperr ofperr = nx_pull_header(userdata, NULL, &f, NULL);
@@ -3392,6 +3398,7 @@ pinctrl_handle_dns_lookup(
     /* Check that the packet stores at least the minimal headers. */
     if (dp_packet_l4_size(pkt_in) < (UDP_HEADER_LEN + DNS_HEADER_LEN)) {
         VLOG_WARN_RL(&rl, "truncated dns packet");
+        dns_statistics.error_truncated++;
         goto exit;
     }
 
@@ -3399,17 +3406,20 @@ pinctrl_handle_dns_lookup(
     struct dns_header const *in_dns_header = dp_packet_get_udp_payload(pkt_in);
     if (!in_dns_header) {
         VLOG_WARN_RL(&rl, "truncated dns packet");
+        dns_statistics.error_truncated++;
         goto exit;
     }
 
     /* Check if it is DNS request or not */
     if (in_dns_header->lo_flag & 0x80) {
         /* It's a DNS response packet which we are not interested in */
+        dns_statistics.skipped_not_request++;
         goto exit;
     }
 
     /* Check if at least one query request is present */
     if (!in_dns_header->qdcount) {
+        dns_statistics.error_no_query++;
         goto exit;
     }
 
@@ -3431,6 +3441,7 @@ pinctrl_handle_dns_lookup(
         uint8_t label_len = in_dns_data[idx++];
         if (in_dns_data + idx + label_len > end) {
             ds_destroy(&query_name);
+            dns_statistics.error_parse_failure++;
             goto exit;
         }
         ds_put_buffer(&query_name, (const char *) in_dns_data + idx, label_len);
@@ -3449,6 +3460,20 @@ pinctrl_handle_dns_lookup(
     }
 
     uint16_t query_type = ntohs(get_unaligned_be16((void *) in_dns_data));
+
+    /* Track query type statistics */
+    if (query_type == DNS_QUERY_TYPE_A) {
+        dns_statistics.query_type_a++;
+    } else if (query_type == DNS_QUERY_TYPE_AAAA) {
+        dns_statistics.query_type_aaaa++;
+    } else if (query_type == DNS_QUERY_TYPE_PTR) {
+        dns_statistics.query_type_ptr++;
+    } else if (query_type == DNS_QUERY_TYPE_ANY) {
+        dns_statistics.query_type_any++;
+    } else {
+        dns_statistics.query_type_other++;
+    }
+
     /* Supported query types - A, AAAA, ANY and PTR */
     if (!(query_type == DNS_QUERY_TYPE_A || query_type == DNS_QUERY_TYPE_AAAA
           || query_type == DNS_QUERY_TYPE_ANY
@@ -3467,8 +3492,10 @@ pinctrl_handle_dns_lookup(
                                              &ovn_owned);
     ds_destroy(&query_name);
     if (!answer_data) {
+        dns_statistics.cache_misses++;
         goto exit;
     }
+    dns_statistics.cache_hits++;
 
 
     uint16_t ancount = 0;
@@ -3511,6 +3538,7 @@ pinctrl_handle_dns_lookup(
         if (ovn_owned && (query_type == DNS_QUERY_TYPE_AAAA ||
             query_type == DNS_QUERY_TYPE_A) && !ancount) {
             send_refuse = true;
+            dns_statistics.unsupported_ovn_owned++;
         }
 
         destroy_lport_addresses(&ip_addrs);
@@ -3595,6 +3623,7 @@ pinctrl_handle_dns_lookup(
     pin->packet_len = dp_packet_size(&pkt_out);
 
     success = 1;
+    dns_statistics.responses_sent++;
 exit:
     if (!ofperr) {
         union mf_subvalue sv;
@@ -8862,4 +8891,49 @@ set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *pin)
     union mf_subvalue sv;
     sv.u8_val = 1;
     mf_write_subfield(&dst, &sv, &pin->flow_metadata);
+}
+
+/* DNS Statistics functions */
+void
+pinctrl_get_dns_stats(struct ds *output)
+{
+    ds_put_format(output, "DNS Query Statistics\n");
+    ds_put_format(output, "====================\n\n");
+    
+    ds_put_format(output, "Total queries received: %"PRIu64"\n\n",
+                  dns_statistics.total_queries);
+    
+    ds_put_format(output, "Query Types:\n");
+    ds_put_format(output, "  A (IPv4):     %"PRIu64"\n",
+                  dns_statistics.query_type_a);
+    ds_put_format(output, "  AAAA (IPv6):  %"PRIu64"\n",
+                  dns_statistics.query_type_aaaa);
+    ds_put_format(output, "  PTR:          %"PRIu64"\n",
+                  dns_statistics.query_type_ptr);
+    ds_put_format(output, "  ANY:          %"PRIu64"\n",
+                  dns_statistics.query_type_any);
+    ds_put_format(output, "  Other:        %"PRIu64"\n\n",
+                  dns_statistics.query_type_other);
+    
+    ds_put_format(output, "Cache Performance:\n");
+    ds_put_format(output, "  Cache hits:   %"PRIu64"\n",
+                  dns_statistics.cache_hits);
+    ds_put_format(output, "  Cache misses: %"PRIu64"\n\n",
+                  dns_statistics.cache_misses);
+    
+    ds_put_format(output, "Processing Errors (packets reinjected to pipeline):\n");
+    ds_put_format(output, "  Truncated packets:       %"PRIu64"\n",
+                  dns_statistics.error_truncated);
+    ds_put_format(output, "  Skipped (not request):   %"PRIu64"\n",
+                  dns_statistics.skipped_not_request);
+    ds_put_format(output, "  No query section:        %"PRIu64"\n",
+                  dns_statistics.error_no_query);
+    ds_put_format(output, "  Parse failures:          %"PRIu64"\n",
+                  dns_statistics.error_parse_failure);
+    ds_put_format(output, "  Unsupported OVN-owned:   %"PRIu64"\n\n",
+                  dns_statistics.unsupported_ovn_owned);
+    
+    ds_put_format(output, "Responses:\n");
+    ds_put_format(output, "  Responses sent: %"PRIu64"\n",
+                  dns_statistics.responses_sent);
 }
