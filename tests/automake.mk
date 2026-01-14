@@ -29,6 +29,7 @@ TESTSUITE_AT = \
 	tests/checkpatch.at \
 	tests/network-functions.at \
 	tests/ovn.at \
+	tests/ovn-dns-stats.at \
 	tests/ovn-northd.at \
 	tests/ovn-nbctl.at \
 	tests/ovn-sbctl.at \
@@ -46,9 +47,7 @@ TESTSUITE_AT = \
 	tests/ovn-lflow-conj-ids.at \
 	tests/ovn-ipsec.at \
 	tests/ovn-vif-plug.at \
-	tests/ovn-util.at \
-	tests/ovn-br-controller.at \
-	tests/ovn-inc-proc-graph-dump.at
+	tests/ovn-util.at
 
 SYSTEM_DPDK_TESTSUITE_AT = \
 	tests/system-dpdk-testsuite.at \
@@ -65,15 +64,13 @@ SYSTEM_USERSPACE_TESTSUITE_AT = \
 
 SYSTEM_TESTSUITE_AT = \
 	tests/system-common-macros.at \
-	tests/system-ovn.at \
-	tests/system-ovn-netlink.at
+	tests/system-ovn.at
 
 PERF_TESTSUITE_AT = \
 	tests/perf-testsuite.at \
 	tests/perf-northd.at
 
 MULTINODE_TESTSUITE_AT = \
-	tests/multinode-bgp-macros.at \
 	tests/multinode-testsuite.at \
 	tests/multinode-macros.at \
 	tests/multinode.at
@@ -93,10 +90,9 @@ DISTCLEANFILES += tests/atconfig tests/atlocal
 MULTINODE_TESTSUITE = $(srcdir)/tests/multinode-testsuite
 MULTINODE_TESTSUITE_DIR = $(abs_top_builddir)/tests/multinode-testsuite.dir
 MULTINODE_TESTSUITE_RESULTS = $(MULTINODE_TESTSUITE_DIR)/results
-AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic:br-controller
+AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic
 
 export ovs_srcdir
-export ovs_builddir
 
 check-local:
 	set $(SHELL) '$(TESTSUITE)' -C tests AUTOTEST_PATH=$(AUTOTEST_PATH); \
@@ -288,29 +284,12 @@ tests_ovstest_SOURCES = \
 	tests/test-utils.c \
 	tests/test-utils.h \
 	tests/test-ovn.c \
-	tests/test-sparse-array.c \
-	tests/test-vector.c \
 	controller/test-lflow-cache.c \
+	controller/test-lflow-conj-ids.c \
+	controller/test-ofctrl-seqno.c \
 	controller/test-vif-plug.c \
-	lib/test-lflow-conj-ids.c \
 	lib/test-ovn-features.c \
-	lib/test-ofctrl-seqno.c \
 	northd/test-ipam.c
-
-if HAVE_NETLINK
-tests_ovstest_SOURCES += \
-	controller/host-if-monitor.c \
-	controller/host-if-monitor.h \
-	controller/neighbor-exchange-netlink.c \
-	controller/neighbor-exchange-netlink.h \
-	controller/neighbor-table-notify.c \
-	controller/neighbor-table-notify.h \
-	controller/neighbor.c \
-	controller/neighbor.h \
-	controller/route-exchange-netlink.c \
-	controller/route-exchange-netlink.h \
-	tests/test-ovn-netlink.c
-endif
 
 tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
     $(OVS_LIBDIR)/libopenvswitch.la lib/libovn.la \
@@ -320,11 +299,12 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 	controller/ha-chassis.$(OBJEXT) \
 	controller/if-status.$(OBJEXT) \
 	controller/lflow-cache.$(OBJEXT) \
+	controller/lflow-conj-ids.$(OBJEXT) \
 	controller/local_data.$(OBJEXT) \
 	controller/lport.$(OBJEXT) \
+	controller/ofctrl-seqno.$(OBJEXT) \
 	controller/ovsport.$(OBJEXT) \
 	controller/patch.$(OBJEXT) \
-	controller/route.$(OBJEXT) \
 	controller/vif-plug.$(OBJEXT) \
 	northd/ipam.$(OBJEXT)
 
@@ -334,9 +314,7 @@ CHECK_PYFILES = \
 	tests/uuidfilt.py \
 	tests/test-tcp-rst.py \
 	tests/check_acl_log.py \
-	tests/scapy-server.py \
-	tests/client.py \
-	tests/server.py
+	tests/scapy-server.py
 
 EXTRA_DIST += $(CHECK_PYFILES)
 PYCOV_CLEAN_FILES += $(CHECK_PYFILES:.py=.py,cover) .coverage
