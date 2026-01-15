@@ -14197,7 +14197,7 @@ build_misc_local_traffic_drop_flows_for_lrouter(
                   lflow_ref);
 
     /* TTL discard */
-    ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 30,
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 29,
                   "ip.ttl == {0, 1}", debug_drop_action(),
                   lflow_ref);
 
@@ -14227,6 +14227,153 @@ build_dhcpv6_reply_flows_for_lrouter_port(
                       "reg0 = 0; handle_dhcpv6_reply;",
                       lflow_ref);
     }
+}
+
+static void
+build_lrouter_ipv4_default_ttl_expired_flows(
+    struct ovn_port *op, struct lflow_table *lflows,
+    struct ds *match, struct ds *actions,
+    const struct shash *meter_groups,
+    struct lflow_ref *lflow_ref)
+{
+    if (!op->lrp_networks.n_ipv4_addrs) {
+        return;
+    }
+
+    struct ds ip_ds = DS_EMPTY_INITIALIZER;
+    for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+        ds_clear(match);
+        ds_clear(actions);
+        ds_clear(&ip_ds);
+        if (is_l3dgw_port(op)) {
+            ds_put_cstr(&ip_ds, "ip4.dst <-> ip4.src");
+        } else {
+            ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
+                          op->lrp_networks.ipv4_addrs[i].addr_s);
+        }
+        ds_put_format(match,
+                      "inport == %s && ip4 && "
+                      "ip4.src == %s/%d && "
+                      "ip.ttl == {0, 1} && !ip.later_frag",
+                      op->json_key,
+                      op->lrp_networks.ipv4_addrs[i].network_s,
+                      op->lrp_networks.ipv4_addrs[i].plen);
+        ds_put_format(actions,
+                      "icmp4 {"
+                      "eth.dst <-> eth.src; "
+                      "icmp4.type = 11; /* Time exceeded */ "
+                      "icmp4.code = 0; /* TTL exceeded in transit */ "
+                      "%s ; ip.ttl = 254; "
+                      "outport = %s; flags.loopback = 1; output; };",
+                      ds_cstr(&ip_ds), op->json_key);
+        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 31,
+                                  ds_cstr(match), ds_cstr(actions), NULL,
+                                  copp_meter_get(COPP_ICMP4_ERR,
+                                                 op->od->nbr->copp,
+                                                 meter_groups),
+                                  &op->nbrp->header_, lflow_ref);
+    }
+    ds_destroy(&ip_ds);
+    ds_clear(match);
+    ds_clear(actions);
+
+    /* Default flow for IPv4 packets with expired TTL (0 or 1).
+     * Generate ICMPv4 Time Exceeded reply using the first IPv4 address
+     * of the logical router port as source address. */
+    ds_put_format(match,
+                  "inport == %s && ip4 && "
+                  "ip.ttl == {0, 1} && !ip.later_frag",
+                  op->json_key);
+    ds_put_format(actions,
+                  "icmp4 {"
+                  "eth.dst <-> eth.src; "
+                  "icmp4.type = 11; /* Time exceeded */ "
+                  "icmp4.code = 0; /* TTL exceeded in transit */ "
+                  "ip4.dst = ip4.src; ip4.src = %s; ip.ttl = 254; "
+                   "outport = %s; flags.loopback = 1; output; };",
+                   op->lrp_networks.ipv4_addrs[0].addr_s,
+                   op->json_key);
+    ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 30,
+                              ds_cstr(match), ds_cstr(actions), NULL,
+                              copp_meter_get(COPP_ICMP4_ERR,
+                                             op->od->nbr->copp,
+                                             meter_groups),
+                              &op->nbrp->header_, lflow_ref);
+}
+
+static void
+build_lrouter_ipv6_default_ttl_expired_flows(
+    struct ovn_port *op, struct lflow_table *lflows,
+    struct ds *match, struct ds *actions,
+    const struct shash *meter_groups,
+    struct lflow_ref *lflow_ref)
+{
+    /* Early return if no IPv6 addresses are configured.
+     * Note: op->lrp_networks.ipv6_addrs will always have LLA and that
+     * will be last in the list. */
+    if (op->lrp_networks.n_ipv6_addrs < 1) {
+        return;
+    }
+
+    struct ds ip_ds = DS_EMPTY_INITIALIZER;
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs - 1; i++) {
+        ds_clear(match);
+        ds_clear(actions);
+        ds_clear(&ip_ds);
+        if (is_l3dgw_port(op)) {
+            ds_put_cstr(&ip_ds, "ip6.dst <-> ip6.src");
+        } else {
+            ds_put_format(&ip_ds, "ip6.dst = ip6.src; ip6.src = %s",
+                          op->lrp_networks.ipv6_addrs[i].addr_s);
+        }
+        ds_put_format(match,
+                      "inport == %s && ip6 && "
+                      "ip6.src == %s/%d && "
+                      "ip.ttl == {0, 1} && !ip.later_frag",
+                      op->json_key,
+                      op->lrp_networks.ipv6_addrs[i].network_s,
+                      op->lrp_networks.ipv6_addrs[i].plen);
+        ds_put_format(actions,
+                      "icmp6 {"
+                      "eth.dst <-> eth.src; "
+                      "%s ; ip.ttl = 254; "
+                      "icmp6.type = 3; /* Time exceeded */ "
+                      "icmp6.code = 0; /* TTL exceeded in transit */ "
+                      "outport = %s; flags.loopback = 1; output; };",
+                      ds_cstr(&ip_ds), op->json_key);
+        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 31,
+                                  ds_cstr(match), ds_cstr(actions), NULL,
+                                  copp_meter_get(COPP_ICMP6_ERR,
+                                                 op->od->nbr->copp,
+                                                 meter_groups),
+                                  &op->nbrp->header_, lflow_ref);
+    }
+    ds_destroy(&ip_ds);
+    ds_clear(match);
+    ds_clear(actions);
+
+    /* Default flow for IPv6 packets with expired TTL (0 or 1).
+     * Generate ICMPv6 Time Exceeded reply using the first IPv6 address
+     * of the logical router port as source address. */
+    ds_put_format(match,
+                  "inport == %s && ip6 && "
+                  "ip.ttl == {0, 1} && !ip.later_frag",
+                  op->json_key);
+    ds_put_format(actions,
+                  "icmp6 {"
+                  "eth.dst <-> eth.src; "
+                  "ip6.dst = ip6.src; ip6.src = %s; "
+                  "ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ "
+                  "icmp6.code = 0; /* TTL exceeded in transit */ "
+                  "outport = %s; flags.loopback = 1; output; };",
+                  op->lrp_networks.ipv6_addrs[0].addr_s,
+                  op->json_key);
+    ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT, 30,
+                              ds_cstr(match), ds_cstr(actions), NULL,
+                              copp_meter_get(COPP_ICMP6_ERR,
+                                             op->od->nbr->copp,
+                                             meter_groups),
+                              &op->nbrp->header_,  lflow_ref);
 }
 
 static void
@@ -14363,44 +14510,9 @@ build_ipv6_input_flows_for_lrouter_port(
     }
 
     /* ICMPv6 time exceeded */
-    struct ds ip_ds = DS_EMPTY_INITIALIZER;
-    for (int i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
-        /* skip link-local address */
-        if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].network)) {
-            continue;
-        }
-
-        ds_clear(match);
-        ds_clear(actions);
-        ds_clear(&ip_ds);
-        if (is_l3dgw_port(op)) {
-            ds_put_cstr(&ip_ds, "ip6.dst <-> ip6.src");
-        } else {
-            ds_put_format(&ip_ds, "ip6.dst = ip6.src; ip6.src = %s",
-                          op->lrp_networks.ipv6_addrs[i].addr_s);
-        }
-        ds_put_format(match,
-                      "inport == %s && ip6 && "
-                      "ip6.src == %s/%d && "
-                      "ip.ttl == {0, 1} && !ip.later_frag",
-                      op->json_key,
-                      op->lrp_networks.ipv6_addrs[i].network_s,
-                      op->lrp_networks.ipv6_addrs[i].plen);
-        ds_put_format(actions,
-                      "icmp6 {"
-                      "eth.dst <-> eth.src; "
-                      "%s ; ip.ttl = 254; "
-                      "icmp6.type = 3; /* Time exceeded */ "
-                      "icmp6.code = 0; /* TTL exceeded in transit */ "
-                      "outport = %s; flags.loopback = 1; output; };",
-                      ds_cstr(&ip_ds), op->json_key);
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                31, ds_cstr(match), ds_cstr(actions), NULL,
-                copp_meter_get(COPP_ICMP6_ERR, op->od->nbr->copp,
-                               meter_groups),
-                &op->nbrp->header_, lflow_ref);
-    }
-    ds_destroy(&ip_ds);
+    build_lrouter_ipv6_default_ttl_expired_flows(op, lflows,
+                                                 match, actions,
+                                                 meter_groups, lflow_ref);
 }
 
 static void
@@ -14508,36 +14620,9 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
     build_lrouter_bfd_flows(lflows, op, meter_groups, lflow_ref);
 
     /* ICMP time exceeded */
-    struct ds ip_ds = DS_EMPTY_INITIALIZER;
-    for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-        ds_clear(match);
-        ds_clear(actions);
-        ds_clear(&ip_ds);
-        if (is_l3dgw_port(op)) {
-            ds_put_cstr(&ip_ds, "ip4.dst <-> ip4.src");
-        } else {
-            ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
-                          op->lrp_networks.ipv4_addrs[i].addr_s);
-        }
-        ds_put_format(match,
-                      "inport == %s && ip4 && "
-                      "ip.ttl == {0, 1} && !ip.later_frag", op->json_key);
-        ds_put_format(actions,
-                      "icmp4 {"
-                      "eth.dst <-> eth.src; "
-                      "icmp4.type = 11; /* Time exceeded */ "
-                      "icmp4.code = 0; /* TTL exceeded in transit */ "
-                      "%s ; ip.ttl = 254; "
-                      "outport = %s; flags.loopback = 1; output; };",
-                      ds_cstr(&ip_ds), op->json_key);
-        ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-                31, ds_cstr(match), ds_cstr(actions), NULL,
-                copp_meter_get(COPP_ICMP4_ERR, op->od->nbr->copp,
-                               meter_groups),
-                &op->nbrp->header_, lflow_ref);
-
-    }
-    ds_destroy(&ip_ds);
+    build_lrouter_ipv4_default_ttl_expired_flows(op, lflows,
+                                                 match, actions,
+                                                 meter_groups, lflow_ref);
 
     /* ARP reply.  These flows reply to ARP requests for the router's own
      * IP address. */
