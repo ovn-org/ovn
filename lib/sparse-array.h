@@ -38,7 +38,7 @@ static inline size_t
 sparse_array_len(const struct sparse_array *array)
 {
     ssize_t idx = dynamic_bitmap_last_set(&array->bitmap);
-    return  idx > -1 ? idx + 1 : 0;
+    return idx > -1 ? (size_t) idx + 1 : 0;
 }
 
 /* It is safe to destroy array members during traversal, so there
