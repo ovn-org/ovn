@@ -292,6 +292,8 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         struct hmap *dp_groups;
         enum ovn_datapath_type dp_type =
             ovn_stage_to_datapath_type(lflow->stage);
+        ovs_assert(dp_type < DP_MAX);
+
         dp_groups = &lflow_table->dp_groups[dp_type];
         datapaths = &dps[dp_type];
         sync_lflow_to_sb(lflow, ovnsb_txn, dp_groups, datapaths,
@@ -323,12 +325,16 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
         if (dp) {
             enum ovn_datapath_type dp_type =
                 ovn_datapath_type_from_string(datapath_get_nb_type(dp));
+            ovs_assert(dp_type < DP_MAX);
+
             sdp = ovn_synced_datapath_from_sb(&dps[dp_type], dp);
         }
         for (i = 0; dp_group && i < dp_group->n_datapaths; i++) {
             enum ovn_datapath_type dp_type =
                 ovn_datapath_type_from_string(datapath_get_nb_type(
                     dp_group->datapaths[i]));
+            ovs_assert(dp_type < DP_MAX);
+
             sdp = ovn_synced_datapath_from_sb(&dps[dp_type],
                                               dp_group->datapaths[i]);
             if (sdp) {
