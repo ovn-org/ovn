@@ -4923,7 +4923,8 @@ or
 
     <column name="nexthop">
       <p>
-        Note: This column is deprecated in favor of <ref column="nexthops"/>.
+        Note: This column is deprecated in favor of <ref column="nexthops"/>
+        and is ignored by northd.
       </p>
       <p>
         Next-hop IP address for this route, which should be the IP
