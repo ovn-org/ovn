@@ -358,6 +358,9 @@ ovn_northd_lb_init(struct ovn_northd_lb *lb,
     }
     lb->affinity_timeout = affinity_timeout;
 
+    lb->use_stateless_nat = smap_get_bool(&nbrec_lb->options,
+                                          "use_stateless_nat", false);
+
     const char *snat_ip = smap_get(&nbrec_lb->options, "hairpin_snat_ip");
 
     if (snat_ip && validate_snap_ip_address(snat_ip)) {

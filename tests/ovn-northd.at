@@ -14295,14 +14295,25 @@ ovn-sbctl dump-flows lr1 > lr1flows
 AT_CAPTURE_FILE([lr1flows])
 
 # Check stateless NAT rules for load balancer with multiple DGP
-# 1. Check if the backend IPs are in the ipX.dst action
-AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
-  table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 30.0.0.1 && is_chassis_resident("cr-lr1-ts1")), action=(ip4.dst = 172.16.0.103; ct_lb_mark(backends=172.16.0.103,172.16.0.102,172.16.0.101);)
-  table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 30.0.0.1 && is_chassis_resident("cr-lr1-ts2")), action=(ip4.dst = 172.16.0.103; ct_lb_mark(backends=172.16.0.103,172.16.0.102,172.16.0.101);)
-  table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 30.0.0.1 && is_chassis_resident("cr-lr1_public")), action=(ip4.dst = 172.16.0.103; ct_lb_mark(backends=172.16.0.103,172.16.0.102,172.16.0.101);)
+# 1. Check if the reg1[0..15] will select one of backends.
+AT_CHECK([grep "lr_in_ct_extract" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
+  table=??(lr_in_ct_extract   ), priority=120  , match=(ip && ip4.dst == 30.0.0.1), action=(reg1[[0..15]] = select(0,1,2);)
 ])
 
-# 2. Check if the DGP ports are in the match with action next
+# 2. Check if the backend IPs are in the ipX.dst action
+AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 0), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 1), action=(ip4.dst = 172.16.0.102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 2), action=(ip4.dst = 172.16.0.101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 0), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 1), action=(ip4.dst = 172.16.0.102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 2), action=(ip4.dst = 172.16.0.101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 0), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 1), action=(ip4.dst = 172.16.0.102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 2), action=(ip4.dst = 172.16.0.101; next;)
+])
+
+# 3. Check if the DGP ports are in the match with action next.
 AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(next;)
@@ -14310,13 +14321,98 @@ AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(next;)
 ])
 
-# 3. Check if the VIP IP is in the ipX.src action
+# 4. Check if the VIP IP is in the ipX.src action.
 AT_CHECK([grep "lr_out_snat" lr1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
   table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(ip4.src = 30.0.0.1; next;)
   table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(ip4.src = 30.0.0.1; next;)
   table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(ip4.src = 30.0.0.1; next;)
+])
+
+# Set selection fields.
+check ovn-nbctl --wait=sb set load_balancer lb1 selection_fields="ip_src,tp_src,ip_dst,tp_dst"
+
+ovn-sbctl dump-flows lr1 > lr1flows
+AT_CAPTURE_FILE([lr1flows])
+
+# 1. Check if the reg1[0..15] will select one of backends using hash_fields.
+AT_CHECK([grep "lr_in_ct_extract" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
+  table=??(lr_in_ct_extract   ), priority=120  , match=(ip && ip4.dst == 30.0.0.1), action=(reg1[[0..15]] = select(values=(0,1,2); hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+])
+
+# 2. Check if the backend IPs are in the ipX.dst action.
+AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 0), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 1), action=(ip4.dst = 172.16.0.102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 2), action=(ip4.dst = 172.16.0.101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 0), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 1), action=(ip4.dst = 172.16.0.102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 2), action=(ip4.dst = 172.16.0.101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 0), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 1), action=(ip4.dst = 172.16.0.102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1 && reg1[[0..15]] == 2), action=(ip4.dst = 172.16.0.101; next;)
+])
+
+# 3. Check if the DGP ports are in the match with action next.
+AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(next;)
+])
+
+# 4. Check if the VIP IP is in the ipX.src action.
+AT_CHECK([grep "lr_out_snat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(ip4.src = 30.0.0.1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(ip4.src = 30.0.0.1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103) || (ip4.src == 172.16.0.102) || (ip4.src == 172.16.0.101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(ip4.src = 30.0.0.1; next;)
+])
+
+# Delete LB and create with one backend.
+check ovn-nbctl --wait=sb lb-del lb1
+check ovn-nbctl --wait=sb lb-add lb1 "30.0.0.1" "172.16.0.103"
+
+# Set use_stateless_nat to true.
+check ovn-nbctl --wait=sb set load_balancer lb1 options:use_stateless_nat=true
+
+# Associate load balancer to s1 and lr1.
+check ovn-nbctl ls-lb-add s1 lb1
+check ovn-nbctl lr-lb-add lr1 lb1
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr1 > lr1flows
+AT_CAPTURE_FILE([lr1flows])
+
+# 1. Check if the reg1[0..15] will select one of backends using hash_fields.
+AT_CHECK([grep "lr_in_ct_extract" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
+  table=??(lr_in_ct_extract   ), priority=120  , match=(ip && ip4.dst == 30.0.0.1), action=(next;)
+])
+
+# 2. Check if the backend IPs are in the ipX.dst action.
+AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "30.0.0.1"], [0], [dnl
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip4 && ip4.dst == 30.0.0.1), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip4 && ip4.dst == 30.0.0.1), action=(ip4.dst = 172.16.0.103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip4 && ip4.dst == 30.0.0.1), action=(ip4.dst = 172.16.0.103; next;)
+])
+
+# 3. Check if the DGP ports are in the match with action next.
+AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 172.16.0.103)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(next;)
+])
+
+# 4. Check if the VIP IP is in the ipX.src action.
+AT_CHECK([grep "lr_out_snat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(ip4.src = 30.0.0.1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(ip4.src = 30.0.0.1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip4 && ((ip4.src == 172.16.0.103)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(ip4.src = 30.0.0.1; next;)
 ])
 
 OVN_CLEANUP_NORTHD
@@ -14401,14 +14497,25 @@ ovn-sbctl dump-flows lr1 > lr1flows
 AT_CAPTURE_FILE([lr1flows])
 
 # Check stateless NAT rules for load balancer with multiple DGP
-# 1. Check if the backend IPs are in the ipX.dst action
-AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
-  table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001:db8:cccc::1 && is_chassis_resident("cr-lr1-ts1")), action=(ip6.dst = 2001:db8:aaaa:3::103; ct_lb_mark(backends=2001:db8:aaaa:3::103,2001:db8:aaaa:3::102,2001:db8:aaaa:3::101);)
-  table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001:db8:cccc::1 && is_chassis_resident("cr-lr1-ts2")), action=(ip6.dst = 2001:db8:aaaa:3::103; ct_lb_mark(backends=2001:db8:aaaa:3::103,2001:db8:aaaa:3::102,2001:db8:aaaa:3::101);)
-  table=??(lr_in_dnat         ), priority=110  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001:db8:cccc::1 && is_chassis_resident("cr-lr1_public")), action=(ip6.dst = 2001:db8:aaaa:3::103; ct_lb_mark(backends=2001:db8:aaaa:3::103,2001:db8:aaaa:3::102,2001:db8:aaaa:3::101);)
+# 1. Check if the reg1[0..15] will select one of backends.
+AT_CHECK([grep "lr_in_ct_extract" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
+  table=??(lr_in_ct_extract   ), priority=120  , match=(ip && ip6.dst == 2001:db8:cccc::1), action=(reg1[[0..15]] = select(0,1,2);)
 ])
 
-# 2. Check if the DGP ports are in the match with action next
+# 2. Check if the backend IPs are in the ipX.dst action.
+AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 0), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 1), action=(ip6.dst = 2001:db8:aaaa:3::102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 2), action=(ip6.dst = 2001:db8:aaaa:3::101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 0), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 1), action=(ip6.dst = 2001:db8:aaaa:3::102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 2), action=(ip6.dst = 2001:db8:aaaa:3::101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 0), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 1), action=(ip6.dst = 2001:db8:aaaa:3::102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 2), action=(ip6.dst = 2001:db8:aaaa:3::101; next;)
+])
+
+# 3. Check if the DGP ports are in the match with action next.
 AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(next;)
@@ -14416,13 +14523,99 @@ AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(next;)
 ])
 
-# 3. Check if the VIP IP is in the ipX.src action
+# 4. Check if the VIP IP is in the ipX.src action.
 AT_CHECK([grep "lr_out_snat" lr1flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
   table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
   table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
   table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
   table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
+])
+
+# Set selection fields.
+check ovn-nbctl --wait=sb set load_balancer lb1 selection_fields="ip_src,tp_src,ip_dst,tp_dst"
+
+ovn-sbctl dump-flows lr1 > lr1flows
+AT_CAPTURE_FILE([lr1flows])
+
+# Check stateless NAT rules for load balancer with multiple DGP.
+# 1. Check if the reg1[0..15] will select one of backends.
+AT_CHECK([grep "lr_in_ct_extract" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
+  table=??(lr_in_ct_extract   ), priority=120  , match=(ip && ip6.dst == 2001:db8:cccc::1), action=(reg1[[0..15]] = select(values=(0,1,2); hash_fields="ip_dst,ip_src,tcp_dst,tcp_src");)
+])
+
+# 2. Check if the backend IPs are in the ipX.dst action.
+AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 0), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 1), action=(ip6.dst = 2001:db8:aaaa:3::102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 2), action=(ip6.dst = 2001:db8:aaaa:3::101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 0), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 1), action=(ip6.dst = 2001:db8:aaaa:3::102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 2), action=(ip6.dst = 2001:db8:aaaa:3::101; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 0), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 1), action=(ip6.dst = 2001:db8:aaaa:3::102; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1 && reg1[[0..15]] == 2), action=(ip6.dst = 2001:db8:aaaa:3::101; next;)
+])
+
+# 3. Check if the DGP ports are in the match with action next.
+AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(next;)
+])
+
+# 4. Check if the VIP IP is in the ipX.src action.
+AT_CHECK([grep "lr_out_snat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103) || (ip6.src == 2001:db8:aaaa:3::102) || (ip6.src == 2001:db8:aaaa:3::101)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
+])
+
+# Delete LB and create with one backend.
+check ovn-nbctl --wait=sb lb-del lb1
+check ovn-nbctl --wait=sb lb-add lb1 "2001:db8:cccc::1" "2001:db8:aaaa:3::103"
+
+# Set use_stateless_nat to true.
+check ovn-nbctl --wait=sb set load_balancer lb1 options:use_stateless_nat=true
+
+# Associate load balancer to s1 and lr1.
+check ovn-nbctl ls-lb-add s1 lb1
+check ovn-nbctl lr-lb-add lr1 lb1
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr1 > lr1flows
+AT_CAPTURE_FILE([lr1flows])
+# Check stateless NAT rules for load balancer with multiple DGP.
+# 1. Check if the reg1[0..15] will select one of backends.
+AT_CHECK([grep "lr_in_ct_extract" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
+  table=??(lr_in_ct_extract   ), priority=120  , match=(ip && ip6.dst == 2001:db8:cccc::1), action=(next;)
+])
+
+# 2. Check if the backend IPs are in the ipX.dst action.
+AT_CHECK([grep "lr_in_dnat" lr1flows | ovn_strip_lflows | grep "2001:db8:cccc::1"], [0], [dnl
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts1") && ip6 && ip6.dst == 2001:db8:cccc::1), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1-ts2") && ip6 && ip6.dst == 2001:db8:cccc::1), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+  table=??(lr_in_dnat         ), priority=110  , match=(is_chassis_resident("cr-lr1_public") && ip6 && ip6.dst == 2001:db8:cccc::1), action=(ip6.dst = 2001:db8:aaaa:3::103; next;)
+])
+
+# 3. Check if the DGP ports are in the match with action next.
+AT_CHECK([grep "lr_out_undnat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(next;)
+])
+
+# 4. Check if the VIP IP is in the ipX.src action.
+AT_CHECK([grep "lr_out_snat" lr1flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103)) && (inport == "lr1-ts1" || outport == "lr1-ts1") && is_chassis_resident("cr-lr1-ts1") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103)) && (inport == "lr1-ts2" || outport == "lr1-ts2") && is_chassis_resident("cr-lr1-ts2") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
+  table=??(lr_out_snat        ), priority=160  , match=(ip6 && ((ip6.src == 2001:db8:aaaa:3::103)) && (inport == "lr1_public" || outport == "lr1_public") && is_chassis_resident("cr-lr1_public") && tcp), action=(ip6.src = 2001:db8:cccc::1; next;)
 ])
 
 OVN_CLEANUP_NORTHD

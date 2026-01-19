@@ -156,6 +156,7 @@ static bool vxlan_mode;
 #define REG_LB_PORT "reg2[0..15]"
 #define REG_CT_TP_DST "reg1[0..15]"
 #define REG_CT_PROTO "reg1[16..23]"
+#define REG_IDX_LB_STATELESS "reg1[0..15]"
 
 /* Registers for ACL evaluation */
 #define REGBIT_ACL_VERDICT_ALLOW "reg8[16]"
@@ -11976,6 +11977,152 @@ lrouter_use_common_zone(const struct ovn_datapath *od)
 }
 
 static void
+build_lrouter_flows_for_lb_stateless(struct lrouter_nat_lb_flows_ctx *ctx,
+                                     struct ovn_datapath *od,
+                                     struct lflow_ref *lflow_ref,
+                                     struct ovn_port *dgp,
+                                     const char *meter)
+{
+    /* (NOTE) dnat_action: Add a new rule lr_in_dnat with backend IP
+     * and port action to skip conntrack completely. It is based on
+     * REG_IDX_LB_STATELESS which was calculated in lr_in_ct_extract.
+     * So, if the packet has VIP IP destination and port
+     * (if port was configured), it selects a backend based on
+     * REG_IDX_LB_STATELESS. It works to multi-chassis and avoid to
+     * sync conntrack between them.
+     */
+    struct ds new_action_stateless_nat = DS_EMPTY_INITIALIZER;
+    struct ds new_match_stateless_nat = DS_EMPTY_INITIALIZER;
+    if (!vector_is_empty(&ctx->lb_vip->backends) ||
+        !ctx->lb_vip->empty_backend_rej) {
+        ds_put_format(&new_match_stateless_nat, "is_chassis_resident(%s)",
+                      dgp->cr_port->json_key);
+    }
+
+    bool ipv4 = ctx->lb_vip->address_family == AF_INET;
+    const char *ip_match = ipv4 ? "ip4" : "ip6";
+    ds_put_format(&new_match_stateless_nat, " && %s && %s.dst == %s",
+                  ip_match, ip_match, ctx->lb_vip->vip_str);
+    if (ctx->lb_vip->port_str) {
+        ds_put_format(&new_match_stateless_nat,
+                      " && %s && %s.dst == %s",
+                      ctx->lb->proto, ctx->lb->proto,
+                      ctx->lb_vip->port_str);
+    }
+
+    const struct ovn_lb_backend *backend;
+    if (vector_len(&ctx->lb_vip->backends) == 1) {
+        backend = vector_get_ptr(&ctx->lb_vip->backends, 0);
+        ds_put_format(&new_action_stateless_nat, "%s.dst = %s; ",
+                      ip_match, backend->ip_str);
+        if (ctx->lb_vip->port_str) {
+            ds_put_format(&new_action_stateless_nat, "%s.dst = %s; ",
+                          ctx->lb->proto, backend->port_str);
+        }
+        ds_put_format(&new_action_stateless_nat, "next;");
+        ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT,
+                                  ctx->prio,
+                                  ds_cstr(&new_match_stateless_nat),
+                                  ds_cstr(&new_action_stateless_nat),
+                                  NULL, meter, &ctx->lb->nlb->header_,
+                                  lflow_ref);
+    }
+    size_t match_len = new_match_stateless_nat.length;
+    size_t i = 0;
+    VECTOR_FOR_EACH_PTR (&ctx->lb_vip->backends, backend) {
+        if (vector_len(&ctx->lb_vip->backends) <= 1) {
+            break;
+        }
+        ds_put_format(&new_match_stateless_nat, " && "
+            REG_IDX_LB_STATELESS" == ""%"PRIuSIZE, i++);
+        ds_put_format(&new_action_stateless_nat, "%s.dst = %s; ",
+                      ip_match, backend->ip_str);
+        if (ctx->lb_vip->port_str) {
+            ds_put_format(&new_action_stateless_nat, "%s.dst = %s; ",
+                          ctx->lb->proto, backend->port_str);
+        }
+        ds_put_format(&new_action_stateless_nat, "next;");
+        ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT,
+                                  ctx->prio,
+                                  ds_cstr(&new_match_stateless_nat),
+                                  ds_cstr(&new_action_stateless_nat),
+                                  NULL, meter,
+                                  &ctx->lb->nlb->header_, lflow_ref);
+        ds_clear(&new_action_stateless_nat);
+        ds_truncate(&new_match_stateless_nat, match_len);
+    }
+
+    ds_destroy(&new_match_stateless_nat);
+    ds_destroy(&new_action_stateless_nat);
+
+    if (vector_is_empty(&ctx->lb_vip->backends)) {
+        return;
+    }
+
+    size_t undnat_match_len = ctx->undnat_match->length;
+    struct ds snat_action = DS_EMPTY_INITIALIZER;
+
+
+    /* We need to centralize the LB traffic to properly perform
+     * the undnat stage.
+     */
+    ds_put_format(ctx->undnat_match, ") && outport == %s", dgp->json_key);
+    ds_clear(ctx->gw_redir_action);
+    ds_put_format(ctx->gw_redir_action, "outport = %s; next;",
+                  dgp->cr_port->json_key);
+
+
+    ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_IN_GW_REDIRECT, 200,
+                            ds_cstr(ctx->undnat_match),
+                            ds_cstr(ctx->gw_redir_action),
+                            &ctx->lb->nlb->header_, lflow_ref);
+    ds_truncate(ctx->undnat_match, undnat_match_len);
+
+    ds_put_format(ctx->undnat_match, ") && (inport == %s || outport == %s)"
+                                     " && is_chassis_resident(%s)",
+                  dgp->json_key, dgp->json_key,
+                  dgp->cr_port->json_key);
+
+    /* Use the LB protocol as matching criteria for out undnat and snat when
+     * creating LBs with stateless NAT. */
+    ds_put_format(ctx->undnat_match, " && %s", ctx->lb->proto);
+
+    /* undnat_action: Just follows the pipeline in the lr_out_undenat NAT rule.
+     */
+    ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_OUT_UNDNAT, 120,
+                            ds_cstr(ctx->undnat_match), "next;",
+                            &ctx->lb->nlb->header_, lflow_ref);
+
+    /* (NOTE) snat_action: Add a new rule lr_out_snat with LB VIP as source
+     * IP action to perform stateless NAT pipeline completely when the
+     * outgoing packet is redirected to a chassis that does not have an
+     * active conntrack entry. Otherwise, it will not be SNATed by the
+     * ct_lb action because it does not refer to a valid created flow. The
+     * use case for responding to a packet in different chassis is multipath
+     * via ECMP. So, the LB lr_out_snat is created with a lower priority than
+     * the other router pipeline entries, in this case, if the packet is not
+     * SNATed by ct_lb (conntrack lost), it will be SNATed by the LB
+     * stateless NAT rule. Also, SNAT is performed only when the packet
+     * matches the configured LB backend IPs, ports and protocols. Otherwise,
+     * the packet will be forwarded without being SNATed.
+     */
+    if (ctx->lb_vip->port_str) {
+        ds_put_format(&snat_action, "%s.src = %s; %s.src = %s; next;",
+                      ip_match, ctx->lb_vip->vip_str, ctx->lb->proto,
+                      ctx->lb_vip->port_str);
+    } else {
+        ds_put_format(&snat_action, "%s.src = %s; next;",
+                      ip_match, ctx->lb_vip->vip_str);
+    }
+    ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_OUT_SNAT, 160,
+                           ds_cstr(ctx->undnat_match), ds_cstr(&snat_action),
+                           &ctx->lb->nlb->header_, lflow_ref);
+
+    ds_truncate(ctx->undnat_match, undnat_match_len);
+    ds_destroy(&snat_action);
+}
+
+static void
 build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                                      enum lrouter_nat_lb_flow_type type,
                                      struct ovn_datapath *od,
@@ -11983,44 +12130,19 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                                      struct ovn_port *dgp,
                                      bool stateless_nat)
 {
-    struct ds dnat_action = DS_EMPTY_INITIALIZER;
-
     /* Store the match lengths, so we can reuse the ds buffer. */
     size_t new_match_len = ctx->new_match->length;
     size_t undnat_match_len = ctx->undnat_match->length;
-
-    /* (NOTE) dnat_action: Add the first LB backend IP as a destination
-     * action of the lr_in_dnat NAT rule. Including the backend IP is useful
-     * for accepting packets coming from a chassis that does not have
-     * previously established conntrack entries. This means that the actions
-     * (ip4.dst + ct_lb_mark) are executed in addition and ip4.dst is not
-     * useful when traffic passes through the same chassis for ingress/egress
-     * packets. However, the actions are complementary in cases where traffic
-     * enters from one chassis, the ack response comes from another chassis,
-     * and the final ack step of the TCP handshake comes from the first
-     * chassis used. Without using stateless NAT, the connection will not be
-     * established because the return packet followed a path through another
-     * chassis and only ct_lb_mark will not be able to receive the ack and
-     * forward it to the right backend. With using stateless NAT, the packet
-     * will be accepted and forwarded to the same backend that corresponds to
-     * the previous conntrack entry that is in the SYN_SENT state
-     * (created by ct_lb_mark for the first rcv packet in this flow).
-     */
-    if (stateless_nat) {
-        if (!vector_is_empty(&ctx->lb_vip->backends)) {
-            const struct ovn_lb_backend *backend =
-                vector_get_ptr(&ctx->lb_vip->backends, 0);
-            bool ipv6 = !IN6_IS_ADDR_V4MAPPED(&backend->ip);
-            ds_put_format(&dnat_action, "%s.dst = %s; ", ipv6 ? "ip6" : "ip4",
-                          backend->ip_str);
-        }
-    }
-    ds_put_format(&dnat_action, "%s", ctx->new_action[type]);
 
     const char *meter = NULL;
 
     if (ctx->reject) {
         meter = copp_meter_get(COPP_REJECT, od->nbr->copp, ctx->meter_groups);
+    }
+
+    if (stateless_nat) {
+        return build_lrouter_flows_for_lb_stateless(ctx, od, lflow_ref,
+                                                    dgp, meter);
     }
 
     if (!vector_is_empty(&ctx->lb_vip->backends) ||
@@ -12030,19 +12152,17 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     }
 
     ovn_lflow_add_with_hint__(ctx->lflows, od, S_ROUTER_IN_DNAT, ctx->prio,
-                              ds_cstr(ctx->new_match), ds_cstr(&dnat_action),
+                              ds_cstr(ctx->new_match), ctx->new_action[type],
                               NULL, meter, &ctx->lb->nlb->header_,
                               lflow_ref);
 
     ds_truncate(ctx->new_match, new_match_len);
 
-    ds_destroy(&dnat_action);
     if (vector_is_empty(&ctx->lb_vip->backends)) {
         return;
     }
 
     struct ds undnat_action = DS_EMPTY_INITIALIZER;
-    struct ds snat_action = DS_EMPTY_INITIALIZER;
 
     switch (type) {
     case LROUTER_NAT_LB_FLOW_FORCE_SNAT:
@@ -12057,13 +12177,6 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                       lrouter_use_common_zone(od) ? "ct_dnat_in_czone;"
                       : "ct_dnat;");
         break;
-    }
-
-    /* undnat_action: Remove the ct action from the lr_out_undenat NAT rule.
-     */
-    if (stateless_nat) {
-        ds_clear(&undnat_action);
-        ds_put_format(&undnat_action, "next;");
     }
 
     /* We need to centralize the LB traffic to properly perform
@@ -12084,51 +12197,13 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     ds_put_format(ctx->undnat_match, ") && (inport == %s || outport == %s)"
                   " && is_chassis_resident(%s)", dgp->json_key, dgp->json_key,
                   dgp->cr_port->json_key);
-    /* Use the LB protocol as matching criteria for out undnat and snat when
-     * creating LBs with stateless NAT. */
-    if (stateless_nat) {
-        ds_put_format(ctx->undnat_match, " && %s", ctx->lb->proto);
-    }
     ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_OUT_UNDNAT, 120,
                             ds_cstr(ctx->undnat_match),
                             ds_cstr(&undnat_action), &ctx->lb->nlb->header_,
                             lflow_ref);
 
-    /* (NOTE) snat_action: Add a new rule lr_out_snat with LB VIP as source
-     * IP action to perform stateless NAT pipeline completely when the
-     * outgoing packet is redirected to a chassis that does not have an
-     * active conntrack entry. Otherwise, it will not be SNATed by the
-     * ct_lb action because it does not refer to a valid created flow. The
-     * use case for responding to a packet in different chassis is multipath
-     * via ECMP. So, the LB lr_out_snat is created with a lower priority than
-     * the other router pipeline entries, in this case, if the packet is not
-     * SNATed by ct_lb (conntrack lost), it will be SNATed by the LB
-     * stateless NAT rule. Also, SNAT is performed only when the packet
-     * matches the configured LB backend IPs, ports and protocols. Otherwise,
-     * the packet will be forwarded without SNAted interference.
-     */
-    if (stateless_nat) {
-        if (ctx->lb_vip->port_str) {
-            ds_put_format(&snat_action, "%s.src = %s; %s.src = %s; next;",
-                          ctx->lb_vip->address_family == AF_INET6 ?
-                          "ip6" : "ip4",
-                          ctx->lb_vip->vip_str, ctx->lb->proto,
-                          ctx->lb_vip->port_str);
-        } else {
-            ds_put_format(&snat_action, "%s.src = %s; next;",
-                          ctx->lb_vip->address_family == AF_INET6 ?
-                          "ip6" : "ip4",
-                          ctx->lb_vip->vip_str);
-        }
-        ovn_lflow_add_with_hint(ctx->lflows, od, S_ROUTER_OUT_SNAT, 160,
-                                ds_cstr(ctx->undnat_match),
-                                ds_cstr(&snat_action), &ctx->lb->nlb->header_,
-                                lflow_ref);
-    }
-
     ds_truncate(ctx->undnat_match, undnat_match_len);
     ds_destroy(&undnat_action);
-    ds_destroy(&snat_action);
 }
 
 static void
@@ -12284,8 +12359,7 @@ build_lrouter_nat_flows_for_lb(
      * lflow generation for them.
      */
     size_t index;
-    bool use_stateless_nat = smap_get_bool(&lb->nlb->options,
-                                           "use_stateless_nat", false);
+    bool use_stateless_nat = lb->use_stateless_nat;
     DYNAMIC_BITMAP_FOR_EACH_1 (index, &lb_dps->nb_lr_map) {
         struct ovn_datapath *od = lr_datapaths->array[index];
         enum lrouter_nat_lb_flow_type type;
@@ -12416,13 +12490,45 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
     build_lb_rules_for_stateless_acl(lflows, lb_dps);
 }
 
+static void
+build_lrouter_defrag_actions_for_lb_stateless(const struct ovn_northd_lb *lb,
+                                              const struct ovn_lb_vip *lb_vip,
+                                              struct ds *action)
+{
+    ovs_assert(lb && lb_vip && action);
+
+    if (vector_len(&lb_vip->backends) > 1) {
+        ds_put_format(action, REG_IDX_LB_STATELESS" = select(");
+        if (lb->selection_fields) {
+            ds_put_format(action, "values=(");
+        }
+        for (size_t idx_backend = 0; idx_backend <
+             vector_len(&lb_vip->backends);
+             idx_backend++) {
+            ds_put_format(action, "%"PRIuSIZE",", idx_backend);
+        }
+        ds_truncate(action, action->length - 1);
+        if (lb->selection_fields) {
+            ds_put_format(action, "); hash_fields=\"%s\"",
+                          lb->selection_fields);
+        }
+        ds_put_format(action, ");");
+    } else {
+        ds_put_format(action, "next;");
+    }
+}
+
 /* If there are any load balancing rules, we should send the packet to
- * conntrack for defragmentation and tracking.  This helps with two things.
+ * conntrack for defragmentation and tracking, unless LB is stateless.
+ * This helps with two things.
  *
  * 1. With tracking, we can send only new connections to pick a DNAT ip address
  *    from a group.
  * 2. If there are L4 ports in load balancing rules, we need the
  *    defragmentation to match on L4 ports.
+ *
+ * If load balancer is stateless, conntrack must not be used.
+ * A hash is calculated then to select the backend.
  */
 static void
 build_lrouter_defrag_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
@@ -12434,20 +12540,33 @@ build_lrouter_defrag_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
         return;
     }
 
+    struct ds action = DS_EMPTY_INITIALIZER;
     for (size_t i = 0; i < lb_dps->lb->n_vips; i++) {
         struct ovn_lb_vip *lb_vip = &lb_dps->lb->vips[i];
         bool ipv6 = lb_vip->address_family == AF_INET6;
         int prio = 100;
 
+        enum ovn_stage stage;
         ds_clear(match);
         ds_put_format(match, "ip && ip%c.dst == %s", ipv6 ? '6' : '4',
                       lb_vip->vip_str);
+        if (lb_dps->lb->use_stateless_nat) {
+            stage = S_ROUTER_IN_CT_EXTRACT;
+            prio = 120;
+            build_lrouter_defrag_actions_for_lb_stateless(lb_dps->lb, lb_vip,
+                                                          &action);
+        } else {
+            stage = S_ROUTER_IN_DEFRAG;
+            ds_put_format(&action, "ct_dnat;");
+        }
 
         ovn_lflow_add_with_dp_group(
             lflows, lb_dps->nb_lr_map.map, ods_size(lr_datapaths),
-            S_ROUTER_IN_DEFRAG, prio, ds_cstr(match), "ct_dnat;",
+            stage, prio, ds_cstr(match), ds_cstr(&action),
             &lb_dps->lb->nlb->header_, lb_dps->lflow_ref);
+        ds_clear(&action);
     }
+    ds_destroy(&action);
 }
 
 static void

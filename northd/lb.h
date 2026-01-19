@@ -75,6 +75,7 @@ struct ovn_northd_lb {
     bool health_checks;
 
     char *hairpin_snat_ip;
+    bool use_stateless_nat;
 };
 
 /* ovn-northd specific backend information. */
