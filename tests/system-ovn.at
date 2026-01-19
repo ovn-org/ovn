@@ -4907,7 +4907,6 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([enable-stateless-acl-with-lb usage])
 AT_SKIP_IF([test $HAVE_NC = no])
-TAG_UNSTABLE
 
 CHECK_CONNTRACK()
 ovn_start
@@ -5018,6 +5017,7 @@ NETNS_DAEMONIZE([lsp1], [nc -u -l 192.168.0.101 4042], [lsp1_udp.pid])
 NETNS_DAEMONIZE([lsp1], [nc -l -k 192.168.0.101 4043], [lsp1_non_lb.pid])
 
 # Send the packet to VIP from private network.
+NETNS_START_TCPDUMP([lsp1], [-nnnei lsp1], [lsp1])
 NS_CHECK_EXEC([lsp1], [nc -z 192.168.0.1 8080], [0], [ignore], [ignore])
 
 # Udp connections
@@ -5031,6 +5031,17 @@ tcp,orig=(src=192.168.0.101,dst=192.168.0.1,sport=<cleared>,dport=<cleared>),rep
 udp,orig=(src=192.168.0.101,dst=192.168.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.0.101,dst=192.168.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2
 ])
 
+AT_CHECK([ovs-appctl dpctl/flush-conntrack])
+
+# Do the same sending a packet.
+NS_CHECK_EXEC([lsp1], [echo a | nc 192.168.0.1 8080], [0], [ignore], [ignore])
+
+# Check conntrack zone of lsp1 has tcp entry for lb
+AT_CHECK([ovs-appctl dpctl/dump-conntrack zone=$zone_lsp1_id | \
+FORMAT_CT(192.168.0.1) | \
+sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
+tcp,orig=(src=192.168.0.101,dst=192.168.0.1,sport=<cleared>,dport=<cleared>),reply=(src=192.168.0.101,dst=192.168.0.101,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=2,protoinfo=(state=<cleared>)
+])
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # Check that internal traffic not related to lb doesn't create conntrack records

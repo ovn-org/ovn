@@ -17462,7 +17462,7 @@ AT_CHECK([grep -E 'ls_in_pre_stateful' sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
   table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
   table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
-  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.5), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
 ])
 
 AS_BOX([Set hairpin_snat_ip to Load Balancer without port.])
@@ -17476,7 +17476,7 @@ AT_CHECK([grep -E 'ls_in_pre_stateful' sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_stateful ), priority=110  , match=(reg0[[2]] == 1), action=(ct_lb_mark;)
   table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
   table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
-  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.5), action=(ct_lb_mark;)
+  table=??(ls_in_pre_stateful ), priority=150  , match=(ip4.dst == 10.0.0.5), action=(reg4 = 10.0.0.5; ct_lb_mark;)
 ])
 
 AS_BOX([Create one more logical switch with load balancer.])

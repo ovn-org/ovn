@@ -7649,6 +7649,15 @@ build_lb_rules_pre_stateful(struct lflow_table *lflows,
                               lb_vip->port_str);
             }
 
+            if (lb->vips[i].address_family == AF_INET) {
+                ds_put_format(action, REG_LB_IPV4 " = %s; ", lb_vip->vip_str);
+            } else {
+                ds_put_format(action, REG_LB_IPV6 " = %s; ", lb_vip->vip_str);
+            }
+            if (lb_vip->port_str) {
+                ds_put_format(action, REG_LB_PORT " = %s; ", lb_vip->port_str);
+            }
+
             ds_put_cstr(action, "ct_lb_mark;");
 
             ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_STATEFUL, 150,
