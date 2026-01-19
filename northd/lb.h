@@ -72,6 +72,8 @@ struct ovn_northd_lb {
 
     /* Indicates if the load balancer has health checks configured. */
     bool health_checks;
+
+    bool use_stateless_nat;
 };
 
 /* ovn-northd specific backend information. */
