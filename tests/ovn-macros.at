@@ -1493,6 +1493,12 @@ m4_define([TAG_UNSTABLE], [
     AT_SKIP_IF([test X"$SKIP_UNSTABLE" = Xyes])
 ])
 
+# TAG_TEST_NOT_UPGRADABLE tag indicates that the test would fail
+# "upgrade" test (i.e. running old ovn-northd and new ovn-controller)
+m4_define([TAG_TEST_NOT_UPGRADABLE], [
+    AT_SKIP_IF([test X"$UPGRADE_TEST" = Xyes])
+])
+
 m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
 [
     AT_SKIP_IF([test $HAVE_SCAPY = no])
