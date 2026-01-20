@@ -8082,6 +8082,7 @@ check_acl_log_count 2
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8094,6 +8095,7 @@ check $PYTHON $srcdir/check_acl_log.py \
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=2 \
     --name=allow_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:02 \
@@ -8118,6 +8120,7 @@ check_acl_log_count 1
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8141,6 +8144,7 @@ check_acl_log_count 1
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8163,6 +8167,7 @@ check_acl_log_count 1
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8180,11 +8185,13 @@ clear_log
 test_ping
 
 # Now we should have the request and reply logged.
+# Note that reply traffic is now logged as to-lport.
 check_acl_log_count 2
 
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8197,6 +8204,7 @@ check $PYTHON $srcdir/check_acl_log.py \
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=2 \
     --name=allow_related_acl \
+    --direction=to-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:02 \
@@ -8205,7 +8213,6 @@ check $PYTHON $srcdir/check_acl_log.py \
     --nw_dst=10.0.0.1 \
     --icmp_type=0 \
     --icmp_code=0
-
 
 # And now, let's start from scratch but make sure everything works when
 # using egress ACLs.
@@ -8225,6 +8232,7 @@ check_acl_log_count 2
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_acl \
+    --direction=to-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8237,6 +8245,7 @@ check $PYTHON $srcdir/check_acl_log.py \
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=2 \
     --name=allow_acl \
+    --direction=to-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:02 \
@@ -8261,6 +8270,7 @@ check_acl_log_count 1
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=to-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8284,6 +8294,7 @@ check_acl_log_count 1
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=to-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8306,6 +8317,7 @@ check_acl_log_count 1
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
+    --direction=to-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:01 \
@@ -8323,23 +8335,13 @@ clear_log
 test_ping
 
 # Now we should have the request and reply logged.
+# Note that reply traffic is from-lport, so it is sorted first.
 check_acl_log_count 2
 
 check $PYTHON $srcdir/check_acl_log.py \
     --entry-num=1 \
     --name=allow_related_acl \
-    --verdict=allow \
-    --protocol=icmp \
-    --dl_src=00:00:00:00:00:01 \
-    --dl_dst=00:00:00:00:00:02 \
-    --nw_src=10.0.0.1 \
-    --nw_dst=10.0.0.2 \
-    --icmp_type=8 \
-    --icmp_code=0
-
-check $PYTHON $srcdir/check_acl_log.py \
-    --entry-num=2 \
-    --name=allow_related_acl \
+    --direction=from-lport \
     --verdict=allow \
     --protocol=icmp \
     --dl_src=00:00:00:00:00:02 \
@@ -8349,6 +8351,18 @@ check $PYTHON $srcdir/check_acl_log.py \
     --icmp_type=0 \
     --icmp_code=0
 
+check $PYTHON $srcdir/check_acl_log.py \
+    --entry-num=2 \
+    --name=allow_related_acl \
+    --direction=to-lport \
+    --verdict=allow \
+    --protocol=icmp \
+    --dl_src=00:00:00:00:00:01 \
+    --dl_dst=00:00:00:00:00:02 \
+    --nw_src=10.0.0.1 \
+    --nw_dst=10.0.0.2 \
+    --icmp_type=8 \
+    --icmp_code=0
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
