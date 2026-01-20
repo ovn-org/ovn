@@ -10,16 +10,13 @@ def strip(val):
 
 def parse_acl_log(line):
     """Convert an ACL log string into a dict"""
-    # First cut off the logging preamble.
-    # We're assuming the default log format.
     acl_log = {}
-    _, _, details = line.rpartition("|")
 
     # acl_details are things like the acl name, direction,
     # verdict, and severity. packet_details are things like
     # the protocol, addresses, and ports of the packet being
     # logged.
-    acl_details, _, packet_details = details.partition(":")
+    acl_details, _, packet_details = line.partition(":")
     for datum in acl_details.split(","):
         name, _, value = datum.rpartition("=")
         acl_log[strip(name)] = strip(value)
@@ -37,8 +34,10 @@ def parse_acl_log(line):
 
 def get_acl_log(entry_num=1):
     with open("ovn-controller.log", "r") as controller_log:
-        acl_logs = [line.rstrip() for line in controller_log
+        # Cut off the logging preamble, so we can sort logs properly.
+        acl_logs = [line.split('|', 4)[-1].rstrip() for line in controller_log
                     if "acl_log" in line]
+        acl_logs.sort()
         try:
             return acl_logs[entry_num - 1]
         except IndexError:
@@ -55,6 +54,7 @@ def add_parser_args(parser):
     # There are other possible things that can be in an ACL log,
     # and if we need those in the future, we can add them later.
     parser.add_argument("--name")
+    parser.add_argument("--direction")
     parser.add_argument("--verdict")
     parser.add_argument("--severity")
     parser.add_argument("--protocol")
