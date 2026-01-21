@@ -263,14 +263,11 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
     }
 
     if (handle_data->routes_to_advertise) {
-        uint32_t hash = advertise_route_hash(&rd->rta_dst, rd->rtm_dst_len);
-        HMAP_FOR_EACH_WITH_HASH (ar, node, hash, handle_data->routes) {
-            if (ipv6_addr_equals(&ar->addr, &rd->rta_dst)
-                    && ar->plen == rd->rtm_dst_len
-                    && ar->priority == rd->rta_priority) {
-                hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
-                return;
-            }
+        ar = advertise_route_find(rd->rta_priority, &rd->rta_dst,
+                                  rd->rtm_dst_len, handle_data->routes);
+        if (ar) {
+            hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
+            return;
         }
     }
 

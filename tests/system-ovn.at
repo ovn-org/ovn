@@ -16761,6 +16761,93 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - multiple DGP with same priority])
+
+VRF_RESERVE([1337])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+check ovs-vsctl                                                                     \
+    -- set Open_vSwitch . external-ids:system-id=hv1                                \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve                        \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1                       \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+check ovn-nbctl                                                               \
+    -- lr-add lr                                                              \
+      -- set logical_router lr options:dynamic-routing=true                   \
+                               options:dynamic-routing-vrf-id=1337            \
+      -- lrp-add lr lr-gw1 00:00:00:01:00:10 42.10.10.12/24                   \
+        -- lrp-set-gateway-chassis lr-gw1 hv1 10                              \
+        -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb         \
+                                  dynamic-routing-maintain-vrf=true           \
+      -- lrp-add lr lr-gw2 00:00:00:02:00:10 42.20.10.22/24                   \
+        -- lrp-set-gateway-chassis lr-gw2 hv1 10                              \
+        -- lrp-set-options lr-gw2 dynamic-routing-redistribute=nat,lb         \
+                                  dynamic-routing-maintain-vrf=true           \
+      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24                     \
+        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected     \
+      -- lrp-add lr lr-int2 00:00:00:00:01:02 30.0.2.1/24                     \
+        -- lrp-set-options lr-int2 dynamic-routing-redistribute=connected     \
+    -- ls-add ls                                                              \
+      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                              \
+      -- lsp-add-router-port ls ls-lr-gw2 lr-gw2                              \
+    -- ls-add ls-int1                                                         \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1                       \
+      -- lsp-add ls-int1 w1                                                   \
+        -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11"                 \
+    -- ls-add ls-int2                                                         \
+      -- lsp-add-router-port ls-int2 ls-int2-lr lr-int2                       \
+      -- lsp-add ls-int2 w2                                                   \
+        -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"                 \
+    -- lr-nat-add lr dnat_and_snat 42.10.10.23 30.0.1.11 w1 00:00:00:00:01:11 \
+    -- lb-add lb1 42.10.10.14 30.0.1.11                                       \
+    -- lr-lb-add lr lb1                                                       \
+    -- lr-nat-add lr dnat_and_snat 42.20.10.23 30.0.2.11 w2 00:00:00:00:02:11 \
+    -- lb-add lb2 42.20.10.24 30.0.2.11                                       \
+    -- lr-lb-add lr lb2
+
+check ovs-vsctl add-port br-int w1 \
+    -- set interface w1 type=internal external_ids:iface-id=w1
+check ovs-vsctl add-port br-int w2 \
+    -- set interface w2 type=internal external_ids:iface-id=w2
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up w1 w2
+
+
+AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
+ovnvrf1337 1337
+])
+
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+blackhole 42.10.10.14 proto ovn metric 100
+blackhole 42.10.10.23 proto ovn metric 100
+blackhole 42.20.10.23 proto ovn metric 100
+blackhole 42.20.10.24 proto ovn metric 100])
+
+check ovn-nbctl --wait=hv ls-del ls-int1
+check ovn-nbctl --wait=hv ls-del ls-int2
+check ovn-nbctl --wait=hv ls-del ls
+check ovn-nbctl --wait=hv lr-del lr
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Mac binding aging - Probing])
 AT_KEYWORDS([mac_binding_probing])
 ovn_start
