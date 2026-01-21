@@ -12136,6 +12136,35 @@ reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
 rm -f 1.expected
 rm -f 2.expected
+
+AS_BOX([Verify DNS coverage counters])
+# The test has sent multiple DNS queries of various types, verify counters
+# Total queries should be > 0
+as hv1
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_query_total | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# A record queries (multiple A queries sent)
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_query_type_a | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# AAAA record queries (IPv6 queries sent)
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_query_type_aaaa | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# PTR record queries (reverse DNS lookups sent)
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_query_type_ptr | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# ANY record queries (vm1_ipv4_v6 queries sent)
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_query_type_any | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# Cache hits (repeated queries)
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_cache_hit | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# Cache misses (queries for non-existent records)
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_cache_miss | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+# Responses sent
+OVS_WAIT_FOR_OUTPUT([ovn-appctl coverage/read-counter dns_response_sent | awk '{if ($1 > 0) print "ok"}'], [0], [ok
+])
+
 OVN_CLEANUP([hv1])
 
 AT_CLEANUP

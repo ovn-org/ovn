@@ -391,6 +391,22 @@ COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
 COVERAGE_DEFINE(pinctrl_notify_main_thread);
 COVERAGE_DEFINE(pinctrl_total_pin_pkts);
 
+/* DNS query statistics - thread-safe coverage counters */
+COVERAGE_DEFINE(dns_query_total);
+COVERAGE_DEFINE(dns_query_type_a);
+COVERAGE_DEFINE(dns_query_type_aaaa);
+COVERAGE_DEFINE(dns_query_type_ptr);
+COVERAGE_DEFINE(dns_query_type_any);
+COVERAGE_DEFINE(dns_query_type_other);
+COVERAGE_DEFINE(dns_cache_hit);
+COVERAGE_DEFINE(dns_cache_miss);
+COVERAGE_DEFINE(dns_error_truncated);
+COVERAGE_DEFINE(dns_skipped_not_request);
+COVERAGE_DEFINE(dns_error_no_query);
+COVERAGE_DEFINE(dns_error_parse_failure);
+COVERAGE_DEFINE(dns_unsupported_ovn_owned);
+COVERAGE_DEFINE(dns_response_sent);
+
 struct empty_lb_backends_event {
     struct hmap_node hmap_node;
     long long int timestamp;
@@ -3366,6 +3382,9 @@ pinctrl_handle_dns_lookup(
     uint32_t success = 0;
     bool send_refuse = false;
 
+    /* Track total DNS queries received */
+    COVERAGE_INC(dns_query_total);
+
     /* Parse result field. */
     const struct mf_field *f;
     enum ofperr ofperr = nx_pull_header(userdata, NULL, &f, NULL);
@@ -3392,6 +3411,7 @@ pinctrl_handle_dns_lookup(
     /* Check that the packet stores at least the minimal headers. */
     if (dp_packet_l4_size(pkt_in) < (UDP_HEADER_LEN + DNS_HEADER_LEN)) {
         VLOG_WARN_RL(&rl, "truncated dns packet");
+        COVERAGE_INC(dns_error_truncated);
         goto exit;
     }
 
@@ -3399,17 +3419,20 @@ pinctrl_handle_dns_lookup(
     struct dns_header const *in_dns_header = dp_packet_get_udp_payload(pkt_in);
     if (!in_dns_header) {
         VLOG_WARN_RL(&rl, "truncated dns packet");
+        COVERAGE_INC(dns_error_truncated);
         goto exit;
     }
 
     /* Check if it is DNS request or not */
     if (in_dns_header->lo_flag & 0x80) {
         /* It's a DNS response packet which we are not interested in */
+        COVERAGE_INC(dns_skipped_not_request);
         goto exit;
     }
 
     /* Check if at least one query request is present */
     if (!in_dns_header->qdcount) {
+        COVERAGE_INC(dns_error_no_query);
         goto exit;
     }
 
@@ -3431,6 +3454,7 @@ pinctrl_handle_dns_lookup(
         uint8_t label_len = in_dns_data[idx++];
         if (in_dns_data + idx + label_len > end) {
             ds_destroy(&query_name);
+            COVERAGE_INC(dns_error_parse_failure);
             goto exit;
         }
         ds_put_buffer(&query_name, (const char *) in_dns_data + idx, label_len);
@@ -3449,6 +3473,26 @@ pinctrl_handle_dns_lookup(
     }
 
     uint16_t query_type = ntohs(get_unaligned_be16((void *) in_dns_data));
+
+    /* Track query type statistics */
+    switch (query_type) {
+    case DNS_QUERY_TYPE_A:
+        COVERAGE_INC(dns_query_type_a);
+        break;
+    case DNS_QUERY_TYPE_AAAA:
+        COVERAGE_INC(dns_query_type_aaaa);
+        break;
+    case DNS_QUERY_TYPE_PTR:
+        COVERAGE_INC(dns_query_type_ptr);
+        break;
+    case DNS_QUERY_TYPE_ANY:
+        COVERAGE_INC(dns_query_type_any);
+        break;
+    default:
+        COVERAGE_INC(dns_query_type_other);
+        break;
+    }
+
     /* Supported query types - A, AAAA, ANY and PTR */
     if (!(query_type == DNS_QUERY_TYPE_A || query_type == DNS_QUERY_TYPE_AAAA
           || query_type == DNS_QUERY_TYPE_ANY
@@ -3467,8 +3511,10 @@ pinctrl_handle_dns_lookup(
                                              &ovn_owned);
     ds_destroy(&query_name);
     if (!answer_data) {
+        COVERAGE_INC(dns_cache_miss);
         goto exit;
     }
+    COVERAGE_INC(dns_cache_hit);
 
 
     uint16_t ancount = 0;
@@ -3511,6 +3557,7 @@ pinctrl_handle_dns_lookup(
         if (ovn_owned && (query_type == DNS_QUERY_TYPE_AAAA ||
             query_type == DNS_QUERY_TYPE_A) && !ancount) {
             send_refuse = true;
+            COVERAGE_INC(dns_unsupported_ovn_owned);
         }
 
         destroy_lport_addresses(&ip_addrs);
@@ -3595,6 +3642,7 @@ pinctrl_handle_dns_lookup(
     pin->packet_len = dp_packet_size(&pkt_out);
 
     success = 1;
+    COVERAGE_INC(dns_response_sent);
 exit:
     if (!ofperr) {
         union mf_subvalue sv;

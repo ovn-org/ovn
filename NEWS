@@ -1,5 +1,10 @@
 Post v25.09.0
 -------------
+   - Added DNS query statistics tracking in ovn-controller using OVS coverage
+     counters. Statistics can be queried using "ovn-appctl -t ovn-controller
+     coverage/read-counter <counter_name>" or "coverage/show". Tracked metrics
+     include total queries, query types (A, AAAA, PTR, ANY, Other), cache
+     performance (hits/misses), responses sent, and error conditions.
    - Added support for TLS Server Name Indication (SNI) with the new
      --ssl-server-name option in OVN utilities and daemons. This allows
      specifying the server name for SNI, which is useful when connecting
