@@ -248,14 +248,11 @@ handle_route_msg(const struct route_table_msg *msg, void *data)
     const struct advertise_route_entry re =
             advertise_route_from_route_data(rd);
     if (handle_data->routes_to_advertise) {
-        uint32_t hash = advertise_route_hash(&re.addr, re.plen);
-        HMAP_FOR_EACH_WITH_HASH (ar, node, hash, handle_data->routes) {
-            if (ipv6_addr_equals(&ar->addr, &re.addr)
-                    && ar->plen == re.plen
-                    && ar->priority == re.priority) {
-                hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
-                return;
-            }
+        ar = advertise_route_find(re.priority, &re.addr,
+                                  re.plen, handle_data->routes);
+        if (ar) {
+            hmapx_find_and_delete(handle_data->routes_to_advertise, ar);
+            return;
         }
     }
 
