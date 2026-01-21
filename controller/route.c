@@ -368,13 +368,19 @@ route_run(struct route_ctx_in *r_ctx_in,
             }
         }
 
+        struct in6_addr nexthop = IN6_IS_ADDR_V4MAPPED(&prefix)
+                ? ad->ipv4_nexthop : ad->ipv6_nexthop;
+        if (advertise_route_find(priority, &prefix, plen, &nexthop,
+                                 &ad->routes)) {
+            continue;
+        }
+
         struct advertise_route_entry *ar = xmalloc(sizeof(*ar));
         *ar = (struct advertise_route_entry) {
             .addr = prefix,
             .plen = plen,
             .priority = priority,
-            .nexthop = IN6_IS_ADDR_V4MAPPED(&prefix)
-                       ? ad->ipv4_nexthop : ad->ipv6_nexthop,
+            .nexthop = nexthop,
         };
         hmap_insert(&ad->routes, &ar->node,
                     advertise_route_hash(&ar->addr, &ar->nexthop, plen));
@@ -398,4 +404,22 @@ route_get_table_id(const struct sbrec_datapath_binding *dp)
     int64_t vrf_id = ovn_smap_get_llong(&dp->external_ids,
                                         "dynamic-routing-vrf-id", -1);
     return (vrf_id >= 1 && vrf_id <= UINT32_MAX) ? vrf_id : dp->tunnel_key;
+}
+
+struct advertise_route_entry *
+advertise_route_find(unsigned int priority, const struct in6_addr *prefix,
+                     unsigned int plen, const struct in6_addr *nexthop,
+                     const struct hmap *advertised_routes)
+{
+    uint32_t hash = advertise_route_hash(prefix, nexthop, plen);
+    struct advertise_route_entry *ar;
+    HMAP_FOR_EACH_WITH_HASH (ar, node, hash, advertised_routes) {
+        if (ipv6_addr_equals(&ar->addr, prefix) &&
+            ipv6_addr_equals(&ar->nexthop, nexthop) &&
+            ar->plen == plen &&
+            ar->priority == priority) {
+            return ar;
+        }
+    }
+    return NULL;
 }
