@@ -3925,6 +3925,21 @@ tcp.flags = RST;
           bound.  Default: <code>false</code>.
         </p>
       </column>
+
+      <column name="options" key="dynamic-routing-no-learning"
+              type='{"type": "boolean"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This option disables adding routes to
+          <ref table="Learned_Route" db="OVN_Southbound"/> and will also
+          remove learned routes.
+        </p>
+      </column>
+
     </group>
 
     <group title="Nested Containers">

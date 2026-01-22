@@ -19954,15 +19954,98 @@ AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
 OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
 ])
 
+# Disable learning on router
+AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-route learning])
+
+# Add a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
+
+# Verify learned route appears in SB database
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=true
+
+# Verify routes do not appear in SB database.
+wait_row_count Learned_Route 0
+
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=false
+
+# Verify learned route appears in SB database
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify all routes removed from SB database.
+wait_row_count Learned_Route 0
+
+# Disable learning on router then attempt to add route
+AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-route learning 2])
+
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=true
+
+# Add a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
+
+# Verify routes do not appear in SB database.
+wait_row_count Learned_Route 0
+
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=false
+
+# Verify learned route appears in SB database
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify all routes removed from SB database.
+wait_row_count Learned_Route 0
+
+# Disable learning on router port
+AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-route learning on port])
+check ovn-nbctl --wait=hv set Logical_Router_Port lrp-local-bgp-port options:dynamic-routing-no-learning=true
+
+# Add a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
+
+# Verify routes do not appear in SB database.
+wait_row_count Learned_Route 0
+
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+check ovn-nbctl --wait=hv set Logical_Router_Port lrp-local-bgp-port options:dynamic-routing-no-learning=false
+
 # Add again a route to the VRF (simulating BGP learning a route)
 AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
 
 # Verify learned route appears in SB database
-OVS_WAIT_UNTIL([ovn-sbctl list Learned_Route | grep ip_prefix | grep -Fe 10.10.3.1])
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
+
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+
+# Verify all routes removed from SB database.
+wait_row_count Learned_Route 0
+
+# Disable learning on router and enable on port
+AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-route learning on router, but not port])
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=true
+check ovn-nbctl --wait=hv set Logical_Router_Port lrp-local-bgp-port options:dynamic-routing-no-learning=false
+
+# Add a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
+
+# Verify routes do not appear in SB database.
+wait_row_count Learned_Route 1
+
+AT_CHECK([ip route del 10.10.3.1 via 20.0.0.25 vrf vrf-$vni])
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=false
+
+# Add again a route to the VRF (simulating BGP learning a route)
+AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
+
+# Verify learned route appears in SB database
+wait_row_count Learned_Route 1 ip_prefix=10.10.3.1
 
 # Disable dynamic routing
 AS_BOX([$(date +%H:%M:%S.%03N) Disable dynamic-routing])
-check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=false
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing=false
 check_row_count Port_Binding 0 logical_port=lrp-local-bgp-port 'options:dynamic-routing=true'
 
 # Add one more route to the VRF (simulating BGP learning a route)
@@ -19973,7 +20056,7 @@ OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0],
 ])
 
 # Re-enable dynamic routing
-check ovn-nbctl --wait=sb set Logical_Router lr-frr options:dynamic-routing=true
+check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing=true
 check_row_count Port_Binding 1 logical_port=lrp-local-bgp-port 'options:dynamic-routing=true'
 
 # Verify both routes appear in SB database.

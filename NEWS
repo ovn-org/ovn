@@ -34,6 +34,12 @@ Post v25.09.0
        which allows CMS to specify nexthop for IPv4 Advertised routes.
      * Add the option "dynamic-routing-v6-prefix-nexthop" to Logical Routers
        which allows CMS to specify nexthop for IPv6 Advertised routes.
+     * Add the "options:dynamic-routing-no-learning" to Logical Routers. If
+       set to true router will not learn routes and will forget learned
+       routes.
+     * Add the "options:dynamic-routing-no-learning" to Logical Routers ports.
+       If set to true, router port will not learn routes and will forget
+       learned routes. This option has priority over its router counterpart.
    - Add support for Network Function insertion in OVN with stateful traffic
      redirection capability in Logical Switch datapath. The feature introduces
      three new NB database tables:

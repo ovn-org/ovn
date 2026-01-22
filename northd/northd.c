@@ -3919,6 +3919,15 @@ sync_pb_for_lrp(struct ovn_port *op,
         if (redistribute_local_only_val) {
             smap_add(&new, redistribute_local_only_name, "true");
         }
+
+        /* Set no-learning on ports based on NB router/router port config */
+        const char *no_learn_name = "dynamic-routing-no-learning";
+        bool no_learning = smap_get_bool(&op->nbrp->options, no_learn_name,
+                                         smap_get_bool(&op->od->nbr->options,
+                                                       no_learn_name, false));
+        if (no_learning) {
+            smap_add(&new, "dynamic-routing-no-learning", "true");
+        }
     }
 
     const char *ipv6_pd_list = smap_get(&op->sb->options, "ipv6_ra_pd_list");

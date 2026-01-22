@@ -3442,6 +3442,19 @@ or
         </p>
       </column>
 
+      <column name="options" key="dynamic-routing-no-learning"
+              type='{"type": "boolean"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This option disables route learning on a specific router and will
+          also remove learned routes.
+        </p>
+      </column>
+
       <column name="options" key="dynamic-routing-v4-prefix-nexthop"
               type='{"type": "string"}'>
         <p>
@@ -4580,6 +4593,20 @@ or
 
           This allows to filter CIDR prefixes in the process of learning
           routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="dynamic-routing-no-learning"
+              type='{"type": "boolean"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          This option disables route learning on a specific router port and
+          will also remove learned routes. It also has priority over the
+          router version of this option.
         </p>
       </column>
     </group>

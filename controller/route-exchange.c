@@ -187,6 +187,14 @@ sb_sync_learned_routes(const struct vector *learned_routes,
             if (!logical_port) {
                 continue;
             }
+
+            bool no_learning = smap_get_bool(&logical_port->options,
+                                             "dynamic-routing-no-learning",
+                                             false);
+            if (no_learning) {
+                continue;
+            }
+
             route_e = route_lookup(&sync_routes, datapath,
                                    logical_port, ip_prefix, nexthop);
             if (route_e) {
