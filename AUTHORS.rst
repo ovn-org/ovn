@@ -233,6 +233,7 @@ Ken Sanislo                        ken@intherack.com
 Kenneth Duda                       kduda@arista.com
 Kentaro Ebisawa                    ebiken.g@gmail.com
 Keshav Gupta                       keshav.gupta@ericsson.com
+Ketan Supanekar                    ksupanekar@crusoe.ai
 Kevin Lo                           kevlo@FreeBSD.org
 Kevin Traynor                      kevin.traynor@intel.com
 Khem Raj                           raj.khem@gmail.com
