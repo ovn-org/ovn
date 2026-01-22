@@ -2597,28 +2597,14 @@ build_in_port_sec_default_flows(const struct sbrec_port_binding *pb,
     /* Add the below logical flow equivalent OF rules in 'in_port_sec_nd' table
      * priority: 80
      * match - "inport == pb->logical_port && icmp6 && icmp6.code == 135"
-     * action - "port_sec_failed = 0;"
+     * action - "port_sec_failed = 1;"
      * description: "Default allow all IPv6 NS packets"
-     * note: This is a hack for now.  Ideally we should do default drop.
-     *       There seems to be a bug in ovs-vswitchd which needs further
-     *       investigation.
-     *
-     * Eg.  If there are below OF rules in the same table
-     * (1) priority=90,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135,
-     *     icmp_code=0,nd_sll=fa:16:3e:94:05:98
-     *     actions=load:0->NXM_NX_REG10[12]
-     * (2) priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135,
-     *     icmp_code=0 actions=load:1->NXM_NX_REG10[12]
-     *
-     * An IPv6 NS packet with nd_sll = fa:16:3e:94:05:98 is matching on the
-     * second prio-80 flow instead of the first one.
+     * note: "Higher priority flows are added to allow the legit NS packets.
      */
     match_set_dl_type(m, htons(ETH_TYPE_IPV6));
     match_set_nw_proto(m, IPPROTO_ICMPV6);
     match_set_nw_ttl(m, 255);
     match_set_icmp_type(m, 135);
-    build_port_sec_allow_action(ofpacts); /*TODO:  Change this to
-                                           * build_port_sec_deny_action(). */
     ofctrl_add_flow(flow_table, OFTABLE_CHK_IN_PORT_SEC_ND, 80,
                     pb->header_.uuid.parts[0], m, ofpacts,
                     &pb->header_.uuid);
