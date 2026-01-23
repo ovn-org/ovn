@@ -10737,6 +10737,41 @@ build_lswitch_ip_mcast_igmp_mld(struct ovn_igmp_group *igmp_group,
                   90, ds_cstr(match), ds_cstr(actions), lflow_ref);
 }
 
+static void
+add_lrp_chassis_resident_check(struct ovn_port *op,
+                               struct ds *match)
+{
+    bool add_chassis_resident_check = false;
+    const char *json_key;
+
+    if (lrp_is_l3dgw(op)) {
+        /* The peer of this port represents a distributed
+         * gateway port. The destination lookup flow for the
+         * router's distributed gateway port MAC address should
+         * only be programmed on the gateway chassis. */
+        add_chassis_resident_check = true;
+        json_key = op->cr_port->json_key;
+    } else {
+        /* Check if the option 'reside-on-redirect-chassis'
+         * is set to true on the peer port. If set to true
+         * and if the logical switch has a localnet port, it
+         * means the router pipeline for the packets from
+         * this logical switch should be run on the chassis
+         * hosting the gateway port.
+         */
+        add_chassis_resident_check = smap_get_bool(
+            &op->nbrp->options,
+            "reside-on-redirect-chassis", false) &&
+            vector_len(&op->od->l3dgw_ports) == 1;
+        json_key = vector_get(&op->od->l3dgw_ports, 0,
+                              struct ovn_port *)->cr_port->json_key;
+    }
+
+    if (add_chassis_resident_check) {
+        ds_put_format(match, " && is_chassis_resident(%s)", json_key);
+    }
+}
+
 /* Ingress table 25: Destination lookup, unicast handling (priority 50), */
 static void
 build_lswitch_ip_unicast_lookup(struct ovn_port *op,
@@ -10786,34 +10821,7 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
 
         if (!vector_is_empty(&op->peer->od->l3dgw_ports) &&
             !vector_is_empty(&op->od->localnet_ports)) {
-            bool add_chassis_resident_check = false;
-            const char *json_key;
-            if (lrp_is_l3dgw(op->peer)) {
-                /* The peer of this port represents a distributed
-                    * gateway port. The destination lookup flow for the
-                    * router's distributed gateway port MAC address should
-                    * only be programmed on the gateway chassis. */
-                add_chassis_resident_check = true;
-                json_key = op->peer->cr_port->json_key;
-            } else {
-                /* Check if the option 'reside-on-redirect-chassis'
-                 * is set to true on the peer port. If set to true
-                 * and if the logical switch has a localnet port, it
-                 * means the router pipeline for the packets from
-                 * this logical switch should be run on the chassis
-                 * hosting the gateway port.
-                 */
-                add_chassis_resident_check = smap_get_bool(
-                    &op->peer->nbrp->options,
-                    "reside-on-redirect-chassis", false) &&
-                    vector_len(&op->peer->od->l3dgw_ports) == 1;
-                json_key = vector_get(&op->peer->od->l3dgw_ports, 0,
-                                      struct ovn_port *)->cr_port->json_key;
-            }
-
-            if (add_chassis_resident_check) {
-                ds_put_format(match, " && is_chassis_resident(%s)", json_key);
-            }
+            add_lrp_chassis_resident_check(op->peer, match);
         } else if (op->cr_port) {
             /* If the op has a chassis resident port, it means
              *   - its peer is a distributed gateway port (DGP) and
@@ -16612,37 +16620,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
 
         if (!vector_is_empty(&op->od->l3dgw_ports) && op->peer
             && !vector_is_empty(&op->peer->od->localnet_ports)) {
-            bool add_chassis_resident_check = false;
-            const char *json_key;
-            if (lrp_is_l3dgw(op)) {
-                /* Traffic with eth.src = l3dgw_port->lrp_networks.ea_s
-                 * should only be sent from the gateway chassis, so that
-                 * upstream MAC learning points to the gateway chassis.
-                 * Also need to avoid generation of multiple ARP responses
-                 * from different chassis. */
-                add_chassis_resident_check = true;
-                json_key = op->cr_port->json_key;
-            } else {
-                /* Check if the option 'reside-on-redirect-chassis'
-                 * is set to true on the router port. If set to true
-                 * and if peer's logical switch has a localnet port, it
-                 * means the router pipeline for the packets from
-                 * peer's logical switch is be run on the chassis
-                 * hosting the gateway port and it should reply to the
-                 * ARP requests for the router port IPs.
-                 */
-                add_chassis_resident_check = smap_get_bool(
-                    &op->nbrp->options,
-                    "reside-on-redirect-chassis", false) &&
-                    vector_len(&op->od->l3dgw_ports) == 1;
-                json_key = vector_get(&op->od->l3dgw_ports, 0,
-                                      struct ovn_port *)->cr_port->json_key;
-            }
-
-            if (add_chassis_resident_check) {
-                ds_put_format(match, " && is_chassis_resident(%s)",
-                              json_key);
-            }
+            add_lrp_chassis_resident_check(op, match);
         }
 
         build_lrouter_arp_flow(op->od, op,
