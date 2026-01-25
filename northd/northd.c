@@ -561,6 +561,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     sset_init(&od->router_ips);
     od->ls_peers = VECTOR_EMPTY_INITIALIZER(struct ovn_datapath *);
     od->router_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
+    od->switch_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->l3dgw_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->localnet_ports = VECTOR_EMPTY_INITIALIZER(struct ovn_port *);
     od->lb_with_stateless_mode = false;
@@ -589,6 +590,7 @@ ovn_datapath_destroy(struct ovn_datapath *od)
         ovn_destroy_tnlids(&od->port_tnlids);
         destroy_ipam_info(&od->ipam_info);
         vector_destroy(&od->router_ports);
+        vector_destroy(&od->switch_ports);
         vector_destroy(&od->ls_peers);
         vector_destroy(&od->localnet_ports);
         vector_destroy(&od->l3dgw_ports);
@@ -1614,6 +1616,10 @@ join_logical_ports_lsp(struct hmap *ports,
 
     if (lsp_is_localnet(nbsp)) {
         vector_push(&od->localnet_ports, &op);
+    }
+
+    if (lsp_is_switch(nbsp)) {
+        vector_push(&od->switch_ports, &op);
     }
 
     if (lsp_is_vtep(nbsp)) {
@@ -6210,6 +6216,11 @@ build_ls_stateful_rec_pre_acls(
                                      S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
                                      110, lflows, lflow_ref);
         }
+        VECTOR_FOR_EACH (&od->switch_ports, op) {
+            skip_port_from_conntrack(od, op, true,
+                                     S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
+                                     110, lflows, lflow_ref);
+        }
         struct ovn_port *lp;
         VECTOR_FOR_EACH (&od->localnet_ports, lp) {
             skip_port_from_conntrack(od, lp, true, S_SWITCH_IN_PRE_ACL,
@@ -6417,6 +6428,11 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
     struct ovn_port *op;
     VECTOR_FOR_EACH (&od->router_ports, op) {
         skip_port_from_conntrack(od, op, ls_stateful_rec->has_stateful_acl,
+                                 S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
+                                 110, lflows, lflow_ref);
+    }
+    VECTOR_FOR_EACH (&od->switch_ports, op) {
+        skip_port_from_conntrack(od, op, true,
                                  S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
                                  110, lflows, lflow_ref);
     }

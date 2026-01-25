@@ -19337,3 +19337,38 @@ AT_CHECK([grep "lr_in_policy[[^_]]" lr0flows | ovn_strip_lflows | sort], [0], [d
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+AT_SETUP([Conntrack skip for switch ports connected to spine switch])
+ovn_start
+
+check ovn-nbctl ls-add spine
+check ovn-nbctl ls-add ls1
+
+# Connect ls1 to spine.
+check ovn-nbctl lsp-add spine spine-to-ls1
+check ovn-nbctl lsp-add ls1 ls1-to-spine
+check ovn-nbctl lsp-set-type spine-to-ls1 switch peer=ls1-to-spine
+check ovn-nbctl lsp-set-type ls1-to-spine switch peer=spine-to-ls1
+
+check ovn-nbctl lsp-add ls1 ls1-p1 -- \
+lsp-set-addresses ls1-p1 "f0:00:00:01:02:01 172.16.1.1"
+
+check ovn-nbctl acl-add ls1 from-lport 1003 "ip4" allow-related
+
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl dump-flows ls1 > ls1flows])
+AT_CAPTURE_FILE([ls1flows])
+
+AT_CHECK([grep "ls1-to-spine" ls1flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "ls1-to-spine"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_pre_acl      ), priority=110  , match=(ip && inport == "ls1-to-spine"), action=(next;)
+  table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "ls1-to-spine"), action=(next;)
+  table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "ls1-to-spine" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "ls1-to-spine"), action=(next;)
+  table=??(ls_out_pre_lb      ), priority=110  , match=(ip && outport == "ls1-to-spine"), action=(next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
