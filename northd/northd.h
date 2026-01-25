@@ -393,7 +393,8 @@ struct ovn_datapath {
 
     /* Logical switch data. */
     struct vector router_ports; /* Vector of struct ovn_port *. */
-
+    struct vector switch_ports; /* Vector of struct ovn_port * of
+                                 * type 'switch'. */
     struct hmap port_tnlids;
     uint32_t port_key_hint;
 
