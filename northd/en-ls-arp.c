@@ -71,13 +71,12 @@ ls_arp_table_clear(struct ls_arp_table *table)
 }
 
 static inline bool
-is_centralized_nat_record(const struct ovn_nat *nat_entry)
+is_nat_dgp_connected(const struct ovn_nat *nat_entry)
 {
     return nat_entry->is_valid
            && nat_entry->l3dgw_port
            && nat_entry->l3dgw_port->peer
-           && nat_entry->l3dgw_port->peer->od
-           && !nat_entry->is_distributed;
+           && nat_entry->l3dgw_port->peer->od;
 }
 
 static void
@@ -98,9 +97,10 @@ nat_record_data_create(struct ls_arp_record *ls_arp_record,
         for (size_t i = 0; i < lrnat_rec->n_nat_entries; i++) {
             const struct ovn_nat *nat_entry = &lrnat_rec->nat_entries[i];
 
-            if (is_centralized_nat_record(nat_entry)) {
+            if (is_nat_dgp_connected(nat_entry)) {
                 hmapx_add(&ls_arp_record->nat_records,
                           (struct lrnat_rec *) lrnat_rec);
+                continue;
             }
         }
     }
@@ -283,7 +283,7 @@ nat_odmap_create(struct lr_nat_record *lrnat_rec,
     for (size_t i = 0; i < lrnat_rec->n_nat_entries; i++) {
         const struct ovn_nat *nat_entry = &lrnat_rec->nat_entries[i];
 
-        if (is_centralized_nat_record(nat_entry)) {
+        if (is_nat_dgp_connected(nat_entry)) {
             hmapx_add(odmap, nat_entry->l3dgw_port->peer->od);
         }
     }

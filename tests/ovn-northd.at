@@ -19124,6 +19124,76 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Logical Switch ARP filtering - only distributed NATs])
+ovn_start
+
+check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-add sw0 sw0-port2
+check ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4"
+
+# Create a logical router and attach both logical switches
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::a/64
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+check ovn-nbctl lsp-add public public-lr0 -- set Logical_Switch_Port public-lr0 \
+    type=router options:router-port=lr0-public \
+    -- lsp-set-addresses public-lr0 router
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1
+
+# localnet port
+check ovn-nbctl lsp-add-localnet-port public ln-public public
+
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.50 10.0.0.3 sw0-port1 f0:00:00:00:00:03
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list public | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("sw0-port1")), action=(next;)
+])
+
+ovn-nbctl show
+ovn-sbctl show
+
+check ovn-nbctl clear logical_router_port lr0-public gateway_chassis
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list public | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+])
+
+check ovn-nbctl --wait=sb ha-chassis-group-add hagrp1
+check ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp1 ch1 30
+hagrp1_uuid=$(fetch_column nb:ha_chassis_group _uuid name=hagrp1)
+check ovn-nbctl --wait=sb set logical_router_port lr0-public ha_chassis_group=$hagrp1_uuid
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list public | grep ls_in_apply_port_sec | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("sw0-port1")), action=(next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([IGMP northd crash])
 ovn_start
 
