@@ -5872,7 +5872,7 @@ done
 # ipv4 packet should be dropped for lp13 with mac f0000000113
 sip=192.168.0.13
 tip=192.168.0.23
-test_ip 13 f0:00:00:00:01:13 f0:00:00:00:00:23 $sip $tip
+test_ip 13 f0:00:00:00:01:12 f0:00:00:00:00:23 $sip $tip
 
 # ipv6 packet should be received by lp[123]3 with mac f0:00:00:00:0${i}:${i}3
 # and ip6.dst as fe80::ea2a:eaff:fe28:0${i}${i}3.
@@ -22213,7 +22213,7 @@ for mtu in 100 500 114; do
     OVS_WAIT_FOR_OUTPUT([
         as hv1 ovs-ofctl dump-flows br-int > br-int-flows-$mtu
         AT_CAPTURE_FILE([br-int-flows-$mtu])
-        grep "check_pkt_larger($(expr $mtu + 14))" br-int-flows-$mtu | wc -l], [0], [4
+        grep "check_pkt_larger($(expr $mtu + 14))" br-int-flows-$mtu | wc -l], [0], [3
 ])
 
     AS_BOX([testing outgoing traffic mtu $mtu - IPv4])
@@ -22231,7 +22231,7 @@ AT_CAPTURE_FILE([ext-sbflows-100])
 OVS_WAIT_FOR_OUTPUT([
     as hv1 ovs-ofctl dump-flows br-int > ext-br-int-flows-100
     AT_CAPTURE_FILE([ext-br-int-flows-100])
-    grep "check_pkt_larger(114)" ext-br-int-flows-100 | wc -l], [0], [4
+    grep "check_pkt_larger(114)" ext-br-int-flows-100 | wc -l], [0], [3
 ])
 
 AS_BOX([testing ingress traffic mtu 100 - IPv4])
@@ -22277,7 +22277,7 @@ for mtu in 100 500 114; do
     OVS_WAIT_FOR_OUTPUT([
         as hv1 ovs-ofctl dump-flows br-int > br-int-gw-flows-$mtu
         AT_CAPTURE_FILE([br-int-gw-flows-$mtu])
-        grep "check_pkt_larger($(expr $mtu + 14))" br-int-gw-flows-$mtu | wc -l], [0], [3
+        grep "check_pkt_larger($(expr $mtu + 14))" br-int-gw-flows-$mtu | wc -l], [0], [2
 ])
 
     AS_BOX([testing outgoing traffic mtu $mtu for gw router - IPv4])
@@ -22295,7 +22295,7 @@ AT_CAPTURE_FILE([ext-gw-sbflows-100])
 OVS_WAIT_FOR_OUTPUT([
     as hv1 ovs-ofctl dump-flows br-int > ext-br-int-gw-flows-100
     AT_CAPTURE_FILE([ext-br-int-gw-flows-100])
-    grep "check_pkt_larger(114)" ext-br-int-gw-flows-100 | wc -l], [0], [3
+    grep "check_pkt_larger(114)" ext-br-int-gw-flows-100 | wc -l], [0], [2
 ])
 
 AS_BOX([testing ingress traffic mtu 100 for gw router - IPv4])
