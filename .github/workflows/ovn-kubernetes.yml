@@ -55,10 +55,10 @@ jobs:
 
     - name: Build ovn-kubernetes container
       run: |
-        docker build --build-arg OVNKUBE_COMMIT=${{ env.OVNKUBE_COMMIT }} \
-          --build-arg GO_VERSION=${{ env.GO_VERSION }} \
-          --build-arg FEDORA_VERSION=42 \
-          --squash -t ovn-daemonset-f:dev -f .ci/ovn-kubernetes/Dockerfile .
+        make -C src/github.com/ovn-kubernetes/ovn-kubernetes/dist/images \
+          IMAGE=ovn-daemonset-f:dev \
+          OVN_REPO=https://github.com/${{ github.repository }}.git \
+          OVN_GITREF=${{ github.ref_name }} fedora-image
         mkdir /tmp/_output
         docker save ovn-daemonset-f:dev > /tmp/_output/image.tar
 
