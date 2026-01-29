@@ -2598,12 +2598,12 @@ output;
         </p>
 
         <p>
-          For a distributed logical router or for gateway router where
-          the port is configured with <code>options:gateway_mtu</code>
-          the action of the above flow is modified adding
-          <code>check_pkt_larger</code> in order to mark the packet
-          setting <code>REGBIT_PKT_LARGER</code> if the size is greater
-          than the MTU.
+          For unicast L2 traffic on a distributed logical router or for
+          gateway router where the port is configured with
+          <code>options:gateway_mtu</code> the action of the above flow
+          is modified adding <code>check_pkt_larger</code> in order to mark
+          the packet setting <code>REGBIT_PKT_LARGER</code> if the size is
+          greater than the MTU.
 
           If the port is also configured with
           <code>options:gateway_mtu_bypass</code> then another flow is
