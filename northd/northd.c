@@ -13586,11 +13586,12 @@ build_adm_ctrl_flows_for_lrouter_port(
      */
     ds_clear(match);
     ds_put_format(match, "eth.mcast && inport == %s", op->json_key);
-    build_gateway_mtu_flow(lflows, op, S_ROUTER_IN_ADMISSION, 50, 55,
-                           match, actions, &op->nbrp->header_,
-                           lflow_ref,
-                           REG_INPORT_ETH_ADDR " = %s; next;",
-                           op->lrp_networks.ea_s);
+    ds_clear(actions);
+    ds_put_format(actions, REG_INPORT_ETH_ADDR " = %s; next;",
+                  op->lrp_networks.ea_s);
+    ovn_lflow_add_with_hint(lflows, op->od, S_ROUTER_IN_ADMISSION, 50,
+                            ds_cstr(match), ds_cstr(actions),
+                            &op->nbrp->header_, lflow_ref);
 
     ds_clear(match);
     ds_put_cstr(match, "eth.dst == ");
