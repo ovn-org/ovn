@@ -42,6 +42,12 @@ struct mmr_hash_node_data {
     struct shash physical_locators;
 };
 
+struct lp_fdb_node_data {
+    uint32_t dp_key;
+    uint32_t port_key;
+    struct shash mac_fdbs;
+};
+
 /*
  * Scans through the Binding table in ovnsb, and updates the vtep logical
  * switch tunnel keys and the 'Ucast_Macs_Remote' table in the VTEP
@@ -519,6 +525,140 @@ vtep_mcast_macs_cleanup(struct ovsdb_idl *vtep_idl)
 
     return true;
 }
+
+static const struct sbrec_port_binding *
+logical_switch_find_pb(struct shash *vtep_pbs,
+                       struct sset *vtep_pswitches,
+                       const char *ls_name)
+{
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, vtep_pbs) {
+        const struct sbrec_port_binding *port_binding_rec = node->data;
+        const char *pswitch_name = smap_get(&port_binding_rec->options,
+                                            "vtep-physical-switch");
+        const char *lswitch_name = smap_get(&port_binding_rec->options,
+                                            "vtep-logical-switch");
+        if (!port_binding_rec->chassis) {
+            continue;
+        }
+
+        /* If 'port_binding_rec->chassis' exists then 'pswitch_name'
+         * and 'lswitch_name' must also exist. */
+        if (!pswitch_name || !lswitch_name) {
+            /* This could only happen when someone directly modifies the
+             * database,  (e.g. using ovn-sbctl). */
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_ERR_RL(&rl, "logical port (%s) with no "
+                        "'options:vtep-physical-switch' or "
+                        "'options:vtep-logical-switch' specified "
+                        "is bound to chassis (%s).",
+                        port_binding_rec->logical_port,
+                        port_binding_rec->chassis->name);
+            continue;
+        }
+        /* Make sure both logical_switch and physical_switch matches */
+        if (!strcmp(ls_name, lswitch_name)) {
+            if (sset_find(vtep_pswitches, port_binding_rec->chassis->name)) {
+                return port_binding_rec;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* Propagate dynamically learned MACs on local VTEPs to OVN SB. Where
+ * later this information is used to create tunnels between neighbour
+ * VTEPs.
+ */
+static void
+vtep_local_macs(struct controller_vtep_ctx *ctx,
+                struct shash *vtep_pbs,
+                struct sset *vtep_pswitches,
+                struct shash *vtep_lswitches,
+                struct shash *lp_fdb)
+{
+    if (!ctx->ovnsb_idl_txn) {
+        return;
+    }
+
+    ovsdb_idl_txn_add_comment(ctx->ovnsb_idl_txn,
+                              "ovn-controller-vtep: updating fdb");
+
+    const struct vteprec_ucast_macs_local *vtep_uml;
+
+    /* Collect local unicast MACs */
+    VTEPREC_UCAST_MACS_LOCAL_FOR_EACH (vtep_uml, ctx->vtep_idl) {
+        const struct sbrec_port_binding *port_binding_rec =
+            logical_switch_find_pb(vtep_pbs,
+                                   vtep_pswitches,
+                                   vtep_uml->logical_switch->name);
+        if (!port_binding_rec) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_ERR_RL(&rl, "Cannot find port_binding for dynamically "
+                       "learned MAC %s in logical_switch %s",
+                        vtep_uml->MAC,
+                        vtep_uml->logical_switch->name);
+            continue;
+        }
+
+        char *fdb_dp_port_key = xasprintf(
+            "%"PRId64"_%"PRId64, port_binding_rec->datapath->tunnel_key,
+            port_binding_rec->tunnel_key);
+
+        struct lp_fdb_node_data *sbrec_lp_fdb =
+            shash_find_data(lp_fdb, fdb_dp_port_key);
+
+        const struct sbrec_fdb *sb_fdb = NULL;
+        if (sbrec_lp_fdb) {
+            sb_fdb = shash_find_and_delete(&sbrec_lp_fdb->mac_fdbs,
+                                           vtep_uml->MAC);
+        }
+        free(fdb_dp_port_key);
+
+        if (!sb_fdb) {
+            VLOG_DBG("Creating new FDB entry for mac %s", vtep_uml->MAC);
+            sb_fdb = sbrec_fdb_insert(ctx->ovnsb_idl_txn);
+            sbrec_fdb_set_dp_key(sb_fdb,
+                                 port_binding_rec->datapath->tunnel_key);
+            sbrec_fdb_set_mac(sb_fdb, vtep_uml->MAC);
+            sbrec_fdb_set_port_key(sb_fdb, port_binding_rec->tunnel_key);
+            sbrec_fdb_set_timestamp(sb_fdb, INT64_MAX);
+        }
+    }
+
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, vtep_lswitches) {
+        struct shash_node *sbrec_fdb_node;
+        const struct sbrec_port_binding *port_binding_rec =
+            logical_switch_find_pb(vtep_pbs,
+                                   vtep_pswitches,
+                                   node->name);
+        if (!port_binding_rec) {
+            continue;
+        }
+        if (!port_binding_rec->datapath->tunnel_key ||
+            !port_binding_rec->tunnel_key) {
+            continue;
+        }
+
+        char *fdb_dp_port_key = xasprintf(
+            "%"PRId64"_%"PRId64, port_binding_rec->datapath->tunnel_key,
+            port_binding_rec->tunnel_key);
+        struct lp_fdb_node_data *sbrec_lp_fdb = shash_find_data(
+            lp_fdb, fdb_dp_port_key);
+        free(fdb_dp_port_key);
+
+        if (!sbrec_lp_fdb) {
+            continue;
+        }
+
+        SHASH_FOR_EACH (sbrec_fdb_node, &sbrec_lp_fdb->mac_fdbs) {
+            struct sbrec_fdb *mac_fdb = sbrec_fdb_node->data;
+            VLOG_DBG("Removing stale FDB for VTEP mac %s", mac_fdb->mac);
+            sbrec_fdb_delete(mac_fdb);
+        }
+    }
+}
 
 /* Updates vtep logical switch tunnel keys. */
 void
@@ -605,6 +745,29 @@ vtep_run(struct controller_vtep_ctx *ctx)
         shash_add(target, port_binding_rec->logical_port, port_binding_rec);
     }
 
+    /* Construct logical_port to fdb */
+    const struct sbrec_fdb *fdb;
+    struct shash lp_fdbs = SHASH_INITIALIZER(&lp_fdbs);
+
+    SBREC_FDB_FOR_EACH (fdb, ctx->ovnsb_idl) {
+        char *fdb_dp_port_key = xasprintf("%"PRId64"_%"PRId64, fdb->dp_key,
+                                          fdb->port_key);
+        struct lp_fdb_node_data *lp_fdb = shash_find_data(&lp_fdbs,
+                                                          fdb_dp_port_key);
+        if (!lp_fdb) {
+            lp_fdb = xmalloc(sizeof *lp_fdb);
+            *lp_fdb = (struct lp_fdb_node_data) {
+                .dp_key = fdb->dp_key,
+                .port_key = fdb->port_key,
+                .mac_fdbs = SHASH_INITIALIZER(&lp_fdb->mac_fdbs),
+            };
+
+            shash_add(&lp_fdbs, fdb_dp_port_key, lp_fdb);
+        }
+        shash_add(&lp_fdb->mac_fdbs, fdb->mac, fdb);
+        free(fdb_dp_port_key);
+    }
+
     ovsdb_idl_txn_add_comment(ctx->vtep_idl_txn,
                               "ovn-controller-vtep: update logical switch "
                               "tunnel keys and 'ucast_macs_remote's");
@@ -613,6 +776,8 @@ vtep_run(struct controller_vtep_ctx *ctx)
     vtep_macs_run(ctx->vtep_idl_txn, &ucast_macs_rmts,
                   &mcast_macs_rmts, &physical_locators,
                   &vtep_lswitches, &non_vtep_pbs);
+    vtep_local_macs(ctx, &vtep_pbs, &vtep_pswitches, &vtep_lswitches,
+                    &lp_fdbs);
 
     sset_destroy(&vtep_pswitches);
     shash_destroy(&vtep_lswitches);
@@ -628,6 +793,14 @@ vtep_run(struct controller_vtep_ctx *ctx)
     shash_destroy(&physical_locators);
     shash_destroy(&vtep_pbs);
     shash_destroy(&non_vtep_pbs);
+
+    struct shash_node *lp_fdb_node;
+    SHASH_FOR_EACH (lp_fdb_node, &lp_fdbs) {
+        struct lp_fdb_node_data *lp_fdb = lp_fdb_node->data;
+        shash_destroy(&lp_fdb->mac_fdbs);
+        free(lp_fdb);
+    }
+    shash_destroy(&lp_fdbs);
 }
 
 /* Cleans up all related entries in vtep.  Returns true when done (i.e. there

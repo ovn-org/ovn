@@ -171,6 +171,12 @@ main(int argc, char *argv[])
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_options);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_type);
     ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_port_binding_col_up);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl,
+                         &sbrec_port_binding_col_tunnel_key);
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_fdb);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_fdb_col_mac);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_fdb_col_dp_key);
+    ovsdb_idl_add_column(ovnsb_idl_loop.idl, &sbrec_fdb_col_port_key);
 
     ovsdb_idl_set_leader_only(ovnsb_idl_loop.idl, false);
     ovsdb_idl_get_initial_snapshot(ovnsb_idl_loop.idl);

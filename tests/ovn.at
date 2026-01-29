@@ -4801,6 +4801,12 @@ AT_CHECK([ovn-sbctl lflow-list lsw0 | grep 'reg0[\[14\]]' | ovn_strip_lflows], [
   table=??(ls_in_hairpin      ), priority=2000 , match=(reg0[[14]] == 1 && is_chassis_resident("cr-lrp2")), action=(next;)
 ])
 
+# Ensure FDB table is up to date.
+wait_row_count FDB 1 mac='"02:00:00:00:00:ee"'
+wait_row_count FDB 1 mac='"02:00:00:00:00:ff"'
+wait_row_count FDB 1 mac='"f0:00:00:00:00:03"'
+check_row_count FDB 3
+
 # dump information with counters
 echo "------ OVN dump ------"
 ovn-nbctl show
