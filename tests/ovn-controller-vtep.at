@@ -610,6 +610,34 @@ OVS_WAIT_UNTIL([vtep-ctl list Ucast_Macs_Local | grep -q aa:bb:cc:dd:ff:02])
 wait_row_count fdb 1 mac='"aa:bb:cc:dd:ff:01"'
 wait_row_count fdb 1 mac='"aa:bb:cc:dd:ff:02"'
 
+# Switch context
+as
+
+# Make sure we see correct remote MACs.
+OVS_WAIT_UNTIL([vtep-ctl list-remote-macs lswitch0 | grep -q aa:bb:cc:dd:ff:01])
+OVS_WAIT_WHILE([vtep-ctl list-remote-macs lswitch1 | grep -q aa:bb:cc:dd:ff:01])
+
+OVS_WAIT_UNTIL([vtep-ctl list-remote-macs lswitch1 | grep -q aa:bb:cc:dd:ff:02])
+OVS_WAIT_WHILE([vtep-ctl list-remote-macs lswitch0 | grep -q aa:bb:cc:dd:ff:02])
+
+# Switch context to br-vtep1
+as br-vtep1
+
+# Remove local MACs
+AT_CHECK([ovs-ofctl -O OpenFlow14 del-flows br-vtep1_vtep_ls1 "table=mac_learning_table,dl_dst=aa:bb:cc:dd:ff:01"])
+AT_CHECK([ovs-ofctl -O OpenFlow14 del-flows br-vtep1_vtep_ls2 "table=mac_learning_table,dl_dst=aa:bb:cc:dd:ff:02"])
+
+# Switch context
+as
+
+# Ensure remote MACs gone
+OVS_WAIT_WHILE([vtep-ctl list-remote-macs lswitch0 | grep -q aa:bb:cc:dd:ff:01])
+OVS_WAIT_WHILE([vtep-ctl list-remote-macs lswitch1 | grep -q aa:bb:cc:dd:ff:02])
+
+# Check that MACs are removed from FDB table
+wait_row_count fdb 0 mac='"aa:bb:cc:dd:ff:01"'
+wait_row_count fdb 0 mac='"aa:bb:cc:dd:ff:02"'
+
 OVN_CONTROLLER_VTEP_STOP
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
