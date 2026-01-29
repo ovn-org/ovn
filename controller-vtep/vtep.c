@@ -352,6 +352,14 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
                 continue;
             }
             tnl_key = peer_pb->datapath->tunnel_key;
+        } else if (!strcmp(port_binding_rec->type, "external")) {
+            /* External ports not bound on specific chassis, they
+             * may sit on some of VTEP endpoints, but port itself
+             * is bound to one of gateway nodes to provide DHCP/Metadata.
+             * Skip port_binding information for such ports, as it does
+             * not specify real node location.
+             */
+            continue;
         } else {
             tnl_key = port_binding_rec->datapath->tunnel_key;
         }

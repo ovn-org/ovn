@@ -375,11 +375,24 @@ AT_CHECK([ovn-nbctl --wait=sb sync])
 AT_CHECK([ovn-sbctl chassis-add ch1 vxlan 1.2.3.6])
 AT_CHECK([ovn-sbctl lsp-bind vif1 ch1])
 
+# adds external port to chassis
+AT_CHECK([ovn-nbctl ha-chassis-group-add ext-group1])
+AT_CHECK([ovn-nbctl ha-chassis-group-add-chassis ext-group1 ch1 7268])
+AT_CHECK([ovn-sbctl set chassis ch0 other_config:ovn-cms-options=enable-chassis-as-gw])
+AT_CHECK([ovn-nbctl lsp-add br-test ext1])
+AT_CHECK([ovn-nbctl lsp-set-type ext1 external])
+AT_CHECK([ovn-nbctl lsp-set-addresses ext1 aa:bb:cc:dd:01:02])
+AT_CHECK([ovn-nbctl --wait=sb sync])
+AT_CHECK([ovn-sbctl lsp-bind ext1 ch1])
+
 # checks Ucast_Macs_Remote creation.
 OVS_WAIT_UNTIL([test -n "`vtep-ctl list Ucast_Macs_Remote | grep _uuid`"])
 AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -d ' '], [0], [dnl
 "f0:ab:cd:ef:01:02"
 ])
+
+# check that `external` ports is not in Ucast_Macs_Remote
+AT_CHECK([test -z "`vtep-ctl list Ucast_Macs_Remote | grep aa:bb:cc:dd:01:02`"])
 
 # checks physical locator creation.
 OVS_WAIT_UNTIL([test -n "`vtep-ctl list Physical_Locator | grep _uuid`"])
