@@ -6687,7 +6687,6 @@ AT_CHECK_UNQUOTED([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | ovn_s
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
 AT_CHECK([grep -E "lr_in_ip_input.*icmp4_error" lr0flows | ovn_strip_lflows], [0], [dnl
@@ -6727,7 +6726,6 @@ AT_CHECK_UNQUOTED([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | ovn_s
 
 AT_CHECK([grep -E "lr_in_admission.*check_pkt_larger" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
 AT_CHECK([grep -E "lr_in_ip_input.*icmp4_error" lr0flows | ovn_strip_lflows], [0], [dnl
@@ -6764,9 +6762,7 @@ AT_CHECK_UNQUOTED([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | ovn_s
 
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" -e "tcp" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
   table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public" && (arp || tcp)), action=(xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=55   , match=(eth.mcast && inport == "lr0-public" && (arp || tcp)), action=(xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
 # Set gateway_mtu option on lr0-sw0
@@ -6803,8 +6799,6 @@ AT_CHECK_UNQUOTED([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | ovn_s
 AT_CHECK([grep "lr_in_admission.*check_pkt_larger" lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:01 && inport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
 ])
 
 AT_CHECK([grep -E "lr_in_ip_input.*icmp4_error" lr0flows | ovn_strip_lflows], [0], [dnl
@@ -6854,12 +6848,8 @@ AT_CHECK_UNQUOTED([grep -e "chk_pkt_len" -e "lr_in_larger_pkts" lr0flows | ovn_s
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" -e "tcp" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:00:00:ff:01 && inport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-sw0"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
   table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 00:00:00:00:ff:01 && inport == "lr0-sw0" && (arp || tcp)), action=(xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
   table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public" && (arp || tcp)), action=(xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=55   , match=(eth.mcast && inport == "lr0-public" && (arp || tcp)), action=(xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=55   , match=(eth.mcast && inport == "lr0-sw0" && (arp || tcp)), action=(xreg0[[0..47]] = 00:00:00:00:ff:01; next;)
 ])
 
 # Clear gateway_mtu option on lr0-public
@@ -6892,7 +6882,6 @@ ovn-sbctl dump-flows lr0 > lr0flows
 
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
 # tag 0 requires a parent port
@@ -6901,7 +6890,6 @@ check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port tag_request=0
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1514); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
 check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port parent_name=ext-parent-port
@@ -6909,7 +6897,6 @@ check ovn-nbctl --wait=sb set Logical_Switch_Port ext-port parent_name=ext-paren
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep "lr_in_admission" lr0flows | grep -e "check_pkt_larger" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 00:00:20:20:12:13 && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
-  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr0-public"), action=(reg9[[1]] = check_pkt_larger(1518); xreg0[[0..47]] = 00:00:20:20:12:13; next;)
 ])
 
 check ovn-sbctl set chassis ch1 other_config:ct-commit-nat-v2=false
