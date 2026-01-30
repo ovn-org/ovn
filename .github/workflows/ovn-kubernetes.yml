@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OVNKUBE_COMMIT: "release-1.1"
+  OVNKUBE_COMMIT: "release-1.2"
   KIND_CLUSTER_NAME: ovn
   KIND_INSTALL_INGRESS: true
   KIND_ALLOW_SYSTEM_WRITES: true

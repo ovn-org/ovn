@@ -7,7 +7,8 @@ env_path=$2
 topdir=$PWD
 
 function extract_go_version() {
-    go mod edit -json go-controller/go.mod | jq -r .Go
+    grep -E 'GO_VERSION \?= [0-9]\.[0-9\.]*$' dist/images/Makefile \
+        | awk '{print $3}' | tr -d '"'
 }
 
 function extract_k8s_version() {
