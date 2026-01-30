@@ -2402,7 +2402,10 @@
           e.g. <code><var>port_name</var>:<var>sourc_ip</var></code> for IPv4.
           Health checks are sent to this port with the specified source IP.
           For IPv6 square brackets must be used around IP address, e.g:
-          <code><var>port_name</var>:<var>[sourc_ip]</var></code>
+          <code><var>port_name</var>:<var>[sourc_ip]</var></code>.  The source
+          IP must be from the subnet of the monitored endpoint.  It can be
+          either an unused IP from the subnet, or an IP of one of the Logical
+          Router Ports connected to the same switch.
           Remote endpoint:
           Specify :target_zone_name at the end of the above syntax to create
           remote health checks in a specific zone.

@@ -97,7 +97,14 @@ struct ovn_northd_lb_backend {
     char *svc_mon_src_ip;
     /* Target Availability Zone name for service monitoring. */
     char *az_name;
+    /* LRP used as the source of health_check traffic.  This may be NULL if
+     * health_check uses "reserved" IP address that does not belong to any
+     * LRP in the backend's datapath. */
+    struct ovn_port *svc_mon_lrp;
 };
+
+void ovn_northd_lb_backend_set_mon_port(const struct ovn_port *,
+                                        struct ovn_northd_lb_backend *);
 
 struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,

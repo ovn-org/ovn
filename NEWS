@@ -93,6 +93,11 @@ Post v25.09.0
      other_config column.
    - Introduce the capability to specify multiple ips for ovn-evpn-local-ip
      option.
+   - Load balancer health checks can now use Logical Router Port IPs as the
+     source IP for health check probes. Previously, health checks required
+     reserving an unused IP from the backend's subnet. This change allows
+     using LRP IPs directly, eliminating the need to reserve additional IPs
+     per backend port.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

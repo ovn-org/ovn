@@ -196,6 +196,7 @@ ovn_lb_vip_backends_health_check_init(const struct ovn_northd_lb *lb,
             backend_nb->svc_mon_src_ip = svc_mon_src_ip;
             backend_nb->az_name = is_remote ? xstrdup(az_name) : NULL;
             backend_nb->remote_backend = is_remote;
+            backend_nb->svc_mon_lrp = NULL;
         }
         free(port_name);
     }
@@ -436,6 +437,35 @@ ovn_northd_lb_init(struct ovn_northd_lb *lb,
         ds_chomp(&sel_fields, ',');
         lb->selection_fields = ds_steal_cstr(&sel_fields);
     }
+}
+
+/* If the LB backend is configured to be monitored from an IP address that
+ * belongs to an LRP, this function stores the reference to the LRP into the
+ * backend's 'svc_mon_lrp' member.
+ * Only LRPs that are connected to the same switch as the LB backend are
+ * considered.  If no matching LRP is found, the 'svc_mon_lrp' is set to
+ * NULL. */
+void
+ovn_northd_lb_backend_set_mon_port(const struct ovn_port *backend_op,
+                                   struct ovn_northd_lb_backend *backend_nb)
+{
+    if (backend_op && !backend_nb->remote_backend) {
+        struct ovn_port *svc_mon_op;
+        VECTOR_FOR_EACH (&backend_op->od->router_ports, svc_mon_op) {
+            if (!svc_mon_op->peer) {
+                continue;
+            }
+            const char *lrp_ip = lrp_find_member_ip(
+                svc_mon_op->peer,
+                backend_nb->svc_mon_src_ip);
+            if (lrp_ip && !strcmp(lrp_ip,
+                                  backend_nb->svc_mon_src_ip)) {
+                backend_nb->svc_mon_lrp = svc_mon_op->peer;
+                return;
+            }
+        }
+    }
+    backend_nb->svc_mon_lrp = NULL;
 }
 
 struct ovn_northd_lb *

@@ -4423,6 +4423,406 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load balancer health checks with LRP IP - IPv4])
+AT_KEYWORDS([lb])
+
+# This is a variant of a 'Load balancer health checks - IPv4' test
+# that uses LRP IPs as a source IP for the health checks. As such, it
+# doesn't go so deep into testing and focuses only on "health checks"
+# having proper status and the backend services being reachable.
+#
+# Topology:
+#
+#           LB VIP: 172.16.0.42
+#         Backends: 10.0.0.3 10.0.0.4
+#
+#                                                                        .3 +--------------+
+#                                          +------------+           +------ |    sw0-p1    |
+#                                      .42 |            |           |       +--------------+
+#  +--------------+ .2                 .1  |            | .1        |
+#  |   sw-ext-p1  | ------- sw-ext ------- |    lr0     | -------  sw0 10.0.0.0/24
+#  +--------------+                        |            |           |
+#                        172.16.0.0/24     |            |           |    .4 +--------------+
+#                                          +------------+           +------ |    sw0-p2    |
+#                                                                           +--------------+
+#
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+# Create internal network with LB backends.
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 10.0.0.3"
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 10.0.0.4"
+
+# Create external network with LB VIP.
+check ovn-nbctl ls-add sw-ext
+
+check ovn-nbctl lsp-add sw-ext sw-ext-p1
+check ovn-nbctl lsp-set-addresses sw-ext-p1 "60:64:00:00:00:02 172.16.0.2"
+
+# Create a logical router and attach both logical switches.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set logical_router lr0 options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lrp-add lr0 lr0-sw-ext 00:00:00:00:ee:01 172.16.0.1/24
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+check ovn-nbctl lsp-add-router-port sw-ext sw-ext-lr0 lr0-sw-ext
+
+check ovn-nbctl lb-add lb1 172.16.0.42:80 10.0.0.3:80,10.0.0.4:80
+
+# Load balancer health check will be using LR IP as a source of the health check.
+check ovn-nbctl set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.1
+check ovn-nbctl set load_balancer . ip_port_mappings:10.0.0.4=sw0-p2:10.0.0.1
+
+check_uuid ovn-nbctl --id=@hc create \
+Load_Balancer_Health_Check vip="172.16.0.42\:80" -- add Load_Balancer . \
+health_check @hc
+
+# LB is bound only to the LR. It shouldn't be necessary to bind it to the
+# LS as well.
+check ovn-nbctl lr-lb-add lr0 lb1
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "10.0.0.3/24", "50:54:00:00:00:03", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "10.0.0.4/24", "50:54:00:00:00:04", \
+         "10.0.0.1")
+
+ADD_NAMESPACES(sw-ext-p1)
+ADD_VETH(sw-ext-p1, sw-ext-p1, br-int, "172.16.0.2/24", "60:64:00:00:00:02", \
+         "172.16.0.1")
+
+wait_row_count Service_Monitor 2 status=offline
+
+# Start webservers in 'sw0-p1' and 'sw1-p1'.
+OVS_START_L7([sw0-p1], [http])
+sw0_p1_pid_file=`cat l7_pid_file`
+OVS_START_L7([sw0-p2], [http])
+
+wait_row_count Service_Monitor 2 status=online
+
+for i in `seq 1 10`; do
+    NS_CHECK_EXEC([sw-ext-p1], [curl --connect-timeout 5 http://172.16.0.42 > curl$i.log 2>&1 ])
+done
+
+# Stop webserver in sw0-p1.
+kill `cat $sw0_p1_pid_file`
+
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online
+
+for i in `seq 11 20`; do
+    NS_CHECK_EXEC([sw-ext-p1], [curl --connect-timeout 5 http://172.16.0.42 > curl$i.log 2>&1 ])
+done
+
+# Trigger port binding release and check if status changed to offline.
+check ovs-vsctl remove interface ovs-sw0-p2 external_ids iface-id
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 2 status=offline
+
+check ovs-vsctl set interface ovs-sw0-p2 external_ids:iface-id=sw0-p2
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 1 status=online
+
+# Remove TCP Load Balancer.
+check ovn-nbctl lb-del lb1
+
+# Create UDP load balancer.
+check ovn-nbctl lb-add lb2 172.16.0.42:53 10.0.0.3:53,10.0.0.4:53 udp
+lb_udp=`ovn-nbctl lb-list | grep udp | awk '{print $1}'`
+
+check ovn-nbctl set load_balancer $lb_udp ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.1
+check ovn-nbctl set load_balancer $lb_udp ip_port_mappings:10.0.0.4=sw0-p2:10.0.0.1
+
+check_uuid ovn-nbctl --id=@hc create \
+Load_Balancer_Health_Check vip="172.16.0.42\:53" -- add Load_Balancer $lb_udp \
+health_check @hc
+
+check ovn-nbctl --wait=hv lr-lb-add lr0 lb2
+
+# Wait until udp service_monitor are set to offline.
+wait_row_count Service_Monitor 2 status=offline protocol=udp
+
+# We need to use "-k" argument because we keep receiving health check probes.
+NETNS_DAEMONIZE([sw0-p1], [nc -4 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp1.pid])
+NETNS_DAEMONIZE([sw0-p2], [nc -4 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp2.pid])
+
+# UDP nc with "-k" is bit tricky to cleanup, especially on test failures, due to its
+# child processes keeping the listening port open. If they are not cleaned up properly,
+# the whole test cleanup hangs.
+udp1_pid=$(cat udp1.pid)
+udp2_pid=$(cat udp2.pid)
+echo "pkill -P $udp1_pid && kill $udp1_pid" >> cleanup
+echo "pkill -P $udp2_pid && kill $udp2_pid" >> cleanup
+:> udp1.pid
+:> udp2.pid
+
+wait_row_count Service_Monitor 2 status=online
+
+NETNS_DAEMONIZE(sw-ext-p1, [nc -4 -u 172.16.0.42 53 -d 0.1 -c 'for i in $(seq 1 5); do echo "udp_data $i"; read msg; echo "$msg" >>./udp_data_1; done'], [udp1_client.pid])
+
+OVS_WAIT_FOR_OUTPUT([cat ./udp_data_1],  [0], [dnl
+udp_data 1
+udp_data 2
+udp_data 3
+udp_data 4
+udp_data 5
+])
+
+# Stop UDP service in sw0-p1.
+# Due to the way UDP nc with "-k" forks, we need to kill all
+# children processes and then then the parent.
+NS_CHECK_EXEC([sw0-p1], [pkill -P $udp1_pid && kill $udp1_pid])
+
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online
+
+NETNS_DAEMONIZE(sw-ext-p1, [nc -4 -u 172.16.0.42 53 -d 0.1 -c 'for i in $(seq 1 5); do echo "udp_data $i"; read msg; echo "$msg" >>./udp_data_2; done'], [udp2_client.pid])
+
+OVS_WAIT_FOR_OUTPUT([cat ./udp_data_2],  [0], [dnl
+udp_data 1
+udp_data 2
+udp_data 3
+udp_data 4
+udp_data 5
+])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/Service monitor not found.*/d
+/handle service check: Unsupported protocol*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Load balancer health checks with LRP IP - IPv6])
+AT_KEYWORDS([lb])
+
+# This is a variant of a 'Load balancer health checks - IPv6' test
+# that uses LRP IPs as a source IP for the health checks. As such, it
+# doesn't go so deep into testing and focuses only on "health checks"
+# having proper status and the backend services being reachable.
+#
+# Topology:
+#
+#           LB VIP: fd20::42
+#         Backends: fd11::3 fd11::4
+#
+#                                                                       ::3 +--------------+
+#                                          +------------+           +------ |    sw0-p1    |
+#                                     ::42 |            |           |       +--------------+
+#  +--------------+ ::2               ::1  |            | ::1       |
+#  |   sw-ext-p1  | ------- sw-ext ------- |    lr0     | -------  sw0 fd11::/64
+#  +--------------+                        |            |           |
+#                        fd20::/64         |            |           |   ::4 +--------------+
+#                                          +------------+           +------ |    sw0-p2    |
+#                                                                           +--------------+
+#
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+# Start ovn-controller.
+start_daemon ovn-controller
+
+# Create internal network with LB backends.
+check ovn-nbctl ls-add sw0
+
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:00:00:00:03 fd11::3"
+
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:00:00:00:04 fd11::4"
+
+# Create external network with LB VIP.
+check ovn-nbctl ls-add sw-ext
+
+check ovn-nbctl lsp-add sw-ext sw-ext-p1
+check ovn-nbctl lsp-set-addresses sw-ext-p1 "60:64:00:00:00:02 fd20::2"
+
+# Create a logical router and attach both logical switches.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set logical_router lr0 options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 fd11::1/64
+check ovn-nbctl lrp-add lr0 lr0-sw-ext 00:00:00:00:ee:01 fd20::1/64
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+check ovn-nbctl lsp-add-router-port sw-ext sw-ext-lr0 lr0-sw-ext
+
+check ovn-nbctl lb-add lb1 [[fd20::42]]:80 [[fd11::3]]:80,[[fd11::4]]:80
+
+# Load balancer health check will be using LR IP as a source of the health check.
+check ovn-nbctl set load_balancer . ip_port_mappings:\"[[fd11::3]]\"=\"sw0-p1:[[fd11::1]]\"
+check ovn-nbctl set load_balancer . ip_port_mappings:\"[[fd11::4]]\"=\"sw0-p2:[[fd11::1]]\"
+
+check_uuid ovn-nbctl --id=@hc create \
+Load_Balancer_Health_Check vip="\[\[fd20\:\:42\]\]\:80" -- add Load_Balancer . \
+health_check @hc
+
+# LB is bound only to the LR. It shouldn't be necessary to bind it to the
+# LS as well.
+check ovn-nbctl lr-lb-add lr0 lb1
+
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+
+ADD_NAMESPACES(sw0-p1)
+ADD_VETH(sw0-p1, sw0-p1, br-int, "fd11::3/64", "50:54:00:00:00:03", \
+         "fd11::1")
+
+ADD_NAMESPACES(sw0-p2)
+ADD_VETH(sw0-p2, sw0-p2, br-int, "fd11::4/64", "50:54:00:00:00:04", \
+         "fd11::1")
+
+ADD_NAMESPACES(sw-ext-p1)
+ADD_VETH(sw-ext-p1, sw-ext-p1, br-int, "fd20::2/64", "60:64:00:00:00:02", \
+         "fd20::1")
+
+wait_row_count Service_Monitor 2 status=offline
+
+# Start webservers in 'sw0-p1' and 'sw0-p2'.
+OVS_START_L7([sw0-p1], [http6])
+sw0_p1_pid_file=`cat l7_pid_file`
+OVS_START_L7([sw0-p2], [http6])
+
+wait_row_count Service_Monitor 2 status=online
+
+for i in `seq 1 10`; do
+    NS_CHECK_EXEC([sw-ext-p1], [curl --connect-timeout 5 http://[[fd20::42]] > curl$i.log 2>&1 ])
+done
+
+# Stop webserver in sw0-p1.
+kill `cat $sw0_p1_pid_file`
+
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online
+
+for i in `seq 11 20`; do
+    NS_CHECK_EXEC([sw-ext-p1], [curl --connect-timeout 5 http://[[fd20::42]] > curl$i.log 2>&1 ])
+done
+
+# Trigger port binding release and check if status changed to offline.
+check ovs-vsctl remove interface ovs-sw0-p2 external_ids iface-id
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 2 status=offline
+
+check ovs-vsctl set interface ovs-sw0-p2 external_ids:iface-id=sw0-p2
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 1 status=online
+
+# Remove TCP Load Balancer.
+check ovn-nbctl lb-del lb1
+
+# Create udp load balancer.
+check ovn-nbctl lb-add lb2 [[fd20::42]]:53 [[fd11::3]]:53,[[fd11::4]]:53 udp
+lb_udp=`ovn-nbctl lb-list | grep udp | awk '{print $1}'`
+
+check ovn-nbctl set load_balancer $lb_udp ip_port_mappings:\"[[fd11::3]]\"=\"sw0-p1:[[fd11::1]]\"
+check ovn-nbctl set load_balancer $lb_udp ip_port_mappings:\"[[fd11::4]]\"=\"sw0-p2:[[fd11::1]]\"
+
+check_uuid ovn-nbctl --id=@hc create \
+Load_Balancer_Health_Check vip="\[\[fd20\:\:42\]\]\:53" -- add Load_Balancer $lb_udp \
+health_check @hc
+
+check ovn-nbctl --wait=hv lr-lb-add lr0 lb2
+
+# Wait until udp service_monitor are set to offline.
+wait_row_count Service_Monitor 2 status=offline protocol=udp
+
+# We need to use "-k" argument because we keep receiving health check probes.
+NETNS_DAEMONIZE([sw0-p1], [nc -6 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp1.pid])
+NETNS_DAEMONIZE([sw0-p2], [nc -6 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp2.pid])
+
+# UDP nc with "-k" is bit tricky to cleanup, especially on test failures, due to its
+# child processes keeping the listening port open. If they are not cleaned up properly,
+# the whole test cleanup hangs.
+udp1_pid=$(cat udp1.pid)
+udp2_pid=$(cat udp2.pid)
+echo "pkill -P $udp1_pid && kill $udp1_pid" >> cleanup
+echo "pkill -P $udp2_pid && kill $udp2_pid" >> cleanup
+:> udp1.pid
+:> udp2.pid
+
+wait_row_count Service_Monitor 2 status=online
+
+NETNS_DAEMONIZE(sw-ext-p1, [nc -6 -u fd20::42 53 -d 0.1 -c 'for i in $(seq 1 5); do echo "udp_data $i"; read msg; echo "$msg" >>./udp_data_1; done'], [udp1_client.pid])
+
+OVS_WAIT_FOR_OUTPUT([cat ./udp_data_1],  [0], [dnl
+udp_data 1
+udp_data 2
+udp_data 3
+udp_data 4
+udp_data 5
+])
+
+# Stop UDP service in sw0-p1.
+# Due to the way UDP nc with "-k" forks, we need to kill all
+# children processes and then then the parent.
+NS_CHECK_EXEC([sw0-p1], [pkill -P $udp1_pid && kill $udp1_pid])
+
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online
+
+NETNS_DAEMONIZE(sw-ext-p1, [nc -6 -u fd20::42 53 -d 0.1 -c 'for i in $(seq 1 5); do echo "udp_data $i"; read msg; echo "$msg" >>./udp_data_2; done'], [udp2_client.pid])
+
+OVS_WAIT_FOR_OUTPUT([cat ./udp_data_2],  [0], [dnl
+udp_data 1
+udp_data 2
+udp_data 3
+udp_data 4
+udp_data 5
+])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/Service monitor not found.*/d
+/handle service check: Unsupported protocol*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Load balancer health checks - IPv4])
 AT_KEYWORDS([lb])
 ovn_start
