@@ -2714,6 +2714,7 @@ build_in_port_sec_nd_flows(const struct sbrec_port_binding *pb,
     reset_match_for_port_sec_flows(pb, MFF_LOG_INPORT, m);
     match_set_dl_type(m, htons(ETH_TYPE_IPV6));
     match_set_nw_proto(m, IPPROTO_ICMPV6);
+    match_set_dl_src(m, ps_addr->ea);
     match_set_nw_ttl(m, 255);
     match_set_icmp_type(m, 135);
     match_set_icmp_code(m, 0);

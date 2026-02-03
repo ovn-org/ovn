@@ -35936,10 +35936,10 @@ echo " table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x$sw0p1_key,meta
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,arp_sha=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t${in_port_sec_nd}_flows.expected
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t${in_port_sec_nd}_flows.expected
 
 check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC_ND
 
@@ -35973,12 +35973,14 @@ echo " table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x$sw0p1_key,meta
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,arp_spa=10.0.0.3,arp_sha=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,arp_spa=10.0.0.13,arp_sha=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t${in_port_sec_nd}_flows.expected
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:03,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:03 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p1_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]" > hv1_t${in_port_sec_nd}_flows.expected
 
 check_port_sec_offlows hv1 OFTABLE_CHK_IN_PORT_SEC_ND
 
@@ -36051,19 +36053,20 @@ echo " table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x$sw0p2_key,meta
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,arp_spa=10.0.0.4,arp_sha=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,arp_spa=20.0.0.4,arp_sha=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,arp_spa=30.0.0.0/16,arp_sha=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=1000::4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=1000::4,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=2000::/64,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=2000::/64,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:04,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:4,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=aef0::4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
  table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=aef0::4,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:13,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:13,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:4,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
- table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:4,nd_tll=00:00:00:00:00:04 actions=load:0->NXM_NX_REG10[[12]]" > hv2_t${in_port_sec_nd}_flows.expected
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:13,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x$sw0p2_key,metadata=0x1,dl_src=00:00:00:00:00:13,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:13,nd_tll=00:00:00:00:00:13 actions=load:0->NXM_NX_REG10[[12]]" > hv2_t${in_port_sec_nd}_flows.expected
 
 check_port_sec_offlows hv2 OFTABLE_CHK_IN_PORT_SEC_ND
 
