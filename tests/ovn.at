@@ -13731,7 +13731,8 @@ test_ipv6_ra 1 $src_mac $src_lla "$ra" 1500 "" "" "" ""
 $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap  > 1.packets
 AT_CHECK([cat 1.packets], [0], [])
 
-OVN_CLEANUP([hv1])
+OVN_CLEANUP([hv1
+/invalid syntax '' in port security/d])
 AT_CLEANUP
 ])
 
@@ -36154,7 +36155,9 @@ check_port_sec_offlows hv2 OFTABLE_CHK_OUT_PORT_SEC
 # sw0 not local to hv1 as sw0p2 and hv1-vif0 are deleted
 # sw0 not local to hv2 as sw0p2 has been deleted.
 OVN_CLEANUP([hv1
+/invalid syntax '' in port security/d
 ignored_dp=sw0], [hv2
+/invalid syntax '' in port security/d
 ignored_dp=sw0])
 AT_CLEANUP
 ])
@@ -41335,7 +41338,8 @@ dnl Make sure that the packet was received by vm0.
 echo $packet >> expected-vif1
 OVN_CHECK_PACKETS([hv/vif1-tx.pcap], [expected-vif1])
 
-OVN_CLEANUP([hv])
+OVN_CLEANUP([hv
+/invalid syntax '' in port security/d])
 AT_CLEANUP
 ])
 

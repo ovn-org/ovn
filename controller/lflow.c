@@ -3020,7 +3020,7 @@ consider_port_sec_flows(const struct sbrec_port_binding *pb,
                                     &ps_addrs[n_ps_addrs])) {
             static struct vlog_rate_limit rl
                 = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
+            VLOG_WARN_RL(&rl, "invalid syntax '%s' in port "
                          "security. No MAC address found",
                          pb->port_security[i]);
             continue;
