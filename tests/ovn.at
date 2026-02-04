@@ -11636,6 +11636,7 @@ set_dns_params() {
     local ttl=00000e10
     an_count=0001
     type=0001
+    expected_dns_answer_alt=""
     case $hname in
     vm1)
         # vm1.ovn.org
@@ -11652,10 +11653,13 @@ set_dns_params() {
     vm2)
         # vm2.ovn.org
         query_name=03766d32036f766e036f726700
+        # IPv4 addresses may be returned in any order due to DNS round-robin.
         # IPv4 address - 10.0.0.6
-        expected_dns_answer=${query_name}00010001${ttl}00040a000006
+        local ip1=${query_name}00010001${ttl}00040a000006
         # IPv4 address - 20.0.0.4
-        expected_dns_answer=${expected_dns_answer}${query_name}00010001${ttl}000414000004
+        local ip2=${query_name}00010001${ttl}000414000004
+        expected_dns_answer=${ip1}${ip2}
+        expected_dns_answer_alt=${ip2}${ip1}
         an_count=0002
         ;;
     vm3)
@@ -11712,6 +11716,12 @@ set_dns_params() {
     local dns_resp_header=010281200001${an_count}00000000
     dns_req_data=${dns_req_header}${query_name}${type}0001
     dns_resp_data=${dns_resp_header}${query_name}${type}0001${expected_dns_answer}
+    # Alternative response for cases with multiple IPs (DNS round-robin).
+    if test -n "$expected_dns_answer_alt"; then
+        dns_resp_data_alt=${dns_resp_header}${query_name}${type}0001${expected_dns_answer_alt}
+    else
+        dns_resp_data_alt=""
+    fi
 }
 
 # This shell function sends a DNS request packet
@@ -11789,17 +11799,51 @@ src_ip=`ip_to_hex 10 0 0 4`
 dst_ip=`ip_to_hex 10 0 0 1`
 dns_reply=1
 test_dns 1 f00000000001 f000000000f0 $src_ip $dst_ip $dns_reply $dns_req_data $dns_resp_data
+# Generate alternative expected response for DNS round-robin (without sending packet).
+if test -n "$dns_resp_data_alt"; then
+    # Build expected reply packet with alternative IP ordering.
+    ip_len_val=`expr 28 + ${#dns_resp_data_alt} / 2`
+    udp_len_val=`expr $ip_len_val - 20`
+    ip_len_hex=$(printf "%x" $ip_len_val)
+    udp_len_hex=$(printf "%x" $udp_len_val)
+    reply_alt=f00000000001f000000000f00800450000${ip_len_hex}0000000080110000
+    reply_alt=${reply_alt}${dst_ip}${src_ip}0035923400${udp_len_hex}0000${dns_resp_data_alt}
+    echo $reply_alt > 1.expected.alt
+fi
 
 # NXT_RESUMEs should be 1.
 OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
 
-OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected], ["cut -c -48"])
-# Skipping the IPv4 checksum.
-OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected], ["cut -c 53-"])
+# Check packets - for vm2, IPs may be in either order due to DNS round-robin.
+if test -f 1.expected.alt; then
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.received
+    cut -c 53- 1.expected > 1.expected.tail
+    cut -c 53- 1.expected.alt > 1.expected.alt.tail
+    cut -c 53- 1.received > 1.received.tail
+    # Accept either ordering of IPs.
+    if diff -q 1.expected.tail 1.received.tail > /dev/null 2>&1 || \
+       diff -q 1.expected.alt.tail 1.received.tail > /dev/null 2>&1; then
+        :
+    else
+        echo "Expected (order 1):" && cat 1.expected.tail
+        echo "Expected (order 2):" && cat 1.expected.alt.tail
+        echo "Received:" && cat 1.received.tail
+        AT_FAIL_IF([true])
+    fi
+    # Check header (first 48 chars).
+    cut -c -48 1.expected > 1.expected.head
+    cut -c -48 1.received > 1.received.head
+    AT_CHECK([diff 1.expected.head 1.received.head])
+else
+    OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected], ["cut -c -48"])
+    # Skipping the IPv4 checksum.
+    OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected], ["cut -c 53-"])
+fi
 
 reset_pcap_file hv1-vif1 hv1/vif1
 reset_pcap_file hv1-vif2 hv1/vif2
-rm -f 1.expected
+rm -f 1.expected 1.expected.alt 1.received
+rm -f 1.expected.head 1.expected.tail 1.expected.alt.tail 1.received.head 1.received.tail
 rm -f 2.expected
 
 

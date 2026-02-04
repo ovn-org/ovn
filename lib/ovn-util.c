@@ -21,6 +21,7 @@
 
 #include "daemon.h"
 #include "include/ovn/actions.h"
+#include "lib/random.h"
 #include "openvswitch/ofp-parse.h"
 #include "openvswitch/rconn.h"
 #include "openvswitch/vlog.h"
@@ -1736,4 +1737,28 @@ is_partial_uuid_match(const struct uuid *uuid, const char *match)
     }
     s2 = strip_leading_zero(s2);
     return !strncmp(s1, s2, strlen(s2));
+}
+
+/* Return an array of shuffled indices [0, n-1] using Fisher-Yates algorithm.
+ * Caller must free the returned array. Returns NULL if n == 0. */
+size_t *
+shuffled_range(size_t n)
+{
+    if (!n) {
+        return NULL;
+    }
+
+    size_t *indices = xmalloc(n * sizeof *indices);
+    for (size_t i = 0; i < n; i++) {
+        indices[i] = i;
+    }
+
+    for (size_t i = n - 1; i > 0; i--) {
+        size_t j = random_range(i + 1);
+        size_t tmp = indices[i];
+        indices[i] = indices[j];
+        indices[j] = tmp;
+    }
+
+    return indices;
 }

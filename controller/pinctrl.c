@@ -3530,11 +3530,15 @@ pinctrl_handle_dns_lookup(
             goto exit;
         }
 
+        /* Shuffle indices for round-robin load balancing. */
+        size_t *ipv4_order = shuffled_range(ip_addrs.n_ipv4_addrs);
+        size_t *ipv6_order = shuffled_range(ip_addrs.n_ipv6_addrs);
+
         if (query_type == DNS_QUERY_TYPE_A ||
             query_type == DNS_QUERY_TYPE_ANY) {
             for (size_t i = 0; i < ip_addrs.n_ipv4_addrs; i++) {
-                dns_build_a_answer(&dns_answer, in_queryname, idx,
-                                   ip_addrs.ipv4_addrs[i].addr);
+                ovs_be32 addr = ip_addrs.ipv4_addrs[ipv4_order[i]].addr;
+                dns_build_a_answer(&dns_answer, in_queryname, idx, addr);
                 ancount++;
             }
         }
@@ -3542,11 +3546,15 @@ pinctrl_handle_dns_lookup(
         if (query_type == DNS_QUERY_TYPE_AAAA ||
             query_type == DNS_QUERY_TYPE_ANY) {
             for (size_t i = 0; i < ip_addrs.n_ipv6_addrs; i++) {
-                dns_build_aaaa_answer(&dns_answer, in_queryname, idx,
-                                      &ip_addrs.ipv6_addrs[i].addr);
+                struct in6_addr *addr =
+                    &ip_addrs.ipv6_addrs[ipv6_order[i]].addr;
+                dns_build_aaaa_answer(&dns_answer, in_queryname, idx, addr);
                 ancount++;
             }
         }
+
+        free(ipv4_order);
+        free(ipv6_order);
 
         /* DNS is configured with a record for this domain with
          * an IPv4/IPV6 only, so instead of ignoring this A/AAAA query,

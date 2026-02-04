@@ -796,4 +796,6 @@ NEIGH_REDISTRIBUTE_MODES
 enum neigh_redistribute_mode
 parse_neigh_dynamic_redistribute(const struct smap *options);
 
+size_t *shuffled_range(size_t n);
+
 #endif /* OVN_UTIL_H */
