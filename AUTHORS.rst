@@ -290,6 +290,7 @@ Max Lamprecht                      max.lamprecht@mail.schwarz
 Maxim Korezkij                     maxim.korezkij@mail.schwarz
 Maxime Coquelin                    maxime.coquelin@redhat.com
 Mehak Mahajaon
+Mehrdad Moradi                     mmoradi@crusoe.ai
 Mengxin Liu                        mengxin@alauda.io
 Michael Arnaldi                    arnaldimichael@gmail.com
 Michal Weglicki                    michalx.weglicki@intel.com
