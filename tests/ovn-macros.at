@@ -1355,7 +1355,7 @@ stop_ovsdb_controller_updates() {
   echo Stopping updates from ovn-controller to ovsdb using port $TCP_PORT
   on_exit 'nft list tables | grep ovn-test && nft delete table ip ovn-test'
   # Report the test as skipped if proper nft related packages are not installed.
-  AT_SKIP_IF([! which nft])
+  AT_SKIP_IF([test $HAVE_NFT = no])
   AT_CHECK([nft add table ip ovn-test])
   AT_CHECK([nft 'add chain ip ovn-test INPUT { type filter hook input priority 0; policy accept; }'])
   AT_CHECK([nft add rule ip ovn-test INPUT tcp dport $TCP_PORT counter drop])
