@@ -140,7 +140,7 @@ find_l7_lib sctp
 # HAVE_COMMAND="yes", otherwise HAVE_COMMAND="no".
 find_command()
 {
-    which $1 > /dev/null 2>&1
+    command -v "$1" > /dev/null 2>&1
     status=$?
     var=HAVE_`echo "$1" | tr '-' '_' | tr '[a-z]' '[A-Z]'`
     if test "$status" = "0"; then
