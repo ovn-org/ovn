@@ -30,7 +30,6 @@ m4_define([OVN_BR_CONTROLLER_START], [
     as ovn-br start_daemon ovsdb-server --remote=punix:"$ovs_base"/ovn-br/ovnbr_db.sock \
         "$ovs_base"/ovn-br/ovn-br.db
 
-    which ovn-br-controller
     dnl Start ovn-br-controller.
     start_daemon ovn-br-controller
 ])
