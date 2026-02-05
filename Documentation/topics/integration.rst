@@ -44,7 +44,7 @@ OCF is nothing but a shell script which accepts a set of actions and returns an
 appropriate status code.
 
 With the help of the OCF resource agent ovn/utilities/ovndb-servers.ocf, one
-can defined a resource for the pacemaker such that pacemaker will always
+can define a resource for the pacemaker such that pacemaker will always
 maintain one running active server at any time.
 
 After creating a pacemaker cluster, use the following commands to create one
