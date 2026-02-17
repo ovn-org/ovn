@@ -630,19 +630,23 @@ ovn_pipeline_from_name(const char *pipeline)
 uint32_t
 sbrec_logical_flow_hash(const struct sbrec_logical_flow *lf)
 {
+    bool acl_ct_translation = smap_get_bool(&lf->tags,
+                                            "acl_ct_translation", false);
     return ovn_logical_flow_hash(lf->table_id,
                                  ovn_pipeline_from_name(lf->pipeline),
                                  lf->priority, lf->match,
-                                 lf->actions);
+                                 lf->actions, acl_ct_translation);
 }
 
 uint32_t
 ovn_logical_flow_hash(uint8_t table_id, enum ovn_pipeline pipeline,
                       uint16_t priority,
-                      const char *match, const char *actions)
+                      const char *match, const char *actions,
+                      bool acl_ct_translation)
 {
     size_t hash = hash_2words((table_id << 16) | priority, pipeline);
     hash = hash_string(match, hash);
+    hash = hash_boolean(acl_ct_translation, hash);
     return hash_string(actions, hash);
 }
 

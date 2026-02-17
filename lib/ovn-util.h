@@ -148,7 +148,8 @@ enum ovn_pipeline {
 uint32_t sbrec_logical_flow_hash(const struct sbrec_logical_flow *);
 uint32_t ovn_logical_flow_hash(uint8_t table_id, enum ovn_pipeline pipeline,
                                uint16_t priority,
-                               const char *match, const char *actions);
+                               const char *match, const char *actions,
+                               bool acl_ct_translation);
 void ovn_conn_show(struct unixctl_conn *conn, int argc OVS_UNUSED,
                    const char *argv[] OVS_UNUSED, void *idl_);
 
