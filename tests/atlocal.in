@@ -187,6 +187,9 @@ fi
 # Set HAVE_DHCPD
 find_command dhcpd
 
+# Set HAVE_DHCLIENT
+find_command dhclient
+
 # Set HAVE_BFDD_BEACON
 find_command bfdd-beacon
 
