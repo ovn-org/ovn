@@ -1665,6 +1665,23 @@
         </p>
 
         <p>
+          Each element in the set also supports the special prefix "VRRPv3"
+          that allows specification of single physical MAC and multiple
+          VRRPv3 MAC addresses.  As for non VRRPv3 entries, multiple IP
+          addresses can be associated with the specified MACs.  "VRRPv3" with
+          a single physical MAC translates to allowing traffic for the whole
+          "VRRPv3" range of MACs.  See more in the examples.
+
+          When the port security configuration entry contains the VRRPv3 label,
+          the behavior for physical MAC (the first specified) is different.
+          The installed flows will allow traffic from/to VRRP MACs + IPs.
+          The physical MAC is there to properly allow ARP/ND with given
+          VRRP MACs.  To allow traffic that is not related to virtual router,
+          e.g., IP traffic with a physical MAC as a source, a regular port
+          security entry should be added separately.
+        </p>
+
+        <p>
           This column is provided as a convenience to cloud management systems,
           but all of the features that it implements can be implemented as ACLs
           using the <ref table="ACL"/> table.
@@ -1708,6 +1725,44 @@
             receive IPv4 packets to 192.168.1.255 (based on the subnet mask),
             255.255.255.255, and any address in 224.0.0.0/4.  The host may not
             send or receive any IPv6 (including IPv6 Neighbor Discovery) traffic.
+          </dd>
+
+          <dt><code>"VRRPv3 &lt;PHYSICAL_MAC&gt;"</code></dt>
+          <dd>
+            The host may send ARP/ND packets with physical MAC as a source and
+            any of the VRRPv3 MACs as inner SHA/TLL/SLL - 00:00:5e:00:01:00/40
+            for IPv4 and 00:00:5e:00:02:00/40 for IPv6.  It may also send or
+            receive any traffic with any of VRRPv3 MAC addresses as a source
+            or destination.  But not with the physical MAC address.
+          </dd>
+
+          <dt><code>"VRRPv3 &lt;PHYSICAL_MAC&gt;</code>
+            <code>&lt;VRRPV3_MACv4_1&gt;/[&lt;MASK1&gt;]</code>
+            <code>&lt;VRRPV3_MACv4_N&gt;</code>
+            <code>&lt;VRRPV3_MACv6_1&gt;/[&lt;MASK2&gt;]</code>
+            <code>&lt;VRRPV3_MACv6_N&gt;"</code></dt>
+          <dd>
+            Same as the previous example, but allowed VRRPv3 MAC addresses are
+            limited to the specified ones.  The specified VRRPv3 MAC addresses
+            must have a correct prefix - 00:00:5e:00:01 for IPv4 and
+            00:00:5e:00:02 for IPv6.  VRRPv3 MACs can be provided with a mask
+            with a prefix between /40 and /48.
+          </dd>
+
+          <dt><code>"VRRPv3 &lt;PHYSICAL_MAC&gt;</code>
+            <code>&lt;VRRPV3_MACv4_1&gt;/[&lt;MASK1&gt;]</code>
+            <code>&lt;VRRPV3_MACv4_N&gt;</code>
+            <code>&lt;VRRPV3_MACv6_1&gt;/[&lt;MASK2&gt;]</code>
+            <code>&lt;VRRPV3_MACv6_N&gt;</code>
+            <code>&lt;VRRPV3_IPv4_1&gt;/[&lt;MASK1&gt;]</code>
+            <code>&lt;VRRPV3_IPv4_N&gt;</code>
+            <code>&lt;VRRPV3_IPv6_1&gt;/[&lt;MASK2&gt;]</code>
+            <code>&lt;VRRPV3_IPv6_N&gt;"</code></dt>
+          <dd>
+            The same as the previous example, but the provided IP addresses
+            further restrict the inner IP for ARP/ND.  As well as IP/IPv6
+            traffic to/from given VRRPv3 MACs.  The IP address format is the
+            same as for the regular port security entry.
           </dd>
         </dl>
       </column>
