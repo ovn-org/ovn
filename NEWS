@@ -1,5 +1,8 @@
 OVN v25.03.3 - xx xxx xxxx
 --------------------------
+   - Add support for special port_security prefix "VRRPv3". This prefix allows
+     CMS to allow all required traffic for a VRRPv3 virtual router behind LSP.
+     See ovn-nb(5) man page for more details.
 
 OVN v25.03.2 - 18 Nov 2025
 --------------------------

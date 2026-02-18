@@ -42969,3 +42969,857 @@ AT_CHECK([grep -q 'name="eth-unknown"' hv1/ovn-controller.log], [1])
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Port security - VRRPv3 ARP/ND])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl ls-add ls \
+    -- set logical_switch ls other-config:requested-tnl-key=1
+
+check ovn-nbctl lsp-add ls lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" \
+    -- set logical_switch_port lsp1 options:requested-tnl-key=1
+
+check ovn-nbctl lsp-add ls lsp2
+check ovn-nbctl lsp-set-addresses lsp2 "00:00:00:00:10:02 192.168.10.2 fd10::2" \
+    -- set logical_switch_port lsp2 options:requested-tnl-key=2
+
+check ovs-vsctl -- add-port br-int vif1 -- \
+      set interface vif1 external-ids:iface-id=lsp1 \
+      options:tx_pcap=hv1/vif1-tx.pcap \
+      options:rxq_pcap=hv1/vif1-rx.pcap
+
+check ovs-vsctl -- add-port br-int vif2 -- \
+      set interface vif2 external-ids:iface-id=lsp2 \
+      options:tx_pcap=hv1/vif2-tx.pcap \
+      options:rxq_pcap=hv1/vif2-rx.pcap
+
+wait_for_ports_up
+
+test_arp() {
+    local dropped=$1
+
+    packet=$(fmt_pkt "
+        Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:01') /
+        ARP(op=1, hwsrc='00:00:5e:00:01:05', hwdst='ff:ff:ff:ff:ff:ff', psrc='192.168.10.1', pdst='192.168.10.2')
+    ")
+    check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+    packet=$(fmt_pkt "
+            Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:01') /
+            ARP(op=2, hwsrc='00:00:5e:00:01:05', hwdst='ff:ff:ff:ff:ff:ff', psrc='192.168.10.1', pdst='192.168.10.1')
+    ")
+    check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+    if [[ "$dropped" != "yes" ]]; then
+        echo $packet >> vif2.expected
+        packet=$(fmt_pkt "
+            Ether(dst='00:00:00:00:10:01', src='00:00:00:00:10:02') /
+            ARP(op=2, hwsrc='00:00:00:00:10:02', hwdst='00:00:5e:00:01:05', psrc='192.168.10.2', pdst='192.168.10.1')
+        ")
+        echo $packet >> vif1.expected
+    fi
+}
+test_nd() {
+    local dropped=$1
+
+    packet=$(fmt_pkt "
+        Ether(dst='33:33:ff:00:00:01', src='00:00:00:00:10:01') /
+        IPv6(src='fd10::1', dst='ff02::1:ff00:2') /
+        ICMPv6ND_NS(tgt='fd10::2') /
+        ICMPv6NDOptSrcLLAddr(lladdr='00:00:5e:00:02:05')
+    ")
+    check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+    packet=$(fmt_pkt "
+        Ether(dst='33:33:ff:00:00:01', src='00:00:00:00:10:01') /
+        IPv6(src='fd10::1', dst='ff02::1:ff00:1') /
+        ICMPv6ND_NA(tgt='fd10::1') /
+        ICMPv6NDOptDstLLAddr(lladdr='00:00:5e:00:02:05')
+    ")
+    check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+    if [[ "$dropped" != "yes" ]]; then
+        echo $packet >> vif2.expected
+
+        packet=$(fmt_pkt "
+                Ether(dst='00:00:00:00:10:01', src='00:00:00:00:10:02') /
+                IPv6(src='fd10::2', dst='fd10::1') /
+                ICMPv6ND_NA(tgt='fd10::2', R=0, S=1, O=1) /
+                ICMPv6NDOptDstLLAddr(lladdr='00:00:00:00:10:02')
+        ")
+        echo $packet >> vif1.expected
+    fi
+}
+
+reset_pcap_and_expected() {
+    reset_pcap_file vif1 hv1/vif1
+    reset_pcap_file vif2 hv1/vif2
+
+    : > vif1.expected
+    : > vif2.expected
+}
+
+AS_BOX([Without port security])
+reset_pcap_and_expected
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [1])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [1])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [1])
+
+AS_BOX([With MAC only port security])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01"
+
+test_arp yes
+test_nd yes
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1"
+
+test_arp yes
+test_nd yes
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+
+AS_BOX([With MAC only port security, VRRPv3=any])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01" "VRRPv3 00:00:00:00:10:01"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security, VRRPv3=any])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" "VRRPv3 00:00:00:00:10:01 192.168.10.1 fd10::1"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_src=fe80::200:5eff:fe00:200/120 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_dst=fe80::200:5eff:fe00:200/120 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC only port security, VRRPv3 valid IPv4])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:05"
+
+test_arp no
+test_nd yes
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security, VRRPv3 valid IPv4])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:05 192.168.10.1 fd10::1"
+
+test_arp no
+test_nd yes
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC only port security, VRRPv3 valid IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:02:05"
+
+test_arp yes
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security, VRRPv3 valid IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:02:05 192.168.10.1 fd10::1"
+
+test_arp yes
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=fe80::200:5eff:fe00:205 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=fe80::200:5eff:fe00:205 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC only port security, VRRPv3 valid IPv4 + IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:05 00:00:5e:00:02:05"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security, VRRPv3 valid IPv4 + IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:05 00:00:5e:00:02:05 192.168.10.1 fd10::1"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=fe80::200:5eff:fe00:205 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=fe80::200:5eff:fe00:205 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC only port security, VRRPv3 masked IPv4 + IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:00/45 00:00:5e:00:02:00/45"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security, VRRPv3 masked IPv4 + IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:00/45 00:00:5e:00:02:00/45 192.168.10.1 fd10::1"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_src=fe80::200:5eff:fe00:200/125 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:f8,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_dst=fe80::200:5eff:fe00:200/125 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:f8,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC + IP port security, VRRPv3 valid but different IPv4 + IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "00:00:00:00:10:01 192.168.10.1 fd10::1" "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:01 00:00:5e:00:02:01 192.168.10.1 fd10::1"
+
+test_arp yes
+test_nd yes
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:01,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:01,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,ipv6_src=fe80::200:ff:fe00:1001 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:01,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:01,ipv6_src=fe80::200:5eff:fe00:201 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:01,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:5e:00:01:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:5e:00:02:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:5e:00:02:01 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:01 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:01 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:01,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:01,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:01,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=fe80::200:ff:fe00:1001 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:00:00:10:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:01,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:01,ipv6_dst=fe80::200:5eff:fe00:201 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:01,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With MAC only port security, VRRPv3 invalid IPv4])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:00"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [1])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [1])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [1])
+
+AS_BOX([With MAC only port security, VRRPv3 invalid IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "VRRPv3 00:00:00:00:10:01 00:00:5e:00:02:00"
+
+test_arp no
+test_nd no
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AS_BOX([With VRRPv3=any])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "VRRPv3 00:00:00:00:10:01"
+
+test_arp no
+test_nd yes
+
+# The ARP/ND response has eth.dst == "00:00:00:00:10:01" which isn't allowed in this case. Check only vif2.
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_sha=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_tll=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:00/ff:ff:ff:ff:ff:00 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+AS_BOX([With VRRPv3 valid IPv4 + IPv6])
+reset_pcap_and_expected
+check ovn-nbctl --wait=hv lsp-set-port-security lsp1 "VRRPv3 00:00:00:00:10:01 00:00:5e:00:01:05 00:00:5e:00:02:05 192.168.10.1 fd10::1"
+
+test_arp no
+test_nd yes
+
+# The ARP/ND response has eth.dst == "00:00:00:00:10:01" which isn't allowed in this case. Check only vif2.
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [vif2.expected])
+
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=80,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=131,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=135,icmp_code=0 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=::,ipv6_dst=ff02::/16,icmp_type=143,icmp_code=0 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ip,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05,nw_src=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=fd10::1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,ipv6,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:02:05,ipv6_src=fe80::200:5eff:fe00:205 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=90,udp,reg14=0x1,metadata=0x1,dl_src=00:00:5e:00:01:05,nw_src=0.0.0.0,nw_dst=255.255.255.255,tp_src=68,tp_dst=67 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC, priority=95,arp,reg14=0x1,metadata=0x1 actions=resubmit(,OFTABLE_CHK_IN_PORT_SEC_ND)
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_IN_PORT_SEC_ND | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,arp,reg14=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=135 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=80,icmp6,reg14=0x1,metadata=0x1,nw_ttl=255,icmp_type=136 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,arp,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,arp_spa=192.168.10.1,arp_sha=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=135,icmp_code=0,nd_sll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fd10::1,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:00:00:00:00 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_IN_PORT_SEC_ND, priority=90,icmp6,reg14=0x1,metadata=0x1,dl_src=00:00:00:00:10:01,nw_ttl=255,icmp_type=136,icmp_code=0,nd_target=fe80::200:ff:fe00:1001,nd_tll=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_strip_all | sort | grep -v NXST_FLOW], [0], [dnl
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=80,reg15=0x1,metadata=0x1 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=85,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=90,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05 actions=load:0x1->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=192.168.10.1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=224.0.0.0/4 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ip,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:01:05,nw_dst=255.255.255.255 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=fd10::1 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=fe80::200:5eff:fe00:205 actions=load:0->NXM_NX_REG10[[12]]
+ table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
+])
+
+OVN_CLEANUP([hv1
+/Invalid VRRPv3 MAC/d])
+AT_CLEANUP
+])
