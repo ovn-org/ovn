@@ -1522,7 +1522,7 @@ for i in $(seq 10); do
     check ovn-nbctl --wait=hv sync
     if test "$i" = 9; then
         AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=$acl_eval,reg15=0x$port_key | \
-            grep -v reply | awk '{print $7, $8}'], [0], [dnl
+            grep -v reply | awk '{print $7, $8}' | sort], [0], [dnl
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.6 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_sample)
 priority=1100,ip,reg15=0x$port_key,metadata=0x$dp_key,nw_src=10.0.0.10,nw_dst=10.0.0.7 actions=load:0x1->OXM_OF_PKT_REG4[[49]],resubmit(,$acl_sample)
 ])

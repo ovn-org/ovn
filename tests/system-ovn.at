@@ -19309,9 +19309,9 @@ AT_CHECK([ovn-appctl evpn/vtep-multicast-group-list], [0], [dnl
 check bridge fdb append 00:00:00:00:00:00 dev $VXLAN_NAME dst 169.0.0.10 static permanent
 check bridge fdb append 00:00:00:00:00:00 dev $VXLAN_V6_NAME dst 169::10 static permanent
 
-OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/remote-vtep-list], [0], [dnl
-IP: 169::10, port: 4789, vni: $vni
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
 IP: 169.0.0.10, port: 4789, vni: $vni
+IP: 169::10, port: 4789, vni: $vni
 ])
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-binding-list | cut -d',' -f2-], [0], [dnl
