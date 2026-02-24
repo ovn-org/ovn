@@ -480,7 +480,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_sync_from_sb, &en_sb_service_monitor, NULL);
     engine_add_input(&en_sync_from_sb, &en_sb_ha_chassis_group, NULL);
 
-    engine_add_input(&en_northd_output, &en_acl_id, NULL);
+    engine_add_input(&en_northd_output, &en_acl_id,
+                     northd_output_acl_id_handler);
     engine_add_input(&en_northd_output, &en_sync_from_sb, NULL);
     engine_add_input(&en_northd_output, &en_sync_to_sb,
                      northd_output_sync_to_sb_handler);
@@ -492,8 +493,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      northd_output_fdb_aging_handler);
     engine_add_input(&en_northd_output, &en_ecmp_nexthop,
                      northd_output_ecmp_nexthop_handler);
-    engine_add_input(&en_northd_output, &en_acl_id,
-                     northd_output_acl_id_handler);
     engine_add_input(&en_northd_output, &en_advertised_route_sync,
                      northd_output_advertised_route_sync_handler);
     engine_add_input(&en_northd_output, &en_advertised_mac_binding_sync,

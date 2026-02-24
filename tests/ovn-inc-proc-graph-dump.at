@@ -235,14 +235,13 @@ digraph "Incremental-Processing-Engine" {
 	SB_advertised_mac_binding -> advertised_mac_binding_sync [[label=""]];
 	northd -> advertised_mac_binding_sync [[label="engine_noop_handler"]];
 	northd_output [[style=filled, shape=box, fillcolor=white, label="northd_output"]];
-	acl_id -> northd_output [[label=""]];
+	acl_id -> northd_output [[label="northd_output_acl_id_handler"]];
 	sync_from_sb -> northd_output [[label=""]];
 	sync_to_sb -> northd_output [[label="northd_output_sync_to_sb_handler"]];
 	lflow -> northd_output [[label="northd_output_lflow_handler"]];
 	mac_binding_aging -> northd_output [[label="northd_output_mac_binding_aging_handler"]];
 	fdb_aging -> northd_output [[label="northd_output_fdb_aging_handler"]];
 	ecmp_nexthop -> northd_output [[label="northd_output_ecmp_nexthop_handler"]];
-	acl_id -> northd_output [[label="northd_output_acl_id_handler"]];
 	advertised_route_sync -> northd_output [[label="northd_output_advertised_route_sync_handler"]];
 	advertised_mac_binding_sync -> northd_output [[label="northd_output_advertised_mac_binding_sync_handler"]];
 }
