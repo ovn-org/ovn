@@ -88,6 +88,10 @@ stop_sb_relay_ovsdb() {
     OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnsb_relay $DB_SB_RELAY_PIDFILE $DB_SB_RELAY_CTRL_SOCK
 }
 
+stop_ovnbr_ovsdb () {
+    OVS_RUNDIR=${OVS_RUNDIR} stop_ovn_daemon ovnbr_db $DB_OVNBR_PIDFILE $DB_OVNBR_CTRL_SOCK
+}
+
 demote_xx_ovsdb () {
     local sync_from_addr=$1
     local sync_from_proto=$2
