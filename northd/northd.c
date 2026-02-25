@@ -1229,12 +1229,7 @@ ovn_port_cleanup(struct ovn_port *port)
         port->peer->peer = NULL;
     }
 
-    for (int i = 0; i < port->n_ps_addrs; i++) {
-        destroy_lport_addresses(&port->ps_addrs[i]);
-    }
-    free(port->ps_addrs);
-    port->ps_addrs = NULL;
-    port->n_ps_addrs = 0;
+    port->lsp_has_port_sec = false;
 
     destroy_lport_addresses(&port->lrp_networks);
     destroy_lport_addresses(&port->proxy_arp_addrs);
@@ -2050,19 +2045,14 @@ parse_lsp_addrs(struct ovn_port *op)
     }
     op->n_lsp_non_router_addrs = op->n_lsp_addrs;
 
-    op->ps_addrs
-        = xmalloc(sizeof *op->ps_addrs * nbsp->n_port_security);
+    struct eth_addr mac;
     for (size_t j = 0; j < nbsp->n_port_security; j++) {
-        if (!extract_lsp_addresses(nbsp->port_security[j],
-                                   &op->ps_addrs[op->n_ps_addrs])) {
-            static struct vlog_rate_limit rl
-                = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_INFO_RL(&rl, "invalid syntax '%s' in port "
-                              "security. No MAC address found",
-                              op->nbsp->port_security[j]);
-            continue;
+        int n = !strncmp(nbsp->port_security[j], "VRRPv3", 6) ? 7 : 0;
+        if (ovs_scan_len(nbsp->port_security[j], &n, ETH_ADDR_SCAN_FMT,
+                         ETH_ADDR_SCAN_ARGS(mac))) {
+            op->lsp_has_port_sec = true;
+            break;
         }
-        op->n_ps_addrs++;
     }
 }
 
@@ -2191,7 +2181,7 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
 
                     /* This port exists due to a SB binding, but should
                      * not have been initialized fully. */
-                    ovs_assert(!op->n_lsp_addrs && !op->n_ps_addrs);
+                    ovs_assert(!op->n_lsp_addrs && !op->lsp_has_port_sec);
                 }
             } else {
                 op = ovn_port_create(ports, nbsp->name, nbsp, NULL, NULL);
@@ -5973,8 +5963,9 @@ build_lswitch_learn_fdb_op(
 {
     ovs_assert(op->nbsp);
 
-    if (!op->n_ps_addrs && op->has_unknown && (!strcmp(op->nbsp->type, "") ||
-        (lsp_is_localnet(op->nbsp) && localnet_can_learn_mac(op->nbsp)))) {
+    if (!op->lsp_has_port_sec && op->has_unknown &&
+        (!strcmp(op->nbsp->type, "") || (lsp_is_localnet(op->nbsp) &&
+        localnet_can_learn_mac(op->nbsp)))) {
         ds_clear(match);
         ds_clear(actions);
         ds_put_format(match, "inport == %s", op->json_key);
