@@ -964,6 +964,7 @@ sync_changed_lbs(struct sb_lb_table *sb_lbs,
 
             hmap_remove(&sb_lbs->entries, &sb_lb->key_node);
             free(sb_lb);
+            continue;
         }
 
         if (!sync_sb_lb_record(sb_lb, sb_lb->sbrec_lb, sb_dpgrp_table, sb_lbs,
