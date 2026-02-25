@@ -559,7 +559,7 @@ run_ic_sb_ovsdb() {
 }
 
 run_ovnbr_ovsdb() {
-    DB_NB_DETACH=no
+    DB_OVNBR_DETACH=no
     start_ovnbr_ovsdb
 }
 
