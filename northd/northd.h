@@ -723,8 +723,8 @@ struct ovn_port {
                                           * beginning of 'lsp_addrs' extracted
                                           * directly from LSP 'addresses'. */
 
-    struct lport_addresses *ps_addrs;   /* Port security addresses. */
-    unsigned int n_ps_addrs;
+    /* LSP has at least one valid MAC address in the port security column. */
+    bool lsp_has_port_sec;
 
     bool lsp_can_be_inc_processed; /* If it can be incrementally processed when
                                       the port changes. */

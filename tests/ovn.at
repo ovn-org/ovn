@@ -45493,6 +45493,8 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_CHK_OUT_PORT_SEC | ofctl_str
  table=OFTABLE_CHK_OUT_PORT_SEC, priority=95,ipv6,reg15=0x1,metadata=0x1,dl_dst=00:00:5e:00:02:05,ipv6_dst=ff00::/8 actions=load:0->NXM_NX_REG10[[12]]
 ])
 
+AT_CHECK([grep -q "invalid syntax 'VRRPv3 .*' in port security. No MAC address found" northd/ovn-northd.log], [1])
+
 OVN_CLEANUP([hv1
 /Invalid VRRPv3 MAC/d])
 AT_CLEANUP
