@@ -405,8 +405,8 @@ en_datapath_synced_logical_switch_clear_tracked_data(void *data)
 
     struct hmapx_node *node;
     HMAPX_FOR_EACH_SAFE (node, &switch_map->deleted) {
-        struct ovn_synced_logical_router *lr = node->data;
-        free(lr);
+        struct ovn_synced_logical_switch *ls = node->data;
+        free(ls);
         hmapx_delete(&switch_map->deleted, node);
     }
 }
