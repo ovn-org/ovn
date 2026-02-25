@@ -2034,7 +2034,11 @@ join_logical_ports(const struct sbrec_port_binding_table *sbrec_pb_table,
      * it relies on proper peers to be set
      */
     HMAP_FOR_EACH (op, key_node, ports) {
-        ipam_add_port_addresses(op->od, op);
+        if (op->nbsp) {
+            ipam_add_lsp_port_addresses(op, true);
+        } else if (op->nbrp) {
+            ipam_add_lrp_port_addresses(op);
+        }
     }
 }
 
@@ -5217,6 +5221,12 @@ bool northd_handle_ipam_changes(struct northd_data *nd)
             od->ipam_info_initialized = false;
         }
         init_ipam_info_for_datapath(od);
+
+        struct ovn_port *op;
+        HMAP_FOR_EACH (op, dp_node, &od->ports) {
+            ipam_add_lsp_port_addresses(op, false);
+        }
+
         update_ipam_ls(od, &updates, false);
     }
 

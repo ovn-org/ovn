@@ -69,6 +69,8 @@ void update_ipam_ls(struct ovn_datapath *, struct vector *, bool);
 
 void update_dynamic_addresses(struct dynamic_address_update *);
 
-void ipam_add_port_addresses(struct ovn_datapath *, struct ovn_port *);
+void ipam_add_lrp_port_addresses(struct ovn_port *);
+
+void ipam_add_lsp_port_addresses(struct ovn_port *, bool check_mac_duplicate);
 
 #endif /* NORTHD_IPAM_H */

@@ -19902,3 +19902,40 @@ check ovn-nbctl --wait=sb lsp-set-addresses lport1 "f0:00:0f:01:02:04 192.168.0.
 check_row_count sb:Service_Monitor 2
 
 AT_CLEANUP
+
+AT_SETUP([ipam router ports - incremental processing])
+ovn_start
+check ovn-nbctl ls-add sw
+check ovn-nbctl set logical_switch sw other-config:subnet=192.168.1.0/24
+for i in 2 3 4; do
+    check ovn-nbctl lr-add ro$i
+    check ovn-nbctl lsp-add sw swp$i
+    check ovn-nbctl --wait=sb sync
+
+    sleep_northd
+    check ovn-nbctl lsp-set-addresses swp$i "02:00:00:00:00:0$i dynamic"
+    sleep_nb
+
+
+    wake_up_northd
+    # Make sure that the LSP change is handled by northd.
+    # Without this, northd could just go to sleep before it has the chance
+    # to process the new LSP. Use 2 ovn-appctl to guarantee that northd runs
+    # the full loop, and not just the unixctl handling.
+    OVS_WAIT_UNTIL([test "$(as northd ovn-appctl -t ovn-northd status)" = "Status: active"])
+    OVS_WAIT_UNTIL([test "$(as northd ovn-appctl -t ovn-northd status)" = "Status: active"])
+    sleep_northd
+
+    wake_up_nb
+    cidr=$(ovn-nbctl get logical_switch_port swp$i dynamic_addresses |cut -f2 -d' '|cut -f1 -d\")
+    wake_up_northd
+
+    check ovn-nbctl --wait=sb lrp-add ro$i rop$i 02:00:00:00:00:0$i $cidr/24 \
+        -- set logical_switch_port swp$i type=router \
+           options:router-port=rop$i addresses=router
+    AT_CHECK_UNQUOTED([ovn-nbctl get logical_router_port rop$i networks], [0], [[["192.168.1.$i/24"]]
+])
+done
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP

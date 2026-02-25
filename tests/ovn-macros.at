@@ -1442,6 +1442,17 @@ restart_ovsdb_controller_updates() {
   AT_CHECK([nft delete table ip ovn-test])
 }
 
+sleep_nb() {
+  echo NB going to sleep
+  AT_CHECK([kill -STOP $(cat ovn-nb/ovsdb-server.pid)])
+  on_exit "test -e ovn-nb/ovsdb-server.pid && kill -CONT $(cat ovn-nb/ovsdb-server.pid)"
+}
+
+wake_up_nb() {
+  echo NB waking up
+  AT_CHECK([kill -CONT $(cat ovn-nb/ovsdb-server.pid)])
+}
+
 trim_zeros() {
     sed 's/\(00\)\{1,\}$//'
 }
