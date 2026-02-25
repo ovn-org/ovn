@@ -24,11 +24,6 @@ static void init_ipam_ipv4(const char *subnet_str,
 static bool ipam_is_duplicate_mac(struct eth_addr *ea, uint64_t mac64,
                                   bool warn);
 
-static void ipam_insert_ip_for_datapath(struct ovn_datapath *, uint32_t, bool);
-
-static void ipam_insert_lsp_addresses(struct ovn_datapath *,
-                                      struct lport_addresses *);
-
 static enum dynamic_update_type dynamic_mac_changed(const char *,
     struct dynamic_address_update *);
 
@@ -107,17 +102,6 @@ ipam_insert_ip(struct ipam_info *info, uint32_t ip, bool dynamic)
                     ip - info->start_ipv4);
     }
     return true;
-}
-
-static void
-ipam_insert_ip_for_datapath(struct ovn_datapath *od, uint32_t ip,
-                            bool dynamic)
-{
-    if (!od) {
-        return;
-    }
-
-    ipam_insert_ip(&od->ipam_info, ip, dynamic);
 }
 
 uint32_t
@@ -568,7 +552,7 @@ update_unchanged_dynamic_addresses(struct dynamic_address_update *update)
         ipam_insert_mac(&update->current_addresses.ea, false);
     }
     if (update->ipv4 == NONE && update->current_addresses.n_ipv4_addrs) {
-        ipam_insert_ip_for_datapath(update->op->od,
+        ipam_insert_ip(&update->op->od->ipam_info,
                        ntohl(update->current_addresses.ipv4_addrs[0].addr),
                        true);
     }
@@ -698,7 +682,7 @@ update_dynamic_addresses(struct dynamic_address_update *update)
     ipam_insert_mac(&mac, true);
 
     if (ip4) {
-        ipam_insert_ip_for_datapath(update->od, ntohl(ip4), true);
+        ipam_insert_ip(&update->od->ipam_info, ntohl(ip4), true);
         ds_put_format(&new_addr, " "IP_FMT, IP_ARGS(ip4));
     }
     if (!IN6_ARE_ADDR_EQUAL(&ip6, &in6addr_any)) {
@@ -783,54 +767,41 @@ update_ipam_ls(struct ovn_datapath *od, struct vector *updates,
     }
 }
 
-void
-ipam_add_port_addresses(struct ovn_datapath *od, struct ovn_port *op)
+static void
+ipam_add_lport_addresses(struct ipam_info *info,
+                         const struct lport_addresses *laddrs)
 {
-    if (!od || !op) {
-        return;
+    for (size_t j = 0; j < laddrs->n_ipv4_addrs; j++) {
+        ipam_insert_ip(info, ntohl(laddrs->ipv4_addrs[j].addr), false);
     }
+}
+
+void
+ipam_add_lsp_port_addresses(struct ovn_port *op, bool check_mac_duplicate)
+{
+    ovs_assert(op->nbsp);
+
+    struct ipam_info *info = &op->od->ipam_info;
 
     if (op->n_lsp_non_router_addrs) {
         /* Add all the port's addresses to address data structures. */
         for (size_t i = 0; i < op->n_lsp_non_router_addrs; i++) {
-            ipam_insert_lsp_addresses(od, &op->lsp_addrs[i]);
+            ipam_insert_mac(&op->lsp_addrs[i].ea, check_mac_duplicate);
+            ipam_add_lport_addresses(info, &op->lsp_addrs[i]);
         }
-    } else if (op->lrp_networks.ea_s[0]) {
-        ipam_insert_mac(&op->lrp_networks.ea, true);
+    }
 
-        if (!op->peer || !op->peer->nbsp || !op->peer->od || !op->peer->od->nbs
-            || !smap_get(&op->peer->od->nbs->other_config, "subnet")) {
-            return;
-        }
-
-        for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
-            uint32_t ip = ntohl(op->lrp_networks.ipv4_addrs[i].addr);
-            /* If the router has the first IP address of the subnet, don't add
-             * it to IPAM. We already added this when we initialized IPAM for
-             * the datapath. This will just result in an erroneous message
-             * about a duplicate IP address.
-             */
-            if (ip != op->peer->od->ipam_info.start_ipv4) {
-                ipam_insert_ip_for_datapath(op->peer->od, ip, false);
-            }
-        }
+    if (op->peer && op->peer->nbrp) {
+        ipam_add_lport_addresses(info, &op->peer->lrp_networks);
     }
 }
 
-static void
-ipam_insert_lsp_addresses(struct ovn_datapath *od,
-                          struct lport_addresses *laddrs)
+void
+ipam_add_lrp_port_addresses(struct ovn_port *op)
 {
-    ipam_insert_mac(&laddrs->ea, true);
+    ovs_assert(op->nbrp);
 
-    /* IP is only added to IPAM if the switch's subnet option
-     * is set, whereas MAC is always added to MACAM. */
-    if (!od->ipam_info.allocated_ipv4s) {
-        return;
-    }
-
-    for (size_t j = 0; j < laddrs->n_ipv4_addrs; j++) {
-        uint32_t ip = ntohl(laddrs->ipv4_addrs[j].addr);
-        ipam_insert_ip_for_datapath(od, ip, false);
+    if (op->lrp_networks.ea_s[0]) {
+        ipam_insert_mac(&op->lrp_networks.ea, true);
     }
 }
