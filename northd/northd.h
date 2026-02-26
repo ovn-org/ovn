@@ -474,11 +474,8 @@ struct ovn_datapath {
     /* Map of ovn_port objects belonging to this datapath.
      * This map doesn't include derived ports. */
     struct hmap ports;
-
-    /* XXX Reference to the lflows belonging to this datapath currently router
-     * only lflows. This is NULL for now just to not waste any space
-     * as it's not used by anything right now, but it wasn't worth reverting
-     * all the related changes. */
+    /* Reference to the lflows belonging to this datapath currently router
+     * only lflows. */
     struct lflow_ref *datapath_lflows;
 };
 
