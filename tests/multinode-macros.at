@@ -185,10 +185,13 @@ check_fake_multinode_setup_by_nodes() {
 
 save_logs_and_db() {
     c=$1
-    on_exit "podman cp $c:/var/log/ovn/. ${c}"
-    on_exit "podman cp $c:/var/log/openvswitch/. ${c}"
-    on_exit "podman cp $c:/etc/ovn/. ${c}"
-    on_exit "podman cp $c:/etc/openvswitch/. ${c}"
+    # Note that on_exit commands are executed in reverse order during cleanup.
+    on_exit "podman cp $c:/tmp/ovn/. ${c}"
+    on_exit "podman cp $c:/tmp/openvswitch/. ${c}"
+    on_exit "podman exec $c cp -r /var/log/ovn/ /tmp/"
+    on_exit "podman exec $c cp -r /var/log/openvswitch/ /tmp/"
+    on_exit "podman exec $c cp -r /etc/ovn/ /tmp/"
+    on_exit "podman exec $c cp -r /etc/openvswitch/ /tmp/"
 }
 
 check_fake_multinode_setup() {
