@@ -17405,12 +17405,12 @@ check ovs-vsctl add-port br-int local-bgp-port \
     -- set Interface local-bgp-port external_ids:iface-id=local-bgp-port
 
 check ovn-nbctl lsp-add public local-bgp-port \
-    -- lsp-set-addresses local-bgp-port "00:00:00:00:00:03 20.0.0.3"
+    -- lsp-set-addresses local-bgp-port "00:00:00:00:00:04 20.0.0.4"
 
 # Configure local-bgp-port interface and add to VRF
 AT_CHECK([ip link set local-bgp-port master vrf-$vni])
-AT_CHECK([ip link set local-bgp-port address 00:00:00:00:00:03])
-AT_CHECK([ip addr add dev local-bgp-port 20.0.0.3/8])
+AT_CHECK([ip link set local-bgp-port address 00:00:00:00:00:04])
+AT_CHECK([ip addr add dev local-bgp-port 20.0.0.4/8])
 AT_CHECK([ip link set local-bgp-port up])
 
 # Wait for everything to be ready
@@ -17713,12 +17713,12 @@ check ovs-vsctl add-port br-int local-bgp-port \
     -- set Interface local-bgp-port external_ids:iface-id=local-bgp-port
 
 check ovn-nbctl lsp-add public local-bgp-port \
-    -- lsp-set-addresses local-bgp-port "00:00:00:00:00:03 20.0.0.3"
+    -- lsp-set-addresses local-bgp-port "00:00:00:00:00:04 20.0.0.4"
 
 # Configure local-bgp-port interface and add to VRF
 check ip link set local-bgp-port master vrf-$id
-check ip link set local-bgp-port address 00:00:00:00:00:03
-check ip addr add dev local-bgp-port 20.0.0.3/8
+check ip link set local-bgp-port address 00:00:00:00:00:04
+check ip addr add dev local-bgp-port 20.0.0.4/8
 check ip link set local-bgp-port up
 
 # Wait for everything to be ready
