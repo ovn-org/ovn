@@ -153,8 +153,8 @@ Ethan Rahn                         erahn@arista.com
 Evgenii Kovalev                    ekovalev.off@gmail.com
 Eziz Durdyyev                      ezizdurdy@gmail.com
 Fabrizio D'Angelo                  fdangelo@redhat.com
-Felix Huettner                     felix.huettner@mail.schwarz
-Felix Moebius                      felix.moebius@mail.schwarz
+Felix Huettner                     felix.huettner@digits.schwarz
+Felix Moebius                      felix.moebius@digits.schwarz
 Flavio Fernandes                   flavio@flaviof.com
 Flavio Leitner                     fbl@redhat.com
 Francesco Fusco                    ffusco@redhat.com
@@ -190,7 +190,7 @@ Ian Stokes                         ian.stokes@intel.com
 Igal Tsoiref                       itsoiref@redhat.com
 Igor Zhukov                        ivzhukov@sbercloud.ru
 Ihar Hrachyshka                    ihar.hrachyshka@gmail.com
-Ihtisham ul Haq                    Ihtisham.ul_Haq@mail.schwarz
+Ihtisham ul Haq                    Ihtisham.ul_Haq@digits.schwarz
 Ilya Maximets                      i.maximets@samsung.com
 Iman Tabrizian                     tabrizian@outlook.com
 Isaku Yamahata                     yamahata@valinux.co.jp
@@ -287,8 +287,8 @@ Maryam Tahhan                      maryam.tahhan@intel.com
 Matteo Croce                       mcroce@redhat.com
 Matthias May                       matthias.may@neratec.com
 Mauricio Vásquez                   mauricio.vasquezbernal@studenti.polito.it
-Max Lamprecht                      max.lamprecht@mail.schwarz
-Maxim Korezkij                     maxim.korezkij@mail.schwarz
+Max Lamprecht                      max.lamprecht@digits.schwarz
+Maxim Korezkij                     maxim.korezkij@digits.schwarz
 Maxime Coquelin                    maxime.coquelin@redhat.com
 Mehak Mahajaon
 Mehrdad Moradi                     mmoradi@crusoe.ai
