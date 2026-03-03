@@ -1997,7 +1997,7 @@ check_migration_between_gw1_and_gw2() {
     if [ test "$action" == "kill_gw2" ]; then
         AS_BOX([$(date +%H:%M:%S.%03N) Killing gw2 ovn-controller])
         on_exit 'm_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl status ||
-                 m_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1'
+                 m_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-2'
         on_exit 'm_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl status_controller ||
                  m_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
 
