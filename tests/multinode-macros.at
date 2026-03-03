@@ -183,24 +183,31 @@ check_fake_multinode_setup_by_nodes() {
         export REMOTE_PROT
 }
 
+save_logs_and_db() {
+    c=$1
+    on_exit "podman cp $c:/var/log/ovn/. ${c}"
+    on_exit "podman cp $c:/var/log/openvswitch/. ${c}"
+    on_exit "podman cp $c:/etc/ovn/. ${c}"
+    on_exit "podman cp $c:/etc/openvswitch/. ${c}"
+}
+
 check_fake_multinode_setup() {
     check_fake_multinode_setup_by_nodes                         \
         ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 \
         ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4
 
     for c in ovn-chassis-1 ovn-chassis-2 ovn-chassis-3 ovn-chassis-4 \
-             ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4 \
-             ovn-central-az1; do
+             ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-gw-4; do
         mkdir $c
         on_exit "m_as $c ovs-vsctl list Interface > ${c}/interfaces.txt || true"
         on_exit "m_as $c ovs-vsctl show > ${c}/ovs.txt || true"
         on_exit "m_as $c ovs-ofctl dump-flows br-int > ${c}/flow.txt || true"
         on_exit "m_as $c ovs-vsctl get open . external_ids > ${c}/extids.txt || true"
-        on_exit "podman cp $c:/var/log/ovn/. ${c}"
-        on_exit "podman cp $c:/var/log/openvswitch/. ${c}"
-        on_exit "podman cp $c:/etc/ovn/. ${c}"
-        on_exit "podman cp $c:/etc/openvswitch/. ${c}"
+        save_logs_and_db $c
     done
+
+    mkdir ovn-central-az1
+    save_logs_and_db ovn-central-az1
 }
 
 cleanup_multinode_resources_by_nodes() {
