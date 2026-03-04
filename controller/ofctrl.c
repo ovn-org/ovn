@@ -787,7 +787,6 @@ ofctrl_get_mf_field_id(void)
  */
 bool
 ofctrl_run(const char *conn_target, int probe_interval,
-           const struct ovsrec_open_vswitch_table *ovs_table,
            struct shash *pending_ct_zones,
            struct tracked_acl_ids *tracked_acl_ids)
 {
@@ -814,9 +813,6 @@ ofctrl_run(const char *conn_target, int probe_interval,
             }
         }
     }
-    const struct ovsrec_open_vswitch *cfg =
-        ovsrec_open_vswitch_table_first(ovs_table);
-    ovs_assert(cfg);
 
     bool progress = true;
     for (int i = 0; progress && i < 50; i++) {

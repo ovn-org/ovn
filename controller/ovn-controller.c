@@ -7614,7 +7614,7 @@ main(int argc, char *argv[])
             if (br_int) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
                 if (ofctrl_run(br_int_remote.target,
-                               br_int_remote.probe_interval, ovs_table,
+                               br_int_remote.probe_interval,
                                ct_zones_data ? &ct_zones_data->ctx.pending
                                              : NULL,
                                tracked_acl_ids)) {
