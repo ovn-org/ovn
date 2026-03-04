@@ -3987,25 +3987,24 @@ pinctrl_handler(void *arg_)
         }
 
         if (lock_failed) {
-            /* Wait for 5 msecs before waking to avoid degrading the
-             * lock to a spinlock. */
+            /* Wait for 5 msecs before waking in case there isn't anything
+             * else to process. */
             poll_timer_wait(5);
-        } else {
-            rconn_run_wait(swconn);
-            rconn_recv_wait(swconn);
-            if (rconn_is_connected(swconn)) {
-                send_garp_rarp_wait(send_garp_rarp_time);
-                send_arp_nd_wait(send_arp_nd_time);
-                ipv6_ra_wait(send_ipv6_ra_time);
-                ip_mcast_querier_wait(send_mcast_query_time);
-                svc_monitors_wait(svc_monitors_next_run_time);
-                ipv6_prefixd_wait(send_prefixd_time);
-                bfd_monitor_wait(bfd_time);
-            }
-            seq_wait(pinctrl_handler_seq, new_seq);
-
-            latch_wait(&pctrl->pinctrl_thread_exit);
         }
+
+        rconn_run_wait(swconn);
+        rconn_recv_wait(swconn);
+        if (rconn_is_connected(swconn)) {
+            send_garp_rarp_wait(send_garp_rarp_time);
+            send_arp_nd_wait(send_arp_nd_time);
+            ipv6_ra_wait(send_ipv6_ra_time);
+            ip_mcast_querier_wait(send_mcast_query_time);
+            svc_monitors_wait(svc_monitors_next_run_time);
+            ipv6_prefixd_wait(send_prefixd_time);
+            bfd_monitor_wait(bfd_time);
+        }
+        seq_wait(pinctrl_handler_seq, new_seq);
+        latch_wait(&pctrl->pinctrl_thread_exit);
 
         ovsrcu_quiesce_start();
         poll_block();
