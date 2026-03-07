@@ -3829,6 +3829,14 @@ tcp.flags = RST;
         </p>
       </column>
 
+      <column name="options" key="requested-encap-ip">
+        If set, <code>ovn-northd</code> resolves and sets
+        <ref column="encap"/> for this port based on the requested tunnel
+        endpoint IP. If absent, <code>ovn-controller</code> may manage
+        <ref column="encap"/> from local interface
+        <code>external_ids:encap-ip</code>.
+      </column>
+
       <column name="options" key="activation-strategy">
         If used with multiple chassis set in
         <ref column="requested-chassis"/>, specifies an activation strategy

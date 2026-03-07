@@ -2897,6 +2897,100 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check options:requested-encap-ip fills port binding encap col])
+AT_KEYWORDS([requested encap ip])
+ovn_start
+
+check_uuid ovn-sbctl \
+    -- --id=@e11 create encap chassis_name=ch1 ip="192.168.1.1" type="vxlan" \
+    -- --id=@e12 create encap chassis_name=ch1 ip="192.168.1.2" type="geneve" \
+    -- --id=@c1 create chassis name=ch1 encaps=@e11,@e12
+check_uuid ovn-sbctl \
+    -- --id=@e21 create encap chassis_name=ch2 ip="192.168.2.1" type="geneve" \
+    -- --id=@e22 create encap chassis_name=ch2 ip="192.168.2.2" type="geneve" \
+    -- --id=@c2 create chassis name=ch2 encaps=@e21,@e22
+
+wait_row_count Chassis 2
+wait_row_count Encap 4
+en11_uuid=$(fetch_column Encap _uuid ip="192.168.1.1")
+en12_uuid=$(fetch_column Encap _uuid ip="192.168.1.2")
+en21_uuid=$(fetch_column Encap _uuid ip="192.168.2.1")
+en22_uuid=$(fetch_column Encap _uuid ip="192.168.2.2")
+ovn-sbctl show
+
+echo "__file__:__line__: encap uuid: $en11_uuid, ip: 192.168.1.1"
+echo "__file__:__line__: encap uuid: $en12_uuid, ip: 192.168.1.2"
+echo "__file__:__line__: encap uuid: $en21_uuid, ip: 192.168.2.1"
+echo "__file__:__line__: encap uuid: $en22_uuid, ip: 192.168.2.2"
+
+check ovn-nbctl --wait=sb ls-add ls1
+check ovn-nbctl --wait=sb lsp-add ls1 lsp1
+check ovn-nbctl --wait=sb lsp-add ls1 lsp2
+ovn-nbctl show
+
+# set options:requested-encap-ip without requested-chassis
+check ovn-nbctl --wait=sb set logical-switch-port lsp1 \
+    options:requested-encap-ip=192.168.1.1
+check ovn-nbctl --wait=sb sync
+wait_row_count Port_Binding 1 logical_port=lsp1 encap="$en11_uuid"
+
+# With requested-chassis set to a different chassis, encap should be cleared.
+check ovn-nbctl --wait=sb set logical-switch-port lsp1 \
+    options:requested-chassis=ch2
+wait_row_count Port_Binding 1 logical_port=lsp1 'encap=[[]]'
+
+# Set both options to a matching chassis+IP.
+check ovn-nbctl --wait=sb set logical-switch-port lsp1 \
+    options:requested-chassis=ch1 \
+    options:requested-encap-ip=192.168.1.1
+check ovn-nbctl --wait=sb set logical-switch-port lsp2 \
+    options:requested-chassis=ch2 \
+    options:requested-encap-ip=192.168.2.2
+
+wait_row_count Port_Binding 1 logical_port=lsp1 encap="$en11_uuid"
+wait_row_count Port_Binding 1 logical_port=lsp2 encap="$en22_uuid"
+
+# Add geneve encap with the same IP and ensure it is preferred over vxlan.
+check_uuid ovn-sbctl \
+    -- --id=@e11g create encap chassis_name=ch1 ip="192.168.1.1" type="geneve" \
+    -- add chassis ch1 encaps @e11g
+wait_row_count Encap 5
+en11g_uuid=$(fetch_column Encap _uuid chassis_name=ch1 ip="192.168.1.1" type=geneve)
+wait_row_count Port_Binding 1 logical_port=lsp1 encap="$en11g_uuid"
+
+# Router LSP path has no requested-chassis, but requested-encap-ip should work.
+check ovn-nbctl --wait=sb lr-add lr1
+check ovn-nbctl --wait=sb lrp-add lr1 lrp1 00:00:00:01:00:01 100.64.0.1/24
+check ovn-nbctl --wait=sb lsp-add ls1 lsp-router1 \
+    -- lsp-set-type lsp-router1 router \
+    -- lsp-set-options lsp-router1 router-port=lrp1 \
+    -- lsp-set-addresses lsp-router1 router
+check ovn-nbctl --wait=sb set logical-switch-port lsp-router1 \
+    options:requested-encap-ip=192.168.2.1
+wait_row_count Port_Binding 1 logical_port=lsp-router1 encap="$en21_uuid"
+wait_row_count Port_Binding 1 logical_port=lsp-router1 \
+    options:requested-encap-ip=192.168.2.1
+
+# remove options:requested-encap-ip from lsp1
+check ovn-nbctl --wait=sb remove logical_switch_port lsp1 \
+    options requested-encap-ip=192.168.1.1
+wait_row_count Port_Binding 1 logical_port=lsp1 'encap=[[]]'
+
+# remove options:requested-chassis from lsp2 and keep requested-encap-ip
+check ovn-nbctl --wait=sb remove logical_switch_port lsp2 \
+    options requested-chassis=ch2
+wait_row_count Port_Binding 1 logical_port=lsp2 encap="$en22_uuid"
+
+# remove options:requested-encap-ip from lsp2
+check ovn-nbctl --wait=sb remove logical_switch_port lsp2 \
+    options requested-encap-ip=192.168.2.2
+wait_row_count Port_Binding 1 logical_port=lsp2 'encap=[[]]'
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([port requested-tnl-key])
 AT_KEYWORDS([requested tnl tunnel key keys])
 ovn_start

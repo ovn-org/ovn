@@ -51,6 +51,10 @@ northd_get_input_data(struct engine_node *node,
         engine_ovsdb_node_get_index(
             engine_get_input("SB_chassis", node),
             "sbrec_chassis_by_hostname");
+    input_data->sbrec_encap_by_ip =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_encap", node),
+            "sbrec_encap_by_ip");
     input_data->sbrec_ha_chassis_grp_by_name =
         engine_ovsdb_node_get_index(
             engine_get_input("SB_ha_chassis_group", node),

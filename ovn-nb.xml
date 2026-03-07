@@ -1567,6 +1567,15 @@
           </p>
         </column>
 
+        <column name="options" key="requested-encap-ip">
+          Requests the encapsulation IP address for the port binding. If set,
+          <code>ovn-northd</code> uses this IP to select the
+          <ref table="Encap" db="OVN_Southbound"/> entry written to
+          <ref table="Port_Binding" column="encap" db="OVN_Southbound"/>.
+          This is intended for ports without a local OVS interface, e.g. remote
+          transit switch ports in ovn-kubernetes interconnect mode.
+        </column>
+
         <column name="options" key="activation-strategy">
           If used with multiple chassis set in
           <ref column="requested-chassis"/>, specifies an activation strategy
@@ -4541,6 +4550,15 @@ or
           status of <code>Transit Router</code> see
           <ref table="Logical_Router"/> table for more details.
         </p>
+      </column>
+
+      <column name="options" key="requested-encap-ip">
+        Requests the encapsulation IP address for the port binding. If set,
+        <code>ovn-northd</code> uses this IP to select the
+        <ref table="Encap" db="OVN_Southbound"/> entry written to
+        <ref table="Port_Binding" column="encap" db="OVN_Southbound"/>.
+        This is intended for ports without a local OVS interface, e.g. remote
+        transit router ports in ovn-kubernetes interconnect mode.
       </column>
 
       <column name="options" key="dynamic-routing-redistribute"

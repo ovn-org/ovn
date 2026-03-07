@@ -3,6 +3,9 @@ Post v26.03.0
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------
+   - Added LSP/LRP option "requested-encap-ip" to let CMS request a specific
+     SB Port_Binding encap IP (e.g., for transit switch ports in ovn-k8s
+     interconnect mode).
    - Added DNS query statistics tracking in ovn-controller using OVS coverage
      counters. Statistics can be queried using "ovn-appctl -t ovn-controller
      coverage/read-counter <counter_name>" or "coverage/show". Tracked metrics

@@ -1301,11 +1301,23 @@ typedef void (*set_func)(const struct sbrec_port_binding *pb,
                          const struct sbrec_encap *);
 
 static bool
+pb_encap_managed_by_northd(const struct sbrec_port_binding *pb)
+{
+    const char *requested_encap_ip = smap_get(&pb->options,
+                                              "requested-encap-ip");
+    return requested_encap_ip && requested_encap_ip[0];
+}
+
+static bool
 update_port_encap_if_needed(const struct sbrec_port_binding *pb,
                             const struct sbrec_chassis *chassis_rec,
                             const struct ovsrec_interface *iface_rec,
                             bool sb_readonly)
 {
+    if (pb_encap_managed_by_northd(pb)) {
+        return true;
+    }
+
     const struct sbrec_encap *encap_rec =
         sbrec_get_port_encap(chassis_rec, iface_rec);
     if ((encap_rec && pb->encap != encap_rec) ||
@@ -1508,7 +1520,8 @@ release_lport_main_chassis(const struct sbrec_port_binding *pb,
                            bool sb_readonly,
                            struct if_status_mgr *if_mgr)
 {
-    if (pb->encap) {
+    if (pb->encap &&
+        !pb_encap_managed_by_northd(pb)) {
         if (sb_readonly) {
             return false;
         }
@@ -2406,7 +2419,8 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
     bool any_changes = false;
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding_rec, port_binding_table) {
         if (binding_rec->chassis == chassis_rec) {
-            if (binding_rec->encap) {
+            if (binding_rec->encap &&
+                !pb_encap_managed_by_northd(binding_rec)) {
                 sbrec_port_binding_set_encap(binding_rec, NULL);
             }
             sbrec_port_binding_set_chassis(binding_rec, NULL);

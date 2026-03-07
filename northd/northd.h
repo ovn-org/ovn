@@ -86,6 +86,7 @@ struct northd_input {
     struct ovsdb_idl_index *nbrec_mirror_by_type_and_sink;
     struct ovsdb_idl_index *sbrec_chassis_by_name;
     struct ovsdb_idl_index *sbrec_chassis_by_hostname;
+    struct ovsdb_idl_index *sbrec_encap_by_ip;
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name;
     struct ovsdb_idl_index *sbrec_ip_mcast_by_dp;
     struct ovsdb_idl_index *sbrec_fdb_by_dp_and_port;

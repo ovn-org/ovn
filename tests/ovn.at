@@ -40821,6 +40821,57 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - requested-encap-ip should override VIF encap-ip])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl set Open_vSwitch . \
+    external_ids:ovn-encap-ip="192.168.0.1,192.168.0.11" \
+    external_ids:ovn-encap-ip-default=192.168.0.1 \
+    external_ids:ovn-enable-flow-based-tunnels=false
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 lsp0
+check ovn-nbctl lsp-set-addresses lsp0 "50:54:00:00:00:01 10.0.0.1"
+
+as hv1
+check ovs-vsctl -- add-port br-int vif0 -- \
+    set Interface vif0 external-ids:iface-id=lsp0 \
+    external-ids:encap-ip=192.168.0.11
+
+wait_row_count Chassis 1 name=hv1
+wait_row_count Encap 4 chassis_name=hv1
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up lsp0
+
+encap_uuid_vif=$(ovn-sbctl --bare --columns _uuid find Encap \
+    chassis_name=hv1 ip="192.168.0.11" type=geneve)
+encap_uuid_nb=$(ovn-sbctl --bare --columns _uuid find Encap \
+    chassis_name=hv1 ip="192.168.0.1" type=geneve)
+
+get_pb_encap_uuid() {
+    fetch_column Port_Binding encap logical_port=lsp0
+}
+
+# Verify local VIF encap-ip is reflected by ovn-controller.
+OVS_WAIT_UNTIL([test "$encap_uuid_vif" = "$(get_pb_encap_uuid)"])
+
+# Now request NB-driven encap.
+check ovn-nbctl --wait=sb lsp-set-options lsp0 \
+    requested-chassis=hv1 requested-encap-ip=192.168.0.1
+
+# Expected behavior: NB request should win over local iface encap-ip.
+OVS_WAIT_UNTIL([test "$encap_uuid_nb" = "$(get_pb_encap_uuid)"])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([DHCP RELAY])
 ovn_start
 net_add n1
