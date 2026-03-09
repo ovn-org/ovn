@@ -67,6 +67,7 @@ struct mac_binding_probe_data {
     struct mac_cache_data *cache_data;
     struct rconn *swconn;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    const struct sbrec_chassis *chassis;
 };
 
 struct mac_binding {

@@ -89,13 +89,10 @@ lport_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
 }
 
 bool
-lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
-               const struct sbrec_chassis *chassis,
-               const char *port_name)
+lport_pb_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                  const struct sbrec_chassis *chassis,
+                  const struct sbrec_port_binding *pb)
 {
-    const struct sbrec_port_binding *pb = lport_lookup_by_name(
-        sbrec_port_binding_by_name, port_name);
-
     if (!pb) {
         return false;
     }
@@ -113,6 +110,16 @@ lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 
     return lport_pb_is_chassis_resident(chassis, cr_pb);
+}
+
+bool
+lport_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+               const struct sbrec_chassis *chassis,
+               const char *port_name)
+{
+    const struct sbrec_port_binding *pb = lport_lookup_by_name(
+        sbrec_port_binding_by_name, port_name);
+    return lport_pb_is_local(sbrec_port_binding_by_name, chassis, pb);
 }
 
 const struct sbrec_port_binding *
