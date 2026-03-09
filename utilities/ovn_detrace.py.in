@@ -36,7 +36,7 @@ except Exception:
 
 
 argv0 = sys.argv[0]
-version = "@VERSION@"
+version = "@VERSION@@VERSION_SUFFIX@"
 DB_CONNECTION_ERR = ('The connection to {0} DB is not available,'
                      ' {0} information will be missing from the detrace.')
 

@@ -153,6 +153,7 @@ cd -
 %endif
         --enable-ssl \
         --with-pkidir=%{_sharedstatedir}/openvswitch/pki \
+        --with-version-suffix=-%{release} \
         PYTHON3=%{__python3}
 
 make %{?_smp_mflags}
