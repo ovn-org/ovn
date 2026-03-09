@@ -48,7 +48,7 @@ AM_CFLAGS = -Wstrict-prototypes
 AM_CFLAGS += $(WARNING_FLAGS)
 AM_CFLAGS += $(OVS_CFLAGS)
 
-AM_DISTCHECK_CONFIGURE_FLAGS = --with-ovs-source=$(PWD)/ovs
+AM_DISTCHECK_CONFIGURE_FLAGS = --with-ovs-source=$(PWD)/ovs --with-version-suffix="$(VERSION_SUFFIX)"
 
 if NDEBUG
 AM_CPPFLAGS += -DNDEBUG
@@ -181,6 +181,7 @@ SUFFIXES += .in
 	    -e 's,[@]OVN_RUNDIR[@],$(OVN_RUNDIR),g' \
 	    -e 's,[@]OVSBUILDDIR[@],$(OVSBUILDDIR),g' \
 	    -e 's,[@]VERSION[@],$(VERSION),g' \
+	    -e 's,[@]VERSION_SUFFIX[@],$(VERSION_SUFFIX),g' \
 	    -e 's,[@]OVSVERSION[@],$(OVSVERSION),g' \
 	    -e 's,[@]localstatedir[@],$(localstatedir),g' \
 	    -e 's,[@]pkgdatadir[@],$(pkgdatadir),g' \
