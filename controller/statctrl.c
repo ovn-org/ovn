@@ -175,6 +175,7 @@ statctrl_init(void)
 void
 statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
              struct ovsdb_idl_index *sbrec_port_binding_by_name,
+             const struct sbrec_chassis *chassis,
              struct mac_cache_data *mac_cache_data)
 {
     if (!ovnsb_idl_txn) {
@@ -185,6 +186,7 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         .cache_data = mac_cache_data,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .swconn = statctrl_ctx.swconn,
+        .chassis = chassis,
     };
 
     void *node_data[STATS_MAX] = {

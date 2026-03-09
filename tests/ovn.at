@@ -36033,6 +36033,78 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - probing distributed GW router])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+# Check that during mac probing only the chassis that has currently claimed
+# a given port tries to refresh the mac bindings associated with that port.
+# Create a router connected to a switch with a localnet port on br-phys.
+# Create two hypervisors hv1 and hv2 and bind the lrp on hv1. hv1 should
+# then try to refresh mac bindings for the lrp whereas hv2 should not.
+
+net_add n1
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+    check ovs-vsctl set open . external-ids:ovn-bridge-mappings=physnet:br-phys
+    check ovs-vsctl add-br br-phys
+    check ovs-vsctl add-port br-phys snoopvif -- \
+        set Interface snoopvif \
+        options:tx_pcap=hv$i/snoopvif-tx.pcap \
+        options:rxq_pcap=hv$i/snoopvif-rx.pcap
+    check ovs-vsctl add-br br-underlay
+    ovn_attach n1 br-underlay 192.168.0.$i
+done
+
+lrp_mac=00:00:00:00:00:0a
+lrp_ip=192.168.1.10
+aging_th=10
+
+check ovn-nbctl lr-add lr
+check ovn-nbctl set logical_router lr options:mac_binding_age_threshold=$aging_th
+check ovn-nbctl lrp-add lr lr-ls $lrp_mac $lrp_ip/24
+check ovn-nbctl ls-add ls
+check ovn-nbctl lsp-add-router-port ls ls-lr lr-ls
+check ovn-nbctl lsp-add-localnet-port ls ls-phys physnet
+check ovn-nbctl lrp-set-gateway-chassis lr-ls hv1 20
+check ovn-nbctl lrp-set-gateway-chassis lr-ls hv2 10
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+
+# Wait for hv1 to claim the lrp
+hv1_chassis=$(fetch_column Chassis _uuid name=hv1)
+wait_row_count Port_Binding 1 logical_port=cr-lr-ls chassis=$hv1_chassis
+
+# Let hv1 receive an external garp to create a mac binding on the lrp
+ext_mac=00:00:00:00:00:14
+ext_ip=192.168.1.20
+send_garp hv1 snoopvif 1 $ext_mac "ff:ff:ff:ff:ff:ff" $ext_ip $ext_ip
+
+# Wait for mac binding to be created
+wait_row_count mac_binding 1 ip="$ext_ip" logical_port="lr-ls"
+
+# Wait for mac binding to be removed
+wait_row_count mac_binding 0 ip="$ext_ip" logical_port="lr-ls"
+
+# hv1 should have sent out arps for mac binding refresh
+arp_req=$(fmt_pkt \
+    "Ether(dst='ff:ff:ff:ff:ff:ff', src='$lrp_mac')/ \
+     ARP(hwsrc='$lrp_mac', hwdst='00:00:00:00:00:00', psrc='$lrp_ip', pdst='$ext_ip')")
+echo $arp_req >> hv1_snoopvif.expected
+OVN_CHECK_PACKETS_CONTAIN([hv1/snoopvif-tx.pcap], [hv1_snoopvif.expected])
+
+# hv2 should have sent nothing
+: > hv2_snoopvif.expected
+OVN_CHECK_PACKETS([hv2/snoopvif-tx.pcap], [hv2_snoopvif.expected])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing GW router Dynamic Neigh])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
