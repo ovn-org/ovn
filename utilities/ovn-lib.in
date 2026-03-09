@@ -39,7 +39,7 @@ else
     ovn_dbdir='@DBDIR@'
 fi
 
-VERSION='@VERSION@'
+VERSION='@VERSION@@VERSION_SUFFIX@'
 
 DAEMON_CWD=/
 
