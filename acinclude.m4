@@ -388,3 +388,14 @@ AC_DEFUN([OVN_ENABLE_VIF_PLUG], [
                 [Build built-in VIF plug providers])
     fi
 ])
+
+dnl Append a version suffix.
+AC_DEFUN([OVN_CHECK_VERSION_SUFFIX], [
+  AC_ARG_WITH([version-suffix],
+              [AS_HELP_STRING([--with-version-suffix=ver_suffix],
+                              [Specify a string that will be appended
+                               to OVN version])])
+  AC_DEFINE_UNQUOTED([VERSION_SUFFIX], ["$with_version_suffix"],
+                     [Package version suffix])
+  AC_SUBST([VERSION_SUFFIX], [$with_version_suffix])
+])
