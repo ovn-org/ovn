@@ -62,6 +62,12 @@ struct mac_binding_data {
     struct eth_addr mac;
 };
 
+struct mac_binding_probe_data {
+    struct mac_cache_data *cache_data;
+    struct rconn *swconn;
+    struct ovsdb_idl_index *sbrec_port_binding_by_name;
+};
+
 struct mac_binding {
     struct hmap_node hmap_node;
     /* Common data to identify MAC binding. */
@@ -185,19 +191,15 @@ void
 mac_binding_stats_process_flow_stats(struct ovs_list *stats_list,
                                      struct ofputil_flow_stats *ofp_stats);
 
-void mac_binding_stats_run(
-        struct rconn *swconn OVS_UNUSED,
-        struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data);
+void mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                           void *data);
 
 /* FDB stat processing. */
 void fdb_stats_process_flow_stats(struct ovs_list *stats_list,
                                   struct ofputil_flow_stats *ofp_stats);
 
-void fdb_stats_run(
-        struct rconn *swconn OVS_UNUSED,
-        struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data);
+void fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                   void *data);
 
 void mac_cache_stats_destroy(struct ovs_list *stats_list);
 
@@ -234,9 +236,7 @@ void mac_binding_probe_stats_process_flow_stats(
         struct ovs_list *stats_list,
         struct ofputil_flow_stats *ofp_stats);
 
-void mac_binding_probe_stats_run(
-        struct rconn *swconn,
-        struct ovsdb_idl_index *sbrec_port_binding_by_name,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data);
+void mac_binding_probe_stats_run(struct ovs_list *stats_list,
+                                 uint64_t *req_delay, void *data);
 
 #endif /* controller/mac-cache.h */
