@@ -411,10 +411,8 @@ mac_binding_update_log(const char *action,
 }
 
 void
-mac_binding_stats_run(
-        struct rconn *swconn OVS_UNUSED,
-        struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-        struct ovs_list *stats_list, uint64_t *req_delay, void *data)
+mac_binding_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                      void *data)
 {
     struct mac_cache_data *cache_data = data;
     long long timewall_now = time_wall_msec();
@@ -459,7 +457,7 @@ mac_binding_stats_run(
 
     mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
     if (*req_delay) {
-        VLOG_DBG("MAC binding statistics dalay: %"PRIu64, *req_delay);
+        VLOG_DBG("MAC binding statistics delay: %"PRIu64, *req_delay);
     }
 }
 
@@ -513,10 +511,7 @@ fdb_update_log(const char *action,
 }
 
 void
-fdb_stats_run(struct rconn *swconn OVS_UNUSED,
-              struct ovsdb_idl_index *sbrec_port_binding_by_name OVS_UNUSED,
-              struct ovs_list *stats_list,
-              uint64_t *req_delay, void *data)
+fdb_stats_run(struct ovs_list *stats_list, uint64_t *req_delay, void *data)
 {
     struct mac_cache_data *cache_data = data;
     long long timewall_now = time_wall_msec();
@@ -561,7 +556,7 @@ fdb_stats_run(struct rconn *swconn OVS_UNUSED,
 
     mac_cache_update_req_delay(&cache_data->thresholds, req_delay);
     if (*req_delay) {
-        VLOG_DBG("FDB entry statistics dalay: %"PRIu64, *req_delay);
+        VLOG_DBG("FDB entry statistics delay: %"PRIu64, *req_delay);
     }
 }
 
@@ -895,14 +890,12 @@ mac_binding_probe_stats_process_flow_stats(
 }
 
 void
-mac_binding_probe_stats_run(
-        struct rconn *swconn,
-        struct ovsdb_idl_index *sbrec_port_binding_by_name,
-        struct ovs_list *stats_list,
-        uint64_t *req_delay, void *data)
+mac_binding_probe_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
+                            void *data)
 {
     long long timewall_now = time_wall_msec();
-    struct mac_cache_data *cache_data = data;
+    struct mac_binding_probe_data *probe_data = data;
+    struct mac_cache_data *cache_data = probe_data->cache_data;
 
     struct mac_cache_stats *stats;
     LIST_FOR_EACH_POP (stats, list_node, stats_list) {
@@ -938,7 +931,7 @@ mac_binding_probe_stats_run(
         }
 
         const struct sbrec_port_binding *pb =
-            lport_lookup_by_name(sbrec_port_binding_by_name,
+            lport_lookup_by_name(probe_data->sbrec_port_binding_by_name,
                                  sbrec->logical_port);
         if (!pb) {
             free(stats);
@@ -962,7 +955,7 @@ mac_binding_probe_stats_run(
                                    &mb->data, true, threshold,
                                    stats->idle_age_ms, since_updated_ms);
 
-            send_self_originated_neigh_packet(swconn,
+            send_self_originated_neigh_packet(probe_data->swconn,
                                               sbrec->datapath->tunnel_key,
                                               pb->tunnel_key, laddr.ea,
                                               &local, &mb->data.ip,
