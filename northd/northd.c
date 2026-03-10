@@ -4883,7 +4883,9 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             add_op_to_northd_tracked_ports(&trk_lsps->deleted, op);
             hmap_remove(&nd->ls_ports, &op->key_node);
             hmap_remove(&od->ports, &op->dp_node);
-            sbrec_port_binding_delete(op->sb);
+            if (op->sb) {
+                sbrec_port_binding_delete(op->sb);
+            }
             delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port, od->tunnel_key,
                                 op->tunnel_key);
             if (op->has_attached_lport_mirror ||
@@ -11462,7 +11464,7 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sync_bfd_connections) {
-        if (bfd_e->stale) {
+        if (bfd_e->stale && bfd_e->sb_bt) {
             sbrec_bfd_delete(bfd_e->sb_bt);
         }
         bfd_erase_entry(bfd_e);
