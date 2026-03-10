@@ -206,10 +206,19 @@ static void
 ecmp_groups_add_route(struct ecmp_groups_node *group,
                       const struct parsed_route *route)
 {
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
     if (group->route_count == UINT16_MAX) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "too many routes in a single ecmp group.");
         return;
+    }
+
+    if (route->is_discard_route) {
+        group->has_discard_route = true;
+
+        char *prefix = normalize_v46_prefix(&route->prefix, route->plen);
+        VLOG_WARN_RL(&rl, "The ECMP route \"%s\" contains \"discard\" "
+                     "route, the whole group will drop traffic.", prefix);
+        free(prefix);
     }
 
     struct ecmp_route_list_node er = (struct ecmp_route_list_node) {
