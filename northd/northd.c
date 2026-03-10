@@ -10697,6 +10697,7 @@ struct ecmp_groups_node {
     struct in6_addr prefix;
     unsigned int plen;
     bool is_src_route;
+    bool has_discard_route;
     const char *origin;
     uint32_t route_table_id;
     uint16_t route_count;
@@ -10707,10 +10708,19 @@ static void
 ecmp_groups_add_route(struct ecmp_groups_node *group,
                       const struct parsed_route *route)
 {
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
     if (group->route_count == UINT16_MAX) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "too many routes in a single ecmp group.");
         return;
+    }
+
+    if (route->is_discard_route) {
+        group->has_discard_route = true;
+
+        char *prefix = normalize_v46_prefix(&route->prefix, route->plen);
+        VLOG_WARN_RL(&rl, "The ECMP route \"%s\" contains \"discard\" "
+                     "route, the whole group will drop traffic.", prefix);
+        free(prefix);
     }
 
     struct ecmp_route_list_node *er = xmalloc(sizeof *er);
@@ -11091,6 +11101,21 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     LIST_FOR_EACH (er, list_node, &eg->route_list) {
         const struct parsed_route *route_ = er->route;
         const struct nbrec_logical_router_static_route *route = route_->route;
+
+        ds_clear(&match);
+        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
+                      REG_ECMP_MEMBER_ID" == %"PRIu16,
+                      eg->id, er->id);
+        ds_clear(&actions);
+
+        if (eg->has_discard_route) {
+            ds_put_cstr(&actions, debug_drop_action());
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP,
+                                    100, ds_cstr(&match), ds_cstr(&actions),
+                                    &route->header_, lflow_ref);
+            continue;
+        }
+
         /* Find the outgoing port. */
         const char *lrp_addr_s = NULL;
         struct ovn_port *out_port = NULL;
@@ -11109,11 +11134,7 @@ build_ecmp_route_flow(struct lflow_table *lflows, struct ovn_datapath *od,
                                            route_, &route_match,
                                            lflow_ref);
         }
-        ds_clear(&match);
-        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
-                      REG_ECMP_MEMBER_ID" == %"PRIu16,
-                      eg->id, er->id);
-        ds_clear(&actions);
+
         ds_put_format(&actions, "%s = %s; "
                       "%s = %s; "
                       "eth.src = %s; "
