@@ -14345,3 +14345,83 @@ AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_arp_rsp | grep "ip6.dst == fd01:
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Static routes - ECMP with discard])
+ovn_start
+
+check ovn-nbctl                                                          \
+    -- lr-add lr0                                                        \
+        -- lrp-add lr0 lr0-sw1 00:00:00:00:10:01 10.0.10.1/24            \
+        -- --ecmp lr-route-add lr0 192.168.10.0/24 10.0.10.10            \
+        -- lrp-add lr0 lr0-sw2 00:00:00:00:20:01 10.0.20.1/24            \
+        -- --ecmp lr-route-add lr0 192.168.10.0/24 10.0.20.10
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep 'lr_in_ip_routing' lr0flows | grep 'select' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 0 && ip4.dst == 192.168.10.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+
+AT_CHECK([grep 'lr_in_ip_routing_ecmp' lr0flows | sed -E 's/== [[1-9]]+\)/== \?)/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(reg0 = 10.0.10.10; reg1 = 10.0.10.1; eth.src = 00:00:00:00:10:01; outport = "lr0-sw1"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(reg0 = 10.0.20.10; reg1 = 10.0.20.1; eth.src = 00:00:00:00:20:01; outport = "lr0-sw2"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+ecmp1=$(fetch_column nb:Logical_Router_Static_Route _uuid nexthop="10.0.10.10")
+ecmp2=$(fetch_column nb:Logical_Router_Static_Route _uuid nexthop="10.0.20.10")
+
+# Set one of the ECMP routes as "discard".
+check ovn-nbctl --wait=sb set Logical_Router_Static_Route $ecmp1 nexthop="discard"
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep 'lr_in_ip_routing' lr0flows | grep 'select' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 0 && ip4.dst == 192.168.10.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+
+AT_CHECK([grep 'lr_in_ip_routing_ecmp' lr0flows | sed -E 's/== [[1-9]]+\)/== \?)/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+# Set the second ECMP route as "discard".
+check ovn-nbctl --wait=sb set Logical_Router_Static_Route $ecmp2 nexthop="discard"
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep 'lr_in_ip_routing' lr0flows | grep 'select' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 0 && ip4.dst == 192.168.10.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+
+AT_CHECK([grep 'lr_in_ip_routing_ecmp' lr0flows | sed -E 's/== [[1-9]]+\)/== \?)/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+# Change both ECMP routes back to valid IP.
+check ovn-nbctl set Logical_Router_Static_Route $ecmp1 nexthop="10.0.10.10"
+check ovn-nbctl --wait=sb set Logical_Router_Static_Route $ecmp2 nexthop="10.0.20.10"
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep 'lr_in_ip_routing' lr0flows | grep 'select' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=73   , match=(reg7 == 0 && ip4.dst == 192.168.10.0/24), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+
+AT_CHECK([grep 'lr_in_ip_routing_ecmp' lr0flows | sed -E 's/== [[1-9]]+\)/== \?)/' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(reg0 = 10.0.10.10; reg1 = 10.0.10.1; eth.src = 00:00:00:00:10:01; outport = "lr0-sw1"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ?), action=(reg0 = 10.0.20.10; reg1 = 10.0.20.1; eth.src = 00:00:00:00:20:01; outport = "lr0-sw2"; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=150  , match=(reg8[[0..15]] == 0), action=(next;)
+])
+
+check grep -q 'The ECMP route "192.168.10.0/24" contains "discard" route, the whole group will drop traffic' northd/ovn-northd.log
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
