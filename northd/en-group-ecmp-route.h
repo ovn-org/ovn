@@ -34,6 +34,7 @@ struct ecmp_groups_node {
     struct in6_addr prefix;
     unsigned int plen;
     bool is_src_route;
+    bool has_discard_route;
     enum route_source source;
     uint32_t route_table_id;
     uint16_t route_count;
