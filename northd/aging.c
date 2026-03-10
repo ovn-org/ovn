@@ -97,7 +97,7 @@ compare_entries_by_prefix_length(const void *a, const void *b)
 static bool
 parse_threshold_entry(const char *str, struct threshold_entry *entry)
 {
-    char *colon_ptr;
+    const char *colon_ptr;
     unsigned int value;
     const char *threshold_str;
 
