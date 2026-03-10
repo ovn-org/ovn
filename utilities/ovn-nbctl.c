@@ -467,7 +467,7 @@ Policy commands:\n\
   lr-policy-del ROUTER [{PRIORITY | UUID} [MATCH]]\n\
                             remove policies from ROUTER\n\
   lr-policy-list ROUTER     print policies for ROUTER\n\
-+\n\n");
+\n\n");
     printf("\
 NAT commands:\n\
   [--stateless]\n\
