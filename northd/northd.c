@@ -11825,7 +11825,21 @@ build_ecmp_route_flow(struct lflow_table *lflows,
     struct sset visited_ports = SSET_INITIALIZER(&visited_ports);
     VECTOR_FOR_EACH_PTR (&eg->route_list, er) {
         const struct parsed_route *route = er->route;
-        bool is_ipv4_nexthop = IN6_IS_ADDR_V4MAPPED(route->nexthop);
+
+        ds_clear(&match);
+        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
+                      REG_ECMP_MEMBER_ID" == %"PRIu16,
+                      eg->id, er->id);
+        ds_clear(&actions);
+
+        if (eg->has_discard_route) {
+            ds_put_cstr(&actions, debug_drop_action());
+            ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP,
+                                    100, ds_cstr(&match), ds_cstr(&actions),
+                                    route->source_hint, lflow_ref);
+            continue;
+        }
+
         /* Symmetric ECMP reply is only usable on gateway routers.
          * It is NOT usable on distributed routers with a gateway port.
          */
@@ -11837,11 +11851,8 @@ build_ecmp_route_flow(struct lflow_table *lflows,
                                            route, &route_match,
                                            lflow_ref);
         }
-        ds_clear(&match);
-        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
-                      REG_ECMP_MEMBER_ID" == %"PRIu16,
-                      eg->id, er->id);
-        ds_clear(&actions);
+
+        bool is_ipv4_nexthop = IN6_IS_ADDR_V4MAPPED(route->nexthop);
         ds_put_format(&actions, "%s = ",
                       is_ipv4_nexthop ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
         ipv6_format_mapped(route->nexthop, &actions);
