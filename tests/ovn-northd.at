@@ -20019,3 +20019,60 @@ check grep -q 'The ECMP route "192.168.10.0/24" contains "discard" route, the wh
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Neutron external-ids])
+ovn_start
+
+# This test ensures that special Neutron external-ids on logical datapaths
+# and LSPs are propagated to their southbound Datapath_Bindings/Port_Bindings.
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw lsp
+check ovn-nbctl --wait=sb lr-add ro
+
+ls_dp_uuid=$(fetch_column Datapath_Binding _uuid type=logical-switch)
+lsp_pb_uuid=$(fetch_column Port_Binding _uuid logical_port=lsp)
+lr_dp_uuid=$(fetch_column Datapath_Binding _uuid type=logical-router)
+
+# We can't use the check_column function since we need to check
+# an individual external-id value. check_column can only be
+# used to check the full contents of a column.
+#
+# If the external_ids:name2 or external_ids:name is not present,
+# then `ovn-sbctl get` exits with a failure condition.
+AT_CHECK([ovn-sbctl get Datapath_Binding $ls_dp_uuid external_ids:name2],
+[1], [ignore], [ignore])
+AT_CHECK([ovn-sbctl get Datapath_Binding $lr_dp_uuid external_ids:name2],
+[1], [ignore], [ignore])
+AT_CHECK([ovn-sbctl get Port_Binding $lsp_pb_uuid external_ids:name],
+[1], [ignore], [ignore])
+
+check ovn-nbctl add Logical_Switch sw external_ids \"neutron:network_name\"=the_switch
+check ovn-nbctl add Logical_Switch_Port lsp external_ids \"neutron:port_name\"=the_port
+check ovn-nbctl --wait=sb add Logical_Router ro external_ids \"neutron:router_name\"=the_router
+
+AT_CHECK([ovn-sbctl get Datapath_Binding $ls_dp_uuid external_ids:name2],
+[0], [the_switch
+])
+AT_CHECK([ovn-sbctl get Datapath_Binding $lr_dp_uuid external_ids:name2],
+[0], [the_router
+])
+AT_CHECK([ovn-sbctl get Port_Binding $lsp_pb_uuid external_ids:name],
+[0], [the_port
+])
+
+check ovn-nbctl remove Logical_Switch sw external_ids \"neutron:network_name\"
+check ovn-nbctl remove Logical_Switch_Port lsp external_ids \"neutron:port_name\"
+check ovn-nbctl --wait=sb remove Logical_Router ro external_ids \"neutron:router_name\"
+
+AT_CHECK([ovn-sbctl get Datapath_Binding $ls_dp_uuid external_ids:name2],
+[1], [ignore], [ignore])
+AT_CHECK([ovn-sbctl get Datapath_Binding $lr_dp_uuid external_ids:name2],
+[1], [ignore], [ignore])
+AT_CHECK([ovn-sbctl get Port_Binding $lsp_pb_uuid external_ids:name],
+[1], [ignore], [ignore])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
