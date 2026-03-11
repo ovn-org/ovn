@@ -62,7 +62,7 @@ gather_external_ids(const struct nbrec_logical_switch *nbs,
                     struct smap *external_ids)
 {
     smap_add(external_ids, "name", nbs->name);
-    const char *neutron_network = smap_get(&nbs->other_config,
+    const char *neutron_network = smap_get(&nbs->external_ids,
                                            "neutron:network_name");
     if (neutron_network && neutron_network[0]) {
         smap_add(external_ids, "name2", neutron_network);

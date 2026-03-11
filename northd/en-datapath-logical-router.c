@@ -42,7 +42,7 @@ gather_external_ids(const struct nbrec_logical_router *nbr,
                     struct smap *external_ids)
 {
     smap_add(external_ids, "name", nbr->name);
-    const char *neutron_router = smap_get(&nbr->options,
+    const char *neutron_router = smap_get(&nbr->external_ids,
                                            "neutron:router_name");
     if (neutron_router && neutron_router[0]) {
         smap_add(external_ids, "name2", neutron_router);
