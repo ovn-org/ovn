@@ -122,6 +122,7 @@ David Yang                         davidy@vmware.com
 Dennis Sam                         dsam@arista.com
 Devendra Naga                      devendra.aaru@gmail.com
 Dmitry Krivenok                    krivenok.dmitry@gmail.com
+Dmitry Mityugov                    dmitry.mityugov@gmail.com
 Dominic Curran                     dominic.curran@citrix.com
 Dongdong                           dongdong1@huawei.com
 Dongjun                            dongj@dtdream.com
