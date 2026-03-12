@@ -983,6 +983,15 @@ mac_binding_probe_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
             continue;
         }
 
+        if (!lport_pb_is_local(probe_data->sbrec_port_binding_by_name,
+                               probe_data->chassis, pb)) {
+            mac_binding_update_log("Not sending ARP/ND request for non-local",
+                                   &mb->data, true, threshold,
+                                   stats->idle_age_ms, since_updated_ms);
+            free(stats);
+            continue;
+        }
+
         struct lport_addresses laddr;
         if (!extract_lsp_addresses(pb->mac[0], &laddr)) {
             free(stats);
