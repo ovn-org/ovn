@@ -98,6 +98,33 @@ lport_is_chassis_resident(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     }
 }
 
+bool
+lport_pb_is_local(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                  const struct sbrec_chassis *chassis,
+                  const struct sbrec_port_binding *pb)
+{
+    if (!pb || !chassis) {
+        return false;
+    }
+
+    if (pb->chassis == chassis) {
+        return true;
+    }
+
+    const char *crp_name = smap_get(&pb->options, "chassis-redirect-port");
+    const struct sbrec_port_binding *cr_pb = NULL;
+    if (crp_name) {
+        cr_pb = lport_lookup_by_name(sbrec_port_binding_by_name, crp_name);
+    }
+
+    /* Patch ports that are not redirect ports are always local. */
+    if (!cr_pb && get_lport_type(pb) == LP_PATCH) {
+        return true;
+    }
+
+    return cr_pb->chassis == chassis;
+}
+
 const struct sbrec_port_binding *
 lport_get_peer(const struct sbrec_port_binding *pb,
                struct ovsdb_idl_index *sbrec_port_binding_by_name)
