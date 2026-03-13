@@ -155,6 +155,10 @@ struct desired_flow {
      * Key is the SB UUID.  (There are cases that multiple SB entities share
      * the same desired OpenFlow flow, e.g. when conjunction is used.) */
     struct hmap references;
+    /* The number of flows in 'references' that are tracking some address
+     * sets, i.e., have their 'sb_flow_ref.as_ip_flow_list' node in the
+     * 'as_ip_to_flow_node.flows'. */
+    size_t referenced_as_ip_flows;
 
     /* The corresponding flow in installed table. */
     struct installed_flow *installed_flow;
@@ -1124,6 +1128,26 @@ sb_addrset_ref_size(const struct sb_addrset_ref *sar)
     return sizeof *sar + strlen(sar->name) + 1;
 }
 
+static void
+sb_flow_ref_as_ip_untrack(struct desired_flow *f, struct sb_flow_ref *sfr)
+{
+    if (ovs_list_is_empty(&sfr->as_ip_flow_list)) {
+        return;
+    }
+    ovs_list_remove(&sfr->as_ip_flow_list);
+    ovs_list_init(&sfr->as_ip_flow_list);
+    f->referenced_as_ip_flows--;
+}
+
+static void
+sb_flow_ref_as_ip_track(struct desired_flow *f,
+                        struct as_ip_to_flow_node *itfn,
+                        struct sb_flow_ref *sfr)
+{
+    ovs_list_insert(&itfn->flows, &sfr->as_ip_flow_list);
+    f->referenced_as_ip_flows++;
+}
+
 static struct sb_to_flow *
 sb_to_flow_find(struct hmap *uuid_flow_table, const struct uuid *sb_uuid)
 {
@@ -1212,7 +1236,7 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
         hmap_insert(&sar->as_ip_to_flow_map, &itfn->hmap_node, hash);
     }
 
-    ovs_list_insert(&itfn->flows, &sfr->as_ip_flow_list);
+    sb_flow_ref_as_ip_track(f, itfn, sfr);
 }
 
 /* Flow table interfaces to the rest of ovn-controller. */
@@ -1403,10 +1427,12 @@ ofctrl_add_or_append_conj_flow(struct ovn_desired_flow_table *desired_flows,
          * lflows, but we need to remove the related conjunction from the
          * actions properly when handle addrset ip deletion, instead of simply
          * delete the flow. */
-        struct sb_flow_ref *sfr;
-        HMAP_FOR_EACH (sfr, sb_node, &f->references) {
-            ovs_list_remove(&sfr->as_ip_flow_list);
-            ovs_list_init(&sfr->as_ip_flow_list);
+        if (f->referenced_as_ip_flows) {
+            struct sb_flow_ref *sfr;
+            HMAP_FOR_EACH (sfr, sb_node, &f->references) {
+                sb_flow_ref_as_ip_untrack(f, sfr);
+            }
+            ovs_assert(!f->referenced_as_ip_flows);
         }
 
         if (flow_contains_sb_reference(f, sb_uuid)) {
@@ -1542,7 +1568,7 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
 
         hmap_remove(&f->references, &sfr->sb_node);
         ovs_list_remove(&sfr->flow_list);
-        ovs_list_remove(&sfr->as_ip_flow_list);
+        sb_flow_ref_as_ip_untrack(f, sfr);
 
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
@@ -1581,7 +1607,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
 
         hmap_remove(&f->references, &sfr->sb_node);
         ovs_list_remove(&sfr->flow_list);
-        ovs_list_remove(&sfr->as_ip_flow_list);
+        sb_flow_ref_as_ip_untrack(f, sfr);
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
@@ -1628,7 +1654,7 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
         ovs_assert(hmap_count(&f->references));
         HMAP_FOR_EACH (sfr, sb_node, &f->references) {
             ovs_list_remove(&sfr->flow_list);
-            ovs_list_remove(&sfr->as_ip_flow_list);
+            sb_flow_ref_as_ip_untrack(f, sfr);
         }
     }
     LIST_FOR_EACH_SAFE (f, list_node, &to_be_removed) {
@@ -1682,6 +1708,7 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
 {
     struct desired_flow *f = xmalloc(sizeof *f);
     hmap_init(&f->references);
+    f->referenced_as_ip_flows = 0;
     ovs_list_init(&f->list_node);
     ovs_list_init(&f->installed_ref_list_node);
     ovs_list_init(&f->track_list_node);
@@ -1891,6 +1918,7 @@ desired_flow_destroy(struct desired_flow *f)
 {
     if (f) {
         ovs_assert(!hmap_count(&f->references));
+        ovs_assert(!f->referenced_as_ip_flows);
         ovs_assert(!f->installed_flow);
         mem_stats.desired_flow_usage -= desired_flow_size(f);
         hmap_destroy(&f->references);
