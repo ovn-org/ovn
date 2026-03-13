@@ -1306,55 +1306,104 @@ ofctrl_add_flow_metered(struct ovn_desired_flow_table *desired_flows,
                                       meter_id, as_info, true);
 }
 
-struct ofpact_ref {
-    struct hmap_node hmap_node;
-    struct ofpact *ofpact;
-};
-
-static struct ofpact_ref *
-ofpact_ref_find(const struct hmap *refs, const struct ofpact *ofpact)
+static inline void
+ofpacts_replace(struct ovn_flow *flow, struct ofpbuf *replacement)
 {
-    uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
+    /* Make sure there is no extra head- or tailroom.
+     * Should be a no-op in most cases. */
+    ofpbuf_trim(replacement);
 
-    struct ofpact_ref *ref;
-    HMAP_FOR_EACH_WITH_HASH (ref, hmap_node, hash, refs) {
-        if (ofpacts_equal(ref->ofpact, ref->ofpact->len,
-                          ofpact, ofpact->len)) {
-            return ref;
+    free(flow->ofpacts);
+    flow->ofpacts_len = replacement->size;
+    flow->ofpacts = ofpbuf_steal_data(replacement);
+}
+
+static int
+compare_conjunctions(const void *a_, const void *b_)
+{
+    const struct ofpact_conjunction *a = ofpact_get_CONJUNCTION(a_);
+    const struct ofpact_conjunction *b = ofpact_get_CONJUNCTION(b_);
+
+    return a->id == b->id ? 0 : (a->id < b->id ? -1 : 1);
+}
+
+/* Finds conjunction 'key' in the 'ofpacts' using binary search.  'ofpacts'
+ * must only contain conjunctions in the ascending order of their IDs.
+ *
+ * Returns 'true' if the 'key' is found, setting 'pos' to the offset in
+ * 'ofpacts' where the 'key' is.  Otherwise, returns 'false' and sets the
+ * 'pos' to the offset in the 'ofpacts' where the 'key' should have been. */
+static bool
+ofpacts_find_conjunction(const struct ofpact *ofpacts, size_t ofpacts_len,
+                         const struct ofpact_conjunction *key, size_t *pos)
+{
+    const uint8_t *data = (const uint8_t *) ofpacts;
+    size_t high = ofpacts_len / sizeof *key;
+    size_t low = 0;
+    size_t idx;
+    int cmp;
+
+    while (low < high) {
+        idx = (low + high) / 2;
+        cmp = compare_conjunctions(key, data + idx * sizeof *key);
+
+        if (cmp < 0) {
+            high = idx;
+        } else if (cmp > 0) {
+            low = idx + 1;
+        } else {
+            if (pos) {
+                *pos = idx * sizeof *key;
+            }
+            return true;
         }
     }
-
-    return NULL;
+    if (pos) {
+        *pos = low * sizeof *key;
+    }
+    return false;
 }
 
-static inline void
-ofpacts_append(struct ovn_flow *flow, const struct ofpbuf *append)
-{
-    size_t new_len = flow->ofpacts_len + append->size;
-
-    flow->ofpacts = xrealloc(flow->ofpacts, new_len);
-    memcpy((uint8_t *) flow->ofpacts + flow->ofpacts_len,
-           append->data, append->size);
-    flow->ofpacts_len = new_len;
-}
-
-static inline struct ofpbuf *
+static struct ofpbuf *
 create_conjunction_actions(const struct vector *conjunctions,
-                          const struct hmap *existing)
+                           const struct ovn_flow *existing)
 {
     size_t len = vector_len(conjunctions);
-    struct ofpbuf *ofpbuf =
-        ofpbuf_new(sizeof(struct ofpact_conjunction) * len);
+    struct ofpact_conjunction *conj;
+    size_t conj_size = sizeof *conj;
+    struct ofpbuf *ofpbuf;
+    size_t pos;
+
+    if (existing) {
+        ofpbuf = ofpbuf_new(existing->ofpacts_len + conj_size * len);
+        ofpbuf_put(ofpbuf, existing->ofpacts, existing->ofpacts_len);
+    } else {
+        ofpbuf = ofpbuf_new(conj_size * len);
+    }
 
     const struct cls_conjunction *cls;
     VECTOR_FOR_EACH_PTR (conjunctions, cls) {
-        struct ofpact_conjunction *conj = ofpact_put_CONJUNCTION(ofpbuf);
+        conj = ofpact_put_CONJUNCTION(ofpbuf);
         conj->id = cls->id;
         conj->clause = cls->clause;
         conj->n_clauses = cls->n_clauses;
 
-        if (existing && ofpact_ref_find(existing, &conj->ofpact)) {
+        if (!existing) {
+            continue;
+        }
+
+        if (ofpacts_find_conjunction(ofpbuf->data, ofpbuf->size - conj_size,
+                                     conj, &pos)) {
+            /* It's a duplicate, drop it. */
             ofpbuf->size -= sizeof *conj;
+        } else if (pos == ofpbuf->size - conj_size) {
+            /* Not found, but needed to insert at the end anyway. */
+        } else {
+            /* Not found and need to insert in the middle. */
+            struct ofpact_conjunction tmp = *conj;
+
+            ofpbuf->size -= sizeof *conj;
+            ofpbuf_insert(ofpbuf, pos, &tmp, sizeof tmp);
         }
     }
 
@@ -1384,34 +1433,11 @@ ofctrl_add_or_append_conj_flow(struct ovn_desired_flow_table *desired_flows,
                   match, NULL, 0, meter_id);
     existing = desired_flow_lookup_conjunctive(desired_flows, &search_flow);
     if (existing) {
-        struct hmap existing_conj = HMAP_INITIALIZER(&existing_conj);
-        /* We can calculate the length directly because the flow actions
-         * consist only of conjunctions. Make a rough assert to ensure
-         * that is that case in the future. */
-        size_t conj_size = sizeof(struct ofpact_conjunction);
-        ovs_assert(!(existing->flow.ofpacts_len % conj_size));
-        struct ofpact_ref *refs =
-            xmalloc(sizeof *refs * existing->flow.ofpacts_len / conj_size);
+        actions = create_conjunction_actions(conjunctions, &existing->flow);
 
-        size_t index = 0;
-        struct ofpact *ofpact;
-        OFPACT_FOR_EACH (ofpact, existing->flow.ofpacts,
-                         existing->flow.ofpacts_len) {
-            ovs_assert(ofpact->type == OFPACT_CONJUNCTION);
-            struct ofpact_ref *ref = &refs[index++];
-            ref->ofpact = ofpact;
-            uint32_t hash = hash_bytes(ofpact, ofpact->len, 0);
-            hmap_insert(&existing_conj, &ref->hmap_node, hash);
-        }
-
-        actions = create_conjunction_actions(conjunctions, &existing_conj);
         mem_stats.desired_flow_usage -= desired_flow_size(existing);
-        ofpacts_append(&existing->flow, actions);
+        ofpacts_replace(&existing->flow, actions);
         mem_stats.desired_flow_usage += desired_flow_size(existing);
-
-
-        free(refs);
-        hmap_destroy(&existing_conj);
 
         f = existing;
 

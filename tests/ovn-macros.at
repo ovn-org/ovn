@@ -240,7 +240,6 @@ m4_define([DUMP_FLOWS], [
           sed 's/, hard_age=[[^,]]*//g' |
           sed 's/n_bytes=[[^,]]*/n_bytes=xx/g' |
           sed 's/n_packets=[[^,]]*/n_packets=xx/g' |
-          sed 's/conjunction([[^,]]*/conjunction(xx/g' |
           sort > $output_file
 ])
 
