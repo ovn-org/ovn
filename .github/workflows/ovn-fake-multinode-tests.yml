@@ -26,7 +26,7 @@ jobs:
       XDG_RUNTIME_DIR: ''
     steps:
     - name: Check out ovn-fake-multi-node
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
@@ -43,7 +43,7 @@ jobs:
         ref: 'master'
 
     - name: Check out ovn ${{ matrix.cfg.branch }}
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         path: 'ovn-fake-multinode/ovn'
         submodules: recursive
@@ -75,7 +75,7 @@ jobs:
         sudo podman save ovn/ovn-multi-node:${{ matrix.cfg.branch }} > /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
       working-directory: ovn-fake-multinode
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: test-${{ matrix.cfg.branch }}-image
         path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
@@ -112,7 +112,7 @@ jobs:
 
     steps:
     - name: Check out ovn
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: install required dependencies
       run:  |
@@ -134,11 +134,11 @@ jobs:
         . .ci/linux-util.sh
         free_up_disk_space_ubuntu
 
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         name: test-main-image
 
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         name: test-branch-22.03-image
 
@@ -148,7 +148,7 @@ jobs:
         sudo podman load --input ovn_branch-22.03_image.tar
 
     - name: Check out ovn-fake-multi-node
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
@@ -178,12 +178,12 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: set up python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
     - name: Check out ovn
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         path: 'ovn'
         submodules: recursive
@@ -225,7 +225,7 @@ jobs:
 
     - name: upload logs on failure
       if: failure() || cancelled()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
