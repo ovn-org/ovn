@@ -151,10 +151,10 @@ struct desired_flow {
     struct hmap_node match_hmap_node; /* For match based hashing. */
     struct ovs_list list_node; /* For handling lists of flows. */
 
-    /* A list of struct sb_flow_ref nodes, which references this flow. (There
-     * are cases that multiple SB entities share the same desired OpenFlow
-     * flow, e.g. when conjunction is used.) */
-    struct ovs_list references;
+    /* A hash map of struct sb_flow_ref nodes, which references this flow.
+     * Key is the SB UUID.  (There are cases that multiple SB entities share
+     * the same desired OpenFlow flow, e.g. when conjunction is used.) */
+    struct hmap references;
 
     /* The corresponding flow in installed table. */
     struct installed_flow *installed_flow;
@@ -178,7 +178,7 @@ struct sb_to_flow {
 };
 
 struct sb_flow_ref {
-    struct ovs_list sb_list; /* Node in desired_flow.references. */
+    struct hmap_node sb_node; /* Node in desired_flow.references. */
     struct ovs_list flow_list; /* Node in sb_to_flow.flows. */
     struct ovs_list as_ip_flow_list; /* Node in as_ip_to_flow_node.flows. */
     struct desired_flow *flow;
@@ -1157,7 +1157,7 @@ link_flow_to_sb(struct ovn_desired_flow_table *flow_table,
     mem_stats.sb_flow_ref_usage += sb_flow_ref_size(sfr);
     sfr->flow = f;
     sfr->sb_uuid = *sb_uuid;
-    ovs_list_insert(&f->references, &sfr->sb_list);
+    hmap_insert(&f->references, &sfr->sb_node, uuid_hash(sb_uuid));
     struct sb_to_flow *stf = sb_to_flow_find(&flow_table->uuid_flow_table,
                                              sb_uuid);
     if (!stf) {
@@ -1399,7 +1399,7 @@ ofctrl_add_or_append_conj_flow(struct ovn_desired_flow_table *desired_flows,
          * delete the flow. */
         struct sb_flow_ref *sfr;
         bool duplicate = false;
-        LIST_FOR_EACH (sfr, sb_list, &f->references) {
+        HMAP_FOR_EACH (sfr, sb_node, &f->references) {
             duplicate |= uuid_equals(&sfr->sb_uuid, sb_uuid);
             ovs_list_remove(&sfr->as_ip_flow_list);
             ovs_list_init(&sfr->as_ip_flow_list);
@@ -1530,20 +1530,21 @@ ofctrl_remove_flows_for_as_ip(struct ovn_desired_flow_table *flow_table,
     struct sb_flow_ref *sfr;
     size_t count = 0;
     LIST_FOR_EACH_SAFE (sfr, as_ip_flow_list, &itfn->flows) {
+        struct desired_flow *f = sfr->flow;
+
         /* If the desired flow is referenced by multiple sb lflows, it
          * shouldn't have been indexed by address set. */
-        ovs_assert(ovs_list_is_short(&sfr->sb_list));
+        ovs_assert(hmap_count(&f->references) == 1);
 
-        ovs_list_remove(&sfr->sb_list);
+        hmap_remove(&f->references, &sfr->sb_node);
         ovs_list_remove(&sfr->flow_list);
         ovs_list_remove(&sfr->as_ip_flow_list);
 
-        struct desired_flow *f = sfr->flow;
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
         ovs_assert(ovs_list_is_empty(&f->list_node));
-        ovs_assert(ovs_list_is_empty(&f->references));
+        ovs_assert(!hmap_count(&f->references));
         ovn_flow_log(&f->flow, "remove_flows_for_as_ip");
         hmap_remove(&flow_table->match_flow_table,
                     &f->match_hmap_node);
@@ -1572,15 +1573,16 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
     /* Traverse all flows for the given sb_uuid. */
     struct sb_flow_ref *sfr;
     LIST_FOR_EACH_SAFE (sfr, flow_list, &stf->flows) {
-        ovs_list_remove(&sfr->sb_list);
+        struct desired_flow *f = sfr->flow;
+
+        hmap_remove(&f->references, &sfr->sb_node);
         ovs_list_remove(&sfr->flow_list);
         ovs_list_remove(&sfr->as_ip_flow_list);
-        struct desired_flow *f = sfr->flow;
         mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
         free(sfr);
 
         ovs_assert(ovs_list_is_empty(&f->list_node));
-        if (ovs_list_is_empty(&f->references)) {
+        if (!hmap_count(&f->references)) {
             if (log_msg) {
                 ovn_flow_log(&f->flow, log_msg);
             }
@@ -1616,23 +1618,23 @@ remove_flows_from_sb_to_flow(struct ovn_desired_flow_table *flow_table,
      * list. */
 
     /* Detach the items in f->references from the sfr.flow_list lists,
-     * so that recursive calls will not mess up the sfr.sb_list list. */
+     * so that recursive calls will not mess up the sfr.sb_node. */
     struct desired_flow *f;
     LIST_FOR_EACH (f, list_node, &to_be_removed) {
-        ovs_assert(!ovs_list_is_empty(&f->references));
-        LIST_FOR_EACH (sfr, sb_list, &f->references) {
+        ovs_assert(hmap_count(&f->references));
+        HMAP_FOR_EACH (sfr, sb_node, &f->references) {
             ovs_list_remove(&sfr->flow_list);
             ovs_list_remove(&sfr->as_ip_flow_list);
         }
     }
     LIST_FOR_EACH_SAFE (f, list_node, &to_be_removed) {
-        LIST_FOR_EACH_SAFE (sfr, sb_list, &f->references) {
+        HMAP_FOR_EACH_SAFE (sfr, sb_node, &f->references) {
             if (!uuidset_find(flood_remove_nodes, &sfr->sb_uuid)) {
                 uuidset_insert(flood_remove_nodes, &sfr->sb_uuid);
                 flood_remove_flows_for_sb_uuid(flow_table, &sfr->sb_uuid,
                                                flood_remove_nodes);
             }
-            ovs_list_remove(&sfr->sb_list);
+            hmap_remove(&f->references, &sfr->sb_node);
             mem_stats.sb_flow_ref_usage -= sb_flow_ref_size(sfr);
             free(sfr);
         }
@@ -1675,7 +1677,7 @@ desired_flow_alloc(uint8_t table_id, uint16_t priority, uint64_t cookie,
                    uint32_t meter_id)
 {
     struct desired_flow *f = xmalloc(sizeof *f);
-    ovs_list_init(&f->references);
+    hmap_init(&f->references);
     ovs_list_init(&f->list_node);
     ovs_list_init(&f->installed_ref_list_node);
     ovs_list_init(&f->track_list_node);
@@ -1770,8 +1772,10 @@ flow_lookup_match_uuid_cb(const struct desired_flow *candidate,
 {
     const struct uuid *sb_uuid = arg;
     struct sb_flow_ref *sfr;
+    uint32_t hash;
 
-    LIST_FOR_EACH (sfr, sb_list, &candidate->references) {
+    hash = uuid_hash(sb_uuid);
+    HMAP_FOR_EACH_WITH_HASH (sfr, sb_node, hash, &candidate->references) {
         if (uuid_equals(sb_uuid, &sfr->sb_uuid)) {
             return true;
         }
@@ -1882,9 +1886,10 @@ static void
 desired_flow_destroy(struct desired_flow *f)
 {
     if (f) {
-        ovs_assert(ovs_list_is_empty(&f->references));
+        ovs_assert(!hmap_count(&f->references));
         ovs_assert(!f->installed_flow);
         mem_stats.desired_flow_usage -= desired_flow_size(f);
+        hmap_destroy(&f->references);
         ovn_flow_uninit(&f->flow);
         free(f);
     }
