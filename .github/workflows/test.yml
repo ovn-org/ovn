@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Update APT cache
         run: sudo apt update
@@ -74,7 +74,7 @@ jobs:
 
       - name: Cache image
         id: image_cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/image.tar
           key: ${{ github.sha }}/${{ github.event_name }}
@@ -123,20 +123,20 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: recursive
 
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     # Weekly runs test using the tip of the most recent stable OVS branch
     # instead of the submodule.
     - name: checkout OVS
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         repository: 'openvswitch/ovs'
         fetch-depth: 0
@@ -162,7 +162,7 @@ jobs:
 
     - name: image cache
       id: image_cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: /tmp/image.tar
         key: ${{ github.sha }}/${{ github.event_name }}
@@ -191,7 +191,7 @@ jobs:
 
     - name: upload logs on failure
       if: failure() || cancelled()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: logs-linux-${{ join(matrix.cfg.*, '-') }}
         path: logs.tgz
@@ -211,18 +211,18 @@ jobs:
     steps:
     - name: checkout
       if: github.event_name == 'push' || github.event_name == 'pull_request'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: recursive
     # For weekly runs, don't update submodules
     - name: checkout without submodule
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     # Weekly runs test using the tip of the most recent stable OVS branch
     # instead of the submodule.
     - name: checkout OVS
       if: github.event_name == 'schedule'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         repository: 'openvswitch/ovs'
         fetch-depth: 0
@@ -241,7 +241,7 @@ jobs:
         echo "$HOME/bin"        >> $GITHUB_PATH
         echo "$HOME/.local/bin" >> $GITHUB_PATH
     - name: set up python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
     - name: prepare
@@ -250,7 +250,7 @@ jobs:
       run:  ./.ci/osx-build.sh
     - name: upload logs on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: logs-osx-clang---disable-ssl
         path: config.log
@@ -270,7 +270,7 @@ jobs:
         run: dnf install -y dnf-plugins-core git rpm-build
 
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -303,7 +303,7 @@ jobs:
         run:  make rpm-fedora
 
       - name: upload rpm packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rpm-packages
           path: |
