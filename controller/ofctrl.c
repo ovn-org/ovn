@@ -1358,7 +1358,7 @@ create_conjunction_actions(const struct vector *conjunctions,
         conj->n_clauses = cls->n_clauses;
 
         if (existing && ofpact_ref_find(existing, &conj->ofpact)) {
-            ofpbuf_pull(ofpbuf, sizeof *conj);
+            ofpbuf->size -= sizeof *conj;
         }
     }
 
