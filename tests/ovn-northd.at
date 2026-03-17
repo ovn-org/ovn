@@ -7122,6 +7122,10 @@ check ovn-nbctl --wait=sb lr-route-add lr0 11.0.0.0/24 2001:db8::10
 check ovn-nbctl --wait=sb lr-route-add lr0 2001:db8:1::/64 192.168.0.20
 check ovn-nbctl --wait=sb lr-route-add lr0 2001:db8:2::/64 2001:db8::20
 
+# Add a IPv6 route with IPv4 nexthop that is not on any subnet of the router port.
+# It should select the first IPv4 and assign to REG_SRC_IPV4 (reg5).
+check ovn-nbctl --wait=sb lr-route-add lr0 2001:db8:3::/64 192.168.1.10 lr0-public
+
 ovn-sbctl dump-flows lr0 > lr0flows
 AT_CHECK([grep -e "lr_in_ip_routing " lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
@@ -7131,6 +7135,7 @@ AT_CHECK([grep -e "lr_in_ip_routing " lr0flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_routing   ), priority=198  , match=(ip4.dst == 192.168.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg9[[9]] = 1; next;)
   table=??(lr_in_ip_routing   ), priority=516  , match=(reg7 == 0 && ip6.dst == 2001:db8:1::/64), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.0.20; reg5 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg9[[9]] = 1; next;)
   table=??(lr_in_ip_routing   ), priority=516  , match=(reg7 == 0 && ip6.dst == 2001:db8:2::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = 2001:db8::20; xxreg1 = 2001:db8::1; eth.src = 00:00:20:20:12:14; outport = "lr0-private"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=516  , match=(reg7 == 0 && ip6.dst == 2001:db8:3::/64), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.1.10; reg5 = 192.168.0.1; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg9[[9]] = 1; next;)
   table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-private" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:20ff:fe20:1214; eth.src = 00:00:20:20:12:14; outport = "lr0-private"; flags.loopback = 1; reg9[[9]] = 0; next;)
   table=??(lr_in_ip_routing   ), priority=518  , match=(inport == "lr0-public" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:20ff:fe20:1213; eth.src = 00:00:20:20:12:13; outport = "lr0-public"; flags.loopback = 1; reg9[[9]] = 0; next;)
   table=??(lr_in_ip_routing   ), priority=518  , match=(ip6.dst == 2001:db8::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = 2001:db8::1; eth.src = 00:00:20:20:12:14; outport = "lr0-private"; flags.loopback = 1; reg9[[9]] = 0; next;)
