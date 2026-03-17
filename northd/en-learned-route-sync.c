@@ -193,7 +193,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
     struct ovn_port *out_port = NULL;
     if (!find_route_outport(lr_ports, route->logical_port->logical_port,
                             route->ip_prefix, route->nexthop,
-                            IN6_IS_ADDR_V4MAPPED(&prefix),
+                            IN6_IS_ADDR_V4MAPPED(nexthop),
                             false,
                             &out_port, &lrp_addr_s)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
