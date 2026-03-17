@@ -12266,7 +12266,8 @@ parsed_routes_add_static(const struct ovn_datapath *od,
     struct ovn_port *out_port = NULL;
     if (!is_discard_route &&
         !find_static_route_outport(od, lr_ports, route,
-                                   IN6_IS_ADDR_V4MAPPED(&prefix),
+                                   nexthop ? IN6_IS_ADDR_V4MAPPED(nexthop)
+                                   : IN6_IS_ADDR_V4MAPPED(&prefix),
                                    &lrp_addr_s, &out_port)) {
         free(nexthop);
         return;
