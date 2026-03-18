@@ -8767,25 +8767,29 @@ build_lb_health_check_response_lflows(
             /* icmp6 type 1 and icmp4 type 3 are included in the match, because
              * the controller is using them to detect unreachable ports. */
             if (addr_is_ipv6(backend_nb->svc_mon_src_ip)) {
-                ds_put_format(match,
-                              "inport == \"%s\" && ip6.dst == %s && "
-                              "eth.dst == %s && "
-                              "(%s.src == %s || icmp6.type == 1)",
+                ds_put_format(match, "inport == \"%s\" && ip6.dst == %s && "
+                              "ip6.src == %s && eth.dst == %s && ",
                               backend_nb->logical_port,
                               backend_nb->svc_mon_src_ip,
-                              backend_nb->svc_mon_lrp->lrp_networks.ea_s,
-                              protocol,
-                              backend->port_str);
+                              backend->ip_str,
+                              backend_nb->svc_mon_lrp->lrp_networks.ea_s);
+                if (!strcmp(protocol, "tcp")) {
+                    ds_put_format(match, "tcp.src == %s", backend->port_str);
+                } else {
+                    ds_put_cstr(match, "icmp6.type == 1");
+                }
             } else {
-                ds_put_format(match,
-                              "inport == \"%s\" && ip4.dst == %s && "
-                              "eth.dst == %s && "
-                              "(%s.src == %s || icmp4.type == 3)",
+                ds_put_format(match, "inport == \"%s\" && ip4.dst == %s && "
+                              "ip4.src == %s && eth.dst == %s && ",
                               backend_nb->logical_port,
                               backend_nb->svc_mon_src_ip,
-                              backend_nb->svc_mon_lrp->lrp_networks.ea_s,
-                              protocol,
-                              backend->port_str);
+                              backend->ip_str,
+                              backend_nb->svc_mon_lrp->lrp_networks.ea_s);
+                if (!strcmp(protocol, "tcp")) {
+                    ds_put_format(match, "tcp.src == %s", backend->port_str);
+                } else {
+                    ds_put_cstr(match, "icmp4.type == 3");
+                }
             }
 
             /* ovn-controller expects health check responses from the LS
