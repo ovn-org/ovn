@@ -27208,20 +27208,11 @@ AT_CHECK([grep "priority=110" sbflows2 | grep "handle_svc_check" | \
           grep 'inport == "sw1-p1"' | grep "ip4.dst == 20.0.0.1" | \
           grep -q "tcp.src == 80" ])
 
-# Verify flow also matches ICMP unreachable (type 3 for IPv4).
-AT_CHECK([grep "priority=110" sbflows1 | grep "handle_svc_check" | \
-          grep 'inport == "sw0-p1"' | grep "ip4.dst == 10.0.0.1" | \
-          grep -q "icmp4.type == 3"])
-
-AT_CHECK([grep "priority=110" sbflows2 | grep "handle_svc_check" | \
-          grep 'inport == "sw1-p1"' | grep "ip4.dst == 20.0.0.1" | \
-          grep -q "icmp4.type == 3"])
-
 ## UDP Load balancer health check flows.
-# UDP backend - verify flow uses UDP instead of TCP.
+# UDP backend - verify flow uses ICMP type 3 instead of TCP.
 AT_CHECK([grep "priority=110" sbflows1 | grep "handle_svc_check" | \
           grep 'inport == "sw0-p2"' | grep "ip4.dst == 10.0.0.1" | \
-          grep -q "udp.src == 53"])
+          grep -q "icmp4.type == 3"])
 
 # Verify NO TCP match in the UDP backend flow.
 AT_CHECK([grep "priority=110" sbflows1 | grep "handle_svc_check" | \
@@ -27370,20 +27361,11 @@ AT_CHECK([grep "priority=110" sbflows2 | grep "handle_svc_check" | \
           grep 'inport == "sw1-p1"' | grep "ip6.dst == 2002::1" | \
           grep -q "tcp.src == 80" ])
 
-# Verify flow also matches ICMP unreachable (type 1 for IPv6).
-AT_CHECK([grep "priority=110" sbflows1 | grep "handle_svc_check" | \
-          grep 'inport == "sw0-p1"' | grep "ip6.dst == 2001::1" | \
-          grep -q "icmp6.type == 1"])
-
-AT_CHECK([grep "priority=110" sbflows2 | grep "handle_svc_check" | \
-          grep 'inport == "sw1-p1"' | grep "ip6.dst == 2002::1" | \
-          grep -q "icmp6.type == 1"])
-
 ## UDP Load balancer health check flows.
-# UDP backend - verify flow uses UDP instead of TCP.
+# UDP backend - verify flow uses ICMP instead of TCP.
 AT_CHECK([grep "priority=110" sbflows1 | grep "handle_svc_check" | \
           grep 'inport == "sw0-p2"' | grep "ip6.dst == 2001::1" | \
-          grep -q "udp.src == 53"])
+          grep -q "icmp6.type == 1"])
 
 # Verify NO TCP match in the UDP backend flow.
 AT_CHECK([grep "priority=110" sbflows1 | grep "handle_svc_check" | \
