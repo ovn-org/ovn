@@ -464,7 +464,8 @@ ovn_northd_lb_init(struct ovn_northd_lb *lb,
  * considered.  If no matching LRP is found, the 'svc_mon_lrp' is set to
  * NULL. */
 void
-ovn_northd_lb_backend_set_mon_port(const struct ovn_port *backend_op,
+ovn_northd_lb_backend_set_mon_port(const struct ovn_lb_datapaths *lb_dps,
+                                   const struct ovn_port *backend_op,
                                    struct ovn_northd_lb_backend *backend_nb)
 {
     if (backend_op && !backend_nb->remote_backend) {
@@ -473,6 +474,14 @@ ovn_northd_lb_backend_set_mon_port(const struct ovn_port *backend_op,
             if (!svc_mon_op->peer) {
                 continue;
             }
+
+            /* Skip routers this load balancer is not applied onto. */
+            const struct ovn_datapath *rtr_od = svc_mon_op->peer->od;
+            if (!dynamic_bitmap_is_set(&lb_dps->nb_lr_map,
+                                       rtr_od->sdp->index)) {
+                continue;
+            }
+
             const char *lrp_ip = lrp_find_member_ip(
                 svc_mon_op->peer,
                 backend_nb->svc_mon_src_ip);
@@ -564,6 +573,7 @@ ovn_lb_group_init(struct ovn_lb_group *lb_group,
         const struct uuid *lb_uuid =
             &nbrec_lb_group->load_balancer[i]->header_.uuid;
         lb_group->lbs[i] = ovn_northd_lb_find(lbs, lb_uuid);
+        lb_group->has_health_checks |= lb_group->lbs[i]->health_checks;
         lb_group->has_routable_lb |= lb_group->lbs[i]->routable;
     }
 }
@@ -586,6 +596,7 @@ ovn_lb_group_cleanup(struct ovn_lb_group *lb_group)
 {
     ovn_lb_ip_set_destroy(lb_group->lb_ips);
     lb_group->lb_ips = NULL;
+    lb_group->has_health_checks = false;
     lb_group->has_routable_lb = false;
     free(lb_group->lbs);
 }

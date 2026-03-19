@@ -108,9 +108,6 @@ struct ovn_northd_lb_backend {
     struct ovn_port *svc_mon_lrp;
 };
 
-void ovn_northd_lb_backend_set_mon_port(const struct ovn_port *,
-                                        struct ovn_northd_lb_backend *);
-
 struct ovn_northd_lb *ovn_northd_lb_create(const struct nbrec_load_balancer *);
 struct ovn_northd_lb *ovn_northd_lb_find(const struct hmap *,
                                          const struct uuid *);
@@ -136,6 +133,7 @@ struct ovn_lb_group {
     size_t n_lbs;
     struct ovn_northd_lb **lbs;
     struct ovn_lb_ip_set *lb_ips;
+    bool has_health_checks;
     bool has_routable_lb;
 };
 
@@ -202,6 +200,10 @@ void ovn_lb_datapaths_add_lr(struct ovn_lb_datapaths *, size_t n,
 void ovn_lb_datapaths_add_ls(struct ovn_lb_datapaths *, size_t n,
                              struct ovn_datapath **,
                              size_t n_ls_datapaths);
+
+void ovn_northd_lb_backend_set_mon_port(const struct ovn_lb_datapaths *,
+                                        const struct ovn_port *,
+                                        struct ovn_northd_lb_backend *);
 
 struct ovn_lb_group_datapaths {
     struct hmap_node hmap_node;
