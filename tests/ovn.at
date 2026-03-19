@@ -31316,13 +31316,6 @@ check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1 20
 
 # Create NAT entries for the ports
 
-# sw0-port1
-check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
-check ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::c 1000::3 sw0-port1 40:54:00:00:00:03
-# sw1-port1
-check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.120 20.0.0.3 sw1-port1 30:54:00:00:00:04
-check ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::d 2000::3 sw1-port1 40:54:00:00:00:04
-
 # Add snat entriess
 check ovn-nbctl lr-nat-add lr0 snat 172.16.0.100 10.0.0.0/24
 check ovn-nbctl lr-nat-add lr0 snat 172.16.0.101 10.0.0.10
@@ -31426,6 +31419,19 @@ test_arp_response () {
 test_arp_response 000020201213 $(ip_to_hex 172 16 0 100) hv1 hv2 hv3
 test_arp_response 000020201213 $(ip_to_hex 172 16 0 101) hv1 hv2 hv3
 test_arp_response 000020201213 $(ip_to_hex 172 16 0 102) hv1 hv2 hv3
+
+# Send ARP request for the IP which belongs to gw_router
+test_arp_response 000030303233 $(ip_to_hex 172 16 0 200) hv3 hv1 hv2
+test_arp_response 000030303233 $(ip_to_hex 172 16 0 201) hv3 hv1 hv2
+
+# Add some extra dnat_and_snat, that should generate extra flows for external ARPs.
+# sw0-port1
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.110 10.0.0.3 sw0-port1 30:54:00:00:00:03
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::c 1000::3 sw0-port1 40:54:00:00:00:03
+# sw1-port1
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.16.0.120 20.0.0.3 sw1-port1 30:54:00:00:00:04
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 3000::d 2000::3 sw1-port1 40:54:00:00:00:04
+check ovn-nbctl --wait=hv sync
 
 # Send ARP request for the IP which belongs to gw_router
 test_arp_response 000030303233 $(ip_to_hex 172 16 0 200) hv3 hv1 hv2

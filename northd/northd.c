@@ -10023,6 +10023,8 @@ build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
         struct ovn_port *op_r = op->peer;
 
         if (lrp_is_l3dgw(op_r)) {
+            hmapx_add(&resident_ports, op_r->cr_port);
+        } else if (op_r->od->is_gw_router) {
             hmapx_add(&resident_ports, op_r);
         }
     }
@@ -10061,7 +10063,7 @@ build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
             ds_put_format(&match, REGBIT_EXT_ARP" == 1");
             if (od_is_centralized(op->od)) {
                 ds_put_format(&match, " && is_chassis_resident(%s)",
-                              op->cr_port->json_key);
+                              op->json_key);
             }
             ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 75,
                           ds_cstr(&match), "next;", ar->lflow_ref);
