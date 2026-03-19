@@ -7197,16 +7197,13 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
         if (!svc_mon) {
             svc_mon = xmalloc(sizeof *svc_mon);
             svc_mon->dp_key = dp_key;
-            svc_mon->input_port_key = input_port_key;
             svc_mon->port_key = port_key;
             svc_mon->proto_port = sb_svc_mon->port;
             svc_mon->ip = ip_addr;
-            svc_mon->src_ip = ip_addr_src;
             svc_mon->is_ip6 = !is_ipv4;
             svc_mon->state = SVC_MON_S_INIT;
             svc_mon->status = SVC_MON_ST_UNKNOWN;
             svc_mon->protocol = protocol;
-            svc_mon->type = mon_type;
 
             smap_init(&svc_mon->options);
             svc_mon->interval =
@@ -7220,15 +7217,19 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
             svc_mon->n_success = 0;
             svc_mon->n_failures = 0;
 
-            eth_addr_from_string(sb_svc_mon->src_mac, &svc_mon->src_mac);
-
             hmap_insert(&svc_monitors_map, &svc_mon->hmap_node, hash);
             ovs_list_push_back(&svc_monitors, &svc_mon->list_node);
             changed = true;
         }
 
         svc_mon->sb_svc_mon = sb_svc_mon;
+
+        svc_mon->input_port_key = input_port_key;
+        svc_mon->src_ip = ip_addr_src;
+        svc_mon->type = mon_type;
+        eth_addr_from_string(sb_svc_mon->src_mac, &svc_mon->src_mac);
         svc_mon->ea = ea;
+
         if (!smap_equal(&svc_mon->options, &sb_svc_mon->options)) {
             smap_destroy(&svc_mon->options);
             smap_clone(&svc_mon->options, &sb_svc_mon->options);
