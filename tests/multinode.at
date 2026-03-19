@@ -3602,6 +3602,203 @@ MAC               Type   Flags Intf/Remote ES/VTEP            VLAN  Seq #'s
 
 AT_CLEANUP
 
+AT_SETUP([ovn multinode bgp L3 EVPN with intermediate router - VTEPs not L2 adjacent])
+check_fake_multinode_setup
+cleanup_multinode_resources
+CHECK_VRF()
+
+gw=ovn-gw-1
+vni=10
+ext_bgp_ip_gw1=42.10.10.11
+router_ext_ip=42.10.10.1
+ext_bgp_ip6_gw1=42:10:10::11
+ext_bgp_mac_gw1=00:00:01:00:00:$vni
+host_bgp_ip_gw1=42.10.20.12
+router_host_ip=42.10.20.1
+host_bgp_ip6_gw1=42:10:20::12
+host_bgp_mac_gw1=00:00:00:01:00:$vni
+nat_ip_gw1=42.10.20.13
+nat_ip6_gw1=42:10:20::13
+lb_ip_gw1=42.10.20.14
+lb_ip6_gw1=42:10:20::14
+ext_as=4200000100
+host_as=4210000000
+router_as=4290000000
+
+check m_as $gw ovs-vsctl add-br br-$gw
+on_exit "m_as $gw ovs-vsctl del-br br-$gw"
+check m_as $gw ip netns add router-ns
+on_exit "m_as $gw ip netns del router-ns"
+check m_as $gw ip link add host-to-r type veth peer name r-host
+on_exit "m_as $gw ip link del host-to-r"
+check m_as $gw ip link set r-host netns router-ns
+check m_as $gw ovs-vsctl add-port br-$gw host-to-r
+check m_as $gw ip link set host-to-r up
+check m_as $gw ip link set br-$gw up
+check m_as $gw ip netns exec router-ns ip link set lo up
+check m_as $gw ip netns exec router-ns ip addr add $router_host_ip/24 dev r-host
+check m_as $gw ip netns exec router-ns ip link set r-host up
+
+check m_as $gw ip netns add frr-ns
+on_exit "m_as $gw ip netns del frr-ns"
+check m_as $gw ip link add ext1 type veth peer name ext1-r
+check m_as $gw ip link set ext1 netns frr-ns
+check m_as $gw ip link set ext1-r netns router-ns
+check m_as $gw ip netns exec frr-ns ip link set lo up
+check m_as $gw ip netns exec frr-ns ip addr add $ext_bgp_ip_gw1/24 dev ext1
+check m_as $gw ip netns exec frr-ns ip link set ext1 up
+check m_as $gw ip netns exec router-ns ip addr add $router_ext_ip/24 dev ext1-r
+check m_as $gw ip netns exec router-ns ip link set ext1-r up
+check m_as $gw ip netns exec router-ns sysctl -qw net.ipv4.ip_forward=1
+
+check m_as $gw ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+check m_as $gw ovs-vsctl set open . external-ids:ovn-evpn-local-ip=$host_bgp_ip_gw1
+check m_as $gw ovs-vsctl set open . external-ids:ovn-evpn-vxlan-ports=4789
+
+# FRR in frr-ns (external EVPN speaker) and router-ns (BGP EVPN transit between ext1-r and r-host).
+check m_as $gw sed -i 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
+check m_as $gw sed -i 's/StartLimitBurst=.*/StartLimitBurst=100/g' /usr/lib/systemd/system/frr.service
+check m_as $gw systemctl daemon-reload
+for ns in frr-ns router-ns; do
+    check m_as $gw mkdir -p /etc/frr/$ns
+    check m_as $gw cp -r /etc/frr/daemons /etc/frr/frr.conf /etc/frr/$ns/
+    check m_as $gw rm -f /etc/frr/$ns/vtysh.conf
+    check m_as $gw touch /etc/frr/$ns/vtysh.conf
+done
+check m_as $gw systemctl stop frr
+
+check m_as $gw mkdir -p /run/frr/frr-ns /run/frr/router-ns
+if m_as $gw getent passwd frr > /dev/null; then
+    check m_as $gw chown -R frr:frr /run/frr/frr-ns /run/frr/router-ns
+fi
+for ns in frr-ns router-ns; do
+    for init in /usr/libexec/frr/frrinit.sh /usr/lib/frr/frrinit.sh; do
+        if m_as $gw test -x "$init"; then
+            m_as $gw ip netns exec $ns "$init" start $ns
+            break
+        fi
+    done
+done
+on_exit "m_as $gw ip netns exec frr-ns /usr/libexec/frr/frrinit.sh stop frr-ns"
+on_exit "m_as $gw ip netns exec router-ns /usr/libexec/frr/frrinit.sh stop router-ns"
+check m_as $gw systemctl start frr
+m_as $gw vtysh -c 'configure' -c "no router bgp $router_as" -c 'exit'
+
+m_config_external_frr_router_l3 $gw $ext_as $ext_bgp_ip_gw1 $ext_bgp_ip_gw1/24 $ext_bgp_ip6_gw1/64 $ext_bgp_mac_gw1 $vni
+
+router_flags=$(m_frr_ns_flags router-ns)
+echo "configure
+ip prefix-list accept-all seq 5 permit any
+ipv6 prefix-list accept-all seq 5 permit any
+router bgp $router_as
+ bgp router-id $router_ext_ip
+ no bgp ebgp-requires-policy
+ neighbor ext1-r interface remote-as $ext_as
+ neighbor ext1-r passive
+ neighbor r-host interface remote-as $host_as
+ address-family ipv4 unicast
+  neighbor ext1-r prefix-list accept-all in
+  neighbor r-host prefix-list accept-all in
+  redistribute connected
+ exit-address-family
+ address-family l2vpn evpn
+  neighbor ext1-r activate
+  neighbor r-host activate
+  advertise-all-vni
+ exit-address-family
+exit
+end
+" | podman exec -i $gw ip netns exec router-ns vtysh $router_flags
+
+check m_as $gw ip addr add $host_bgp_ip_gw1/24 dev br-$gw
+check m_as $gw ip link set br-$gw up
+
+check multinode_nbctl                                                              \
+    -- lr-add lr                                                                   \
+      -- set logical_router lr options:dynamic-routing=true                        \
+                               options:dynamic-routing-vrf-id=$vni                 \
+      -- lrp-add lr lr-gw1 $host_bgp_mac_gw1 $host_bgp_ip_gw1/24 $host_bgp_ip6_gw1/64 \
+        -- lrp-set-gateway-chassis lr-gw1 $gw 10                                  \
+        -- lrp-set-options lr-gw1 dynamic-routing-redistribute=nat,lb             \
+      -- lrp-add lr lr-int1 00:00:00:00:01:02 30.0.1.1/24 30:1::1/64               \
+        -- lrp-set-options lr-int1 dynamic-routing-redistribute=connected         \
+    -- ls-add ls                                                                   \
+      -- lsp-add-localnet-port ls ls-ln public                                     \
+      -- lsp-add-router-port ls ls-lr-gw1 lr-gw1                                   \
+    -- ls-add ls-int1                                                              \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr-int1
+check multinode_nbctl                                                              \
+    -- lsp-add ls-int1 w1                                                          \
+      -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11 30:1::11"               \
+    -- lr-nat-add lr dnat_and_snat $nat_ip_gw1 30.0.1.11 w1 00:00:00:00:01:11      \
+    -- lr-nat-add lr dnat_and_snat $nat_ip6_gw1 30:1::11 w1 00:00:00:00:01:11      \
+    -- lb-add lb1 $lb_ip_gw1 30.0.1.11                                            \
+    -- lb-add lb2 $lb_ip6_gw1 30:1::11                                            \
+    -- lr-lb-add lr lb1                                                            \
+    -- lr-lb-add lr lb2
+check m_as $gw /data/create_fake_vm.sh w1 w1 \
+    00:00:00:00:00:01 1500 30.0.1.11 24 30.0.1.1 30:1::11/64 30:1::1
+m_wait_for_ports_up
+check multinode_nbctl --wait=hv sync
+check multinode_nbctl set logical_switch ls                                        \
+    other_config:dynamic-routing-vni=$vni                                          \
+    other_config:dynamic-routing-bridge-ifname=br-$vni                             \
+    other_config:dynamic-routing-vxlan-ifname=vxlan-$vni                         \
+    other_config:dynamic-routing-advertise-ifname=lo-$vni                        \
+    other_config:dynamic-routing-redistribute=fdb,ip
+check multinode_nbctl --wait=hv sync
+check m_as $gw ovs-ofctl add-flow br-$gw "priority=100,ip,nw_dst=$host_bgp_ip_gw1,udp,tp_dst=4789,actions=LOCAL"
+OVS_WAIT_UNTIL([m_as ovn-gw-1 test -d /sys/class/net/vxlan_sys_4789])
+m_as $gw vtysh -c 'configure' -c 'no router bgp 4290000000' -c 'no router bgp 4210000000' -c 'exit'
+m_config_host_frr_router_l3 $gw $host_as $host_bgp_ip_gw1 $host_bgp_ip_gw1/24 $host_bgp_mac_gw1 $vni
+OVS_WAIT_UNTIL([m_as ovn-gw-1 vtysh -c 'show bgp neighbors' | grep -qE 'Connections established 1'])
+
+check m_as $gw ip link add name lo-wl-$vni type dummy
+on_exit "m_as $gw ip link del lo-wl-$vni"
+check m_as $gw ip link set lo-wl-$vni address 00:01:01:01:01:$vni
+check m_as $gw ip link set lo-wl-$vni master vrf-$vni
+check m_as $gw ip addr add dev lo-wl-$vni 77.77.1.$vni/32
+check m_as $gw ip -6 addr add dev lo-wl-$vni 77:77::1:$vni/64 nodad
+check m_as $gw ip link set lo-wl-$vni up
+
+# Extra fabric in frr-ns vrf: 99.99.99.99/32, 88.88.0.0/24 + fabric-wl-ns workload.
+check m_as $gw ip netns exec frr-ns ip link add lo-99 type dummy
+on_exit "m_as $gw ip netns exec frr-ns ip link del lo-99"
+check m_as $gw ip netns exec frr-ns ip link set lo-99 master vrf-$vni
+check m_as $gw ip netns exec frr-ns ip addr add 99.99.99.99/32 dev lo-99
+check m_as $gw ip netns exec frr-ns ip link set lo-99 up
+check m_as $gw ip netns exec frr-ns sysctl -qw net.ipv4.ip_forward=1
+check m_as $gw ip netns add fabric-wl-ns
+on_exit "m_as $gw ip netns del fabric-wl-ns"
+check m_as $gw ip netns exec frr-ns ip link add br-fabric-wl type bridge
+check m_as $gw ip netns exec frr-ns ip link set br-fabric-wl master vrf-$vni
+check m_as $gw ip netns exec frr-ns ip addr add 88.88.0.1/24 dev br-fabric-wl
+check m_as $gw ip netns exec frr-ns ip link set br-fabric-wl up
+check m_as $gw ip netns exec frr-ns ip link add fabric-wl type veth peer name fabric-wl-r
+check m_as $gw ip netns exec frr-ns ip link set fabric-wl-r master br-fabric-wl
+check m_as $gw ip netns exec frr-ns ip link set fabric-wl-r up
+check m_as $gw ip netns exec frr-ns ip link set fabric-wl netns fabric-wl-ns
+check m_as $gw ip netns exec fabric-wl-ns ip link set lo up
+check m_as $gw ip netns exec fabric-wl-ns ip addr add 88.88.0.10/24 dev fabric-wl
+check m_as $gw ip netns exec fabric-wl-ns ip link set fabric-wl up
+check m_as $gw ip netns exec fabric-wl-ns ip route add default via 88.88.0.1
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as ovn-gw-1 ovn-appctl evpn/remote-vtep-list | sort], [0], [dnl
+IP: $ext_bgp_ip_gw1, port: 4789, vni: 10
+])
+
+m_wait_row_count Learned_Route 1 ip_prefix=88.88.0.0/24
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip route show vrf vrf-$vni | grep -q 30.0.1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 30.0.1.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -6 -c1 30:1::11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $nat_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping    -c1 $lb_ip_gw1])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric-wl-ns ping -c1 30.0.1.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec frr-ns ip vrf exec vrf-$vni ping -I 99.99.99.99 -c1 30.0.1.11])
+
+AT_CLEANUP
+
 AT_SETUP([redirect-bridged to non-gw destination switch port])
 
 check_fake_multinode_setup
