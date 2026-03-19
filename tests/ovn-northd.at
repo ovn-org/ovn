@@ -19323,7 +19323,7 @@ AT_CHECK([ovn-sbctl lflow-list ls1 | grep ls_in_apply_port_sec | ovn_strip_lflow
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
   table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-down_link")), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("down_vif1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 192.168.0.3 && is_chassis_resident("down_vif1")), action=(next;)
 ])
 
 check ovn-nbctl --wait=sb lr-nat-del lr1 dnat_and_snat 192.168.0.3
@@ -19378,9 +19378,9 @@ check ovn-sbctl chassis-add ch1 geneve 127.0.0.1
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-port1
-check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3"
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10.0.0.5"
 check ovn-nbctl lsp-add sw0 sw0-port2
-check ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4"
+check ovn-nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 10.0.0.6"
 
 # Create a logical router and attach both logical switches
 check ovn-nbctl lr-add lr0
@@ -19400,6 +19400,9 @@ check ovn-nbctl lrp-set-gateway-chassis lr0-public hv1
 check ovn-nbctl lsp-add-localnet-port public ln-public public
 
 check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.50 10.0.0.3 sw0-port1 f0:00:00:00:00:03
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.55 10.0.0.5 sw0-port1 f0:00:00:00:00:03
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.60 10.0.0.4 sw0-port2 f0:00:00:00:00:04
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.66 10.0.0.6 sw0-port2 f0:00:00:00:00:04
 
 check ovn-nbctl --wait=sb sync
 
@@ -19408,7 +19411,10 @@ AT_CHECK([ovn-sbctl lflow-list public | grep ls_in_apply_port_sec | ovn_strip_lf
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
   table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("sw0-port1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.50 && is_chassis_resident("sw0-port1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.55 && is_chassis_resident("sw0-port1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.60 && is_chassis_resident("sw0-port2")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.66 && is_chassis_resident("sw0-port2")), action=(next;)
 ])
 
 ovn-nbctl show
@@ -19433,7 +19439,10 @@ AT_CHECK([ovn-sbctl lflow-list public | grep ls_in_apply_port_sec | ovn_strip_lf
   table=??(ls_in_apply_port_sec), priority=50   , match=(reg0[[15]] == 1), action=(drop;)
   table=??(ls_in_apply_port_sec), priority=70   , match=(reg0[[22]] == 1), action=(drop;)
   table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-lr0-public")), action=(next;)
-  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("sw0-port1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.50 && is_chassis_resident("sw0-port1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.55 && is_chassis_resident("sw0-port1")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.60 && is_chassis_resident("sw0-port2")), action=(next;)
+  table=??(ls_in_apply_port_sec), priority=85   , match=(reg0[[22]] == 1 && arp.tpa == 172.168.0.66 && is_chassis_resident("sw0-port2")), action=(next;)
 ])
 
 OVN_CLEANUP_NORTHD

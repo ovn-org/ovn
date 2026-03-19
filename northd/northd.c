@@ -10013,8 +10013,6 @@ build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
                                    struct lflow_table *lflows,
                                    const struct ls_arp_record *ar)
 {
-    struct sset distributed_nat_ports =
-        SSET_INITIALIZER(&distributed_nat_ports);
     struct hmapx resident_ports = HMAPX_INITIALIZER(&resident_ports);
     struct ds match = DS_EMPTY_INITIALIZER;
 
@@ -10029,21 +10027,8 @@ build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
         }
     }
 
-    struct hmapx_node *hmapx_node;
-    HMAPX_FOR_EACH (hmapx_node, &ar->nat_records) {
-        struct lr_nat_record *nr = hmapx_node->data;
-
-        for (size_t i = 0; i < nr->n_nat_entries; i++) {
-            struct ovn_nat *ent = &nr->nat_entries[i];
-            if (ent->is_valid && ent->is_distributed) {
-                sset_add(&distributed_nat_ports, ent->nb->logical_port);
-            }
-        }
-    }
-
     if (!hmapx_is_empty(&od->phys_ports) && !hmapx_is_empty(&resident_ports)) {
         struct hmapx_node *node;
-        const char *port_name;
 
         HMAPX_FOR_EACH (node, &od->phys_ports) {
             op = node->data;
@@ -10069,20 +10054,30 @@ build_lswitch_arp_chassis_resident(const struct ovn_datapath *od,
                           ds_cstr(&match), "next;", ar->lflow_ref);
         }
 
-        SSET_FOR_EACH (port_name, &distributed_nat_ports) {
-            ds_clear(&match);
-            ds_put_format(&match, REGBIT_EXT_ARP " == 1 "
-                                  "&& is_chassis_resident(\"%s\")",
-                          port_name);
-            ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 75,
-                          ds_cstr(&match), "next;", ar->lflow_ref);
+        struct hmapx_node *hmapx_node;
+        HMAPX_FOR_EACH (hmapx_node, &ar->nat_records) {
+            struct lr_nat_record *nr = hmapx_node->data;
+            for (size_t i = 0; i < nr->n_nat_entries; i++) {
+                struct ovn_nat *ent = &nr->nat_entries[i];
+                if (!ent->is_valid || !ent->is_distributed ||
+                    nat_entry_is_v6(ent)) {
+                    continue;
+                }
+
+                ds_clear(&match);
+                ds_put_format(&match, REGBIT_EXT_ARP " == 1 && arp.tpa == %s "
+                              "&& is_chassis_resident(\"%s\")",
+                              ent->ext_addrs.ipv4_addrs[0].addr_s,
+                              ent->nb->logical_port);
+                ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 85,
+                              ds_cstr(&match), "next;", ar->lflow_ref);
+            }
         }
 
         ovn_lflow_add(lflows, od, S_SWITCH_IN_APPLY_PORT_SEC, 70,
                       REGBIT_EXT_ARP" == 1", "drop;", ar->lflow_ref);
     }
 
-    sset_destroy(&distributed_nat_ports);
     hmapx_destroy(&resident_ports);
     ds_destroy(&match);
 }
