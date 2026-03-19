@@ -7098,16 +7098,16 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
             svc_mon->n_success = 0;
             svc_mon->n_failures = 0;
 
-            eth_addr_from_string(sb_svc_mon->src_mac, &svc_mon->src_mac);
-            ip46_parse(sb_svc_mon->src_ip, &svc_mon->src_ip);
-
             hmap_insert(&svc_monitors_map, &svc_mon->hmap_node, hash);
             ovs_list_push_back(&svc_monitors, &svc_mon->list_node);
             changed = true;
         }
 
+        eth_addr_from_string(sb_svc_mon->src_mac, &svc_mon->src_mac);
+        ip46_parse(sb_svc_mon->src_ip, &svc_mon->src_ip);
         svc_mon->sb_svc_mon = sb_svc_mon;
         svc_mon->ea = ea;
+
         if (!smap_equal(&svc_mon->options, &sb_svc_mon->options)) {
             smap_destroy(&svc_mon->options);
             smap_clone(&svc_mon->options, &sb_svc_mon->options);
