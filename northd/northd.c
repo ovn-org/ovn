@@ -3238,13 +3238,15 @@ ovn_nf_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
 
 static void
 ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
-                  const struct ovn_northd_lb *lb,
+                  const struct ovn_lb_datapaths *lb_dps,
                   const struct svc_monitor_addresses *svc_global_addresses,
                   struct hmap *ls_ports,
                   struct sset *svc_monitor_lsps,
                   struct hmap *local_svc_monitors_map,
                   struct hmap *ic_learned_svc_monitors_map)
 {
+    const struct ovn_northd_lb *lb = lb_dps->lb;
+
     if (lb->template) {
         return;
     }
@@ -3272,7 +3274,7 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                 continue;
             }
 
-            ovn_northd_lb_backend_set_mon_port(op, backend_nb);
+            ovn_northd_lb_backend_set_mon_port(lb_dps, op, backend_nb);
 
             /* If the service monitor is backed by a real port, use its MAC
              * address instead of the default service check MAC. */
@@ -3693,7 +3695,7 @@ build_svc_monitors_data(
 
     struct ovn_lb_datapaths *lb_dps;
     HMAP_FOR_EACH (lb_dps, hmap_node, lb_dps_map) {
-        ovn_lb_svc_create(ovnsb_txn, lb_dps->lb,
+        ovn_lb_svc_create(ovnsb_txn, lb_dps,
                           svc_global_addresses,
                           ls_ports,
                           svc_monitor_lsps,
