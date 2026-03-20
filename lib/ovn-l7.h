@@ -312,6 +312,16 @@ extern const struct in6_addr in6addr_all_dhcp_agents;
                                            0x00,0x00,0x00,0x00,0x00,0x00,     \
                                            0x00,0x01,0x00,0x02 } } }
 
+#define DHCPV6_HEADER_LEN 4
+OVS_PACKED(
+struct dhcpv6_header {
+    uint8_t msg_type;
+    uint8_t transaction_id[3];
+});
+BUILD_ASSERT_DECL(DHCPV6_HEADER_LEN == sizeof(struct dhcpv6_header));
+
+#define DHCPV6_PAYLOAD(hdr) \
+    (const void *)((uint8_t *) (hdr) + sizeof(struct dhcpv6_header))
 
 #define DHCP6_OPT_HEADER_LEN 4
 OVS_PACKED(
