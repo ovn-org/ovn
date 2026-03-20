@@ -18760,3 +18760,86 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 "])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ACL - ICMP unreachable heap overread])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+# Create a logical switch with a port and a reject ACL.
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+    -- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.0.0.4 fd10::4"
+
+# Add a reject ACL: any traffic to ls1-lp1 gets ICMP Destination Unreachable.
+check ovn-nbctl acl-add ls1 to-lport 1000 "outport == \"ls1-lp1\"" reject
+
+# We need a second port as the "sender".
+check ovn-nbctl lsp-add ls1 ls1-lp2 \
+    -- lsp-set-addresses ls1-lp2 "f0:00:00:00:00:02 10.0.0.5 fd10::5"
+
+ADD_NAMESPACES(ls1-lp1)
+ADD_VETH(ls1-lp1, ls1-lp1, br-int, "fd10::4/96", "f0:00:00:00:00:01", \
+         "fd10::1", "nodad", "10.0.0.4/24", "10.0.0.1")
+
+ADD_NAMESPACES(ls1-lp2)
+ADD_VETH(ls1-lp2, ls1-lp2, br-int, "fd10::5/96", "f0:00:00:00:00:02", \
+         "fd10::1", "nodad", "10.0.0.5/24", "10.0.0.1")
+
+NETNS_START_TCPDUMP([ls1-lp2], [-nnne -i ls1-lp2 icmp or icmp6], [ls1-lp2])
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# UDP but IP length claims 508 bytes while actual packet is smaller.
+ip netns exec ls1-lp2 scapy -H <<-EOF
+p = Ether(dst='f0:00:00:00:00:01', src='f0:00:00:00:00:02') / \
+    IP(src='10.0.0.5', dst='10.0.0.4', ttl=64, len=508) / \
+    UDP(sport=12345, dport=5050) / \
+    Raw(load=b'AAAA')
+sendp (p, iface='ls1-lp2', loop = 0, verbose = 0, count = 1)
+EOF
+
+# UDP but IPv6 length claims 508 bytes while actual packet is smaller.
+ip netns exec ls1-lp2 scapy -H <<-EOF
+p = Ether(dst='f0:00:00:00:00:01', src='f0:00:00:00:00:02') / \
+    IPv6(src='fd10::5', dst='fd10::4', plen=508) / \
+    UDP(sport=12345, dport=5050) / \
+    Raw(load=b'AAAA')
+sendp (p, iface='ls1-lp2', loop = 0, verbose = 0, count = 1)
+EOF
+
+OVS_WAIT_UNTIL([
+    test "$(grep 'unreachable' -c ls1-lp2.tcpdump)" = "2"
+])
+
+ip4_length=$(grep "ICMP " ls1-lp2.tcpdump | grep "unreachable" | rev | cut -d " " -f1 | rev)
+ip6_length=$(grep "ICMP6" ls1-lp2.tcpdump | grep "unreachable" | rev | cut -d " " -f1 | rev)
+
+check test $ip4_length -eq 40
+check test $ip6_length -eq 60
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
