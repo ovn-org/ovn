@@ -7608,6 +7608,13 @@ pinctrl_check_bfd_msg(const struct flow *ip_flow, struct dp_packet *pkt_in)
         return false;
     }
 
+    size_t dlen = MIN(ntohs(udp_hdr->udp_len), dp_packet_l4_size(pkt_in));
+    if (dlen < UDP_HEADER_LEN + sizeof (struct bfd_msg)) {
+        VLOG_DBG_RL(&rl, "BFD action on malformed BFD msg (%"PRIxSIZE")",
+                    dlen);
+        return false;
+    }
+
     const struct bfd_msg *msg = dp_packet_get_udp_payload(pkt_in);
     uint8_t version = msg->vers_diag >> 5;
     if (version != BFD_VERSION) {
