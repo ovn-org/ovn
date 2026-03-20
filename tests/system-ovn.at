@@ -13025,3 +13025,69 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([DHCPv6 - Options heap overread])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+    -- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 fd10::4"
+
+check_uuid ovn-nbctl -- --id=@opt create DHCP_Options cidr="fd10\:\:/64" \
+    options="\"server_id\"=\"00:00:00:10:00:01\"" \
+    -- set Logical_Switch_Port ls1-lp1 dhcpv6_options=[@opt]
+
+ADD_NAMESPACES(ls1-lp1)
+ADD_VETH(ls1-lp1, ls1-lp1, br-int, "fd10::4/96", "f0:00:00:00:00:01", \
+         "fd10::1", "nodad")
+
+NETNS_START_TCPDUMP([ls1-lp1], [-nnne -i ls1-lp1 udp port 546 and udp port 547], [ls1-lp1])
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+ip netns exec ls1-lp1 scapy -H <<-EOF
+p = Ether(dst='33:33:00:01:00:02', src='f0:00:00:00:00:01') / \
+    IPv6(dst='ff02::1:2', src='fe80::f200:ff:fe00:1') / \
+    UDP(sport=546, dport=547) / \
+    Raw(load=bytes.fromhex( \
+        '01' '010203' \
+        '0003' '000c' '01020304' '00000000' '00000000' \
+        '0001' '0200' \
+        '0003' '0001' \
+        'f00000000001'
+    ))
+sendp (p, iface='ls1-lp1', loop = 0, verbose = 0, count = 1)
+EOF
+
+# ovn-contorller should report a warning that the packet didn't contain valid Client ID.
+OVS_WAIT_UNTIL([grep -q "DHCPv6 option - Client id not present" ovn-controller.log])
+AT_CHECK([grep -q "advertise" ls1-lp1.tcpdump], [1])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d
+/DHCPv6 option - Client id not present.*/d"])
+
+AT_CLEANUP
+])
