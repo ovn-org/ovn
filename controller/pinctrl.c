@@ -1674,7 +1674,8 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
 
     if (get_dl_type(ip_flow) == htons(ETH_TYPE_IP)) {
         struct ip_header *in_ip = dp_packet_l3(pkt_in);
-        uint16_t in_ip_len = ntohs(in_ip->ip_tot_len);
+        uint16_t in_ip_len =
+            MIN(ntohs(in_ip->ip_tot_len), dp_packet_l3_size(pkt_in));
         if (in_ip_len < IP_HEADER_LEN) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_WARN_RL(&rl,
@@ -1734,7 +1735,9 @@ pinctrl_handle_icmp(struct rconn *swconn, const struct flow *ip_flow,
         ih->icmp_csum = csum(ih, sizeof *ih + in_ip_len);
     } else {
         struct ovs_16aligned_ip6_hdr *in_ip = dp_packet_l3(pkt_in);
-        uint16_t in_ip_len = (uint16_t) sizeof *in_ip + ntohs(in_ip->ip6_plen);
+        uint16_t pkt_in_ip_len =
+            (uint16_t) sizeof *in_ip + ntohs(in_ip->ip6_plen);
+        uint16_t in_ip_len = MIN(pkt_in_ip_len, dp_packet_l3_size(pkt_in));
 
         const struct in6_addr *ip6_src =
             loopback ? &ip_flow->ipv6_dst : &ip_flow->ipv6_src;
