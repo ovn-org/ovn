@@ -18674,6 +18674,32 @@ OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Mirror - multiple mirror types attachment])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+ovs-vsctl add-port br-int lport1 -- set interface lport1 external_ids:iface-id=lport1
+
+check ovn-nbctl ls-add ls1 -- lsp-add ls1 lport1 -- lsp-add ls1 lport2 -- \
+                mirror-add mirror0 gre 1 to-lport 172.16.0.100 -- \
+                mirror-add mirror1 erspan 2 to-lport 172.16.0.100 -- \
+                mirror-add mirror2 lport both lport2
+
+check ovn-nbctl lsp-attach-mirror lport1 mirror0 -- \
+                lsp-attach-mirror lport1 mirror1 -- \
+                lsp-attach-mirror lport1 mirror2
+
+check ovn-nbctl --wait=hv sync
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Port Groups])
 AT_KEYWORDS([ovnpg])
