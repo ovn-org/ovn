@@ -75,6 +75,12 @@ char *get_mirror_tunnel_type(const struct sbrec_mirror *);
 static void build_ovs_mirror_ports(const struct ovsrec_bridge *,
                                    struct shash *ovs_mirror_ports);
 
+static inline bool
+is_lport_mirror(const struct sbrec_mirror *sb_mirror)
+{
+    return !strcmp(sb_mirror->type, "lport");
+}
+
 void
 mirror_register_ovs_idl(struct ovsdb_idl *ovs_idl)
 {
@@ -117,7 +123,7 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
     const struct sbrec_mirror *sb_mirror;
     SBREC_MIRROR_TABLE_FOR_EACH (sb_mirror, sb_mirror_table) {
         /* We don't need to add mirror to ovs if it is lport mirror. */
-        if (!strcmp(sb_mirror->type, "lport")) {
+        if (is_lport_mirror(sb_mirror)) {
             continue;
         }
         struct ovn_mirror *m = ovn_mirror_create(sb_mirror->name);
@@ -161,6 +167,9 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
         }
 
         for (size_t i = 0; i < pb->n_mirror_rules; i++) {
+            if (is_lport_mirror(pb->mirror_rules[i])) {
+                continue;
+            }
             struct ovn_mirror *m = ovn_mirror_find(&ovn_mirrors,
                                                    pb->mirror_rules[i]->name);
             ovs_assert(m);
@@ -171,10 +180,10 @@ mirror_run(struct ovsdb_idl_txn *ovs_idl_txn,
     /* Iterate through the built 'ovn_mirrors' and
      * sync with the local ovsdb i.e.
      * create/update or delete the ovsrec mirror(s). */
-     SHASH_FOR_EACH (node, &ovn_mirrors) {
+    SHASH_FOR_EACH (node, &ovn_mirrors) {
         struct ovn_mirror *m = node->data;
         sync_ovn_mirror(m, ovs_idl_txn, br_int, &ovs_local_mirror_ports);
-     }
+    }
 
     SHASH_FOR_EACH_SAFE (node, &ovn_mirrors) {
         ovn_mirror_delete(node->data);
