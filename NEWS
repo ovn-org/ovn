@@ -1,4 +1,4 @@
-OVN v26.03.0 - xxx xx xxxx
+OVN v26.03.0 - 20 Mar 2026
 --------------------------
    - Added DNS query statistics tracking in ovn-controller using OVS coverage
      counters. Statistics can be queried using "ovn-appctl -t ovn-controller
