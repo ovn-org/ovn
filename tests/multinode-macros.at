@@ -41,6 +41,28 @@ m4_define([M_START_TCPDUMP],
     ]
 )
 
+m4_define([M_START_TCPDUMPS_RECURSIVE_], [
+     m4_if(m4_eval($# > 3), [1], [dnl
+        names="$names $3"
+        echo "Running podman exec $1 tcpdump -l $2 >$3.tcpdump 2>$3.stderr"
+        podman exec $1 tcpdump -l $2 >$3.tcpdump 2>$3.stderr &
+        echo "podman exec $1 ps -ef | grep -v grep | grep tcpdump && podman exec $1 killall tcpdump" >> cleanup
+        M_START_TCPDUMPS_RECURSIVE_(m4_shift(m4_shift(m4_shift($@))))
+        ])
+    ]
+)
+
+# Start Multiple tcpdump. Useful to speed up when many tcpdump
+# must be started as waiting for "listening" takes usually 1 second.
+m4_define([M_START_TCPDUMPS],
+    [
+     names=""
+     M_START_TCPDUMPS_RECURSIVE_($@)
+     for name in $names; do
+         OVS_WAIT_UNTIL([grep -q "listening" ${name}.stderr])
+     done
+    ]
+)
 
 # M_FORMAT_CT([ip-addr])
 #
@@ -363,6 +385,30 @@ m_kill() {
 
 m_is_fedora() {
     m_central_as grep -qi fedora /etc/os-release
+}
+
+# Run ovs-vsctl using Host socket
+host_ovs_vsctl() {
+    # Discover host OVS socket on first call
+    if [[ -z "$HOST_OVS_SOCK" ]]; then
+        for sock in /run/openvswitch/db.sock /var/run/openvswitch/db.sock /usr/local/var/run/openvswitch/db.sock; do
+            if [[ -S "$sock" ]]; then
+                HOST_OVS_SOCK=$sock
+                break
+            fi
+        done
+        # Fallback on unusual prefix: discover from running process
+        if [[ -z "$HOST_OVS_SOCK" ]]; then
+            HOST_OVS_SOCK=$(ps aux | grep '[o]vsdb-server' | grep -oP 'punix:\K[^, ]+' | while read s; do
+                [[ -S "$s" ]] && [[ "$s" != *"$OVS_RUNDIR"* ]] && echo "$s" && break
+            done)
+        fi
+        if [[ -z "$HOST_OVS_SOCK" ]]; then
+            echo "ERROR: Could not find host OVS socket" >&2
+            AT_FAIL_IF([:])
+        fi
+    fi
+    ovs-vsctl --db=unix:$HOST_OVS_SOCK "$@"
 }
 
 OVS_END_SHELL_HELPERS

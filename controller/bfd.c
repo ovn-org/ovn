@@ -117,13 +117,14 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
  *
  * If 'our_chassis' is C5 then this function returns empty bfd set.
  */
-void
+bool
 bfd_calculate_chassis(
     const struct sbrec_chassis *our_chassis,
     const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table,
     struct sset *bfd_chassis)
 {
     const struct sbrec_ha_chassis_group *ha_chassis_grp;
+    bool chassis_is_ha_gw = false;
     SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_chassis_grp,
                                            ha_chassis_grp_table) {
         bool is_ha_chassis = false;
@@ -143,6 +144,7 @@ bfd_calculate_chassis(
             sset_add(&grp_chassis, ha_ch->chassis->name);
             if (our_chassis == ha_ch->chassis) {
                 is_ha_chassis = true;
+                chassis_is_ha_gw = true;
                 bfd_setup_required = true;
             }
         }
@@ -178,6 +180,7 @@ bfd_calculate_chassis(
         }
         sset_destroy(&grp_chassis);
     }
+    return chassis_is_ha_gw;
 }
 
 void
