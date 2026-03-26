@@ -2986,42 +2986,42 @@ AT_CLEANUP
 
 AT_SETUP([HA: Check for missing garp on leader when BFD goes back up])
 # Network topology
-#    ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-#    │                                                                                                        │
-#    │    ┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐    │
-#    │    │   ovn-chassis-1   │    │  ovn-gw-1         │    │  ovn-gw-2         │    │  ovn-chassis-2    │    │
-#    │    └─────────┬─────────┘    └───────────────────┘    └───────────────────┘    └───────────────────┘    │
-#    │    ┌─────────┴─────────┐                                                                               │
-#    │    │       inside1     │                                                                               │
-#    │    │   192.168.1.1/24  │                                                                               │
-#    │    └─────────┬─────────┘                                                                               │
-#    │    ┌─────────┴─────────┐                                                                               │
-#    │    │       inside      │                                                                               │
-#    │    └─────────┬─────────┘                                                                               │
-#    │    ┌─────────┴─────────┐                                                                               │
-#    │    │    192.168.1.254  │                                                                               │
-#    │    │         R1        │                                                                               │
-#    │    │    192.168.0.254  │                                                                               │
-#    │    └─────────┬─────────┘                                                                               │
-#    │              └------eth1---------------┬--------eth1-----------┐                                       │
-#    │                             ┌──────────┴────────┐    ┌─────────┴─────────┐                             │
-#    │                             │    192.168.1.254  │    │   192.168.1.254   │                             │
-#    │                             │         R1        │    │         R1        │                             │
-#    │                             │    192.168.0.254  │    │   192.168.0.254   │                             │
-#    │                             └─────────┬─────────┘    └─────────┬─────────┘                             │
-#    │                                       │                        │              ┌───────────────────┐    │
-#    │                             ┌─────────┴─────────┐    ┌─────────┴─────────┐    │    192.168.0.1    │    │
-#    │                             │       outside     │    │       outside     │    │        ext1       │    │
-#    │                             └─────────┬─────────┘    └─────────┬─────────┘    └─────────┬─────────┘    │
-#    │                             ┌─────────┴─────────┐    ┌─────────┴─────────┐    ┌─────────┴─────────┐    │
-#    │                             │    ln-outside     │    │    ln-outside     │    │       ln-ext1     │    │
-#    │                             └─────────┬─────────┘    └─────────┬─────────┘    └─────────┬─────────┘    │
-#    │                             ┌─────────┴─────────┐    ┌─────────┴─────────┐    ┌─────────┴─────────┐    │
-#    │                             │       br-ex       │    │       br-ex       │    │       br-ex       │    │
-#    │                             └─────────┬─────────┘    └─────────┬─────────┘    └─────────┬─────────┘    │
-#    │                                       └---------eth2-----------┴-------eth2-------------┘              │
-#    │                                                                                                        │
-#    └────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+#    ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+#    │                                                                                                                                │
+#    │   ┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐    │
+#    │   │   ovn-chassis-1   │    │   ovn-chassis-2   │    │  ovn-gw-1         │    │  ovn-gw-2         │    │  ovn-chassis-3    │    │
+#    │   └─────────┬─────────┘    └─────────┬─────────┘    └───────────────────┘    └───────────────────┘    └───────────────────┘    │
+#    │   ┌─────────┴─────────┐    ┌─────────┴─────────┐                                                                               │
+#    │   │       inside1     │    │       inside2     │                                                                               │
+#    │   │   192.168.1.1/24  │    │   192.168.1.2/24  │                                                                               │
+#    │   └─────────┬─────────┘    └─────────┬─────────┘                                                                               │
+#    │           ┌─┴────────────────────────┴─┐                                                                                       │
+#    │           │           inside           │                                                                                       │
+#    │           └──────────────┬─────────────┘                                                                                       │
+#    │                ┌─────────┴─────────┐                                                                                           │
+#    │                │    192.168.1.254  │                                                                                           │
+#    │                │         R1        │                                                                                           │
+#    │                │    192.168.0.254  │                                                                                           │
+#    │                └─────────┬─────────┘                                                                                           │
+#    │                          └------eth1---------------------------┬--------eth1-----------┐                                       │
+#    │                                                     ┌──────────┴────────┐    ┌─────────┴─────────┐                             │
+#    │                                                     │    192.168.1.254  │    │   192.168.1.254   │                             │
+#    │                                                     │         R1        │    │         R1        │                             │
+#    │                                                     │    192.168.0.254  │    │   192.168.0.254   │                             │
+#    │                                                     └─────────┬─────────┘    └─────────┬─────────┘                             │
+#    │                                                               │                        │              ┌───────────────────┐    │
+#    │                                                     ┌─────────┴─────────┐    ┌─────────┴─────────┐    │    192.168.0.1    │    │
+#    │                                                     │       outside     │    │       outside     │    │        ext1       │    │
+#    │                                                     └─────────┬─────────┘    └─────────┬─────────┘    └─────────┬─────────┘    │
+#    │                                                     ┌─────────┴─────────┐    ┌─────────┴─────────┐    ┌─────────┴─────────┐    │
+#    │                                                     │    ln-outside     │    │    ln-outside     │    │       ln-ext1     │    │
+#    │                                                     └─────────┬─────────┘    └─────────┬─────────┘    └─────────┬─────────┘    │
+#    │                                                     ┌─────────┴─────────┐    ┌─────────┴─────────┐    ┌─────────┴─────────┐    │
+#    │                                                     │       br-ex       │    │       br-ex       │    │       br-ex       │    │
+#    │                                                     └─────────┬─────────┘    └─────────┬─────────┘    └─────────┬─────────┘    │
+#    │                                                               └---------eth2-----------┴-------eth2-------------┘              │
+#    │                                                                                                                                │
+#    └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 # The goal of this test is the check that GARP are properly generated by higest priority traffic when
 # BFD goes down, and back up, and this whether the BFD event is due either to some bfd packet lost
@@ -3030,6 +3030,12 @@ AT_SETUP([HA: Check for missing garp on leader when BFD goes back up])
 # So gw3 should in this test neither send garp or receive packets.
 #
 # Enable vconn so we can check the GARP from a log perspective.
+on_exit "podman exec ovn-gw-1 ovn-appctl vlog/set info"
+on_exit "podman exec ovn-gw-1 ovn-appctl vlog/enable-rate-limit"
+on_exit "podman exec ovn-gw-2 ovn-appctl vlog/set info"
+on_exit "podman exec ovn-gw-2 ovn-appctl vlog/enable-rate-limit"
+on_exit "podman exec ovn-gw-3 ovn-appctl vlog/set info"
+on_exit "podman exec ovn-gw-3 ovn-appctl vlog/enable-rate-limit"
 m_as ovn-gw-1 ovn-appctl vlog/set vconn:dbg
 m_as ovn-gw-2 ovn-appctl vlog/set vconn:dbg
 m_as ovn-gw-3 ovn-appctl vlog/set vconn:dbg
@@ -3037,12 +3043,17 @@ m_as ovn-gw-1 ovn-appctl vlog/disable-rate-limit
 m_as ovn-gw-2 ovn-appctl vlog/disable-rate-limit
 m_as ovn-gw-3 ovn-appctl vlog/disable-rate-limit
 
+# Decrease revalidation time on ovs switch simulating ToR.
+check host_ovs_vsctl set Open_vSwitch . other_config:max-revalidator=100
+on_exit "check host_ovs_vsctl remove Open_vSwitch . other_config max-revalidator"
+
 check_fake_multinode_setup
 
 # Delete the multinode NB and OVS resources before starting the test.
 cleanup_multinode_resources
 
 ip_ch1=$(m_as ovn-chassis-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
+ip_ch2=$(m_as ovn-chassis-2 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 ip_gw1=$(m_as ovn-gw-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 ip_gw2=$(m_as ovn-gw-2 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
 ip_gw3=$(m_as ovn-gw-3 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
@@ -3050,25 +3061,35 @@ ip_gw3=$(m_as ovn-gw-3 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut
 from_gw1_to_gw2=$(m_as ovn-gw-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw2)
 from_gw1_to_gw3=$(m_as ovn-gw-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw3)
 from_gw1_to_ch1=$(m_as ovn-gw-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_ch1)
+from_gw1_to_ch2=$(m_as ovn-gw-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_ch2)
 from_gw2_to_gw1=$(m_as ovn-gw-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw1)
 from_gw2_to_gw3=$(m_as ovn-gw-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw3)
 from_gw2_to_ch1=$(m_as ovn-gw-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_ch1)
+from_gw2_to_ch2=$(m_as ovn-gw-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_ch2)
 from_ch1_to_gw1=$(m_as ovn-chassis-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw1)
 from_ch1_to_gw2=$(m_as ovn-chassis-1 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw2)
+from_ch2_to_gw1=$(m_as ovn-chassis-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw1)
+from_ch2_to_gw2=$(m_as ovn-chassis-2 ovs-vsctl --bare --columns=name find interface options:remote_ip=$ip_gw2)
 
 m_as ovn-chassis-1 ip link del hv1-vif1-p
-m_as ovn-chassis-2 ip link del ext1-p
+m_as ovn-chassis-2 ip link del hv2-vif1-p
+m_as ovn-chassis-3 ip link del ext1-p
 
 OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
 OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-3 ip link show | grep -q genev_sys])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 ip link show | grep -q genev_sys])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip link show | grep -q genev_sys])
 OVS_WAIT_UNTIL([m_as ovn-gw-3 ip link show | grep -q genev_sys])
 
+# Use "aggressive" bfd parameters
+check multinode_nbctl set NB_Global . options:"bfd-min-rx"=500
+check multinode_nbctl set NB_Global . options:"bfd-min-tx"=100
 check multinode_nbctl ls-add inside
 check multinode_nbctl ls-add outside
 check multinode_nbctl ls-add ext
 check multinode_nbctl lsp-add inside inside1 -- lsp-set-addresses inside1 "f0:00:c0:a8:01:01 192.168.1.1"
+check multinode_nbctl lsp-add inside inside2 -- lsp-set-addresses inside2 "f0:00:c0:a8:01:02 192.168.1.2"
 check multinode_nbctl lsp-add ext ext1 -- lsp-set-addresses ext1 "00:00:c0:a8:00:01 192.168.0.1"
 
 multinode_nbctl create Logical_Router name=R1
@@ -3100,12 +3121,14 @@ m_as ovn-gw-3 ovs-vsctl remove open . external_ids garp-max-timeout-sec
 
 m_as ovn-chassis-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-chassis-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
+m_as ovn-chassis-3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-gw-3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 
 m_as ovn-chassis-1 /data/create_fake_vm.sh inside1 hv1-vif1 f0:00:c0:a8:01:01 1500 192.168.1.1 24 192.168.1.254 2000::1/64 2000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh ext1 ext1 00:00:c0:a8:00:01 1500 192.168.0.1 24 192.168.0.254 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh inside2 hv2-vif1 f0:00:c0:a8:01:02 1500 192.168.1.2 24 192.168.1.254 2000::2/64 2000::a
+m_as ovn-chassis-3 /data/create_fake_vm.sh ext1 ext1 00:00:c0:a8:00:01 1500 192.168.0.1 24 192.168.0.254 1000::3/64 1000::a
 
 # There should be one ha_chassis_group with the name "R1_outside"
 m_check_row_count HA_Chassis_Group 1 name=R1_outside
@@ -3160,19 +3183,28 @@ for chassis in $from_ch1_to_gw1 $from_ch1_to_gw2; do
     wait_bfd_enabled ovn-chassis-1 $chassis
 done
 
+# check BFD enablement on tunnel ports from ovn-chassis-2 ###########
+for chassis in $from_ch2_to_gw1 $from_ch2_to_gw2; do
+    echo "checking ovn-chassis-2 -> $chassis"
+    wait_bfd_enabled ovn-chassis-2 $chassis
+done
+
 # Make sure there is no nft table left. Do not use nft directly as might not be installed in container.
 gw1_pid=$(podman inspect -f '{{.State.Pid}}' ovn-gw-1)
 nsenter --net=/proc/$gw1_pid/ns/net nft list tables | grep ovn-test && nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test
-on_exit "nsenter --net=/proc/$gw1_pid/ns/net nft list tables | grep ovn-test && nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test"
+on_exit "if [[ -d "/proc/$gw1_pid" ]]; then nsenter --net=/proc/$gw1_pid/ns/net nft list tables | grep ovn-test && nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test; fi"
 
-for chassis in $from_gw1_to_gw2 $from_gw1_to_gw3 $from_gw1_to_ch1; do
+for chassis in $from_gw1_to_gw2 $from_gw1_to_gw3 $from_gw1_to_ch1 $from_gw1_to_ch2; do
     wait_bfd_up ovn-gw-1 $chassis
 done
-for chassis in $from_gw2_to_gw1 $from_gw2_to_gw3 $from_gw2_to_ch1; do
+for chassis in $from_gw2_to_gw1 $from_gw2_to_gw3 $from_gw2_to_ch1 $from_gw2_to_ch2; do
     wait_bfd_up ovn-gw-2 $chassis
 done
 for chassis in $from_ch1_to_gw1 $from_ch1_to_gw2; do
     wait_bfd_up ovn-chassis-1 $chassis
+done
+for chassis in $from_ch2_to_gw1 $from_ch2_to_gw2; do
+    wait_bfd_up ovn-chassis-2 $chassis
 done
 
 m_wait_row_count Port_Binding 1 logical_port=cr-R1_outside chassis=$gw1_chassis
@@ -3180,33 +3212,38 @@ check multinode_nbctl --wait=hv sync
 
 start_tcpdump() {
     echo "$(date +%H:%M:%S.%03N) Starting tcpdump"
-    M_START_TCPDUMP([ovn-chassis-1], [-neei hv1-vif1-p], [ch1])
-    M_START_TCPDUMP([ovn-chassis-2], [-neei eth2], [ch2])
-    M_START_TCPDUMP([ovn-gw-1], [-neei eth2], [gw1])
-    M_START_TCPDUMP([ovn-gw-1], [-neei eth2 -Q out], [gw1_out])
-    M_START_TCPDUMP([ovn-gw-2], [-neei eth2], [gw2])
-    M_START_TCPDUMP([ovn-gw-2], [-neei eth2 -Q out], [gw2_out])
-    M_START_TCPDUMP([ovn-gw-3], [-neei eth2], [gw3])
-    M_START_TCPDUMP([ovn-gw-3], [-neei eth2 -Q out], [gw3_out])
+    M_START_TCPDUMPS([ovn-chassis-1], [-neei hv1-vif1-p], [ch1],
+                    [ovn-chassis-2], [-neei hv2-vif1-p], [ch2],
+                    [ovn-chassis-3], [-neei eth2], [ch3],
+                    [ovn-gw-1], [-neei eth2], [gw1],
+                    [ovn-gw-1], [-neei eth2 -Q out], [gw1_out],
+                    [ovn-gw-2], [-neei eth2], [gw2],
+                    [ovn-gw-2], [-neei eth2 -Q out], [gw2_out],
+                    [ovn-gw-3], [-neei eth2], [gw3],
+                    [ovn-gw-3], [-neei eth2 -Q out], [gw3_out],
+                    [ovn-gw-1], [-neei eth1], [gw1_eth1],
+                    [ovn-gw-2], [-neei eth1], [gw2_eth1],
+                    [ovn-chassis-1], [-neei eth1], [ch1_eth1],
+                    [ovn-chassis-2], [-neei eth1], [ch2_eth1])
 }
 
 stop_tcpdump() {
     echo "$(date +%H:%M:%S.%03N) Stopping tcpdump"
-    m_kill 'ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-chassis-1 ovn-chassis-2' tcpdump
+    m_kill 'ovn-gw-1 ovn-gw-2 ovn-gw-3 ovn-chassis-1 ovn-chassis-2 ovn-chassis-3' tcpdump
 }
 
-# Send packets from chassis2 (ext1) to chassis1
+# Send packets from ovn-chassis-3 (ext1) to ovn-chassis-1
 send_background_packets() {
     echo "$(date +%H:%M:%S.%03N) Sending packets in Background"
     start_tcpdump
-    M_NS_DAEMONIZE([ovn-chassis-2], [ext1], [ping -f -i 0.1 192.168.1.1], [ping.pid])
+    M_NS_DAEMONIZE([ovn-chassis-3], [ext1], [ping -f -i 0.1 192.168.1.1], [ping.pid])
 }
 
 stop_sending_background_packets() {
     echo "$(date +%H:%M:%S.%03N) Stopping Background process"
     m_as ovn-chassis-1 ps -ef | grep -v grep | grep -q ping && \
         m_as ovn-chassis-1 echo "Stopping ping on ovn-chassis-1" && killall ping
-    m_as ovn-chassis-2 ps -ef | grep -v grep | grep -q ping && \
+    m_as ovn-chassis-3 ps -ef | grep -v grep | grep -q ping && \
         m_as ovn-chassis-2 echo "Stopping ping on ovn-chassis-2" && killall ping
     stop_tcpdump
 }
@@ -3216,8 +3253,8 @@ check_for_new_garps() {
     expecting_garp=$2
     n_new_garps=$(cat ${hv}_out.tcpdump | grep -c "f0:00:c0:a8:00:fe > Broadcast, ethertype ARP (0x0806), length 42: Request who-has 192.168.0.254 tell 192.168.0.254, length 28")
 
-    if [ "$expecting_garp" == "true" ]; then
-        AS_BOX([$(date +%H:%M:%S.%03N) Waiting/checking for garp from $hv - Starting with $n_new_garps])
+    if [[ "$expecting_garp" == "true" ]]; then
+        echo "$(date +%H:%M:%S.%03N) Waiting/checking for garp from $hv - Starting with $n_new_garps"
         OVS_WAIT_UNTIL([
             n_garps=$n_new_garps
             n_new_garps=$(cat ${hv}_out.tcpdump | grep -c "f0:00:c0:a8:00:fe > Broadcast, ethertype ARP (0x0806), length 42: Request who-has 192.168.0.254 tell 192.168.0.254, length 28")
@@ -3225,7 +3262,7 @@ check_for_new_garps() {
             test "$n_garps" -ne "$n_new_garps"
         ])
     else
-        AS_BOX([$(date +%H:%M:%S.%03N) Checking no garp from ${hv}])
+        echo "$(date +%H:%M:%S.%03N) Checking no garp from ${hv}"
         # Waiting a few seconds to get a chance to see unexpected garps.
         sleep 3
         n_garps=$(cat ${hv}_out.tcpdump | grep -c "f0:00:c0:a8:00:fe > Broadcast, ethertype ARP (0x0806), length 42: Request who-has 192.168.0.254 tell 192.168.0.254, length 28")
@@ -3241,8 +3278,8 @@ check_for_new_echo_pkts() {
     n_new_echo_req=$(cat ${hv}.tcpdump | grep -c "$mac_src > $mac_dst, ethertype IPv4 (0x0800), length 98: 192.168.0.1 > 192.168.1.1: ICMP echo request")
     n_new_echo_rep=$(cat ${hv}.tcpdump | grep -c "$mac_dst > $mac_src, ethertype IPv4 (0x0800), length 98: 192.168.1.1 > 192.168.0.1: ICMP echo reply")
 
-    if [ "$expecting_pkts" == "true" ]; then
-        AS_BOX([$(date +%H:%M:%S.%03N) Waiting/checking for echo pkts through ${hv}])
+    if [[ "$expecting_pkts" == "true" ]]; then
+        echo "$(date +%H:%M:%S.%03N) Waiting/checking for echo pkts through ${hv}"
         echo "Starting with $n_new_echo_req requests and $n_new_echo_rep replies so far on ${hv}."
         OVS_WAIT_UNTIL([
             n_echo_req=$n_new_echo_req
@@ -3253,7 +3290,7 @@ check_for_new_echo_pkts() {
             test "$n_echo_req" -ne "$n_new_echo_req" && test "$n_echo_rep" -ne "$n_new_echo_rep"
         ])
     else
-        AS_BOX([$(date +%H:%M:%S.%03N) Checking no pkts from ${hv}])
+        echo "$(date +%H:%M:%S.%03N) Checking no pkts from ${hv}"
         # Waiting a few seconds to get a chance to see unexpected pkts.
         sleep 3
         n_echo_req=$(cat ${hv}.tcpdump | grep -c "$mac_src > $mac_dst, ethertype IPv4 (0x0800), length 98: 192.168.0.1 > 192.168.1.1: ICMP echo request")
@@ -3271,22 +3308,44 @@ dump_statistics() {
     ch1_rep=$(grep -c "ICMP echo reply" ch1.tcpdump)
     ch2_req=$(grep -c "ICMP echo request" ch2.tcpdump)
     ch2_rep=$(grep -c "ICMP echo reply" ch2.tcpdump)
+    ch3_req=$(grep -c "ICMP echo request" ch3.tcpdump)
+    ch3_rep=$(grep -c "ICMP echo reply" ch3.tcpdump)
     gw1_req=$(grep -c "ICMP echo request" gw1.tcpdump)
     gw1_rep=$(grep -c "ICMP echo reply" gw1.tcpdump)
     gw2_req=$(grep -c "ICMP echo request" gw2.tcpdump)
     gw2_rep=$(grep -c "ICMP echo reply" gw2.tcpdump)
     gw3_req=$(grep -c "ICMP echo request" gw3.tcpdump)
     gw3_rep=$(grep -c "ICMP echo reply" gw3.tcpdump)
-    echo "$n1 claims in gw1, $n2 in gw2 and $n3 on gw3"
-    echo "ch2_request=$ch2_req gw1_request=$gw1_req gw2_request=$gw2_req gw3_request=$gw3_req ch1_request=$ch1_req ch1_reply=$ch1_rep gw1_reply=$gw1_rep gw2_reply=$gw2_rep gw3_reply=$gw3_rep ch2_reply=$ch2_rep"
+    echo "$n1 claims in gw1, $n2 in gw2 and $n3 on gw3" >&2
+    echo "ch3_req=$ch3_req gw_req=($gw1_req + $gw2_req +$gw3_req) ch1_req=$ch1_req ch1_rep=$ch1_rep gw_rep=($gw1_rep + $gw2_rep + $gw3_rep) ch3_rep=$ch3_rep ch2=($ch2_req+$ch2_rep)" >&2
+    echo "$((ch3_req - ch3_rep))"
 }
 
-check_migration_between_gw1_and_gw2() {
-    action=$1
-    send_background_packets
+add_port() {
+    bridge=$1
+    interface=$2
+    address=$3
+    echo "Adding $bridge $interface $address"
 
+    pid=$(podman inspect -f '{{.State.Pid}}' ovn-gw-1)
+    ln -sf /proc/$pid/ns/net /var/run/netns/$pid
+    port=$(host_ovs_vsctl --data=bare --no-heading --columns=name find interface \
+           external_ids:container_id=ovn-gw-1 external_ids:container_iface="$interface")
+    port="${port:0:13}"
+    ip link add "${port}_l" type veth peer name "${port}_c"
+    ip link set "${port}_l" up
+    ip link set "${port}_c" netns $pid
+    ip netns exec $pid ip link set dev "${port}_c" name "$interface"
+    ip netns exec $pid ip link set "$interface" up
+    if [[ -n "$address" ]]; then
+        ip netns exec $pid ip addr add "$address" dev "$interface"
+    fi
+}
+
+prepare() {
+    send_background_packets
     # We make sure gw1 is leader since enough time that it generated all its garps.
-    AS_BOX([$(date +%H:%M:%S.%03N) Waiting all garps sent by gw1])
+    echo $(date +%H:%M:%S.%03N) Waiting all garps sent by gw1
     n_new_garps=$(cat gw1_out.tcpdump | grep -c "f0:00:c0:a8:00:fe > Broadcast, ethertype ARP (0x0806), length 42: Request who-has 192.168.0.254 tell 192.168.0.254, length 28")
     OVS_WAIT_UNTIL([
         n_garps=$n_new_garps
@@ -3302,130 +3361,269 @@ check_migration_between_gw1_and_gw2() {
     check_for_new_echo_pkts gw2 "00:00:c0:a8:00:01" "f0:00:c0:a8:00:fe" "false"
     check_for_new_echo_pkts gw3 "00:00:c0:a8:00:01" "f0:00:c0:a8:00:fe" "false"
 
+    # All packets should go through gw1, and none through gw2 or gw3.
+    check_packets "true" "false" "false" "true"
     flap_count_gw_1=$(m_as ovn-gw-1 ovs-vsctl get interface $from_gw1_to_gw2 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
     flap_count_gw_2=$(m_as ovn-gw-2 ovs-vsctl get interface $from_gw2_to_gw1 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
+}
 
-    if [ test "$action" == "stop_bfd" ]; then
-        AS_BOX([$(date +%H:%M:%S.%03N) Blocking bfd on gw1 (from $ip_gw1 to $ip_gw2)])
-        nsenter --net=/proc/$gw1_pid/ns/net nft add table ip ovn-test
-        nsenter --net=/proc/$gw1_pid/ns/net nft 'add chain ip ovn-test INPUT { type filter hook input priority 0; policy accept; }'
-        # Drop BFD from gw-1 to gw-2: geneve port (6081), inner port 3784 (0xec8), Session state Up, Init, Down.
-        nsenter --net=/proc/$gw1_pid/ns/net nft add rule ip ovn-test INPUT ip daddr $ip_gw1 ip saddr $ip_gw2 udp dport 6081 '@th,416,16 == 0x0ec8 @th,472,8 == 0xc0  counter drop'
-        nsenter --net=/proc/$gw1_pid/ns/net nft add rule ip ovn-test INPUT ip daddr $ip_gw1 ip saddr $ip_gw2 udp dport 6081 '@th,416,16 == 0x0ec8 @th,472,8 == 0x80  counter drop'
-        nsenter --net=/proc/$gw1_pid/ns/net nft add rule ip ovn-test INPUT ip daddr $ip_gw1 ip saddr $ip_gw2 udp dport 6081 '@th,416,16 == 0x0ec8 @th,472,8 == 0x40  counter drop'
+check_loss_after_flap()
+{
+    dead=$1
+    max_expected_loss=$2
 
-        # We do not check that packets go through gw2 as BFD between chassis-2 and gw1 is still up
-    fi
-
-    if [ test "$action" == "kill_gw2" ]; then
-        AS_BOX([$(date +%H:%M:%S.%03N) Killing gw2 ovn-controller])
-        on_exit 'm_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl status ||
-                 m_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-2'
-        on_exit 'm_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl status_controller ||
-                 m_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
-
-        m_as ovn-gw-2 kill -9 $(m_as ovn-gw-2 cat /run/ovn/ovn-controller.pid)
-        m_as ovn-gw-2 kill -9 $(m_as ovn-gw-2 cat /run/openvswitch/ovs-vswitchd.pid)
-        m_as ovn-gw-2 kill -9 $(m_as ovn-gw-2 cat /run/openvswitch/ovsdb-server.pid)
-        # Also delete datapath (flows)
-        m_as ovn-gw-2 ovs-dpctl del-dp system@ovs-system
-    fi
-
-    if [ test "$action" == "kill_gw1" ]; then
-        AS_BOX([$(date +%H:%M:%S.%03N) Killing gw1 ovn-controller])
-        on_exit 'm_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl status ||
-                 m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1'
-        on_exit 'm_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl status_controller ||
-                 m_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
-
-        m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/ovn/ovn-controller.pid)
-        m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/openvswitch/ovs-vswitchd.pid)
-        m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/openvswitch/ovsdb-server.pid)
-        # Also delete datapath (flows)
-        m_as ovn-gw-1 ovs-dpctl del-dp system@ovs-system
-    fi
-
-    if [ test "$action" == "kill_gw2" ]; then
-        AS_BOX([$(date +%H:%M:%S.%03N) Waiting for flap count between gw1 and gw2 to increase])
+    if [[ "$dead" == "gw2" ]]; then
+        echo "$(date +%H:%M:%S.%03N) Waiting for flap count between gw1 and gw2 to increase"
         OVS_WAIT_UNTIL([
             new_flap_count=$(m_as ovn-gw-1 ovs-vsctl get interfac $from_gw1_to_gw2 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
             echo "Comparing $new_flap_count versus $flap_count_gw_1"
             test "$new_flap_count" -gt "$((flap_count_gw_1))"
         ])
     else
-        AS_BOX([$(date +%H:%M:%S.%03N) Waiting for flap count between gw2 and gw1 to increase])
+        echo "$(date +%H:%M:%S.%03N) Waiting for flap count between gw2 and gw1 to increase])"
         OVS_WAIT_UNTIL([
             new_flap_count=$(m_as ovn-gw-2 ovs-vsctl get interfac $from_gw2_to_gw1 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
             echo "Comparing $new_flap_count versus $flap_count_gw_2"
             test "$new_flap_count" -gt "$((flap_count_gw_2))"
         ])
-
     fi
-    AS_BOX([$(date +%H:%M:%S.%03N) Flapped!])
 
+    echo "$(date +%H:%M:%S.%03N) Flapped!"
     # Wait a few more second for the fight.
+    sleep 4
+
+    echo "$(date +%H:%M:%S.%03N) Statistics after flapping"
+    lost=$(dump_statistics)
+    echo "===> $lost packet lost while handling migration"
+    AT_CHECK([test "$lost" -le "$max_expected_loss"])
+}
+
+final_check()
+{
+    action=$1
+    lost=$2
+    max_expected_loss_after_restoration=$3
+
+    # Wait a little more to get packets while network is restored
     sleep 2
-    AS_BOX([$(date +%H:%M:%S.%03N) Statistics after flapping])
-    dump_statistics
-
-    if [ test "$action" == "stop_bfd" ]; then
-        # gw1 still alive and gw2 tried to claim => gw1 should restart generating garps.
-        check_for_new_garps gw1 "true"
-        check_for_new_garps gw2 "false"
-        check_for_new_garps gw3 "false"
-        check_for_new_echo_pkts gw1 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "true"
-        check_for_new_echo_pkts gw2 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-        check_for_new_echo_pkts gw3 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-        check_for_new_echo_pkts ch1 f0:00:c0:a8:01:fe f0:00:c0:a8:01:01 "true"
-        AS_BOX([$(date +%H:%M:%S.%03N) Unblocking bfd on gw1])
-        nsenter --net=/proc/$gw1_pid/ns/net nft -a list ruleset
-        nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test
-    fi
-
-    if [ test "$action" == "kill_gw2" ]; then
-        # gw1 still alive, but gw2 did not try to claim => gw1 should not generate new garps.
-        check_for_new_garps gw1 "false"
-        check_for_new_garps gw2 "false"
-        check_for_new_garps gw3 "false"
-        check_for_new_echo_pkts gw1 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "true"
-        check_for_new_echo_pkts gw2 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-        check_for_new_echo_pkts gw3 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-        check_for_new_echo_pkts ch1 f0:00:c0:a8:01:fe f0:00:c0:a8:01:01 "true"
-        AS_BOX([$(date +%H:%M:%S.%03N) Restarting gw2 ovn-vswitchd])
-        m_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-2
-
-        AS_BOX([$(date +%H:%M:%S.%03N) Restarting gw2 ovn-controller])
-        m_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
-    fi
-
-    if [ test "$action" == "kill_gw1" ]; then
-        # gw1 died => gw2 should generate garps.
-        check_for_new_garps gw1 "false"
-        check_for_new_garps gw2 "true"
-        check_for_new_garps gw3 "false"
-        check_for_new_echo_pkts gw1 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-        check_for_new_echo_pkts gw2 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "true"
-        check_for_new_echo_pkts gw3 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-        check_for_new_echo_pkts ch1 f0:00:c0:a8:01:fe f0:00:c0:a8:01:01 "true"
-        AS_BOX([$(date +%H:%M:%S.%03N) Restarting gw1 ovn-vswitchd])
-        m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1
-
-        AS_BOX([$(date +%H:%M:%S.%03N) Restarting gw1 ovn-controller])
-        m_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
-    fi
-
-    # The network is now restored => packets should go through gw1 and reach chassis-1.
-    check_for_new_echo_pkts gw1 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "true"
-    check_for_new_echo_pkts gw2 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-    check_for_new_echo_pkts gw3 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "false"
-    check_for_new_echo_pkts ch1 f0:00:c0:a8:01:fe f0:00:c0:a8:01:01 "true"
-    AS_BOX([$(date +%H:%M:%S.%03N) Statistics after network restored])
-    dump_statistics
+    echo "$(date +%H:%M:%S.%03N) Statistics after network restored (after $action)"
+    new_lost=$(dump_statistics)
+    echo "===> $((new_lost - lost)) packets lost during network restoration"
+    AT_CHECK([test "$((new_lost - lost))" -le "$max_expected_loss_after_restoration"])
     stop_sending_background_packets
 }
 
+check_garps()
+{
+    check_for_new_garps gw1 "$1"
+    check_for_new_garps gw2 "$2"
+    check_for_new_garps gw3 "$3"
+}
+
+check_packets()
+{
+    check_for_new_echo_pkts gw1 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "$1"
+    check_for_new_echo_pkts gw2 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "$2"
+    check_for_new_echo_pkts gw3 00:00:c0:a8:00:01 f0:00:c0:a8:00:fe "$3"
+    check_for_new_echo_pkts ch1 f0:00:c0:a8:01:fe f0:00:c0:a8:01:01 "$4"
+}
+
+check_migration_between_gw1_and_gw2_bfd_stop()
+{
+    AS_BOX([$(date +%H:%M:%S.%03N) Testing migration after bfd_stop])
+    max_expected_max_expected_loss1=$1
+    max_expected_max_expected_loss2=$2
+    prepare
+
+    echo "$(date +%H:%M:%S.%03N) Blocking bfd on gw1 (from $ip_gw1 to $ip_gw2)"
+    nsenter --net=/proc/$gw1_pid/ns/net nft add table ip ovn-test
+    nsenter --net=/proc/$gw1_pid/ns/net nft 'add chain ip ovn-test INPUT { type filter hook input priority 0; policy accept; }'
+    # Drop BFD from gw-1 to gw-2: geneve port (6081), inner port 3784 (0xec8), Session state Up, Init, Down.
+    nsenter --net=/proc/$gw1_pid/ns/net nft add rule ip ovn-test INPUT ip daddr $ip_gw1 ip saddr $ip_gw2 udp dport 6081 '@th,416,16 == 0x0ec8 @th,472,8 == 0xc0  counter drop'
+    nsenter --net=/proc/$gw1_pid/ns/net nft add rule ip ovn-test INPUT ip daddr $ip_gw1 ip saddr $ip_gw2 udp dport 6081 '@th,416,16 == 0x0ec8 @th,472,8 == 0x80  counter drop'
+    nsenter --net=/proc/$gw1_pid/ns/net nft add rule ip ovn-test INPUT ip daddr $ip_gw1 ip saddr $ip_gw2 udp dport 6081 '@th,416,16 == 0x0ec8 @th,472,8 == 0x40  counter drop'
+
+    check_loss_after_flap "gw1" $max_expected_max_expected_loss1
+
+    # gw1 still alive and gw2 tried to claim => gw1 should restart generating garps.
+    check_garps "true" "false" "false"
+    check_packets "true" "false" "false" "true"
+
+    echo "$(date +%H:%M:%S.%03N) Unblocking bfd on gw1"
+    nsenter --net=/proc/$gw1_pid/ns/net nft -a list ruleset
+    nsenter --net=/proc/$gw1_pid/ns/net nft delete table ip ovn-test
+
+    # The network is now restored => packets should go through gw1 and reach chassis-1.
+    check_packets "true" "false" "false" "true"
+    final_check "bfd_stop" $lost $max_expected_max_expected_loss2
+}
+
+check_migration_between_gw1_and_gw2_kill_gw2() {
+    AS_BOX([$(date +%H:%M:%S.%03N) Check migration after killing gw2 ovn-controller & vswitchd])
+    max_expected_loss1=$1
+    max_expected_loss2=$2
+    prepare
+
+    on_exit 'm_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl status ||
+             m_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-2'
+    on_exit 'm_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl status_controller ||
+             m_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
+
+    m_as ovn-gw-2 kill -9 $(m_as ovn-gw-2 cat /run/ovn/ovn-controller.pid)
+    m_as ovn-gw-2 kill -9 $(m_as ovn-gw-2 cat /run/openvswitch/ovs-vswitchd.pid)
+    m_as ovn-gw-2 kill -9 $(m_as ovn-gw-2 cat /run/openvswitch/ovsdb-server.pid)
+    m_as ovn-gw-2 ovs-dpctl del-dp system@ovs-system
+
+    check_loss_after_flap "gw2" $max_expected_loss1
+
+    # gw1 still alive, but gw2 did not try to claim => gw1 should not generate new garps.
+    check_garps "false" "false" "false"
+    check_packets "true" "fals" "false" "true"
+
+    echo "$(date +%H:%M:%S.%03N) Restarting gw2 ovn-vswitchd]"
+    m_as ovn-gw-2 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-2
+
+    echo "$(date +%H:%M:%S.%03N) Restarting gw2 ovn-controller"
+    m_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
+
+    # The network is now restored => packets should go through gw1 and reach chassis-1.
+    check_packets "true" "false" "false" "true"
+    final_check "kill_gw2" $lost $max_expected_loss2
+}
+
+check_migration_between_gw1_and_gw2_update_ovs() {
+    AS_BOX([$(date +%H:%M:%S.%03N) Check migration after restarting gw1 ovs-vswitchd ("update")])
+    max_expected_loss1=$1
+    max_expected_loss2=$2
+    prepare
+
+    m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl restart --system-id=ovn-gw-1
+
+    check_loss_after_flap "gw1" $max_expected_loss1
+
+    # The network is now restored => packets should go through gw1 and reach chassis-1.
+    check_packets "true" "false" "false" "true"
+    final_check "ovs_update" $lost $max_expected_loss2
+}
+
+check_migration_between_gw1_and_gw2_kill_gw1() {
+    AS_BOX([$(date +%H:%M:%S.%03N) Killing gw1 ovn-controller and ovs-vswitchd])
+    max_expected_loss1=$1
+    max_expected_loss2=$2
+    prepare
+
+    on_exit 'm_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl status ||
+             m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1'
+    on_exit 'm_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl status_controller ||
+             m_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
+
+    m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/ovn/ovn-controller.pid)
+    m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/openvswitch/ovs-vswitchd.pid)
+    m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/openvswitch/ovsdb-server.pid)
+    # Also delete datapath (flows)
+    m_as ovn-gw-1 ovs-dpctl del-dp system@ovs-system
+
+    check_loss_after_flap "gw1" $max_expected_loss1
+
+    # gw1 died => gw2 should generate garps.
+    check_garps "false" "true" "false"
+    check_packets "false" "true" "false" "true"
+    echo "$(date +%H:%M:%S.%03N) Restarting gw1 ovn-vswitchd after killing gw1"
+    m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1
+
+    # Wait some long time before restarting ovn-controller
+    sleep 10
+
+    # gw2 should still be handling packets as OVN not restarted on gw1
+    check_packets "false" "true" "false" "true"
+
+    echo "$(date +%H:%M:%S.%03N) Restarting gw1 ovn-controller after killing gw1"
+    m_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
+
+    # The network is now restored => packets should go through gw1 and reach chassis-1.
+    check_packets "true" "false" "false" "true"
+    final_check "kill_gw1" $lost $max_expected_loss2
+}
+
+check_migration_between_gw1_and_gw2_reboot_gw1() {
+    ip_gw1_eth1=$(podman exec ovn-gw-1 ip -brief address show eth1 | awk '{print $3}' | cut -d/ -f1)
+    cidr=$(podman exec ovn-gw-1 ip -brief address show eth1 | awk '{print $3}' | cut -d/ -f2)
+    AS_BOX([$(date +%H:%M:%S.%03N) Rebooting ovn-gw-1 with $ip_gw1_eth1/$cidr])
+    max_expected_loss1=$1
+    max_expected_loss2=$2
+    prepare
+
+    podman stop -t 0 ovn-gw-1
+    (exec 3>&- 4>&- 5>&- 6>&-; podman start ovn-gw-1)
+
+    # As ovn-gw-1 got stopped and restarted, its ports (added by fake
+    # multinode) got deleted. Add them back.
+    add_port br-ovn eth1 $ip_gw1_eth1/$cidr
+    add_port br-ovn-ext eth2
+    M_START_TCPDUMPS([ovn-gw-1], [-neei eth2], [gw1], [ovn-gw-1], [-neei eth1], [gw1_eth1], [ovn-gw-1], [-neei eth2 -Q out], [gw1_out])
+    check_loss_after_flap "gw1" $max_expected_loss1
+
+    # gw1 died => gw2 should generate garps.
+    check_garps "false" "true" "false"
+    check_packets "false" "true" "false" "true"
+
+    echo "$(date +%H:%M:%S.%03N) Restarting gw1 ovn-vswitchd after rebooting gw1"
+    m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1
+
+    # Wait some long time before restarting ovn-controller
+    sleep 10
+
+    # gw2 should still be handling packets as OVN not restarted on gw1
+    check_packets "false" "true" "false" "true"
+
+    echo "$(date +%H:%M:%S.%03N) Restarting gw1 ovn-controller after rebooting gw1"
+    m_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
+
+    # The network is now restored => packets should go through gw1 and reach chassis-1.
+    check_packets "true" "false" "false" "true"
+    final_check "kill_gw1" $lost $max_expected_loss2
+}
+
+check_compute_restart() {
+    AS_BOX([$(date +%H:%M:%S.%03N) Killing ovn-chassis-1 ovn-controller and ovs-vswitchd])
+    max_expected_loss=$1
+    prepare
+
+    # Kill ovn-chassis-1
+    echo "$(date +%H:%M:%S.%03N) Killing chassis-1"
+    on_exit 'm_as ovn-chassis-1 /usr/share/openvswitch/scripts/ovs-ctl status ||
+             m_as ovn-chassis-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-chassis-1'
+    on_exit 'm_as ovn-chassis-1 /usr/share/ovn/scripts/ovn-ctl status_controller ||
+             m_as ovn-chassis-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
+
+    m_as ovn-chassis-1 kill -9 $(m_as ovn-chassis-1 cat /run/ovn/ovn-controller.pid)
+    m_as ovn-chassis-1 kill -9 $(m_as ovn-chassis-1 cat /run/openvswitch/ovs-vswitchd.pid)
+    m_as ovn-chassis-1 kill -9 $(m_as ovn-chassis-1 cat /run/openvswitch/ovsdb-server.pid)
+
+    # Now restart chassis-1
+    flap_count=$(m_as ovn-gw-2 ovs-vsctl get interfac $from_gw2_to_ch1 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
+    echo "$(date +%H:%M:%S.%03N) Restarting ovn-chassis-1 ovn-vswitchd."
+    m_as ovn-chassis-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-chassis-1
+
+    echo "$(date +%H:%M:%S.%03N) Waiting for flap count between gw-1 and chassis-1 to increase"
+    OVS_WAIT_UNTIL([
+        new_flap_count=$(m_as ovn-gw-1 ovs-vsctl get interfac $from_gw1_to_ch1 bfd_status | sed 's/.*flap_count=\"\([[0-9]]*\).*/\1/g')
+        echo "Comparing $new_flap_count versus $flap_count"
+        test "$new_flap_count" -gt "$((flap_count))"
+    ])
+
+    wait_bfd_up ovn-chassis-1 $from_ch1_to_gw1
+
+    echo "$(date +%H:%M:%S.%03N) Restarting ovn-chassis-1 ovn-controller."
+    m_as ovn-chassis-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
+
+    # Wait a long time to catch losses
+    sleep 5
+    final_check "compute" 0 $max_expected_loss
+}
+
 start_tcpdump
-AS_BOX([$(date +%H:%M:%S.%03N) Sending packet from hv1-vif1(inside1) to ext1])
+echo "$(date +%H:%M:%S.%03N) Sending packet from hv1-vif1(inside1) to ext1"
 M_NS_CHECK_EXEC([ovn-chassis-1], [hv1-vif1], [ping -c3 -q -i 0.1 192.168.0.1 | FORMAT_PING],
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
@@ -3433,7 +3631,7 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [hv1-vif1], [ping -c3 -q -i 0.1 192.168.0.1 | F
 stop_tcpdump
 
 # It should have gone through gw1 and not gw2
-AS_BOX([$(date +%H:%M:%S.%03N) Checking it went through gw1 and not gw2])
+echo "$(date +%H:%M:%S.%03N) Checking it went through gw1 and not gw2"
 AT_CHECK([cat gw2.tcpdump | grep "ICMP echo"], [1], [dnl
 ])
 
@@ -3446,17 +3644,29 @@ f0:00:c0:a8:00:fe > 00:00:c0:a8:00:01, ethertype IPv4 (0x0800), length 98: 192.1
 00:00:c0:a8:00:01 > f0:00:c0:a8:00:fe, ethertype IPv4 (0x0800), length 98: 192.168.0.1 > 192.168.1.1: ICMP echo reply,
 ])
 
-# We stop bfd between gw1 & gw2, but keep gw1 & gw2 running.
-check_migration_between_gw1_and_gw2 "stop_bfd"
+# We stop bfd between gw1 & gw2, but keep gw1 & gw2 running. We should not lose packets.
+check_migration_between_gw1_and_gw2_bfd_stop 1 1
 
 # We simulate death of gw2. It should not have any effect.
-check_migration_between_gw1_and_gw2 "kill_gw2"
+check_migration_between_gw1_and_gw2_kill_gw2 1 1
+
+# We simulate ovs update on gw1. When ovs is stopped, flows should still be handled by Kernel datapath.
+# When OVS is restarted, BFD should go down immediately, and gw2 will start handling packets.
+# There will be packet losses as gw2 will usually see BFD from gw1 up (and hence relase port) before gw1 sees
+# BFD up (and claim port).
+check_migration_between_gw1_and_gw2_update_ovs 20 1
+
+# We simulate restart of both OVS & OVN gw1. gw2 should take over.
+check_migration_between_gw1_and_gw2_kill_gw1 40 20
 
 # We simulate death of gw1. gw2 should take over.
-check_migration_between_gw1_and_gw2 "kill_gw1"
+check_migration_between_gw1_and_gw2_reboot_gw1 40 20
+
+# We simulate restart of ovn-chassis-1. We expect for ~4 sec losses as we wait for bfd up before starting
+# ovn-controller (1 sec to restart ovs, 2 sec for bfd to go up, 1 sec to detect it).
+check_compute_restart 40
 
 AT_CLEANUP
-])
 
 AT_SETUP([ovn multinode bgp L2 EVPN])
 check_fake_multinode_setup
