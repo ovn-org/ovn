@@ -2955,6 +2955,31 @@ AT_CHECK([test $lsp02 = 3 && test $ls1 = 123])
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([port requested-tnl-key -- conflict resolved on deletion])
+AT_KEYWORDS([requested tnl tunnel key keys])
+ovn_start
+
+AS_BOX([Create two ports with the same requested-tnl-key])
+check ovn-nbctl --wait=sb ls-add ls                             \
+    -- lsp-add ls lsp1                                          \
+    -- set logical_switch_port lsp1 options:requested-tnl-key=1 \
+    -- lsp-add ls lsp2                                          \
+    -- set logical_switch_port lsp2 options:requested-tnl-key=1
+
+AS_BOX([Delete the port that got key 1])
+lsp=$(fetch_column port_binding logical_port tunnel_key=1)
+check test -n "$lsp"
+check ovn-nbctl --wait=sb lsp-del $lsp
+
+AS_BOX([Remaining port should now have tunnel_key=1])
+check_column 1 Port_Binding tunnel_key
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check VXLAN mode disabling])
 ovn_start
