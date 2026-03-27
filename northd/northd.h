@@ -398,6 +398,9 @@ struct ovn_datapath {
     struct hmap port_tnlids;
     uint32_t port_key_hint;
 
+    bool port_key_conflict; /* True if a port's requested-tnl-key could
+                              * not be assigned due to a conflict. */
+
     bool has_unknown;
     bool has_vtep_lports;
     bool has_arp_proxy_port;
