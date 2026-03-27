@@ -4369,6 +4369,7 @@ ovn_port_assign_requested_tnl_id(struct ovn_port *op)
                          "%"PRIu32" as another LSP or LRP",
                          op->nbsp ? "switch" : "router",
                          op_get_name(op), tunnel_key);
+            op->od->port_key_conflict = true;
             return false;
         }
     }
@@ -4946,6 +4947,14 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             if (sset_contains(&nd->svc_monitor_lsps, op->key)) {
                 /* This port was used for svc monitor, which may be
                  * impacted by this deletion. Fallback to recompute. */
+                goto fail;
+            }
+            if (od->port_key_conflict &&
+                    smap_get_int(&op->nbsp->options, "requested-tnl-key", 0)) {
+                /* Some port in this datapath had a requested-tnl-key
+                 * that couldn't be satisfied due to a conflict.  Now
+                 * that a port is being deleted the conflict may be
+                 * resolved; fall back to recompute. */
                 goto fail;
             }
             add_op_to_northd_tracked_ports(&trk_lsps->deleted, op);
