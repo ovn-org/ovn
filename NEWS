@@ -12,6 +12,8 @@ OVN v24.09.4 - xx xxx xxxx
      based L4 field translation for stateful ACLs. When enabled allows proper
      handling of IP fragmentation in userspace datapaths. This option may break
      hardware offloading and is disabled by default.
+   - Added disable_garp_rarp option to logical_router table in order to disable
+     GARP/RARP announcements by all the peer ports of this logical router.
 
 OVN v24.09.3 - 13 Jun 2025
 --------------------------
