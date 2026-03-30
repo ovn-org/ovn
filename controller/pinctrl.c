@@ -5005,6 +5005,8 @@ struct garp_rarp_data {
     uint32_t dp_key;             /* Datapath used to output this GARP. */
     uint32_t port_key;           /* Port to inject the GARP into. */
     char *logical_port;          /* Name of the cr logical_port, if any */
+    bool stale;                  /* Used during sync to remove stale
+                                  * information. */
 };
 
 /* Contains GARPs/RARPs to be sent. Protected by pinctrl_mutex*/
@@ -5077,6 +5079,7 @@ add_garp_rarp(const char *name, const struct eth_addr ea, ovs_be32 ip,
     garp_rarp->backoff = 1000; /* msec. */
     garp_rarp->dp_key = dp_key;
     garp_rarp->port_key = port_key;
+    garp_rarp->stale = false;
     garp_rarp->logical_port = nullable_xstrdup(logical_port);
     shash_add(&send_garp_rarp_data, name, garp_rarp);
 
@@ -5120,6 +5123,7 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 if (garp_rarp) {
                     garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
                     garp_rarp->port_key = binding_rec->tunnel_key;
+                    garp_rarp->stale = false;
                     if (garp_max_timeout != garp_rarp_max_timeout ||
                         garp_continuous != garp_rarp_continuous) {
                         /* reset backoff */
@@ -5151,6 +5155,7 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
                     if (garp_rarp) {
                         garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
                         garp_rarp->port_key = binding_rec->tunnel_key;
+                        garp_rarp->stale = false;
                         if (garp_max_timeout != garp_rarp_max_timeout ||
                             garp_continuous != garp_rarp_continuous) {
                             /* reset backoff */
@@ -5178,6 +5183,7 @@ send_garp_rarp_update(struct ovsdb_idl_txn *ovnsb_idl_txn,
     if (garp_rarp) {
         garp_rarp->dp_key = binding_rec->datapath->tunnel_key;
         garp_rarp->port_key = binding_rec->tunnel_key;
+        garp_rarp->stale = false;
         if (garp_max_timeout != garp_rarp_max_timeout ||
             garp_continuous != garp_rarp_continuous) {
             /* reset backoff */
@@ -6811,6 +6817,28 @@ send_arp_nd_run(struct rconn *swconn, long long int *send_arp_nd_time)
     }
 }
 
+static bool
+garp_rarp_is_enabled(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct sbrec_port_binding *pb)
+{
+    if (smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+        return false;
+    }
+
+    /* Check if GARP probing is disabled on the peer logical router. */
+    const struct sbrec_port_binding *peer = lport_get_peer(
+            pb, sbrec_port_binding_by_name);
+    if (!peer) {
+        peer = lport_get_l3gw_peer(pb, sbrec_port_binding_by_name);
+    }
+    if (peer && smap_get_bool(&peer->datapath->external_ids,
+                              "disable_garp_rarp", false)) {
+        return false;
+    }
+
+    return true;
+}
+
 /* Called by pinctrl_run(). Runs with in the main ovn-controller
  * thread context. */
 static void
@@ -6865,10 +6893,8 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
      * send_garp_rarp_data. */
     struct shash_node *iter;
     SHASH_FOR_EACH_SAFE (iter, &send_garp_rarp_data) {
-        if (!sset_contains(&localnet_vifs, iter->name) &&
-            !sset_contains(&nat_ip_keys, iter->name)) {
-            send_garp_rarp_delete(iter->name);
-        }
+        struct garp_rarp_data *garp_rarp = iter->data;
+        garp_rarp->stale = true;
     }
 
     /* Update send_garp_rarp_data. */
@@ -6876,7 +6902,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
     SSET_FOR_EACH (iface_id, &localnet_vifs) {
         const struct sbrec_port_binding *pb = lport_lookup_by_name(
             sbrec_port_binding_by_name, iface_id);
-        if (pb && !smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+        if (pb && garp_rarp_is_enabled(sbrec_port_binding_by_name, pb)) {
             send_garp_rarp_update(ovnsb_idl_txn,
                                   sbrec_mac_binding_by_lport_ip,
                                   local_datapaths, pb, &nat_addresses,
@@ -6889,7 +6915,7 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
     SSET_FOR_EACH (gw_port, &local_l3gw_ports) {
         const struct sbrec_port_binding *pb
             = lport_lookup_by_name(sbrec_port_binding_by_name, gw_port);
-        if (pb && !smap_get_bool(&pb->options, "disable_garp_rarp", false)) {
+        if (pb && garp_rarp_is_enabled(sbrec_port_binding_by_name, pb)) {
             send_garp_rarp_update(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
                                   local_datapaths, pb, &nat_addresses,
                                   garp_max_timeout, garp_continuous);
@@ -6908,6 +6934,13 @@ send_garp_rarp_prepare(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 
     /* pinctrl_handler thread will send the GARPs. */
+
+    SHASH_FOR_EACH_SAFE (iter, &send_garp_rarp_data) {
+        struct garp_rarp_data *garp_rarp = iter->data;
+        if (garp_rarp->stale) {
+            send_garp_rarp_delete(iter->name);
+        }
+    }
 
     sset_destroy(&localnet_vifs);
     sset_destroy(&local_l3gw_ports);
