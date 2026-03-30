@@ -789,6 +789,11 @@ ovn_datapath_update_external_ids(struct ovn_datapath *od)
             smap_add_format(&ids, "mac_binding_age_threshold",
                             "%u", age_threshold);
         }
+
+        bool disable_garp_rarp = smap_get_bool(&od->nbr->options,
+                                               "disable_garp_rarp", false);
+        smap_add_format(&ids, "disable_garp_rarp",
+                        disable_garp_rarp ? "true" : "false");
     }
 
     sbrec_datapath_binding_set_external_ids(od->sb, &ids);
