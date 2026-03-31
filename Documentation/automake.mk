@@ -27,6 +27,8 @@ DOC_SOURCE = \
 	Documentation/topics/testing.rst \
 	Documentation/topics/test-development.rst \
 	Documentation/topics/high-availability.rst \
+	Documentation/topics/dynamic-routing/architecture.rst \
+	Documentation/topics/dynamic-routing/index.rst \
 	Documentation/topics/incremental-processing/datapath-sync-graph.png \
 	Documentation/topics/incremental-processing/evpn-arp-graph.png \
 	Documentation/topics/incremental-processing/ic-graph.png \
