@@ -38338,6 +38338,14 @@ check_flow_count() {
     OVS_WAIT_UNTIL([test $count = $(as $hv ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB | grep -v "NXST_FLOW reply" | wc -l)])
 }
 
+wait_for_lookup_fdb_flow() {
+    local hv=$1
+    local mac=$2
+    local count=$3
+    echo "Waiting for $count lookup_fdb flows for $mac on $hv"
+    OVS_WAIT_UNTIL([test $count = $(as $hv ovs-ofctl dump-flows br-int table=OFTABLE_LOOKUP_FDB | grep -c "dl_src=${mac}")])
+}
+
 # Sending packet in both direction. Should create FDB entries for vifs
 # No localnet_learn_fdb yet
 AS_BOX([$(date +%H:%M:%S.%03N) vif11 <=> vif21])
@@ -38427,6 +38435,10 @@ as hv2 ovn-appctl vlog/set jsonrpc:dbg
 
 send_packet hv1 14 99
 ensure_controller_run hv1
+ensure_controller_run hv2
+wait_column "$vif14_key" fdb port_key mac='"00:00:00:00:10:14"'
+wait_for_lookup_fdb_flow hv1 00:00:00:00:10:14 2
+wait_for_lookup_fdb_flow hv2 00:00:00:00:10:14 2
 
 for i in 1 2 3; do
     wait_for_packets hv1 vif1${i}
@@ -38510,6 +38522,9 @@ AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 # (4) FDB => hv2 ovn, (5) flows => hv2 ovs.
 # If packet is received by hv2 ovs before (5), there will be a PACKET_IN2.
 # If packet is only received by hv2 ovs after (5), there will be no PACKET_IN2.
+# hv1 is checked here after synchronizing the earlier 10:14 learn and lookup_fdb
+# flow installation on both hv1 and hv2, so the cumulative PACKET_IN2 count on
+# hv1 is expected to be stable.
 
 AS_BOX([$(date +%H:%M:%S.%03N) Packet from external])
 arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:50', src='00:00:00:00:10:40')/ARP(op=2, pdst='192.168.10.50', psrc='192.168.10.40')")
