@@ -537,3 +537,116 @@ AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
 ])
 
 AT_CLEANUP
+
+AT_SETUP([sync netlink nexthops - learn nexthops])
+AT_KEYWORDS([netlink-nexthops])
+
+ADD_NAMESPACES(nh)
+NS_EXEC([nh], [ip link set up lo])
+
+NS_CHECK_EXEC([nh], [ip nexthop add id 1 via 192.168.1.1 fdb], [0])
+NS_CHECK_EXEC([nh], [ip nexthop add id 2 via 192.168.1.2 fdb], [0])
+NS_CHECK_EXEC([nh], [ip nexthop add id 5 via 192.168.1.5 fdb], [0])
+NS_CHECK_EXEC([nh], [ip nexthop add id 10 group 1/2 fdb], [0])
+NS_CHECK_EXEC([nh], [ip nexthop add id 3 group 5 fdb], [0])
+NS_CHECK_EXEC([nh], [ip nexthop add id 11 group 1 fdb], [0])
+NS_CHECK_EXEC([nh], [ip nexthop add id 12 group 1,100/2,200 fdb], [0])
+
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-sync | sort], [0], [dnl
+Nexthop id=1, address=192.168.1.1
+Nexthop id=10, group=[[1;192.168.1.1;1, 2;192.168.1.2;1]]
+Nexthop id=11, group=[[1;192.168.1.1;1]]
+Nexthop id=12, group=[[1;192.168.1.1;100, 2;192.168.1.2;200]]
+Nexthop id=2, address=192.168.1.2
+Nexthop id=3, group=[[5;192.168.1.5;1]]
+Nexthop id=5, address=192.168.1.5
+])
+
+AT_CLEANUP
+
+AT_SETUP([sync netlink nexthops - table notify])
+AT_KEYWORDS([netlink-nexthops])
+
+ADD_NAMESPACES(nh)
+NS_EXEC([nh], [ip link set up lo])
+
+dnl Should notify if an IPv4 nexthop is added.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop add id 1 via 10.0.0.1 fdb"], [0], [dnl
+Add nexthop id=1, address=10.0.0.1
+])
+
+dnl Should notify if an IPv6 nexthop is added.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop add id 2 via fd20::2 fdb"], [0], [dnl
+Add nexthop id=2, address=fd20::2
+])
+
+dnl Should notify if IPv4 nexthop group is added.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop add id 10 group 1 fdb"], [0], [dnl
+Add nexthop id=10, group=[[1;1]]
+])
+
+dnl Should notify if IPv6 nexthop group is added.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop add id 11 group 2 fdb"], [0], [dnl
+Add nexthop id=11, group=[[2;1]]
+])
+
+dnl Should notify if IPv4 nexthop group is removed.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop del id 10"], [0], [dnl
+Delete nexthop id=10, group=[[1;1]]
+])
+
+dnl Should notify if IPv6 nexthop group is removed.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop del id 11"], [0], [dnl
+Delete nexthop id=11, group=[[2;1]]
+])
+
+NS_EXEC([nh], [ip nexthop add id 3 via 10.0.0.3 fdb])
+NS_EXEC([nh], [ip nexthop add id 10 group 1/3 fdb])
+NS_EXEC([nh], [ip nexthop add id 4 via fd20::4 fdb])
+NS_EXEC([nh], [ip nexthop add id 11 group 2/4 fdb])
+
+dnl Should notify if an IPv4 nexthop group is removed and group modified.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop del id 3" | sort], [0], [dnl
+Add nexthop id=10, group=[[1;1]]
+Delete nexthop id=3, address=10.0.0.3
+])
+
+dnl Should notify if an IPv6 nexthop group is removed and group modified.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop del id 4" | sort], [0], [dnl
+Add nexthop id=11, group=[[2;1]]
+Delete nexthop id=4, address=fd20::4
+])
+
+dnl Should notify if an IPv4 nexthop group is removed and group modified.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop del id 1" | sort], [0], [dnl
+Delete nexthop id=1, address=10.0.0.1
+Delete nexthop id=10, group=[[1;1]]
+])
+
+dnl Should notify if an IPv6 nexthop group is removed and group modified.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop del id 2" | sort], [0], [dnl
+Delete nexthop id=11, group=[[2;1]]
+Delete nexthop id=2, address=fd20::2
+])
+
+dnl Should NOT notify if a blackhole nexthop is added.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop add id 1 blackhole"], [0], [dnl
+])
+
+dnl Should NOT notify if non-FDB nexthop is added.
+NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
+    "ip nexthop add id 2 via 127.0.0.2 dev lo"], [0], [dnl
+])
+
+AT_CLEANUP

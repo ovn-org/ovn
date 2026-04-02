@@ -585,3 +585,19 @@ AC_DEFUN([OVS_CHECK_LINUX_NETLINK], [
     [AC_DEFINE([HAVE_NLA_BITFIELD32], [1],
     [Define to 1 if struct nla_bitfield32 is available.])])
 ])
+
+dnl OVN_CHECK_LINUX_NEXTHOP_WEIGHT
+dnl
+dnl Configure Linux netlink nexthop compat.
+AC_DEFUN([OVN_CHECK_LINUX_NEXTHOP_WEIGHT], [
+    save_CFLAGS="$CFLAGS"
+    CFLAGS="$CFLAGS -Werror=implicit-function-declaration"
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM([#include <linux/nexthop.h>], [
+          struct nexthop_grp grp = { 0 };
+          nexthop_grp_weight(&grp);
+      ])],
+      [AC_DEFINE([HAVE_NH_GRP_WEIGHT], [1],
+      [Define to 1 if nexthop_grp_weight() is available.])])
+    CFLAGS="$save_CFLAGS"
+  ])

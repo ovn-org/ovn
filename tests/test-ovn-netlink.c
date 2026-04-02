@@ -23,6 +23,7 @@
 
 #include "controller/host-if-monitor.h"
 #include "controller/neighbor-exchange-netlink.h"
+#include "controller/nexthop-exchange.h"
 #include "controller/ovn-netlink-notifier.h"
 #include "controller/neighbor.h"
 #include "controller/route.h"
@@ -280,6 +281,58 @@ test_route_table_notify(struct ovs_cmdl_context *ctx)
 }
 
 static void
+test_nexthop_sync(struct ovs_cmdl_context *ctx OVS_UNUSED)
+{
+    struct hmap nexthops = HMAP_INITIALIZER(&nexthops);
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    nexthops_sync(&nexthops);
+
+    struct nexthop_entry *nhe;
+    HMAP_FOR_EACH (nhe, hmap_node, &nexthops) {
+        ds_clear(&ds);
+        nexthop_entry_format(&ds, nhe);
+        printf("Nexthop %s\n", ds_cstr(&ds));
+    }
+
+    HMAP_FOR_EACH_POP (nhe, hmap_node, &nexthops) {
+        free(nhe);
+    }
+
+    ds_destroy(&ds);
+    hmap_destroy(&nexthops);
+}
+
+static void
+test_nexthop_table_notify(struct ovs_cmdl_context *ctx)
+{
+    unsigned int shift = 1;
+
+    const char *cmd = test_read_value(ctx, shift++, "shell_command");
+    if (!cmd) {
+        return;
+    }
+
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_NEXTHOP, true);
+    run_command_under_notifier(cmd);
+
+    struct vector *msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_NEXTHOP);
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    struct nh_table_msg *msg;
+    VECTOR_FOR_EACH_PTR (msgs, msg) {
+        ds_clear(&ds);
+        nexthop_entry_format(&ds, msg->nhe);
+        printf("%s nexthop %s\n",
+               msg->nlmsg_type == RTM_NEWNEXTHOP ? "Add" : "Delete",
+               ds_cstr(&ds));
+    }
+
+    ds_destroy(&ds);
+    ovn_netlink_notifiers_destroy();
+}
+
+static void
 test_ovn_netlink(int argc, char *argv[])
 {
     set_program_name(argv[0]);
@@ -291,6 +344,9 @@ test_ovn_netlink(int argc, char *argv[])
         {"route-sync", NULL, 1, INT_MAX, test_route_sync, OVS_RO},
         {"route-table-notify", NULL, 1, 1,
          test_route_table_notify, OVS_RO},
+        {"nexthop-sync", NULL, 0, 0, test_nexthop_sync, OVS_RO},
+        {"nexthop-table-notify", NULL, 1, 1,
+         test_nexthop_table_notify, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;

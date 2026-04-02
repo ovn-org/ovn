@@ -78,6 +78,8 @@ controller_ovn_controller_SOURCES += \
 	controller/neighbor-exchange-netlink.h \
 	controller/neighbor-exchange-netlink.c \
 	controller/neighbor-exchange.c \
+	controller/nexthop-exchange.h \
+	controller/nexthop-exchange.c \
 	controller/route-exchange-netlink.h \
 	controller/route-exchange-netlink.c \
 	controller/route-exchange.c
@@ -86,6 +88,7 @@ controller_ovn_controller_SOURCES += \
 	controller/host-if-monitor-stub.c \
 	controller/ovn-netlink-notifier-stub.c \
 	controller/neighbor-exchange-stub.c \
+	controller/nexthop-exchange-stub.c \
 	controller/route-exchange-stub.c
 endif
 

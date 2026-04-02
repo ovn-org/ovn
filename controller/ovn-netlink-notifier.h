@@ -24,6 +24,7 @@ enum ovn_netlink_notifier_type {
     OVN_NL_NOTIFIER_ROUTE_V4,
     OVN_NL_NOTIFIER_ROUTE_V6,
     OVN_NL_NOTIFIER_NEIGHBOR,
+    OVN_NL_NOTIFIER_NEXTHOP,
     OVN_NL_NOTIFIER_MAX,
 };
 

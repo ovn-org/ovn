@@ -19,6 +19,7 @@
 #include <net/if.h>
 
 #include "neighbor-exchange-netlink.h"
+#include "nexthop-exchange.h"
 #include "netlink-notifier.h"
 #include "route-exchange-netlink.h"
 #include "route-table.h"
@@ -48,11 +49,14 @@ struct ovn_netlink_notifier {
 union ovn_notifier_msg_change {
     struct route_table_msg route;
     struct ne_table_msg neighbor;
+    struct nh_table_msg nexthop;
 };
 
 static void ovn_netlink_route_change_handler(const void *change_, void *aux);
 static void ovn_netlink_neighbor_change_handler(const void *change_,
                                                 void *aux);
+static void ovn_netlink_nexthop_change_handler(const void *change_,
+                                               void *aux);
 
 static struct ovn_netlink_notifier notifiers[OVN_NL_NOTIFIER_MAX] = {
     [OVN_NL_NOTIFIER_ROUTE_V4] = {
@@ -72,6 +76,12 @@ static struct ovn_netlink_notifier notifiers[OVN_NL_NOTIFIER_MAX] = {
         .msgs = VECTOR_EMPTY_INITIALIZER(struct ne_table_msg),
         .change_handler = ovn_netlink_neighbor_change_handler,
         .name = "neighbor",
+    },
+    [OVN_NL_NOTIFIER_NEXTHOP] = {
+        .group = RTNLGRP_NEXTHOP,
+        .msgs = VECTOR_EMPTY_INITIALIZER(struct nh_table_msg),
+        .change_handler = ovn_netlink_nexthop_change_handler,
+        .name = "nexthop",
     },
 };
 
@@ -95,6 +105,11 @@ ovn_netlink_notifier_parse(struct ofpbuf *buf, void *change_)
     if (nlmsg->nlmsg_type == RTM_NEWNEIGH ||
         nlmsg->nlmsg_type == RTM_DELNEIGH) {
         return ne_table_parse(buf, &change->neighbor);
+    }
+
+    if (nlmsg->nlmsg_type == RTM_NEWNEXTHOP ||
+        nlmsg->nlmsg_type == RTM_DELNEXTHOP) {
+        return nh_table_parse(buf, &change->nexthop);
     }
 
     return 0;
@@ -134,6 +149,18 @@ ovn_netlink_neighbor_change_handler(const void *change_, void *aux)
     if (!ne_is_ovn_owned(&change->neighbor.nd)) {
         vector_push(&notifier->msgs, &change->neighbor);
     }
+}
+
+static void
+ovn_netlink_nexthop_change_handler(const void *change_, void *aux)
+{
+    if (!change_) {
+        return;
+    }
+
+    struct ovn_netlink_notifier *notifier = aux;
+    const union ovn_notifier_msg_change *change = change_;
+    vector_push(&notifier->msgs, &change->nexthop);
 }
 
 static void
@@ -214,6 +241,22 @@ ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type)
 {
     ovs_assert(type < OVN_NL_NOTIFIER_MAX);
     struct ovn_netlink_notifier *notifier = &notifiers[type];
+
+    switch (type) {
+    case OVN_NL_NOTIFIER_NEXTHOP: {
+        struct nh_table_msg *msg;
+        VECTOR_FOR_EACH_PTR (&notifier->msgs, msg) {
+            free(msg->nhe);
+        }
+        break;
+    }
+    case OVN_NL_NOTIFIER_ROUTE_V4:
+    case OVN_NL_NOTIFIER_ROUTE_V6:
+    case OVN_NL_NOTIFIER_NEIGHBOR:
+    case OVN_NL_NOTIFIER_MAX:
+        break;
+    }
+
     vector_clear(&notifier->msgs);
 }
 
