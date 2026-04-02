@@ -148,6 +148,18 @@ vector_qsort(struct vector *vec, int (*cmp)(const void *a, const void *b))
     }
 }
 
+/* Binary search for given key in the vector, the vector has to be ordered. */
+static inline void *
+vector_bsearch(const struct vector *vec, const void *key,
+               int (*cmp)(const void *a, const void *b))
+{
+    if (vec->len) {
+        return bsearch(key, vec->buffer, vec->len, vec->esize, cmp);
+    }
+
+    return NULL;
+}
+
 /* Returns the size of allocated space for the vector elements in bytes. */
 static inline size_t
 vector_memory_usage(struct vector *vec)
