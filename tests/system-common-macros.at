@@ -400,6 +400,9 @@ m4_define([VRF_RESERVE],
     ]
 )
 
+# RTPROT_OVN - the routing protocol number used by OVN.
+m4_define([RTPROT_OVN], [84])
+
 # OVN_ROUTE_EQUAL([vrf], [string to compare])
 #
 # Will dump all v4 routes in the mentioned vrf. Trailing spaces will be removed

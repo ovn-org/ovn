@@ -495,3 +495,45 @@ blackhole fd20:100::/64 dev lo proto ovn metric 1024 pref medium
 fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AT_CLEANUP
+
+AT_SETUP([sync netlink routes - table notify])
+AT_KEYWORDS([netlink-routes])
+CHECK_VRF()
+
+table_id=100
+
+check ip link add vrf-$table_id type vrf table $table_id
+on_exit 'ip link del vrf-$table_id'
+check ip link set dev vrf-$table_id up
+
+check ip link add lo-test type dummy
+on_exit 'ip link del lo-test'
+check ip link set lo-test master vrf-$table_id
+check ip link set lo-test address 00:00:00:00:00:10
+check ip addr add 20.0.0.10/24 dev lo-test
+check ip addr add fd20::10/64 dev lo-test
+check ip link set up lo-test
+
+dnl Should notify if an IPv4 route is added to a table monitored by OVN.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
+    "ip route add 10.10.10.0/24 via 20.0.0.1 vrf vrf-$table_id"], [0], [dnl
+Notification v4 table_id=$table_id
+])
+
+dnl Should notify if an IPv6 route is added to a table monitored by OVN.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
+    "ip -6 route add fd10::/64 via fd20::1 vrf vrf-$table_id"], [0], [dnl
+Notification v6 table_id=$table_id
+])
+
+dnl Should NOT notify if a route with proto ovn is added.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
+    "ip route add 10.10.20.0/24 via 20.0.0.1 vrf vrf-$table_id proto RTPROT_OVN"], [0], [dnl
+])
+
+dnl Should NOT notify if an IPv6 route with proto ovn is added.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
+    "ip -6 route add fd20:200::/64 via fd20::1 vrf vrf-$table_id proto RTPROT_OVN"], [0], [dnl
+])
+
+AT_CLEANUP

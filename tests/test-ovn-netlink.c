@@ -251,6 +251,35 @@ done:
 }
 
 static void
+test_route_table_notify(struct ovs_cmdl_context *ctx)
+{
+    unsigned int shift = 1;
+
+    const char *cmd = test_read_value(ctx, shift++, "shell_command");
+    if (!cmd) {
+        return;
+    }
+
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_ROUTE_V4, true);
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_ROUTE_V6, true);
+    run_command_under_notifier(cmd);
+
+    uint32_t table_id;
+
+    struct vector *msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V4);
+    VECTOR_FOR_EACH (msgs, table_id) {
+        printf("Notification v4 table_id=%"PRIu32"\n", table_id);
+    }
+
+    msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V6);
+    VECTOR_FOR_EACH (msgs, table_id) {
+        printf("Notification v6 table_id=%"PRIu32"\n", table_id);
+    }
+
+    ovn_netlink_notifiers_destroy();
+}
+
+static void
 test_ovn_netlink(int argc, char *argv[])
 {
     set_program_name(argv[0]);
@@ -260,6 +289,8 @@ test_ovn_netlink(int argc, char *argv[])
          test_neighbor_table_notify, OVS_RO},
         {"host-if-monitor", NULL, 2, 3, test_host_if_monitor, OVS_RO},
         {"route-sync", NULL, 1, INT_MAX, test_route_sync, OVS_RO},
+        {"route-table-notify", NULL, 1, 1,
+         test_route_table_notify, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
