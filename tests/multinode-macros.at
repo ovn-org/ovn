@@ -68,19 +68,19 @@ m_as() {
 }
 
 m_central_as () {
-    podman exec ovn-central-az1-1 "$@"
+    podman exec ovn-central-az1 "$@"
 }
 
 multinode_nbctl () {
-    m_as ovn-central-az1-1 ovn-nbctl "$@"
+    m_as ovn-central-az1 ovn-nbctl "$@"
 }
 
 multinode_sbctl () {
-    m_as ovn-central-az1-1 ovn-sbctl "$@"
+    m_as ovn-central-az1 ovn-sbctl "$@"
 }
 
 check_fake_multinode_setup_by_nodes() {
-    check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
+    check m_as ovn-central-az1 ovn-nbctl --wait=sb sync
     for c; do
         AT_CHECK([m_as $c ovn-appctl -t ovn-controller version], [0], [ignore])
         on_exit "m_as $c ovs-vsctl list Interface > interfaces-${c}.txt"
@@ -122,9 +122,9 @@ check_fake_multinode_setup() {
 }
 
 cleanup_multinode_resources_by_nodes() {
-    m_as ovn-central-az1-1 rm -f /etc/ovn/ovnnb_db.db
-    m_as ovn-central-az1-1 /usr/share/ovn/scripts/ovn-ctl restart_northd
-    check m_as ovn-central-az1-1 ovn-nbctl --wait=sb sync
+    m_as ovn-central-az1 rm -f /etc/ovn/ovnnb_db.db
+    m_as ovn-central-az1 /usr/share/ovn/scripts/ovn-ctl restart_northd
+    check m_as ovn-central-az1 ovn-nbctl --wait=sb sync
     for c; do
         m_as $c ovs-vsctl del-br br-int
         m_as $c ip --all netns delete
