@@ -53,6 +53,7 @@
 #include "openvswitch/vlog.h"
 #include "ovn/actions.h"
 #include "ovn/features.h"
+#include "ovn-netlink-notifier.h"
 #include "lib/chassis-index.h"
 #include "lib/extend-table.h"
 #include "lib/ip-mcast-index.h"
@@ -92,12 +93,12 @@
 #include "acl-ids.h"
 #include "route.h"
 #include "route-exchange.h"
-#include "route-table-notify.h"
+#include "route-table.h"
 #include "garp_rarp.h"
 #include "host-if-monitor.h"
 #include "neighbor.h"
 #include "neighbor-exchange.h"
-#include "neighbor-table-notify.h"
+#include "neighbor-exchange-netlink.h"
 #include "evpn-arp.h"
 #include "evpn-binding.h"
 #include "evpn-fdb.h"
@@ -5610,6 +5611,30 @@ route_sb_datapath_binding_handler(struct engine_node *node,
     return EN_HANDLED_UNCHANGED;
 }
 
+static int
+table_id_cmp(const void *a_, const void *b_)
+{
+    const uint32_t *a = a_;
+    const uint32_t *b = b_;
+
+    return *a < *b ? -1 : *a > *b;
+}
+
+static void
+route_table_notify_update(struct vector *watches)
+{
+    vector_qsort(watches, table_id_cmp);
+
+    bool enabled = !vector_is_empty(watches);
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_ROUTE_V4, enabled);
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_ROUTE_V6, enabled);
+}
+
+struct ed_type_route_table_notify {
+    /* Vector of ordered 'uint32_t' representing table_ids. */
+    struct vector watches;
+};
+
 struct ed_type_route_exchange {
     /* We need the idl to check if the Learned_Route table exists. */
     struct ovsdb_idl *sb_idl;
@@ -5635,6 +5660,8 @@ en_route_exchange_run(struct engine_node *node, void *data)
 
     struct ed_type_route *route_data =
         engine_get_input_data("route", node);
+    struct ed_type_route_table_notify *rt_notify =
+        engine_get_input_data("route_table_notify", node);
 
     /* There can not actually be any routes to advertise unless we also have
      * the Learned_Route table, since they where introduced in the same
@@ -5642,6 +5669,8 @@ en_route_exchange_run(struct engine_node *node, void *data)
     if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
         return EN_STALE;
     }
+
+    vector_clear(&rt_notify->watches);
 
     struct route_exchange_ctx_in r_ctx_in = {
         .ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn,
@@ -5651,15 +5680,11 @@ en_route_exchange_run(struct engine_node *node, void *data)
     };
     struct route_exchange_ctx_out r_ctx_out = {
         .sb_changes_pending = false,
+        .route_table_watches = &rt_notify->watches,
     };
 
-    hmap_init(&r_ctx_out.route_table_watches);
-
     route_exchange_run(&r_ctx_in, &r_ctx_out);
-    route_table_notify_update_watches(&r_ctx_out.route_table_watches);
-
-    route_table_watch_request_cleanup(&r_ctx_out.route_table_watches);
-    hmap_destroy(&r_ctx_out.route_table_watches);
+    route_table_notify_update(&rt_notify->watches);
 
     re->sb_changes_pending = r_ctx_out.sb_changes_pending;
 
@@ -5693,23 +5718,40 @@ en_route_exchange_cleanup(void *data OVS_UNUSED)
 {
 }
 
-struct ed_type_route_table_notify {
-    /* For incremental processing this could be tracked per datapath in
-     * the future. */
-    bool changed;
-};
-
+/* The route_table_notify node is an input node, but the watches are
+ * populated by route_exchange node. The reason being that engine
+ * periodically runs input nodes to check if there are updates, so it
+ * could process the other nodes, however the route_table_notify cannot
+ * be dependent on other node because it wouldn't be input node anymore. */
 static enum engine_node_state
 en_route_table_notify_run(struct engine_node *node OVS_UNUSED, void *data)
 {
+    enum engine_node_state state = EN_UNCHANGED;
     struct ed_type_route_table_notify *rtn = data;
-    enum engine_node_state state;
-    if (rtn->changed) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
+    struct vector *msgs;
+    uint32_t *table_id;
+
+    msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V4);
+    VECTOR_FOR_EACH_PTR (msgs, table_id) {
+        if (vector_bsearch(&rtn->watches, table_id, table_id_cmp)) {
+            state = EN_UPDATED;
+            break;
+        }
     }
-    rtn->changed = false;
+
+    if (state != EN_UPDATED) {
+        msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V6);
+        VECTOR_FOR_EACH_PTR (msgs, table_id) {
+            if (vector_bsearch(&rtn->watches, table_id, table_id_cmp)) {
+                state = EN_UPDATED;
+                break;
+            }
+        }
+    }
+
+    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_ROUTE_V4);
+    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_ROUTE_V6);
+
     return state;
 }
 
@@ -5718,14 +5760,19 @@ static void *
 en_route_table_notify_init(struct engine_node *node OVS_UNUSED,
                            struct engine_arg *arg OVS_UNUSED)
 {
-    struct ed_type_route_table_notify *rtn = xzalloc(sizeof *rtn);
-    rtn->changed = true;
+    struct ed_type_route_table_notify *rtn = xmalloc(sizeof *rtn);
+
+    *rtn = (struct ed_type_route_table_notify) {
+        .watches = VECTOR_EMPTY_INITIALIZER(uint32_t),
+    };
     return rtn;
 }
 
 static void
-en_route_table_notify_cleanup(void *data OVS_UNUSED)
+en_route_table_notify_cleanup(void *data)
 {
+    struct ed_type_route_table_notify *rtn = data;
+    vector_destroy(&rtn->watches);
 }
 
 struct ed_type_route_exchange_status {
@@ -6226,10 +6273,32 @@ neighbor_sb_port_binding_handler(struct engine_node *node, void *data)
     return EN_HANDLED_UNCHANGED;
 }
 
+static int
+if_index_cmp(const void *a_, const void *b_)
+{
+    const int32_t *a = a_;
+    const int32_t *b = b_;
+
+    return *a < *b ? -1 : *a > *b;
+}
+
+static void
+neighbor_table_notify_update(struct vector *watches)
+{
+    vector_qsort(watches, if_index_cmp);
+
+    bool enabled = !vector_is_empty(watches);
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_NEIGHBOR, enabled);
+}
+
+/* The neighbor_table_notify node is an input node, but the watches are
+ * populated by en_neighbor_exchange node. The reason being that engine
+ * periodically runs input nodes to check if there are updates, so it
+ * could process the other nodes, however the neighbor_table_notify cannot
+ * be dependent on other node because it wouldn't be input node anymore. */
 struct ed_type_neighbor_table_notify {
-    /* For incremental processing this could be tracked per interface in
-     * the future. */
-    bool changed;
+    /* Vector of ordered 'int32_t' representing if_indexes. */
+    struct vector watches;
 };
 
 static void *
@@ -6239,28 +6308,39 @@ en_neighbor_table_notify_init(struct engine_node *node OVS_UNUSED,
     struct ed_type_neighbor_table_notify *ntn = xmalloc(sizeof *ntn);
 
     *ntn = (struct ed_type_neighbor_table_notify) {
-        .changed = true,
+        .watches = VECTOR_EMPTY_INITIALIZER(int32_t),
     };
     return ntn;
 }
 
 static void
-en_neighbor_table_notify_cleanup(void *data OVS_UNUSED)
+en_neighbor_table_notify_cleanup(void *data)
 {
+    struct ed_type_neighbor_table_notify *ntn = data;
+    vector_destroy(&ntn->watches);
 }
 
 static enum engine_node_state
 en_neighbor_table_notify_run(struct engine_node *node OVS_UNUSED,
                              void *data)
 {
+    enum engine_node_state state = EN_UNCHANGED;
     struct ed_type_neighbor_table_notify *ntn = data;
-    enum engine_node_state state;
-    if (ntn->changed) {
-        state = EN_UPDATED;
-    } else {
-        state = EN_UNCHANGED;
+    struct vector *msgs;
+    struct ne_table_msg *ne_msg;
+
+    msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_NEIGHBOR);
+    VECTOR_FOR_EACH_PTR (msgs, ne_msg) {
+        if (vector_bsearch(&ntn->watches,
+                           &ne_msg->nd.if_index,
+                           if_index_cmp)) {
+            state = EN_UPDATED;
+            break;
+        }
     }
-    ntn->changed = false;
+
+    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_NEIGHBOR);
+
     return state;
 }
 
@@ -6307,27 +6387,26 @@ en_neighbor_exchange_run(struct engine_node *node, void *data_)
     struct ed_type_neighbor_exchange *data = data_;
     const struct ed_type_neighbor *neighbor_data =
         engine_get_input_data("neighbor", node);
+    struct ed_type_neighbor_table_notify *nt_notify =
+        engine_get_input_data("neighbor_table_notify", node);
 
     evpn_remote_vteps_clear(&data->remote_vteps);
     evpn_static_entries_clear(&data->static_fdbs);
     evpn_static_entries_clear(&data->static_arps);
+    vector_clear(&nt_notify->watches);
 
     struct neighbor_exchange_ctx_in n_ctx_in = {
         .monitored_interfaces = &neighbor_data->monitored_interfaces,
     };
     struct neighbor_exchange_ctx_out n_ctx_out = {
-        .neighbor_table_watches =
-            HMAP_INITIALIZER(&n_ctx_out.neighbor_table_watches),
+        .neighbor_table_watches = &nt_notify->watches,
         .remote_vteps = &data->remote_vteps,
         .static_fdbs = &data->static_fdbs,
         .static_arps = &data->static_arps,
     };
 
     neighbor_exchange_run(&n_ctx_in, &n_ctx_out);
-    neighbor_table_notify_update_watches(&n_ctx_out.neighbor_table_watches);
-
-    neighbor_table_watch_request_cleanup(&n_ctx_out.neighbor_table_watches);
-    hmap_destroy(&n_ctx_out.neighbor_table_watches);
+    neighbor_table_notify_update(&nt_notify->watches);
 
     return EN_UPDATED;
 }
@@ -7792,17 +7871,11 @@ main(int argc, char *argv[])
                                &transport_zones,
                                bridge_table);
 
-                    struct ed_type_route_table_notify *rtn =
-                        engine_get_internal_data(&en_route_table_notify);
-                    rtn->changed = route_table_notify_run();
+                    ovn_netlink_notifiers_run();
 
                     struct ed_type_host_if_monitor *hifm =
                         engine_get_internal_data(&en_host_if_monitor);
                     hifm->changed = host_if_monitor_run();
-
-                    struct ed_type_neighbor_table_notify *ntn =
-                        engine_get_internal_data(&en_neighbor_table_notify);
-                    ntn->changed = neighbor_table_notify_run();
 
                     struct ed_type_route_exchange_status *rt_res =
                         engine_get_internal_data(&en_route_exchange_status);
@@ -8131,9 +8204,8 @@ main(int argc, char *argv[])
             }
 
             binding_wait();
-            route_table_notify_wait();
             host_if_monitor_wait();
-            neighbor_table_notify_wait();
+            ovn_netlink_notifiers_wait();
         }
 
         unixctl_server_run(unixctl);
@@ -8306,8 +8378,7 @@ loop_done:
     ovsrcu_exit();
     dns_resolve_destroy();
     route_exchange_destroy();
-    route_table_notify_destroy();
-    neighbor_table_notify_destroy();
+    ovn_netlink_notifiers_destroy();
 
     exit(retval);
 }

@@ -1,5 +1,5 @@
-/*
- * Copyright (c) 2025, STACKIT GmbH & Co. KG
+/* Copyright (c) 2025, STACKIT GmbH & Co. KG
+ * Copyright (c) 2026, Red Hat, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,41 +15,42 @@
  */
 
 #include <config.h>
-
-#include <stdbool.h>
+#include <stddef.h>
 
 #include "openvswitch/compiler.h"
-#include "route-table-notify.h"
+#include "ovn-netlink-notifier.h"
+#include "vec.h"
 
-bool
-route_table_notify_run(void)
-{
-    return false;
-}
+static struct vector empty = VECTOR_EMPTY_INITIALIZER(uint8_t);
 
 void
-route_table_notify_wait(void)
+ovn_netlink_update_notifier(enum ovn_netlink_notifier_type type OVS_UNUSED,
+                            bool enabled OVS_UNUSED)
 {
 }
 
-void
-route_table_add_watch_request(struct hmap *route_table_watches OVS_UNUSED,
-                              uint32_t table_id OVS_UNUSED)
+struct vector *
+ovn_netlink_get_msgs(enum ovn_netlink_notifier_type type OVS_UNUSED)
 {
+    return &empty;
 }
 
 void
-route_table_watch_request_cleanup(struct hmap *route_table_watches OVS_UNUSED)
+ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type OVS_UNUSED)
 {
 }
 
 void
-route_table_notify_update_watches(
-    const struct hmap *route_table_watches OVS_UNUSED)
+ovn_netlink_notifiers_run(void)
 {
 }
 
 void
-route_table_notify_destroy(void)
+ovn_netlink_notifiers_wait(void)
+{
+}
+
+void
+ovn_netlink_notifiers_destroy(void)
 {
 }

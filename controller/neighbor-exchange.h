@@ -30,8 +30,8 @@ struct neighbor_exchange_ctx_in {
 };
 
 struct neighbor_exchange_ctx_out {
-    /* Contains struct neighbor_table_watch_request. */
-    struct hmap neighbor_table_watches;
+    /* Contains int32_t representing if_index. */
+    struct vector *neighbor_table_watches;
     /* Contains 'struct evpn_remote_vtep'. */
     struct hmap *remote_vteps;
     /* Contains 'struct evpn_static_entry', remote FDB entries learned through

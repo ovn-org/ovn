@@ -23,7 +23,7 @@
 
 #include "controller/host-if-monitor.h"
 #include "controller/neighbor-exchange-netlink.h"
-#include "controller/neighbor-table-notify.h"
+#include "controller/ovn-netlink-notifier.h"
 #include "controller/neighbor.h"
 #include "controller/route.h"
 #include "controller/route-exchange-netlink.h"
@@ -109,41 +109,48 @@ done:
 }
 
 static void
+run_command_under_notifier(const char *cmd)
+{
+    ovn_netlink_notifiers_run();
+    ovn_netlink_notifiers_wait();
+
+    int rc = system(cmd);
+    if (rc) {
+        exit(rc);
+    }
+
+    ovn_netlink_notifiers_run();
+}
+
+static void
 test_neighbor_table_notify(struct ovs_cmdl_context *ctx)
 {
     unsigned int shift = 1;
-
-    const char *if_name = test_read_value(ctx, shift++, "if_name");
-    if (!if_name) {
-        return;
-    }
-
-    unsigned int if_index;
-    if (!test_read_uint_value(ctx, shift++, "if_index", &if_index)) {
-        return;
-    }
 
     const char *cmd = test_read_value(ctx, shift++, "shell_command");
     if (!cmd) {
         return;
     }
 
-    const char *notify = test_read_value(ctx, shift++, "should_notify");
-    bool expect_notify = notify && !strcmp(notify, "true");
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_NEIGHBOR, true);
+    run_command_under_notifier(cmd);
 
-    struct hmap table_watches = HMAP_INITIALIZER(&table_watches);
-    neighbor_table_add_watch_request(&table_watches, if_index, if_name);
-    neighbor_table_notify_update_watches(&table_watches);
+    struct vector *msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_NEIGHBOR);
 
-    neighbor_table_notify_run();
-    neighbor_table_notify_wait();
-
-    int rc = system(cmd);
-    if (rc) {
-        exit(rc);
+    struct ne_table_msg *msg;
+    VECTOR_FOR_EACH_PTR (msgs, msg) {
+        char addr_s[INET6_ADDRSTRLEN + 1];
+        printf("%s neighbor ifindex=%"PRId32" vlan=%"PRIu16" "
+               "eth=" ETH_ADDR_FMT " dst=%s port=%"PRIu16"\n",
+               msg->nlmsg_type == RTM_NEWNEIGH ? "Add" : "Delete",
+               msg->nd.if_index, msg->nd.vlan, ETH_ADDR_ARGS(msg->nd.lladdr),
+               ipv6_string_mapped(addr_s, &msg->nd.addr)
+                   ? addr_s
+                   : "(invalid)",
+               msg->nd.port);
     }
-    ovs_assert(neighbor_table_notify_run() == expect_notify);
-    neighbor_table_watch_request_cleanup(&table_watches);
+
+    ovn_netlink_notifiers_destroy();
 }
 
 static void
@@ -249,7 +256,7 @@ test_ovn_netlink(int argc, char *argv[])
     set_program_name(argv[0]);
     static const struct ovs_cmdl_command commands[] = {
         {"neighbor-sync", NULL, 2, INT_MAX, test_neighbor_sync, OVS_RO},
-        {"neighbor-table-notify", NULL, 3, 4,
+        {"neighbor-table-notify", NULL, 1, 1,
          test_neighbor_table_notify, OVS_RO},
         {"host-if-monitor", NULL, 2, 3, test_host_if_monitor, OVS_RO},
         {"route-sync", NULL, 1, INT_MAX, test_route_sync, OVS_RO},

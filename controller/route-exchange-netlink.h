@@ -39,6 +39,7 @@
 struct in6_addr;
 struct hmap;
 struct vector;
+struct advertise_route_entry;
 
 struct re_nl_received_route_node {
     const struct sbrec_datapath_binding *db;

@@ -229,6 +229,7 @@ on_exit 'ip link del br-test'
 check ip link set br-test address 00:00:00:00:00:01
 check ip address add dev br-test 10.10.10.1/24
 check ip link set dev br-test up
+br_if_index=$(netlink_if_index br-test)
 
 check ip link add lo-test type dummy
 on_exit 'ip link del lo-test'
@@ -237,43 +238,47 @@ check ip link set lo-test address 00:00:00:00:00:02
 check ip link set dev lo-test up
 lo_if_index=$(netlink_if_index lo-test)
 
-check ip link add br-test-unused type bridge
-on_exit 'ip link del br-test-unused'
-check ip link set br-test-unused address 00:00:00:00:00:03
-check ip address add dev br-test-unused 20.20.20.1/24
-check ip link set dev br-test-unused up
-
-check ip link add lo-test-unused type dummy
-on_exit 'ip link del lo-test-unused'
-check ip link set lo-test-unused master br-test-unused
-check ip link set lo-test-unused address 00:00:00:00:00:04
-check ip link set dev lo-test-unused up
-
 dnl Should notify if an entry is added to a bridge port monitored by OVN.
-check ovstest test-ovn-netlink neighbor-table-notify lo-test $lo_if_index \
-    'bridge fdb add 00:00:00:00:00:05 dev lo-test' \
-    true
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink neighbor-table-notify \
+    'bridge fdb add 00:00:00:00:00:05 dev lo-test'], [0], [dnl
+Add neighbor ifindex=$lo_if_index vlan=0 eth=00:00:00:00:00:05 dst=:: port=0
+])
 
-dnl Should NOT notify if an entry is added to a bridge port that's not
+dnl Should notify if an entry is removed from a bridge port monitored by OVN.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink neighbor-table-notify \
+    'bridge fdb del 00:00:00:00:00:05 dev lo-test'], [0], [dnl
+Delete neighbor ifindex=$lo_if_index vlan=0 eth=00:00:00:00:00:05 dst=:: port=0
+])
+
+dnl Should NOT notify if a static entry is added to a bridge port
 dnl monitored by OVN.
-check ovstest test-ovn-netlink neighbor-table-notify lo-test $lo_if_index \
-    'bridge fdb add 00:00:00:00:00:05 dev lo-test-unused' \
-    false
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink neighbor-table-notify \
+    'bridge fdb add 00:00:00:00:00:06 dev lo-test master static'], [0], [dnl
+])
 
-br_if_index=$(netlink_if_index br-test)
 dnl Should notify if an entry is added to a bridge that's monitored by
 dnl OVN.
-check ovstest test-ovn-netlink neighbor-table-notify br-test $br_if_index \
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink neighbor-table-notify \
     'ip neigh add 10.10.10.10 lladdr 00:00:00:00:10:00 \
-        dev br-test extern_learn' \
-    true
+        dev br-test extern_learn'], [0], [dnl
+Add neighbor ifindex=$br_if_index vlan=0 eth=00:00:00:00:10:00 dst=10.10.10.10 port=0
+])
 
-dnl Should NOT notify if an entry is added to a bridge that's not monitored by
+dnl Should notify if an entry is removed from a bridge that's monitored by
 dnl OVN.
-check ovstest test-ovn-netlink neighbor-table-notify br-test $br_if_index \
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink neighbor-table-notify \
+    'ip neigh del 10.10.10.10 lladdr 00:00:00:00:10:00 \
+        dev br-test' | sort], [0], [dnl
+Add neighbor ifindex=$br_if_index vlan=0 eth=00:00:00:00:00:00 dst=10.10.10.10 port=0
+Delete neighbor ifindex=$br_if_index vlan=0 eth=00:00:00:00:00:00 dst=10.10.10.10 port=0
+])
+
+dnl Should NOT notify if a noarp entry is added to a bridge port
+dnl monitored by OVN.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink neighbor-table-notify \
     'ip neigh add 20.20.20.20 lladdr 00:00:00:00:20:00 \
-        dev br-test-unused extern_learn' \
-    false
+        dev br-test nud noarp'], [0], [dnl
+])
 AT_CLEANUP
 
 AT_SETUP([netlink - host-if-monitor])

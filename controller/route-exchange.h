@@ -30,7 +30,7 @@ struct route_exchange_ctx_in {
 };
 
 struct route_exchange_ctx_out {
-    struct hmap route_table_watches;
+    struct vector *route_table_watches;
     bool sb_changes_pending;
 };
 

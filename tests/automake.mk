@@ -303,10 +303,10 @@ tests_ovstest_SOURCES += \
 	controller/host-if-monitor.h \
 	controller/neighbor-exchange-netlink.c \
 	controller/neighbor-exchange-netlink.h \
-	controller/neighbor-table-notify.c \
-	controller/neighbor-table-notify.h \
 	controller/neighbor.c \
 	controller/neighbor.h \
+	controller/ovn-netlink-notifier.c \
+	controller/ovn-netlink-notifier.h \
 	controller/route-exchange-netlink.c \
 	controller/route-exchange-netlink.h \
 	tests/test-ovn-netlink.c

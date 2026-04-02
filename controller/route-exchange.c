@@ -31,7 +31,6 @@
 #include "ha-chassis.h"
 #include "local_data.h"
 #include "route.h"
-#include "route-table-notify.h"
 #include "route-exchange.h"
 #include "route-exchange-netlink.h"
 
@@ -306,8 +305,7 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
                                r_ctx_in->sbrec_learned_route_by_datapath,
                                &r_ctx_out->sb_changes_pending);
 
-        route_table_add_watch_request(&r_ctx_out->route_table_watches,
-                                      table_id);
+        vector_push(r_ctx_out->route_table_watches, &table_id);
 
         vector_destroy(&received_routes);
     }

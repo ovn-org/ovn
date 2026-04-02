@@ -21,7 +21,6 @@
 #include "neighbor.h"
 #include "neighbor-exchange.h"
 #include "neighbor-exchange-netlink.h"
-#include "neighbor-table-notify.h"
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/vlog.h"
 #include "ovn-util.h"
@@ -136,8 +135,7 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
             break;
         }
 
-        neighbor_table_add_watch_request(&n_ctx_out->neighbor_table_watches,
-                                         if_index, nim->if_name);
+        vector_push(n_ctx_out->neighbor_table_watches, &if_index);
         vector_destroy(&received_neighbors);
     }
 }
