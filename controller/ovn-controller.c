@@ -203,6 +203,152 @@ static char *get_file_system_id(void)
     free(filename);
     return ret;
 }
+
+/* Set/unset flow-restore-wait, and inc ovs next_cfg if false
+ * When set to true, also sets ovn-managed-flow-restore-wait to true to
+ * indicate ownership */
+static void
+set_flow_restore_wait(struct ovsdb_idl_txn *ovs_idl_txn,
+                      const struct ovsrec_open_vswitch *cfg,
+                      const struct smap *other_config,
+                      const bool val, bool ovn_managed)
+{
+    struct smap new_config;
+    smap_clone(&new_config, other_config);
+    smap_replace(&new_config, "flow-restore-wait", val ? "true": "false");
+    ovsrec_open_vswitch_set_other_config(cfg, &new_config);
+    if (val) {
+        ovsrec_open_vswitch_update_external_ids_setkey(
+            cfg, "ovn-managed-flow-restore-wait", "true");
+    } else if (ovn_managed) {
+        ovsrec_open_vswitch_update_external_ids_delkey(
+            cfg, "ovn-managed-flow-restore-wait");
+    }
+    ovsdb_idl_txn_increment(ovs_idl_txn, &cfg->header_,
+                            &ovsrec_open_vswitch_col_next_cfg, true);
+    smap_destroy(&new_config);
+}
+
+static void
+manage_flow_restore_wait(struct ovsdb_idl_txn *ovs_idl_txn,
+                         const struct ovsrec_open_vswitch *cfg,
+                         uint64_t ofctrl_cur_cfg, uint64_t ovs_next_cfg,
+                         int ovs_txn_status, bool is_ha_gw)
+{
+    enum flow_restore_wait_state {
+        FRW_INIT,              /* Initial state */
+        FRW_WAIT_TXN_COMPLETE, /* Sent false, waiting txn to complete */
+        FRW_TXN_SUCCESS,       /* Txn completed. Waiting for OVS Ack. */
+        FRW_DONE               /* Everything completed */
+    };
+
+    static int64_t frw_next_cfg;
+    static enum flow_restore_wait_state frw_state;
+    static bool ofctrl_was_connected = false;
+
+    bool ofctrl_connected = ofctrl_is_connected();
+
+    if (!ovs_idl_txn || !cfg) {
+        return;
+    }
+
+    /* If OVS is stopped/started, make sure flow-restore-wait is toggled. */
+    if (ofctrl_connected && !ofctrl_was_connected) {
+        frw_state = FRW_INIT;
+    }
+    ofctrl_was_connected = ofctrl_connected;
+
+    if (!ofctrl_connected) {
+        return;
+    }
+
+    bool frw = smap_get_bool(&cfg->other_config, "flow-restore-wait", false);
+    bool ovn_managed_once = smap_get_bool(&cfg->external_ids,
+                                          "ovn-managed-flow-restore-wait",
+                                          false);
+
+    if (frw && !ovn_managed_once) {
+        /* frw has been set by ovs-ctl. Do not touch. */
+        return;
+    }
+
+    if (!is_ha_gw) {
+        if (frw) {
+            /* frw has once been set by OVN. We are now not an HA chassis
+             * anymore, unset it. */
+            set_flow_restore_wait(ovs_idl_txn, cfg, &cfg->other_config,
+                                  false, ovn_managed_once);
+        }
+        /* else we are not an HA chassis and frw is false. Ignore it. */
+        return;
+    }
+
+    switch (frw_state) {
+    case FRW_INIT:
+        if (ofctrl_cur_cfg > 0) {
+            set_flow_restore_wait(ovs_idl_txn, cfg, &cfg->other_config,
+                                  false, ovn_managed_once);
+            frw_state = FRW_WAIT_TXN_COMPLETE;
+            VLOG_INFO("Setting flow-restore-wait=false "
+                      "(cur_cfg=%"PRIu64")", ofctrl_cur_cfg);
+        }
+        break;
+
+    case FRW_WAIT_TXN_COMPLETE:
+        /* if (ovs_idl_txn != NULL), the transaction completed.
+         * When the transaction completed, it either failed
+         * (ovs_txn_status == 0) or succeeded (ovs_txn_status != 0). */
+        if (ovs_txn_status == 0) {
+            /* Previous transaction failed. */
+            set_flow_restore_wait(ovs_idl_txn, cfg, &cfg->other_config,
+                                  false, ovn_managed_once);
+            break;
+        }
+        /* txn succeeded, get next_cfg */
+        frw_next_cfg = ovs_next_cfg;
+        frw_state = FRW_TXN_SUCCESS;
+        /* fall through */
+
+    case FRW_TXN_SUCCESS:
+        if (ovs_next_cfg < frw_next_cfg) {
+            /* DB was reset, next_cfg went backwards. */
+            VLOG_INFO("OVS DB reset (next_cfg %"PRId64" -> %"PRIu64"), "
+                      "resetting state",
+                      frw_next_cfg, ovs_next_cfg);
+            set_flow_restore_wait(ovs_idl_txn, cfg, &cfg->other_config,
+                                  false, ovn_managed_once);
+            frw_state = FRW_WAIT_TXN_COMPLETE;
+            break;
+        }
+
+        if (!frw) {
+            if (cfg->cur_cfg >= frw_next_cfg) {
+                set_flow_restore_wait(ovs_idl_txn, cfg, &cfg->other_config,
+                                      true, ovn_managed_once);
+                frw_state = FRW_DONE;
+                VLOG_INFO("Setting flow-restore-wait=true");
+            }
+        } else {
+            /* The transaction to false succeeded but frw is true.
+             * So, another task already set it to true. */
+            frw_state = FRW_DONE;
+            VLOG_INFO("flow-restore-wait was already true");
+        }
+        break;
+    case FRW_DONE:
+        if (!frw) {
+            /* frw has been removed (e.g. by ovs-ctl restart) or is false
+             * (e.g. txn failed.) */
+            set_flow_restore_wait(ovs_idl_txn, cfg, &cfg->other_config,
+                                  false, ovn_managed_once);
+            frw_state = FRW_WAIT_TXN_COMPLETE;
+            VLOG_INFO("OVS frw cleared, restarting flow-restore-wait sequence "
+                      "(cur_cfg=%"PRIu64")", ofctrl_cur_cfg);
+        }
+        break;
+    }
+}
+
 /* Only set monitor conditions on tables that are available in the
  * server schema.
  */
@@ -3396,6 +3542,7 @@ en_mac_cache_cleanup(void *data)
 
 struct ed_type_bfd_chassis {
     struct sset bfd_chassis;
+    bool is_ha_gw;
 };
 
 static void *
@@ -3424,8 +3571,9 @@ en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
         = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
 
     sset_clear(&bfd_chassis->bfd_chassis);
-    bfd_calculate_chassis(chassis, ha_chassis_grp_table,
-                          &bfd_chassis->bfd_chassis);
+    bfd_chassis->is_ha_gw = bfd_calculate_chassis(chassis,
+                                                  ha_chassis_grp_table,
+                                                  &bfd_chassis->bfd_chassis);
     engine_set_node_state(node, EN_UPDATED);
 }
 
@@ -5552,6 +5700,7 @@ main(int argc, char *argv[])
     struct unixctl_server *unixctl;
     struct ovn_exit_args exit_args = {0};
     struct br_int_remote br_int_remote = {0};
+    static uint64_t next_cfg = 0;
     int retval;
 
     /* Read from system-id-override file once on startup. */
@@ -6172,6 +6321,7 @@ main(int argc, char *argv[])
 
     /* Main loop. */
     int ovnsb_txn_status = 1;
+    int ovs_txn_status = 1;
     bool sb_monitor_all = false;
     struct tracked_acl_ids *tracked_acl_ids = NULL;
     while (!exit_args.exiting) {
@@ -6262,6 +6412,11 @@ main(int argc, char *argv[])
                                br_int_remote.probe_interval);
         pinctrl_update_swconn(br_int_remote.target,
                               br_int_remote.probe_interval);
+
+        if (cfg && ovs_idl_txn && ovs_txn_status == -1) {
+            /* txn was in progress and is now completed */
+            next_cfg = cfg->next_cfg;
+        }
 
         /* Enable ACL matching for double tagged traffic. */
         if (ovs_idl_txn && cfg) {
@@ -6579,6 +6734,13 @@ main(int argc, char *argv[])
                     stopwatch_start(OFCTRL_SEQNO_RUN_STOPWATCH_NAME,
                                     time_msec());
                     ofctrl_seqno_run(ofctrl_get_cur_cfg());
+                    if (ovs_idl_txn && bfd_chassis_data) {
+                        manage_flow_restore_wait(ovs_idl_txn, cfg,
+                                                 ofctrl_get_cur_cfg(),
+                                                 next_cfg, ovs_txn_status,
+                                                 bfd_chassis_data->is_ha_gw);
+                    }
+
                     stopwatch_stop(OFCTRL_SEQNO_RUN_STOPWATCH_NAME,
                                    time_msec());
                     stopwatch_start(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
@@ -6673,7 +6835,7 @@ main(int argc, char *argv[])
             OVS_NOT_REACHED();
         }
 
-        int ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
+        ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
         if (!ovs_txn_status) {
             /* The transaction failed. */
             vif_plug_clear_deleted(
@@ -6692,6 +6854,9 @@ main(int argc, char *argv[])
                     &vif_plug_deleted_iface_ids);
             vif_plug_finish_changed(
                     &vif_plug_changed_iface_ids);
+            if (cfg) {
+                next_cfg = cfg->next_cfg;
+            }
         } else if (ovs_txn_status == -1) {
             /* The commit is still in progress */
         } else {
@@ -6761,7 +6926,7 @@ loop_done:
             }
 
             ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
-            int ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
+            ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
             if (!ovs_txn_status) {
                 /* The transaction failed. */
                 vif_plug_clear_deleted(
