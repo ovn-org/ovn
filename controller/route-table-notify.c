@@ -134,19 +134,22 @@ find_watch_entry(uint32_t table_id)
 static void
 route_table_change(const void *change_, void *aux OVS_UNUSED)
 {
-    /* We currently track whether at least one recent route table change
-     * was detected.  If that's the case already there's no need to
-     * continue. */
-    if (any_route_table_changed) {
+    if (!change_) {
         return;
     }
 
-    const struct route_table_msg *change = change_;
-    if (change && change->rd.rtm_protocol != RTPROT_OVN) {
+    /* We currently track whether at least one recent route table change
+     * was detected.  If that's the case already there's no need to
+     * continue. */
+    struct route_table_msg *change =
+        CONST_CAST(struct route_table_msg *, change_);
+    if (!any_route_table_changed && change->rd.rtm_protocol != RTPROT_OVN) {
         if (find_watch_entry(change->rd.rta_table_id)) {
             any_route_table_changed = true;
         }
     }
+
+    route_data_destroy(&change->rd);
 }
 
 static void
