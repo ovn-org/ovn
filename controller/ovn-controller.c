@@ -8307,6 +8307,7 @@ loop_done:
     dns_resolve_destroy();
     route_exchange_destroy();
     route_table_notify_destroy();
+    neighbor_table_notify_destroy();
 
     exit(retval);
 }
