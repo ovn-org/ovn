@@ -18,7 +18,6 @@ jobs:
       matrix:
         cfg:
         - { branch: "main" }
-        - { branch: "branch-22.03" }
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:42"
@@ -89,7 +88,6 @@ jobs:
       matrix:
         cfg:
         - { branch: "main", testsuiteflags: ""}
-        - { branch: "branch-22.03", testsuiteflags: "-k 'basic test'" }
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
     env:
       RUNC_CMD: podman
@@ -138,14 +136,9 @@ jobs:
       with:
         name: test-main-image
 
-    - uses: actions/download-artifact@v8
-      with:
-        name: test-branch-22.03-image
-
     - name: Load podman image
       run: |
         sudo podman load --input ovn_main_image.tar
-        sudo podman load --input ovn_branch-22.03_image.tar
 
     - name: Check out ovn-fake-multi-node
       uses: actions/checkout@v6
