@@ -117,13 +117,14 @@ bfd_calculate_active_tunnels(const struct ovsrec_bridge *br_int,
  *
  * If 'our_chassis' is C5 then this function returns empty bfd set.
  */
-static void
+static bool
 bfd_calculate_chassis(
     const struct sbrec_chassis *our_chassis,
     const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table,
     struct sset *bfd_chassis)
 {
     const struct sbrec_ha_chassis_group *ha_chassis_grp;
+    bool chassis_is_ha_gw = false;
     SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_chassis_grp,
                                            ha_chassis_grp_table) {
         bool is_ha_chassis = false;
@@ -143,6 +144,7 @@ bfd_calculate_chassis(
             sset_add(&grp_chassis, ha_ch->chassis->name);
             if (our_chassis == ha_ch->chassis) {
                 is_ha_chassis = true;
+                chassis_is_ha_gw = true;
                 bfd_setup_required = true;
             }
         }
@@ -176,21 +178,23 @@ bfd_calculate_chassis(
         }
         sset_destroy(&grp_chassis);
     }
+    return chassis_is_ha_gw;
 }
 
-void
+bool
 bfd_run(const struct ovsrec_interface_table *interface_table,
         const struct ovsrec_bridge *br_int,
         const struct sbrec_chassis *chassis_rec,
         const struct sbrec_ha_chassis_group_table *ha_chassis_grp_table,
         const struct sbrec_sb_global_table *sb_global_table)
 {
+    bool is_ha_gw = false;
     if (!chassis_rec) {
-        return;
+        return is_ha_gw;
     }
     struct sset bfd_chassis = SSET_INITIALIZER(&bfd_chassis);
-    bfd_calculate_chassis(chassis_rec, ha_chassis_grp_table,
-                          &bfd_chassis);
+    bool is_hw_gw = bfd_calculate_chassis(chassis_rec, ha_chassis_grp_table,
+                                          &bfd_chassis);
 
     /* Identify tunnels ports(connected to remote chassis id) to enable bfd */
     struct sset tunnels = SSET_INITIALIZER(&tunnels);
@@ -271,4 +275,5 @@ bfd_run(const struct ovsrec_interface_table *interface_table,
     sset_destroy(&tunnels);
     sset_destroy(&bfd_ifaces);
     sset_destroy(&bfd_chassis);
+    return is_hw_gw;
 }
