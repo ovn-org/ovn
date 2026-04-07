@@ -15,8 +15,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -55,7 +55,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::4/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::4/64 1000::a
 
 m_wait_for_ports_up sw1-port1
 
@@ -103,8 +103,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -126,7 +126,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -225,8 +225,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -248,7 +248,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -328,8 +328,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -351,7 +351,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -444,8 +444,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -467,7 +467,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -553,8 +553,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -576,7 +576,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -680,8 +680,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -703,7 +703,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -809,8 +809,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 # Create the second logical switch with one port
 check multinode_nbctl ls-add sw1
@@ -825,7 +825,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 10.0.0.0/24
 check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
@@ -902,8 +902,8 @@ check multinode_nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3 10
 check multinode_nbctl lsp-add sw0 sw0-port2
 check multinode_nbctl lsp-set-addresses sw0-port2 "50:54:00:00:00:04 10.0.0.4 1000::4"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh sw0-port1 sw0p1 50:54:00:00:00:03 1342 10.0.0.3 24 10.0.0.1 1000::3/64 1000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw0-port2 sw0p2 50:54:00:00:00:04 1342 10.0.0.4 24 10.0.0.1 1000::4/64 1000::a
 
 m_wait_for_ports_up
 
@@ -925,7 +925,7 @@ check multinode_nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
 check multinode_nbctl lrp-add lr0 lr0-sw1 00:00:00:00:ff:02 20.0.0.1/24 2000::a/64
 check multinode_nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
 
-m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh sw1-port1 sw1p1 40:54:00:00:00:03 1342 20.0.0.3 24 20.0.0.1 2000::3/64 2000::a
 
 # create exteranl connection for N/S traffic
 check multinode_nbctl ls-add public
@@ -944,7 +944,7 @@ check multinode_nbctl lr-nat-add lr0 snat 172.20.0.100 20.0.0.0/24
 check multinode_nbctl lsp-add public public-port1
 check multinode_nbctl lsp-set-addresses public-port1 "60:54:00:00:00:03 172.168.0.50"
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh public-port1 pubp1 60:54:00:00:00:03 172.20.0.50 24 172.20.0.100
+m_as ovn-chassis-1 /data/create_fake_vm.sh public-port1 pubp1 60:54:00:00:00:03 1342 172.20.0.50 24 172.20.0.100
 
 check multinode_nbctl --wait=hv sync
 
@@ -1132,10 +1132,10 @@ done
 # Set requested chassis before creating migrator on chassis-3
 check multinode_nbctl --wait=hv set Logical_Switch_Port migrator options:requested-chassis=ovn-chassis-1
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:09 10.0.0.9 24 10.0.0.10 1000::9/64 1000::a
-m_as ovn-chassis-3 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:09 10.0.0.9 24 10.0.0.10 1000::9/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:09 1342 10.0.0.9 24 10.0.0.10 1000::9/64 1000::a
+m_as ovn-chassis-3 /data/create_fake_vm.sh migrator migrator 50:54:00:00:00:09 1342 10.0.0.9 24 10.0.0.10 1000::9/64 1000::a
 for i in 1 2 3; do
-    m_as ovn-chassis-${i} /data/create_fake_vm.sh sw0-port${i} sw0-port${i} 50:54:00:00:00:0${i} 10.0.0.${i} 24 10.0.0.10 1000::${i}/64 1000::a
+    m_as ovn-chassis-${i} /data/create_fake_vm.sh sw0-port${i} sw0-port${i} 50:54:00:00:00:0${i} 1342 10.0.0.${i} 24 10.0.0.10 1000::${i}/64 1000::a
 done
 
 m_wait_for_ports_up
@@ -1447,8 +1447,8 @@ m_as ovn-gw-1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-gw-2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 m_as ovn-gw-3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-ex
 
-m_as ovn-chassis-1 /data/create_fake_vm.sh inside1 hv1-vif1 f0:00:c0:a8:01:01 192.168.1.1 24 192.168.1.254 2000::1/64 2000::a
-m_as ovn-chassis-2 /data/create_fake_vm.sh ext1 ext1 00:00:c0:a8:00:01 192.168.0.1 24 192.168.0.254 1000::3/64 1000::a
+m_as ovn-chassis-1 /data/create_fake_vm.sh inside1 hv1-vif1 f0:00:c0:a8:01:01 1500 192.168.1.1 24 192.168.1.254 2000::1/64 2000::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh ext1 ext1 00:00:c0:a8:00:01 1500 192.168.0.1 24 192.168.0.254 1000::3/64 1000::a
 
 # There should be one ha_chassis_group with the name "R1_outside"
 m_check_row_count HA_Chassis_Group 1 name=R1_outside
