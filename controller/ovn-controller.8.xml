@@ -473,6 +473,17 @@
       </dd>
 
       <dt>
+        <code>external_ids:ovn-managed-flow-restore-wait</code> in the
+        <code>Open_vSwitch</code> table
+      </dt>
+      <dd>
+        When set to true, this key indicates that <code>ovn-controller</code>
+        has set the <code>other_config:flow-restore-wait</code> option.
+        The key is set when <code>ovn-controller</code> enables
+        flow-restore-wait and removed when it clears it.
+      </dd>
+
+      <dt>
         <code>external_ids:ct-zone-*</code> in the <code>Bridge</code> table
       </dt>
       <dd>
