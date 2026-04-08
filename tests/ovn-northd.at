@@ -5598,7 +5598,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.1.1), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:101), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5611,7 +5613,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5632,7 +5636,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5647,7 +5653,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5670,7 +5678,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5687,7 +5697,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5709,7 +5721,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5730,7 +5744,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
@@ -5758,7 +5774,9 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01 && is_chassis_resident("cr-ro1-ls1")), action=(outport = "ls1-ro1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:01:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.0.200), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
@@ -8059,6 +8077,127 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([IP multicast flood without IGMP relay])
+AT_KEYWORDS([mcast_relay])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl ls-add ls0
+
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:00:00:01 10.0.0.1/24 fe80::1/64
+check ovn-nbctl lsp-add-router-port ls0 lsp0-router lrp0
+
+check ovn-nbctl lsp-add ls0 lsp0 -- \
+    lsp-set-addresses lsp0 "00:00:00:00:00:02 10.0.0.2"
+
+dnl IP multicast packet from lsp0.
+mcast_pkt='inport == "lsp0" && eth.src == 00:00:00:00:00:02 && eth.dst == 01:00:5e:00:01:2a && ip4.src == 10.0.0.2 && ip4.dst == 239.0.1.42 && ip.ttl == 64 && udp.src == 42 && udp.dst == 43'
+
+dnl ARP broadcast from lsp0.
+arp_pkt='inport == "lsp0" && eth.src == 00:00:00:00:00:02 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.sha == 00:00:00:00:00:02 && arp.spa == 10.0.0.2 && arp.tha == 00:00:00:00:00:00 && arp.tpa == 10.0.0.3'
+
+dnl Gratuitous ND NA multicast from lsp0.
+nd_na_pkt='inport == "lsp0" && eth.src == 00:00:00:00:00:02 && eth.dst == 33:33:00:00:00:01 && ip6.src == fe80::200:ff:fe00:2 && ip6.dst == ff02::1 && icmp6.type == 136 && nd.target == fe80::200:ff:fe00:2'
+
+dnl Router solicitation multicast from lsp0.
+nd_rs_pkt='inport == "lsp0" && eth.src == 00:00:00:00:00:02 && eth.dst == 33:33:00:00:00:02 && ip6.src == fe80::200:ff:fe00:2 && ip6.dst == ff02::2 && icmp6.type == 133 && ip.ttl == 255'
+
+dnl Router advertisement multicast from lsp0.
+nd_ra_pkt='inport == "lsp0" && eth.src == 00:00:00:00:00:02 && eth.dst == 33:33:00:00:00:01 && ip6.src == fe80::200:ff:fe00:2 && ip6.dst == ff02::1 && icmp6.type == 134 && ip.ttl == 255'
+
+dnl Scenario 1: default, no relay, no snooping.
+dnl The eth.mcast && ip flow should use _MC_flood_l2 not _MC_flood.
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > lsflows
+AT_CAPTURE_FILE([lsflows])
+AT_CHECK([grep -e 'ls_in_l2_lkup' lsflows | grep -e 'priority=71' -e 'priority=72' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+])
+
+dnl Verify packet forwarding: IP multicast should not reach the router
+dnl port, while ARP, ND NA, ND RS and ND RA should.
+AT_CHECK([ovn_trace ls0 "$mcast_pkt" | grep 'outport="lsp0-router"'], [1])
+AT_CHECK([ovn_trace ls0 "$arp_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_na_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_rs_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_ra_pkt" | grep -q 'outport="lsp0-router"'])
+
+dnl Scenario 2: relay enabled on the router but snooping not enabled on the switch.
+dnl No priority 80 flow is installed because build_mcast_flood_lswitch returns
+dnl early when snooping is disabled, so the priority 71 flow is the only path
+dnl for IP multicast to reach relay-enabled routers via _MC_mrouter_flood.
+check ovn-nbctl set logical_router lr0 options:mcast_relay="true"
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > lsflows2
+AT_CAPTURE_FILE([lsflows2])
+AT_CHECK([grep -e 'ls_in_l2_lkup' lsflows2 | grep -e 'priority=71' -e 'priority=72' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(clone { outport = "_MC_mrouter_flood"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+])
+
+dnl Verify packet forwarding: all packet types should reach the router port.
+AT_CHECK([ovn_trace ls0 "$mcast_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$arp_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_na_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_rs_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_ra_pkt" | grep -q 'outport="lsp0-router"'])
+
+dnl Scenario 3: relay enabled on the router and snooping enabled on the switch.
+dnl The eth.mcast && ip flow should include _MC_mrouter_flood for relay-enabled
+dnl router ports plus _MC_flood_l2 for regular ports.
+check ovn-nbctl set logical_switch ls0 other_config:mcast_snoop="true"
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > lsflows3
+AT_CAPTURE_FILE([lsflows3])
+AT_CHECK([grep -e 'ls_in_l2_lkup' lsflows3 | grep -e 'priority=71' -e 'priority=72' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(clone { outport = "_MC_mrouter_flood"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+])
+
+dnl Verify packet forwarding: all packet types should reach the router port.
+AT_CHECK([ovn_trace ls0 "$mcast_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$arp_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_na_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_rs_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_ra_pkt" | grep -q 'outport="lsp0-router"'])
+
+dnl Scenario 4: also enable flood_unregistered on the switch.
+dnl The priority 71 flow should still have _MC_mrouter_flood and _MC_flood_l2.
+dnl There should be no priority 80 flow for ip4.mcast || ip6.mcast because
+dnl flood_unregistered causes build_mcast_flood_lswitch to return early.
+check ovn-nbctl set logical_switch ls0 other_config:mcast_flood_unregistered="true"
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > lsflows4
+AT_CAPTURE_FILE([lsflows4])
+AT_CHECK([grep -e 'ls_in_l2_lkup' lsflows4 | grep -e 'priority=71' -e 'priority=72' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(clone { outport = "_MC_mrouter_flood"; output; }; outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+])
+
+dnl Verify there is no priority 80 flow for ip4.mcast || ip6.mcast when flood_unregistered is set.
+AT_CHECK([grep -e 'ls_in_l2_lkup' lsflows4 | grep -e 'priority=80' | grep -F 'ip4.mcast || ip6.mcast'], [1])
+
+dnl Verify packet forwarding: all packet types should reach the router port.
+AT_CHECK([ovn_trace ls0 "$mcast_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$arp_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_na_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_rs_pkt" | grep -q 'outport="lsp0-router"'])
+AT_CHECK([ovn_trace ls0 "$nd_ra_pkt" | grep -q 'outport="lsp0-router"'])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ACLs after lb])
 AT_KEYWORDS([acl])
@@ -9365,7 +9504,9 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
   table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
@@ -9400,7 +9541,9 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
@@ -9434,7 +9577,9 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
@@ -9469,7 +9614,9 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "sw0p1"), action=(drop;)
@@ -9504,7 +9651,9 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(drop;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "sw0p1"), action=(drop;)
@@ -9543,7 +9692,9 @@ ovn_strip_lflows ], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:01), action=(outport = "sw0p1"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "sw0p2"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_unknown   ), priority=0    , match=(1), action=(output;)
   table=??(ls_in_l2_unknown   ), priority=50   , match=(outport == "none"), action=(drop;)
   table=??(ls_out_apply_port_sec), priority=0    , match=(1), action=(output;)
@@ -13929,7 +14080,9 @@ AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && is_chassis_resident("cr-lr0-public")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.10), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.100), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
@@ -14106,7 +14259,9 @@ AT_CHECK([grep "ls_in_l2_lkup" publicflows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:ff:02 && is_chassis_resident("cr-public-lr0")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 30:54:00:00:00:03 && is_chassis_resident("sw0-port1")), action=(outport = "public-lr0"; output;)
   table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
-  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && (arp || ip)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
   table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:ff:02, 30:54:00:00:00:03} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.10 && !is_chassis_resident("cr-public-lr0")), action=(clone {outport = "cr-public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
   table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 172.168.0.10 && is_chassis_resident("cr-public-lr0")), action=(clone {outport = "public-lr0"; output; }; outport = "_MC_flood_l2"; output;)
@@ -14268,7 +14423,7 @@ AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep -E "tcp.dst == 179
 AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep "arp.op == 2 && arp.tpa == 172.16.1.1" | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=100  , match=(arp.op == 2 && arp.tpa == 172.16.1.1), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
 ])
-AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep "&& nd_na" | ovn_strip_lflows], [0], [dnl
+AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup | grep "ip6.dst == .* && nd_na" | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=100  , match=(ip6.dst == fe80::ac:10ff:fe01:1 && nd_na), action=(clone { outport = "lsp-bgp"; output; }; outport = "ls-lr"; output;)
 ])
 
