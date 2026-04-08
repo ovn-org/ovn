@@ -10131,9 +10131,44 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                       lflow_ref);
     }
 
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 71,
-                  "eth.mcast && (arp || ip)",
+    /* ND NA, Router Solicitation and Router Advertisement should be
+     * flooded to all ports including routers.  ND NA is needed for
+     * neighbor learning; ND RS must reach routers so they can respond
+     * with Router Advertisements; ND RA must reach routers for proper
+     * IPv6 network operation.
+     */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 72,
+                  "eth.mcast && (nd_na || nd_rs || nd_ra)",
                   "outport = \""MC_FLOOD"\"; output;", lflow_ref);
+
+    /* ARP multicast should be flooded to all ports including routers. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 71,
+                  "eth.mcast && arp",
+                  "outport = \""MC_FLOOD"\"; output;", lflow_ref);
+
+    /* IP multicast should not be forwarded to routers that don't have
+     * IGMP relay enabled (mcast_relay=true).  Such routers will always
+     * drop IP multicast in lr_in_ip_input anyway.
+     */
+    ds_clear(actions);
+    if (mcast_sw_info->flood_relay) {
+        ds_put_cstr(actions,
+                    "clone { "
+                        "outport = \""MC_MROUTER_FLOOD"\"; "
+                        "output; "
+                    "}; ");
+    }
+    if (mcast_sw_info->flood_static) {
+        ds_put_cstr(actions,
+                    "clone { "
+                        "outport = \""MC_STATIC"\"; "
+                        "output; "
+                    "}; ");
+    }
+    ds_put_cstr(actions, "outport = \""MC_FLOOD_L2"\"; output;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 71,
+                  "eth.mcast && ip",
+                  ds_cstr(actions), lflow_ref);
 
     /* Non-{arp,ip} L2 multicast traffic should not be sent to router
      * ports since these packets will be discarded in the router pipeline.
