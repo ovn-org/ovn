@@ -1671,7 +1671,8 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
                          const struct smap *nb_options,
                          const struct nbrec_logical_router *nb_lr,
                          const char *route_tag,
-                         const struct nbrec_logical_router_port *ts_lrp)
+                         const struct nbrec_logical_router_port *ts_lrp,
+                         bool is_src_dynamic)
 {
     struct in6_addr prefix, nexthop;
     unsigned int plen;
@@ -1721,8 +1722,10 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
         ds_destroy(&msg);
     }
 
+    const char *origin = is_src_dynamic ? ROUTE_ORIGIN_CONNECTED_DYNAMIC :
+                                          ROUTE_ORIGIN_CONNECTED;
     /* directly-connected routes go to <main> route table */
-    add_to_routes_ad(routes_ad, prefix, plen, nexthop, ROUTE_ORIGIN_CONNECTED,
+    add_to_routes_ad(routes_ad, prefix, plen, nexthop, origin,
                      NULL, nb_lrp, NULL, nb_lr, NULL, route_tag);
 }
 
@@ -2374,7 +2377,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                 add_network_to_routes_ad(routes_ad, lrp->networks[j], lrp,
                                          ts_port_addrs,
                                          &nb_global->options,
-                                         lr, route_tag, ts_lrp);
+                                         lr, route_tag, ts_lrp, false);
             }
         } else {
             /* The router port of the TS port is ignored. */
@@ -2429,7 +2432,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
         add_network_to_routes_ad(routes_ad, sb_route->ip_prefix, NULL,
                                  ts_port_addrs,
                                  &nb_global->options,
-                                 lr, route_tag, ts_lrp);
+                                 lr, route_tag, ts_lrp, true);
     }
     sbrec_learned_route_index_destroy_row(filter);
 }

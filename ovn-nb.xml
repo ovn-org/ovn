@@ -3534,6 +3534,13 @@ or
         </p>
 
         <p>
+          If <code>hub-spoke</code> is in the list then northd will synchronize
+          dynamic routes learned through OVN-IC from other routers into the
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table, enabling
+          hub-and-spoke propagation.
+        </p>
+
+        <p>
           This value can be overwritten on a per LRP basis using
           <ref column="options" key="dynamic-routing-redistribute"
                table="Logical_Router_Port"/> on the Logical_Router_Port.
@@ -4627,6 +4634,13 @@ or
           routers. Neighboring routers are those that are either directly
           connected to this Logical Router Port, or those that are connected
           via shared Logical Switch.
+        </p>
+
+        <p>
+          If <code>hub-spoke</code> is in the list then northd will synchronize
+          dynamic routes learned through OVN-IC from other routers into the
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table, enabling
+          hub-and-spoke propagation.
         </p>
 
         <p>

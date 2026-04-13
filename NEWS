@@ -1,5 +1,8 @@
 Post v26.03.0
 -------------
+   - Dynamic Routing:
+     * Add support for hub-and-spoke propagation via the "hub-spoke" option
+       in dynamic-routing-redistribute settings.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

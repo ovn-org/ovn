@@ -887,6 +887,10 @@ parse_dynamic_routing_redistribute(
             out |= DRRM_LB;
             continue;
         }
+        if (!strcmp(token, "hub-spoke")) {
+            out |= DRRM_IC_DYNAMIC;
+            continue;
+        }
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl,
                      "unknown dynamic-routing-redistribute option '%s' on %s",
@@ -12373,10 +12377,12 @@ parsed_routes_add_static(const struct ovn_datapath *od,
                                          "ecmp_symmetric_reply",
                                          false);
 
+    const char *origin = smap_get_def(&route->options, "origin", "");
     enum route_source source;
-    if (!strcmp(smap_get_def(&route->options, "origin", ""),
-                ROUTE_ORIGIN_CONNECTED)) {
+    if (!strcmp(origin, ROUTE_ORIGIN_CONNECTED)) {
         source = ROUTE_SOURCE_CONNECTED;
+    } else if (!strcmp(origin, ROUTE_ORIGIN_CONNECTED_DYNAMIC)) {
+        source = ROUTE_SOURCE_IC_DYNAMIC;
     } else {
         source = ROUTE_SOURCE_STATIC;
     }
@@ -12471,6 +12477,7 @@ route_source_to_offset(enum route_source source)
 {
     switch (source) {
     case ROUTE_SOURCE_CONNECTED:
+    case ROUTE_SOURCE_IC_DYNAMIC:
         return ROUTE_PRIO_OFFSET_CONNECTED;
     case ROUTE_SOURCE_STATIC:
         return ROUTE_PRIO_OFFSET_STATIC;

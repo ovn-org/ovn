@@ -683,6 +683,8 @@ should_advertise_route(const struct ovn_datapath *advertising_od,
         return drr_mode_LB_is_set(drr);
     case ROUTE_SOURCE_CONNECTED_AS_HOST:
         return drr_mode_CONNECTED_AS_HOST_is_set(drr);
+    case ROUTE_SOURCE_IC_DYNAMIC:
+        return drr_mode_IC_DYNAMIC_is_set(drr);
     case ROUTE_SOURCE_LEARNED:
         OVS_NOT_REACHED();
     default:
