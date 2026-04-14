@@ -923,6 +923,18 @@ ods_assign_array_index(struct ovn_datapaths *datapaths,
     od->datapaths = datapaths;
 }
 
+static void
+init_ls_other_config(struct ovn_datapath *od)
+{
+    od->lb_with_stateless_mode =
+        smap_get_bool(&od->nbs->other_config,
+                      "enable-stateless-acl-with-lb", false);
+
+    int64_t vni = ovn_smap_get_llong(&od->nbs->other_config,
+                                     "dynamic-routing-vni", -1);
+    od->has_evpn_vni = ovn_is_valid_vni(vni);
+}
+
 /* Initializes 'ls_datapaths' to contain a "struct ovn_datapath" for every
  * logical switch, and initializes 'lr_datapaths' to contain a
  * "struct ovn_datapath" for every logical router.
@@ -940,15 +952,7 @@ build_datapaths(const struct ovn_synced_logical_switch_map *ls_map,
                                 &ls->nb->header_.uuid,
                                 ls->nb, NULL, ls->sdp);
         init_ipam_info_for_datapath(od);
-        if (smap_get_bool(&od->nbs->other_config,
-                          "enable-stateless-acl-with-lb",
-                          false)) {
-            od->lb_with_stateless_mode = true;
-        }
-
-        int64_t vni = ovn_smap_get_llong(&od->nbs->other_config,
-                                         "dynamic-routing-vni", -1);
-        od->has_evpn_vni = ovn_is_valid_vni(vni);
+        init_ls_other_config(od);
     }
 
     struct ovn_synced_logical_router *lr;
@@ -5133,6 +5137,7 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         ods_assign_array_index(&nd->ls_datapaths, od);
         init_ipam_info_for_datapath(od);
+        init_ls_other_config(od);
         init_mcast_info_for_datapath(od);
 
         /* Create SB:IP_Multicast for the logical switch. */
