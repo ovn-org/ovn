@@ -5138,7 +5138,6 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         ods_assign_array_index(&nd->ls_datapaths, od);
         init_ipam_info_for_datapath(od);
         init_ls_other_config(od);
-        init_mcast_info_for_datapath(od);
 
         /* Create SB:IP_Multicast for the logical switch. */
         const struct sbrec_ip_multicast *ip_mcast =
