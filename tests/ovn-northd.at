@@ -18864,6 +18864,75 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS ls_stateful incremental processing])
+AT_KEYWORDS([incremental processing])
+ovn_start
+
+AS_BOX([LB and ACL added in same transaction])
+
+dnl Create a switch with a port.
+check ovn-nbctl --wait=sb \
+    -- ls-add ls0 \
+    -- lsp-add ls0 lsp0 \
+    -- lsp-set-addresses lsp0 "00:00:00:00:00:01 10.0.0.1"
+
+dnl Clear engine stats before the combined transaction.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+dnl In a single transaction, add both a stateful ACL and a load balancer.
+dnl This exercises the ls_stateful_northd_handler() LB loop path where
+dnl the switch is added to crupdated tracking and must also refresh ACL
+dnl state via ls_stateful_record_set_acls().
+check ovn-nbctl --wait=sb \
+    -- acl-add ls0 from-lport 100 "ip" allow-related \
+    -- lb-add lb1 10.0.0.100:80 10.0.0.1:80 \
+    -- ls-lb-add ls0 lb1
+
+dnl Verify incremental processing was used (no recompute).
+check_engine_stats ls_stateful norecompute compute
+
+dnl Verify the conntrack defrag flow exists in pre_acl at priority 100.
+dnl REGBIT_CONNTRACK_DEFRAG (reg0[0] = 1) is only set when
+dnl has_stateful_acl is true, proving ls_stateful_record_set_acls()
+dnl was called during the combined LB+ACL transaction.
+ovn-sbctl dump-flows ls0 > lflows
+AT_CHECK([grep 'ls_in_pre_acl' lflows | grep 'priority=100' | grep -q 'reg0\[[0\]] = 1'])
+
+AS_BOX([ACL action change from allow to allow-related])
+
+dnl Create a switch with a non-stateful ACL (allow) and a port.
+check ovn-nbctl --wait=sb \
+    -- ls-add ls1 \
+    -- lsp-add ls1 lsp1 \
+    -- lsp-set-addresses lsp1 "00:00:00:00:00:02 10.0.0.2" \
+    -- acl-add ls1 from-lport 100 "ip" allow
+
+dnl Verify NO conntrack defrag flow (non-stateful ACL).
+ovn-sbctl dump-flows ls1 > lflows
+AT_CHECK([grep 'ls_in_pre_acl' lflows | grep 'priority=100' | grep -q 'reg0\[[0\]] = 1'], [1])
+
+dnl Clear engine stats before modifying the ACL.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+dnl Change the ACL action from allow to allow-related.
+dnl This exercises ls_stateful_acl_handler() where a changed ACL must
+dnl trigger ls_stateful_record_set_acls() to update has_stateful_acl.
+acl_uuid=$(fetch_column nb:Acl _uuid action=allow)
+check ovn-nbctl --wait=sb set acl $acl_uuid action=allow-related
+
+dnl Verify incremental processing was used (no recompute).
+check_engine_stats ls_stateful norecompute compute
+
+dnl Verify the conntrack defrag flow now appears, proving
+dnl has_stateful_acl was correctly updated.
+ovn-sbctl dump-flows ls1 > lflows
+AT_CHECK([grep 'ls_in_pre_acl' lflows | grep 'priority=100' | grep -q 'reg0\[[0\]] = 1'])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Check network function])
 ovn_start
 
