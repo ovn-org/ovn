@@ -149,8 +149,14 @@ ls_stateful_northd_handler(struct engine_node *node, void *data_)
         ovs_assert(ls_stateful_rec);
         ls_stateful_rec->has_lb_vip = ls_has_lb_vip(od);
 
-        /* Add the ls_stateful_rec to the tracking data. */
-        hmapx_add(&data->trk_data.crupdated, ls_stateful_rec);
+        /* Add the ls_stateful_rec to the tracking data.  Refresh ACL
+         * state when first added so that a switch with both changed LBs
+         * and changed ACLs gets its ACL state updated regardless of
+         * which loop runs first. */
+        if (hmapx_add(&data->trk_data.crupdated, ls_stateful_rec)) {
+            ls_stateful_record_set_acls(ls_stateful_rec, od->nbs,
+                                        input_data.ls_port_groups);
+        }
     }
 
     HMAPX_FOR_EACH (hmapx_node, &nd_changes->ls_with_changed_acls) {
@@ -207,6 +213,7 @@ ls_stateful_port_group_handler(struct engine_node *node, void *data_)
 enum engine_input_handler_result
 ls_stateful_acl_handler(struct engine_node *node, void *data_)
 {
+    struct ls_stateful_input input_data = ls_stateful_get_input_data(node);
     struct ed_type_ls_stateful *data = data_;
     const struct nbrec_acl_table *nbrec_acl_table =
         EN_OVSDB_GET(engine_get_input("NB_acl", node));
@@ -223,7 +230,15 @@ ls_stateful_acl_handler(struct engine_node *node, void *data_)
         LS_STATEFUL_TABLE_FOR_EACH (ls_stateful_rec, &data->table) {
             if (uuidset_contains(&ls_stateful_rec->related_acls,
                                  &acl->header_.uuid)) {
-                hmapx_add(&data->trk_data.crupdated, ls_stateful_rec);
+                if (hmapx_add(&data->trk_data.crupdated, ls_stateful_rec)) {
+                    const struct ovn_datapath *od =
+                        ovn_datapaths_find_by_index(
+                            input_data.ls_datapaths,
+                            ls_stateful_rec->ls_index);
+                    ovs_assert(od);
+                    ls_stateful_record_set_acls(ls_stateful_rec, od->nbs,
+                                                input_data.ls_port_groups);
+                }
             }
         }
     }
