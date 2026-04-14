@@ -18804,6 +18804,66 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS incremental processing - other_config fields])
+AT_KEYWORDS([ovn, incremental])
+ovn_start
+
+dnl Test that has_evpn_vni and lb_with_stateless_mode are properly
+dnl initialized when a logical switch is created incrementally (i.e.,
+dnl created with other_config set in the same transaction).
+
+AS_BOX([has_evpn_vni initialized during incremental LS creation])
+dnl Create the switch with dynamic-routing-vni in the SAME transaction
+dnl to exercise the incremental code path in northd_handle_ls_changes().
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb \
+    -- ls-add ls-evpn \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-vni=10 \
+    -- lsp-add ls-evpn lsp0 \
+    -- lsp-set-addresses lsp0 "00:00:00:00:00:01 10.0.0.1"
+
+dnl The northd engine node must not recompute; this proves the
+dnl incremental code path (northd_handle_ls_changes) was used.
+check_engine_stats northd norecompute compute
+
+ovn-sbctl dump-flows ls-evpn > lflows
+
+dnl When has_evpn_vni is true, the l2_lkup flow should include
+dnl get_remote_fdb in addition to get_fdb.
+AT_CHECK([grep 'ls_in_l2_lkup' lflows | grep "get_fdb" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); remote_outport = get_remote_fdb(eth.dst); next;)
+])
+
+AS_BOX([lb_with_stateless_mode initialized during incremental LS creation])
+dnl Create the switch with enable-stateless-acl-with-lb in the SAME
+dnl transaction to exercise the incremental code path.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb \
+    -- ls-add ls-stateless \
+    -- set logical_switch ls-stateless other_config:enable-stateless-acl-with-lb=true \
+    -- lsp-add ls-stateless lsp1 \
+    -- lsp-set-addresses lsp1 "00:00:00:00:00:02 10.0.0.2"
+
+dnl The northd engine node must not recompute; this proves the
+dnl incremental code path (northd_handle_ls_changes) was used.
+check_engine_stats northd norecompute compute
+
+check ovn-nbctl lb-add lb1 10.0.0.100:80 10.0.0.2:80
+check ovn-nbctl ls-lb-add ls-stateless lb1
+check ovn-nbctl --wait=sb acl-add ls-stateless from-lport 100 "ip" allow-related
+
+ovn-sbctl dump-flows ls-stateless > lflows
+
+dnl With lb_with_stateless_mode, the priority 65532 drop rule in acl_eval
+dnl should NOT contain ct.inv. It should match only
+dnl (ct.est && ct.rpl && ct_mark.blocked == 1).
+AT_CHECK([grep 'ls_in_acl_eval' lflows | grep 'priority=65532' | grep -q 'ct.inv'], [1])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Check network function])
 ovn_start
 
