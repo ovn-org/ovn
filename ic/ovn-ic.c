@@ -115,8 +115,9 @@ az_run(struct ic_context *ctx)
      * "ovn-ic-sbctl destroy avail <az>". */
     static char *az_name;
     const struct icsbrec_availability_zone *az;
-    if (ctx->ovnisb_txn && az_name && strcmp(az_name, nb_global->name)) {
-        ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_idl) {
+    if (ctx->ovnisb_unlocked_txn && az_name
+        && strcmp(az_name, nb_global->name)) {
+        ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_unlocked_idl) {
             /* AZ name update locally need to update az in ISB. */
             if (nb_global->name[0] && !strcmp(az->name, az_name)) {
                 icsbrec_availability_zone_set_name(az, nb_global->name);
@@ -138,11 +139,11 @@ az_run(struct ic_context *ctx)
         az_name = xstrdup(nb_global->name);
     }
 
-    if (ctx->ovnisb_txn) {
-        ovsdb_idl_txn_add_comment(ctx->ovnisb_txn, "AZ %s", az_name);
+    if (ctx->ovnisb_unlocked_txn) {
+        ovsdb_idl_txn_add_comment(ctx->ovnisb_unlocked_txn, "AZ %s", az_name);
     }
 
-    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_idl) {
+    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_unlocked_idl) {
         if (!strcmp(az->name, az_name)) {
             ctx->runned_az = az;
             return az;
@@ -150,9 +151,9 @@ az_run(struct ic_context *ctx)
     }
 
     /* Create AZ in ISB */
-    if (ctx->ovnisb_txn) {
+    if (ctx->ovnisb_unlocked_txn) {
         VLOG_INFO("Register AZ %s to interconnection DB.", az_name);
-        az = icsbrec_availability_zone_insert(ctx->ovnisb_txn);
+        az = icsbrec_availability_zone_insert(ctx->ovnisb_unlocked_txn);
         icsbrec_availability_zone_set_name(az, az_name);
         ctx->runned_az = az;
         return az;
@@ -195,7 +196,7 @@ enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
                     struct shash *isb_ts_dps, struct shash *isb_tr_dps)
 {
     const struct icsbrec_datapath_binding *isb_dp;
-    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
+    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_unlocked_idl) {
         ovn_add_tnlid(dp_tnlids, isb_dp->tunnel_key);
 
         enum ic_datapath_type dp_type = ic_dp_get_type(isb_dp);
@@ -209,6 +210,16 @@ enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
     }
 }
 
+/*
+ * Check if the AZ is the leader by checking the lock.
+ */
+static bool
+is_az_leader(struct ovsdb_idl_txn *txn)
+{
+    struct ovsdb_idl *idl = ovsdb_idl_txn_get_idl(txn);
+    return idl && ovsdb_idl_has_lock(idl);
+}
+
 static void
 ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
        struct shash *isb_ts_dps)
@@ -219,9 +230,14 @@ ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
     const struct icnbrec_ic_nb_global *ic_nb =
         icnbrec_ic_nb_global_first(ctx->ovninb_idl);
 
+    /*
+     * Warning: ovnisb_unlocked should not be used to insert data on IC_SB
+     * which can cause a constraint violation, as an example, inserting data to
+     * IC-SB datapath_binding.
+     */
     if (ic_nb && smap_get_bool(&ic_nb->options, "vxlan_mode", false)) {
         const struct icsbrec_encap *encap;
-        ICSBREC_ENCAP_FOR_EACH (encap, ctx->ovnisb_idl) {
+        ICSBREC_ENCAP_FOR_EACH (encap, ctx->ovnisb_unlocked_idl) {
             if (!strcmp(encap->type, "vxlan")) {
                 vxlan_mode = true;
                 break;
@@ -294,7 +310,8 @@ ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
     /* Sync TS between INB and ISB.  This is performed after syncing with AZ
      * SB, to avoid uncommitted ISB datapath tunnel key to be synced back to
      * AZ. */
-    if (ctx->ovnisb_txn) {
+    if (ctx->ovnisb_txn &&
+        is_az_leader(ctx->ovnisb_txn)) {
         /* Create ISB Datapath_Binding */
         ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
             const struct icsbrec_datapath_binding *isb_dp =
@@ -340,6 +357,11 @@ static void
 tr_run(struct ic_context *ctx, struct hmap *dp_tnlids,
        struct shash *isb_tr_dps)
 {
+    /*
+     * Warning: ovnisb_unlocked should not be used to insert data on IC_SB
+     * which can cause a constraint violation, as an example, inserting data to
+     * IC-SB datapath_binding.
+     */
     const struct nbrec_logical_router *lr;
 
     if (ctx->ovnnb_txn) {
@@ -383,7 +405,8 @@ tr_run(struct ic_context *ctx, struct hmap *dp_tnlids,
     /* Sync TR between INB and ISB.  This is performed after syncing with AZ
      * SB, to avoid uncommitted ISB datapath tunnel key to be synced back to
      * AZ. */
-    if (ctx->ovnisb_txn) {
+    if (ctx->ovnisb_txn &&
+        is_az_leader(ctx->ovnisb_txn)) {
         /* Create ISB Datapath_Binding */
         const struct icnbrec_transit_router *tr;
         ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->ovninb_idl) {
@@ -488,7 +511,7 @@ sync_sb_gw_to_isb(struct ic_context *ctx,
     struct icsbrec_encap **isb_encaps =
         xmalloc(chassis->n_encaps * sizeof *isb_encaps);
     for (int i = 0; i < chassis->n_encaps; i++) {
-        isb_encap = icsbrec_encap_insert(ctx->ovnisb_txn);
+        isb_encap = icsbrec_encap_insert(ctx->ovnisb_unlocked_txn);
         icsbrec_encap_set_gateway_name(isb_encap,
                                       chassis->name);
         icsbrec_encap_set_ip(isb_encap, chassis->encaps[i]->ip);
@@ -506,14 +529,14 @@ sync_sb_gw_to_isb(struct ic_context *ctx,
 static void
 gateway_run(struct ic_context *ctx)
 {
-    if (!ctx->ovnisb_txn || !ctx->ovnsb_txn) {
+    if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
         return;
     }
 
     struct shash local_gws = SHASH_INITIALIZER(&local_gws);
     struct shash remote_gws = SHASH_INITIALIZER(&remote_gws);
     const struct icsbrec_gateway *gw;
-    ICSBREC_GATEWAY_FOR_EACH (gw, ctx->ovnisb_idl) {
+    ICSBREC_GATEWAY_FOR_EACH (gw, ctx->ovnisb_unlocked_idl) {
         if (gw->availability_zone == ctx->runned_az) {
             shash_add(&local_gws, gw->name, gw);
         } else {
@@ -526,7 +549,7 @@ gateway_run(struct ic_context *ctx)
         if (smap_get_bool(&chassis->other_config, "is-interconn", false)) {
             gw = shash_find_and_delete(&local_gws, chassis->name);
             if (!gw) {
-                gw = icsbrec_gateway_insert(ctx->ovnisb_txn);
+                gw = icsbrec_gateway_insert(ctx->ovnisb_unlocked_txn);
                 icsbrec_gateway_set_availability_zone(gw, ctx->runned_az);
                 icsbrec_gateway_set_name(gw, chassis->name);
                 sync_sb_gw_to_isb(ctx, chassis, gw);
@@ -980,7 +1003,7 @@ create_isb_pb(struct ic_context *ctx, const char *logical_port,
     }
 
     const struct icsbrec_port_binding *isb_pb =
-        icsbrec_port_binding_insert(ctx->ovnisb_txn);
+        icsbrec_port_binding_insert(ctx->ovnisb_unlocked_txn);
     icsbrec_port_binding_set_availability_zone(isb_pb, az);
     icsbrec_port_binding_set_transit_switch(isb_pb, ts_name);
     icsbrec_port_binding_set_logical_port(isb_pb, logical_port);
@@ -1068,7 +1091,7 @@ find_lsp_in_sb(struct ic_context *ctx,
 static void
 port_binding_run(struct ic_context *ctx)
 {
-    if (!ctx->ovnisb_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
+    if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
         return;
     }
 
@@ -2256,7 +2279,7 @@ advertise_routes(struct ic_context *ctx,
                  const char *ts_name,
                  struct hmap *routes_ad)
 {
-    ovs_assert(ctx->ovnisb_txn);
+    ovs_assert(ctx->ovnisb_unlocked_txn);
     const struct icsbrec_route *isb_route;
     const struct icsbrec_route *isb_route_key =
         icsbrec_route_index_init_row(ctx->icsbrec_route_by_ts_az);
@@ -2298,7 +2321,7 @@ advertise_routes(struct ic_context *ctx,
     /* Create the missing routes in IC-SB */
     struct ic_route_info *route_adv;
     HMAP_FOR_EACH_SAFE (route_adv, node, routes_ad) {
-        isb_route = icsbrec_route_insert(ctx->ovnisb_txn);
+        isb_route = icsbrec_route_insert(ctx->ovnisb_unlocked_txn);
         icsbrec_route_set_transit_switch(isb_route, ts_name);
         icsbrec_route_set_availability_zone(isb_route, az);
 
@@ -2531,7 +2554,7 @@ delete_orphan_ic_routes(struct ic_context *ctx,
 static void
 route_run(struct ic_context *ctx)
 {
-    if (!ctx->ovnisb_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
+    if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
         return;
     }
 
@@ -2963,7 +2986,7 @@ destroy_service_monitor_data(struct sync_service_monitor_data *sync_data)
 static void
 sync_service_monitor(struct ic_context *ctx)
 {
-    if (!ctx->ovnisb_txn || !ctx->ovnsb_txn) {
+    if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
         return;
     }
 
@@ -2985,7 +3008,7 @@ sync_service_monitor(struct ic_context *ctx)
         if (ic_rec) {
             sbrec_service_monitor_set_status(db_rec, ic_rec->status);
         } else {
-            ic_rec = icsbrec_service_monitor_insert(ctx->ovnisb_txn);
+            ic_rec = icsbrec_service_monitor_insert(ctx->ovnisb_unlocked_txn);
             icsbrec_service_monitor_set_type(ic_rec, db_rec->type);
             icsbrec_service_monitor_set_ip(ic_rec, db_rec->ip);
             icsbrec_service_monitor_set_port(ic_rec, db_rec->port);
@@ -3090,7 +3113,7 @@ static void
 update_sequence_numbers(struct ic_context *ctx,
                         struct ovsdb_idl_loop *ic_sb_loop)
 {
-    if (!ctx->ovnisb_txn || !ctx->ovninb_txn) {
+    if (!ctx->ovnisb_unlocked_txn || !ctx->ovninb_txn) {
         return;
     }
 
@@ -3100,9 +3123,9 @@ update_sequence_numbers(struct ic_context *ctx,
         ic_nb = icnbrec_ic_nb_global_insert(ctx->ovninb_txn);
     }
     const struct icsbrec_ic_sb_global *ic_sb = icsbrec_ic_sb_global_first(
-                                               ctx->ovnisb_idl);
+                                               ctx->ovnisb_unlocked_idl);
     if (!ic_sb) {
-        ic_sb = icsbrec_ic_sb_global_insert(ctx->ovnisb_txn);
+        ic_sb = icsbrec_ic_sb_global_insert(ctx->ovnisb_unlocked_txn);
     }
 
     if ((ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) &&
@@ -3112,7 +3135,8 @@ update_sequence_numbers(struct ic_context *ctx,
             icsbrec_availability_zone_set_nb_ic_cfg(ctx->runned_az, 0);
         }
         ic_sb_loop->next_cfg = ic_nb->nb_ic_cfg;
-        ovsdb_idl_txn_increment(ctx->ovnisb_txn, &ctx->runned_az->header_,
+        ovsdb_idl_txn_increment(ctx->ovnisb_unlocked_txn,
+                                &ctx->runned_az->header_,
             &icsbrec_availability_zone_col_nb_ic_cfg, true);
         return;
     }
@@ -3127,7 +3151,7 @@ update_sequence_numbers(struct ic_context *ctx,
     }
 
     const struct icsbrec_availability_zone *other_az;
-    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (other_az, ctx->ovnisb_idl) {
+    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (other_az, ctx->ovnisb_unlocked_idl) {
         if (other_az->nb_ic_cfg != ctx->runned_az->nb_ic_cfg) {
             return;
         }
@@ -3336,6 +3360,7 @@ static void
 update_idl_probe_interval(struct ovsdb_idl *ovn_sb_idl,
                           struct ovsdb_idl *ovn_nb_idl,
                           struct ovsdb_idl *ovn_icsb_idl,
+                          struct ovsdb_idl *ovn_icsb_unlocked_idl,
                           struct ovsdb_idl *ovn_icnb_idl)
 {
     const struct nbrec_nb_global *nb = nbrec_nb_global_first(ovn_nb_idl);
@@ -3354,6 +3379,7 @@ update_idl_probe_interval(struct ovsdb_idl *ovn_sb_idl,
                                    ic_interval);
     }
     set_idl_probe_interval(ovn_icsb_idl, ovn_ic_sb_db, ic_interval);
+    set_idl_probe_interval(ovn_icsb_unlocked_idl, ovn_ic_sb_db, ic_interval);
     set_idl_probe_interval(ovn_icnb_idl, ovn_ic_nb_db, ic_interval);
 }
 
@@ -3394,7 +3420,27 @@ main(int argc, char *argv[])
         ovsdb_idl_create(ovn_ic_nb_db, &icnbrec_idl_class, true, true));
     ovsdb_idl_track_add_all(ovninb_idl_loop.idl);
 
-    /* ovn-ic-sb db. */
+    /*
+     * Each ovn-ic instance maintains two connections to the IC-SB database:
+     * 1. Locked Connection: Competes for a global lock on IC-SB. Used for
+     * writes that must be performed by only one active instance
+     * (e.g., inserting a datapath_binding for a transit switch/router).
+     *
+     * 2. Unlocked Connection: Does not hold a lock. Used for writes that
+     * can be safely performed by multiple instances simultaneously
+     * (e.g., inserting a port_binding).
+     *
+     * This segregation prevents constraint violations and a full recompute
+     * when writing to IC-SB.
+     */
+    /* ovn-ic-sb db without lock. */
+    struct ovsdb_idl_loop ovnisb_unlocked_idl_loop =
+        OVSDB_IDL_LOOP_INITIALIZER(ovsdb_idl_create(ovn_ic_sb_db,
+                                                    &icsbrec_idl_class,
+                                                    true, true));
+    ovsdb_idl_track_add_all(ovnisb_unlocked_idl_loop.idl);
+
+    /* ovn-ic-sb db with lock. */
     struct ovsdb_idl_loop ovnisb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovn_ic_sb_db, &icsbrec_idl_class, true, true));
     ovsdb_idl_track_add_all(ovnisb_idl_loop.idl);
@@ -3619,41 +3665,41 @@ main(int argc, char *argv[])
                                   &icnbrec_transit_switch_col_name);
 
     struct ovsdb_idl_index *icsbrec_port_binding_by_az
-        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_port_binding_col_availability_zone);
 
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts
-        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_port_binding_col_transit_switch);
 
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az
-        = ovsdb_idl_index_create2(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create2(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_port_binding_col_transit_switch,
                                   &icsbrec_port_binding_col_availability_zone);
 
     struct ovsdb_idl_index *icsbrec_route_by_az
-        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_route_col_availability_zone);
 
     struct ovsdb_idl_index *icsbrec_route_by_ts
-        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_route_col_transit_switch);
 
     struct ovsdb_idl_index *icsbrec_route_by_ts_az
-        = ovsdb_idl_index_create2(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create2(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_route_col_transit_switch,
                                   &icsbrec_route_col_availability_zone);
 
     struct ovsdb_idl_index *icsbrec_service_monitor_by_source_az
-        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
             &icsbrec_service_monitor_col_source_availability_zone);
 
     struct ovsdb_idl_index *icsbrec_service_monitor_by_target_az
-        = ovsdb_idl_index_create1(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
             &icsbrec_service_monitor_col_target_availability_zone);
 
     struct ovsdb_idl_index *icsbrec_service_monitor_by_target_az_logical_port
-        = ovsdb_idl_index_create2(ovnisb_idl_loop.idl,
+        = ovsdb_idl_index_create2(ovnisb_unlocked_idl_loop.idl,
             &icsbrec_service_monitor_col_target_availability_zone,
             &icsbrec_service_monitor_col_logical_port);
 
@@ -3668,12 +3714,13 @@ main(int argc, char *argv[])
 
     /* Initialize incremental processing engine for ovn-northd */
     inc_proc_ic_init(&ovnnb_idl_loop, &ovnsb_idl_loop,
-                     &ovninb_idl_loop, &ovnisb_idl_loop);
+                     &ovninb_idl_loop, &ovnisb_unlocked_idl_loop);
 
     unsigned int ovnnb_cond_seqno = UINT_MAX;
     unsigned int ovnsb_cond_seqno = UINT_MAX;
     unsigned int ovninb_cond_seqno = UINT_MAX;
     unsigned int ovnisb_cond_seqno = UINT_MAX;
+    unsigned int ovnisb_unlocked_cond_seqno = UINT_MAX;
 
     /* Main loop. */
     struct ic_engine_context  eng_ctx = {0};
@@ -3685,7 +3732,9 @@ main(int argc, char *argv[])
     while (!exiting) {
         update_ssl_config();
         update_idl_probe_interval(ovnsb_idl_loop.idl, ovnnb_idl_loop.idl,
-                                  ovnisb_idl_loop.idl, ovninb_idl_loop.idl);
+                                  ovnisb_idl_loop.idl,
+                                  ovnisb_unlocked_idl_loop.idl,
+                                  ovninb_idl_loop.idl);
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
@@ -3705,6 +3754,17 @@ main(int argc, char *argv[])
                  * database and then only performing DB transactions if the
                  * lock is held. */
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_ic");
+            }
+
+            if (!ovsdb_idl_has_lock(ovnisb_idl_loop.idl) &&
+                !ovsdb_idl_is_lock_contended(ovnisb_idl_loop.idl)) {
+                /*
+                 * Ensure that only a single ovn-ic has the permission to
+                 * write to IC-SB.
+                 */
+                VLOG_INFO("OVN ISB lock acquired. "
+                          "This ovn-ic instance is now active.");
+                ovsdb_idl_set_lock(ovnisb_idl_loop.idl, "ovn_ic_sb");
             }
 
             struct ovsdb_idl_txn *ovnnb_txn =
@@ -3759,6 +3819,20 @@ main(int argc, char *argv[])
                 ovnisb_cond_seqno = new_ovnisb_cond_seqno;
             }
 
+            struct ovsdb_idl_txn *ovnisb_unlocked_txn =
+                run_idl_loop(&ovnisb_unlocked_idl_loop, "OVN_IC_Southbound",
+                             &eng_ctx.isb_unlock_idl_duration_ms);
+            unsigned int new_ovnisb_unlocked_cond_seqno =
+                ovsdb_idl_get_condition_seqno(ovnisb_unlocked_idl_loop.idl);
+            if (new_ovnisb_unlocked_cond_seqno != ovnisb_unlocked_cond_seqno) {
+                if (!new_ovnisb_unlocked_cond_seqno) {
+                    VLOG_INFO("OVN ISB IDL Unlocked reconnected, "
+                              "force recompute.");
+                    inc_proc_ic_force_recompute();
+                }
+                ovnisb_unlocked_cond_seqno = new_ovnisb_unlocked_cond_seqno;
+            }
+
             struct ic_context ctx = {
                 .ovnnb_idl = ovnnb_idl_loop.idl,
                 .ovnnb_txn = ovnnb_txn,
@@ -3768,6 +3842,8 @@ main(int argc, char *argv[])
                 .ovninb_txn = ovninb_txn,
                 .ovnisb_idl = ovnisb_idl_loop.idl,
                 .ovnisb_txn = ovnisb_txn,
+                .ovnisb_unlocked_idl = ovnisb_unlocked_idl_loop.idl,
+                .ovnisb_unlocked_txn = ovnisb_unlocked_txn,
                 .nbrec_ls_by_name = nbrec_ls_by_name,
                 .nbrec_lr_by_name = nbrec_lr_by_name,
                 .nbrec_lrp_by_name = nbrec_lrp_by_name,
@@ -3815,15 +3891,17 @@ main(int argc, char *argv[])
                 ovsdb_idl_has_ever_connected(ctx.ovnnb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnsb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovninb_idl) &&
-                ovsdb_idl_has_ever_connected(ctx.ovnisb_idl)) {
+                ovsdb_idl_has_ever_connected(ctx.ovnisb_idl) &&
+                ovsdb_idl_has_ever_connected(ctx.ovnisb_unlocked_idl)) {
                 if (ctx.ovnnb_txn && ctx.ovnsb_txn && ctx.ovninb_txn &&
-                    ctx.ovnisb_txn && inc_proc_ic_can_run(&eng_ctx)) {
+                    ctx.ovnisb_unlocked_txn && inc_proc_ic_can_run(&eng_ctx)) {
                     ctx.runned_az = az_run(&ctx);
                     VLOG_DBG("Availability zone: %s", ctx.runned_az ?
                              ctx.runned_az->name : "not created yet.");
                     if (ctx.runned_az) {
                         (void) inc_proc_ic_run(&ctx, &eng_ctx);
-                        update_sequence_numbers(&ctx, &ovnisb_idl_loop);
+                        update_sequence_numbers(&ctx,
+                                                &ovnisb_unlocked_idl_loop);
                     }
                 } else if (!inc_proc_ic_get_force_recompute()) {
                     clear_idl_track = false;
@@ -3847,10 +3925,21 @@ main(int argc, char *argv[])
                                 "force recompute next time.");
                     inc_proc_ic_force_recompute_immediate();
                 }
-
-                if (!ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop)) {
-                    VLOG_INFO("OVNISB commit failed, "
+                if (!ovsdb_idl_loop_commit_and_wait(
+                                          &ovnisb_unlocked_idl_loop)) {
+                    VLOG_INFO("OVNISB Unlocked commit failed, "
                                 "force recompute next time.");
+                    inc_proc_ic_force_recompute_immediate();
+                }
+
+                /*
+                 * ovn-ic will only try to recompute a failed transaction from
+                 * the locked connection IF the AZ has the lock.
+                 */
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop) &&
+                    ovsdb_idl_has_lock(ovnisb_idl_loop.idl)) {
+                    VLOG_INFO("OVNISB commit failed, "
+                              "force recompute next time.");
                     inc_proc_ic_force_recompute_immediate();
                 }
             } else {
@@ -3859,10 +3948,13 @@ main(int argc, char *argv[])
                 int rc2 = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
                 int rc3 = ovsdb_idl_loop_commit_and_wait(&ovninb_idl_loop);
                 int rc4 = ovsdb_idl_loop_commit_and_wait(&ovnisb_idl_loop);
-                if (!rc1 || !rc2 || !rc3 || !rc4) {
-                    VLOG_DBG(" a transaction failed in: %s %s %s %s",
+                int rc5 =
+                    ovsdb_idl_loop_commit_and_wait(&ovnisb_unlocked_idl_loop);
+                if (!rc1 || !rc2 || !rc3 || !rc4 || !rc5) {
+                    VLOG_DBG(" a transaction failed in: %s %s %s %s %s",
                             !rc1 ? "nb" : "", !rc2 ? "sb" : "",
-                            !rc3 ? "ic_nb" : "", !rc4 ? "ic_sb" : "");
+                             !rc3 ? "ic_nb" : "", !rc4 ? "ic_sb" : "",
+                             !rc5 ? "ic_sb_unlocked" : "");
                     /* A transaction failed. Wake up immediately to give
                     * opportunity to send the proper transaction
                     */
@@ -3877,9 +3969,14 @@ main(int argc, char *argv[])
              *      copy will be out of sync.
              *    - but we don't want to create any txns.
              * */
+            if (ovsdb_idl_has_lock(ovnisb_idl_loop.idl)) {
+                VLOG_INFO("This ovn-ic instance is now paused. "
+                          "Removing IC-SB lock.");
+                ovsdb_idl_set_lock(ovnisb_idl_loop.idl, NULL);
+            }
+
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl) ||
-                ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl))
-            {
+                ovsdb_idl_is_lock_contended(ovnsb_idl_loop.idl)) {
                 /* make sure we don't hold the lock while paused */
                 VLOG_INFO("This ovn-ic instance is now paused.");
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, NULL);
@@ -3890,10 +3987,12 @@ main(int argc, char *argv[])
             ovsdb_idl_run(ovnsb_idl_loop.idl);
             ovsdb_idl_run(ovninb_idl_loop.idl);
             ovsdb_idl_run(ovnisb_idl_loop.idl);
+            ovsdb_idl_run(ovnisb_unlocked_idl_loop.idl);
             ovsdb_idl_wait(ovnnb_idl_loop.idl);
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
             ovsdb_idl_wait(ovninb_idl_loop.idl);
             ovsdb_idl_wait(ovnisb_idl_loop.idl);
+            ovsdb_idl_wait(ovnisb_unlocked_idl_loop.idl);
 
             /* Force a full recompute next time we become active. */
             inc_proc_ic_force_recompute_immediate();
@@ -3904,6 +4003,7 @@ main(int argc, char *argv[])
             ovsdb_idl_track_clear(ovnsb_idl_loop.idl);
             ovsdb_idl_track_clear(ovninb_idl_loop.idl);
             ovsdb_idl_track_clear(ovnisb_idl_loop.idl);
+            ovsdb_idl_track_clear(ovnisb_unlocked_idl_loop.idl);
         }
 
         unixctl_server_run(unixctl);
@@ -3925,6 +4025,7 @@ main(int argc, char *argv[])
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
     ovsdb_idl_loop_destroy(&ovninb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnisb_idl_loop);
+    ovsdb_idl_loop_destroy(&ovnisb_unlocked_idl_loop);
     service_stop();
 
     exit(res);

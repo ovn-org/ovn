@@ -22,10 +22,12 @@ struct ic_context {
     struct ovsdb_idl *ovnsb_idl;
     struct ovsdb_idl *ovninb_idl;
     struct ovsdb_idl *ovnisb_idl;
+    struct ovsdb_idl *ovnisb_unlocked_idl;
     struct ovsdb_idl_txn *ovnnb_txn;
     struct ovsdb_idl_txn *ovnsb_txn;
     struct ovsdb_idl_txn *ovninb_txn;
     struct ovsdb_idl_txn *ovnisb_txn;
+    struct ovsdb_idl_txn *ovnisb_unlocked_txn;
     const struct icsbrec_availability_zone *runned_az;
     struct ovsdb_idl_index *nbrec_ls_by_name;
     struct ovsdb_idl_index *nbrec_lr_by_name;

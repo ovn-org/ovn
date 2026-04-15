@@ -27,6 +27,7 @@
 #include "openvswitch/vlog.h"
 #include "inc-proc-ic.h"
 #include "en-ic.h"
+#include "ovn-util.h"
 #include "unixctl.h"
 #include "util.h"
 
@@ -214,7 +215,7 @@ inc_proc_ic_run(struct ic_context *ctx,
                 struct ic_engine_context *ic_eng_ctx)
 {
     ovs_assert(ctx->ovnnb_txn && ctx->ovnsb_txn &&
-               ctx->ovninb_txn && ctx->ovnisb_txn);
+               ctx->ovninb_txn && ctx->ovnisb_unlocked_txn);
 
     int64_t start = time_msec();
     engine_init_run();
@@ -262,7 +263,8 @@ inc_proc_ic_can_run(struct ic_engine_context *ctx)
         ctx->nb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS ||
         ctx->sb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS ||
         ctx->inb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS ||
-        ctx->isb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS) {
+        ctx->isb_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS ||
+        ctx->isb_unlock_idl_duration_ms >= IDL_LOOP_MAX_DURATION_MS) {
         return true;
     }
 

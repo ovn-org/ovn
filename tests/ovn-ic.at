@@ -4793,3 +4793,49 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic - IC-SB lock acquisition and transit switch creation])
+
+ovn_init_ic_db
+ovn_start az1
+ovn_start az2
+
+wait_row_count ic-sb:Availability_Zone 2
+
+ovn_as az1
+check ovn-ic-nbctl ts-add ts1
+
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts1
+as az1 check ovn-appctl -t ic/ovn-ic pause
+
+ovn_as az2
+check ovn-ic-nbctl ts-add ts2
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts2
+
+check_row_count ic-sb:Datapath_Binding 2
+check_column "ts1 ts2" ic-sb:Datapath_Binding transit_switch
+
+as az1 check ovn-appctl -t ic/ovn-ic resume
+
+as az2 check ovn-appctl -t ic/ovn-ic pause
+
+ovn_as az1
+check ovn-ic-nbctl ts-add ts3
+
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts3
+check_row_count ic-sb:Datapath_Binding 3
+check_column "ts1 ts2 ts3" ic-sb:Datapath_Binding transit_switch
+
+as az2 check ovn-appctl -t ic/ovn-ic resume
+
+for i in 1 2; do
+    az=az$i
+    ovn_as $az
+    OVN_CLEANUP_AZ([$az])
+done
+
+OVN_CLEANUP_IC
+
+AT_CLEANUP
+])

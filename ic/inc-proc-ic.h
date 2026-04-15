@@ -13,6 +13,7 @@ struct ic_engine_context {
     uint64_t sb_idl_duration_ms;
     uint64_t inb_idl_duration_ms;
     uint64_t isb_idl_duration_ms;
+    uint64_t isb_unlock_idl_duration_ms;
     uint32_t backoff_ms;
 };
 
