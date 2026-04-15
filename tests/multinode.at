@@ -3829,6 +3829,36 @@ OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -6 -W 1 -c 1 10
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.12])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::12])
 
+AS_BOX([Check EVPN traffic with stateful ACLs])
+dnl Adding a stateful ACL should not break traffic from/to remote VTEPs.
+dnl Without the conntrack skip flows (from_evpn_vtep / to_evpn_vtep),
+dnl conntrack would return +trk+inv for VXLAN traffic and drop it.
+check multinode_nbctl --wait=hv \
+    -- acl-add ls from-lport 100 "ip" allow-related \
+    -- acl-add ls to-lport 100 "ip" allow-related
+
+dnl Verify fabric-to-workload pings still work with stateful ACL.
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::12])
+
+dnl Also add a load balancer and verify pings still work.
+check multinode_nbctl --wait=hv \
+    -- lb-add lb1 10.0.0.100:80 10.0.0.11:80 \
+    -- ls-lb-add ls lb1
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.11])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::11])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.12])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::12])
+
+dnl Cleanup ACL and LB.
+check multinode_nbctl --wait=hv \
+    -- acl-del ls \
+    -- ls-lb-del ls lb1 \
+    -- lb-del lb1
+
 AS_BOX([Check type-2 MAC+IP EVPN route advertisements])
 # Ping from the frr-ns to the fabric workload so that its IP is learned on
 # the fabric EVPN peer (and advertised to OVN).

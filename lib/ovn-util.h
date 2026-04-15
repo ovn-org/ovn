@@ -183,7 +183,8 @@ struct ovsdb_idl_txn *run_idl_loop(struct ovsdb_idl_loop *idl_loop,
 #define OVN_MIN_DP_VXLAN_KEY_GLOBAL (OVN_MAX_DP_VXLAN_KEY_LOCAL + 1)
 #define OVN_MAX_DP_VXLAN_KEY_GLOBAL ((1u << 12) - 1)
 
-#define OVN_MIN_EVPN_KEY (1u << 31)
+#define OVN_EVPN_KEY_FLAG 31
+#define OVN_MIN_EVPN_KEY (1u << OVN_EVPN_KEY_FLAG)
 #define OVN_MAX_EVPN_KEY (OVN_MAX_DP_GLOBAL_NUM | OVN_MIN_EVPN_KEY)
 
 struct hmap;

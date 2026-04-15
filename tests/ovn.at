@@ -128,6 +128,14 @@ xxreg1 = NXM_NX_XXREG1
 ]])
 AT_CLEANUP
 
+dnl Check EVPN VTEP predicate definitions.
+AT_SETUP([EVPN VTEP fields])
+AT_CHECK([ovstest test-ovn dump-symtab | grep evpn_vtep | sort], [0],
+[[from_evpn_vtep = __inport[31]
+to_evpn_vtep = __outport[31]
+]])
+AT_CLEANUP
+
 dnl Check that the OVN conntrack field definitions are correct.
 AT_SETUP([conntrack fields])
 AT_CHECK([ovstest test-ovn dump-symtab | grep ^ct | sort], [0],
