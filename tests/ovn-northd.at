@@ -18933,6 +18933,99 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS EVPN conntrack skip with stateful ACLs and LBs])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+AS_BOX([EVPN switch, no ACLs or LBs])
+check ovn-nbctl --wait=sb \
+    -- ls-add ls-evpn \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-vni=10 \
+    -- lsp-add ls-evpn lsp0 \
+    -- lsp-set-addresses lsp0 "00:00:00:00:00:01 10.0.0.1"
+
+ovn-sbctl dump-flows ls-evpn > lflows
+
+dnl No stateful ACL, so no EVPN skip flows in pre_acl.
+AT_CHECK([grep 'pre_acl' lflows | grep 'from_evpn_vtep'], [1])
+AT_CHECK([grep 'pre_acl' lflows | grep 'to_evpn_vtep'], [1])
+
+dnl pre_lb EVPN skip flows are always present for EVPN switches.
+AT_CHECK([grep 'pre_lb' lflows | grep 'from_evpn_vtep\|to_evpn_vtep' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(from_evpn_vtep), action=(next;)
+  table=??(ls_out_pre_lb      ), priority=110  , match=(to_evpn_vtep), action=(flags.pkt_sampled = 0; ct_clear; next;)
+])
+
+AS_BOX([EVPN switch + stateful ACL])
+check ovn-nbctl --wait=sb acl-add ls-evpn from-lport 100 "ip" allow-related
+
+ovn-sbctl dump-flows ls-evpn > lflows
+
+dnl Stateful ACL present, so EVPN skip flows appear in pre_acl.
+AT_CHECK([grep 'pre_acl' lflows | grep 'from_evpn_vtep\|to_evpn_vtep' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=110  , match=(from_evpn_vtep), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(to_evpn_vtep), action=(next;)
+])
+
+dnl pre_lb EVPN skip flows with next; action (has_stateful_acl is true).
+AT_CHECK([grep 'pre_lb' lflows | grep 'from_evpn_vtep\|to_evpn_vtep' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(from_evpn_vtep), action=(next;)
+  table=??(ls_out_pre_lb      ), priority=110  , match=(to_evpn_vtep), action=(next;)
+])
+
+AS_BOX([EVPN switch + LB only])
+check ovn-nbctl --wait=sb \
+    -- acl-del ls-evpn \
+    -- lb-add lb1 10.0.0.100:80 10.0.0.1:80 \
+    -- ls-lb-add ls-evpn lb1
+
+ovn-sbctl dump-flows ls-evpn > lflows
+
+dnl No stateful ACL, so no EVPN skip flows in pre_acl.
+AT_CHECK([grep 'pre_acl' lflows | grep 'from_evpn_vtep'], [1])
+AT_CHECK([grep 'pre_acl' lflows | grep 'to_evpn_vtep'], [1])
+
+dnl pre_lb EVPN skip flows with ct_clear egress (no stateful ACL).
+AT_CHECK([grep 'pre_lb' lflows | grep 'from_evpn_vtep\|to_evpn_vtep' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(from_evpn_vtep), action=(next;)
+  table=??(ls_out_pre_lb      ), priority=110  , match=(to_evpn_vtep), action=(flags.pkt_sampled = 0; ct_clear; next;)
+])
+
+AS_BOX([EVPN switch + ACL + LB])
+check ovn-nbctl --wait=sb acl-add ls-evpn from-lport 100 "ip" allow-related
+
+ovn-sbctl dump-flows ls-evpn > lflows
+
+dnl Stateful ACL present again, so EVPN skip flows appear in pre_acl.
+AT_CHECK([grep 'pre_acl' lflows | grep 'from_evpn_vtep\|to_evpn_vtep' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=110  , match=(from_evpn_vtep), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(to_evpn_vtep), action=(next;)
+])
+
+dnl pre_lb egress action is next; because has_stateful_acl is true.
+AT_CHECK([grep 'pre_lb' lflows | grep 'from_evpn_vtep\|to_evpn_vtep' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(from_evpn_vtep), action=(next;)
+  table=??(ls_out_pre_lb      ), priority=110  , match=(to_evpn_vtep), action=(next;)
+])
+
+AS_BOX([Non-EVPN switch + ACL])
+check ovn-nbctl --wait=sb \
+    -- ls-add ls-plain \
+    -- lsp-add ls-plain lsp1 \
+    -- lsp-set-addresses lsp1 "00:00:00:00:00:02 10.0.0.2" \
+    -- acl-add ls-plain from-lport 100 "ip" allow-related
+
+ovn-sbctl dump-flows ls-plain > lflows
+
+dnl Non-EVPN switch must not have any EVPN skip flows.
+AT_CHECK([grep 'from_evpn_vtep' lflows], [1])
+AT_CHECK([grep 'to_evpn_vtep' lflows], [1])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Check network function])
 ovn_start
 

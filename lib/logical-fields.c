@@ -16,6 +16,7 @@
 #include <config.h>
 
 #include "openvswitch/shash.h"
+#include "ovn-util.h"
 #include "ovn/expr.h"
 #include "ovn/logical-fields.h"
 #include "ovs-thread.h"
@@ -71,6 +72,20 @@ ovn_init_symtab(struct shash *symtab)
      * doesn't yet support string fields that occupy less than a full OXM. */
     expr_symtab_add_string(symtab, "inport", MFF_LOG_INPORT, NULL);
     expr_symtab_add_string(symtab, "outport", MFF_LOG_OUTPORT, NULL);
+
+    /* Also register the inport/outport backing registers as numeric fields
+     * so that predicates can reference specific bits (e.g., the EVPN key
+     * indicator at bit 31). */
+    expr_symtab_add_field(symtab, "__inport", MFF_LOG_INPORT, NULL, false);
+    expr_symtab_add_field(symtab, "__outport", MFF_LOG_OUTPORT, NULL, false);
+
+    /* Define predicates to identify traffic from/to remote VTEPs so that
+     * northd can skip conntrack without hard-coding register indices. */
+    char vtep_pred[16];
+    snprintf(vtep_pred, sizeof vtep_pred, "__inport[%d]", OVN_EVPN_KEY_FLAG);
+    expr_symtab_add_predicate(symtab, "from_evpn_vtep", vtep_pred);
+    snprintf(vtep_pred, sizeof vtep_pred, "__outport[%d]", OVN_EVPN_KEY_FLAG);
+    expr_symtab_add_predicate(symtab, "to_evpn_vtep", vtep_pred);
 
     /* The port isn't reserved along the pipeline it's just defined as symbol
      * to support matching on string and moving between string registers. */

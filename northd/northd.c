@@ -6309,6 +6309,31 @@ skip_port_from_conntrack(const struct ovn_datapath *od, struct ovn_port *op,
     free(egress_match);
 }
 
+/* Skip conntrack for traffic from/to EVPN remote VTEPs.
+ * Remote VTEPs do not have conntrack zones assigned, so
+ * conntrack lookups would return +trk+inv and cause drops. */
+static void
+skip_evpn_from_conntrack(const struct ovn_datapath *od,
+                         bool has_stateful_acl,
+                         const struct ovn_stage *in_stage,
+                         const struct ovn_stage *out_stage, uint16_t priority,
+                         struct lflow_table *lflows,
+                         struct lflow_ref *lflow_ref)
+{
+    if (!od->has_evpn_vni) {
+        return;
+    }
+
+    const char *egress_action = has_stateful_acl
+                                ? "next;"
+                                : "flags.pkt_sampled = 0; ct_clear; next;";
+
+    ovn_lflow_add(lflows, od, in_stage, priority,
+                  "from_evpn_vtep", "next;", lflow_ref);
+    ovn_lflow_add(lflows, od, out_stage, priority,
+                  "to_evpn_vtep", egress_action, lflow_ref);
+}
+
 static void
 build_stateless_filter(const struct ovn_datapath *od,
                        const struct nbrec_acl *acl,
@@ -6410,6 +6435,10 @@ build_ls_stateful_rec_pre_acls(
                                      S_SWITCH_OUT_PRE_ACL, 110, lflows,
                                      lflow_ref);
         }
+
+        skip_evpn_from_conntrack(od, true,
+                                 S_SWITCH_IN_PRE_ACL, S_SWITCH_OUT_PRE_ACL,
+                                 110, lflows, lflow_ref);
 
         /* stateless filters always take precedence over stateful ACLs. */
         build_stateless_filters(od, ls_port_groups, lflows, lflow_ref);
@@ -6641,6 +6670,14 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
                                      110, lflows, lflow_ref);
         }
     }
+
+    /* EVPN remote VTEPs do not have conntrack zones, so their traffic
+     * must always skip conntrack regardless of whether LB VIPs are
+     * configured.  This differs from localnet ports which DO have
+     * conntrack zones and can participate in load balancing. */
+    skip_evpn_from_conntrack(od, ls_stateful_rec->has_stateful_acl,
+                             S_SWITCH_IN_PRE_LB, S_SWITCH_OUT_PRE_LB,
+                             110, lflows, lflow_ref);
 
     /* 'REGBIT_CONNTRACK_NAT' is set to let the pre-stateful table send
      * packet to conntrack for defragmentation and possibly for unNATting.
