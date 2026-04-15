@@ -410,6 +410,7 @@ Thomas F. Herbert                  thomasfherbert@gmail.com
 Thomas Goirand                     zigo@debian.org
 Thomas Graf                        tgraf@noironetworks.com
 Thomas Lacroix                     thomas.lacroix@citrix.com
+Tiago Matos                        tiago.reis@luizalabs.com
 Tiago Pires                        tiago.pires@luizalabs.com
 Tim Rozet                          trozet@redhat.com
 Timo Puha                          timox.puha@intel.com
