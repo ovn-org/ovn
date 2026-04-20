@@ -1,5 +1,8 @@
-OVN v25.09.3 - xx xxx xxxx
+OVN v25.09.3 - 20 Apr 2026
 --------------------------
+   - Security: Fixed vulnerability CVE-2026-5265.
+   - Security: Fixed vulnerability CVE-2026-5367.
+   - Bug fixes
    - Add support for special port_security prefix "VRRPv3". This prefix allows
      CMS to allow all required traffic for a VRRPv3 virtual router behind LSP.
      See ovn-nb(5) man page for more details.
