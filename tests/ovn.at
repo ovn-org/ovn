@@ -14170,8 +14170,8 @@ AT_CHECK([
     test 0 -eq $pkts
 ])
 
-spa=$(ip_to_hex 10 0 0 1)
-tpa=$(ip_to_hex 10 0 0 100)
+spa=10.0.0.1
+tpa=10.0.0.100
 send_garp hv1 vif1 1 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" $spa $tpa
 
 dnl traffic from localport should not be sent to localnet
