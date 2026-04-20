@@ -1,3 +1,9 @@
+ovn (25.03.4-1) unstable; urgency=low
+   [ OVN team ]
+   * New upstream version
+
+ -- OVN team <dev@openvswitch.org>  Mon, 20 Apr 2026 05:53:44 -0400
+
 ovn (25.03.3-1) unstable; urgency=low
    [ OVN team ]
    * New upstream version
