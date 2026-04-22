@@ -2367,7 +2367,7 @@ compare_expr_sort(const void *a_, const void *b_)
         }
 
         enum expr_type a_type = a->expr->type;
-        enum expr_type b_type = a->expr->type;
+        enum expr_type b_type = b->expr->type;
         return a_type < b_type ? -1 : a_type > b_type;
     } else if (a->type == EXPR_T_AND || a->type == EXPR_T_OR) {
         size_t a_len = ovs_list_size(&a->expr->andor);
