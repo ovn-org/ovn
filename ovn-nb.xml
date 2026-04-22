@@ -2758,7 +2758,7 @@ or
 
       <column name="options" key="distributed">
         Option enables distributed load balancing across compute nodes,
-        ensuring traffic is always routed to local backends — eliminating
+        ensuring traffic is always routed to local backends, eliminating
         east-west traffic between nodes.
         Required configuration: <ref column="ip_port_mappings"/>.
         NOTE: The addressing of the underlay network must not overlap with the
