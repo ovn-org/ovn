@@ -549,8 +549,8 @@ dynamic_bitmap_last_set(const struct dynamic_bitmap *db)
             continue;
         }
 
-        return (BITMAP_ULONG_BITS - 1) - raw_clz64(db->map[i])
-               + (BITMAP_ULONG_BITS * i);
+        /* raw_clz64() operates on values promoted to uint64_t (64-bit). */
+        return 63 - raw_clz64(db->map[i]) + (BITMAP_ULONG_BITS * i);
     }
 
     return -1;
