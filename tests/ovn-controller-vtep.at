@@ -775,6 +775,10 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'priority=
 priority=110,tun_id=0x<>,in_port=<> actions=move:NXM_NX_TUN_ID[[0..23]]->OXM_OF_METADATA[[0..23]],load:0x<>->NXM_NX_REG14[[0..14]],load:0x<>->NXM_NX_REG10[[1]],resubmit(,OFTABLE_LOG_INGRESS_PIPELINE)
 ])
 
+# Skip processing ICMP "packet too big" errors in this table if the packet came from a VTEP tunnel.
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | \
+          grep -E 'icmp_type=3,icmp_code=4|icmp_type=2,icmp_code=0'], [1], [])
+
 OVN_CONTROLLER_VTEP_STOP([], vtep1)
 OVN_CLEANUP([hv1])
 AT_CLEANUP

@@ -532,6 +532,7 @@ local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                 tun->ofport = u16_to_ofp(ofport);
                 tun->type = tunnel_type;
                 tun->is_ipv6 = ip ? addr_is_ipv6(ip) : false;
+                tun->is_ramp_tunnel = is_ramp_tunnel(&iface_rec->other_config);
 
                 free(hash_id);
                 free(ip);
