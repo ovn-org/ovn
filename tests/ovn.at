@@ -10136,6 +10136,195 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ARP/ND from localnet -- proxy reply on resident chassis only])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+dnl Create logical switch with localnet port.
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-localnet-port ls1 ln1 physnet1
+check ovn-nbctl lsp-add ls1 vm1 \
+    -- lsp-set-addresses vm1 "f0:00:00:00:00:01 10.0.0.1 fd01::1"
+check ovn-nbctl lsp-add ls1 vm2 \
+    -- lsp-set-addresses vm2 "f0:00:00:00:00:02 10.0.0.2 fd01::2"
+
+dnl Two hypervisors with bridge-mappings.
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl \
+    -- add-br br-phys \
+    -- add-br br-eth0
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-eth0
+check ovs-vsctl add-port br-eth0 snoopvif1 \
+    -- set Interface snoopvif1 options:tx_pcap=hv1/snoopvif-tx.pcap \
+                                options:rxq_pcap=hv1/snoopvif-rx.pcap
+check ovs-vsctl add-port br-int vm1 \
+    -- set Interface vm1 external-ids:iface-id=vm1 \
+                         options:tx_pcap=hv1/vm1-tx.pcap \
+                         options:rxq_pcap=hv1/vm1-rx.pcap
+
+sim_add hv2
+as hv2
+ovs-vsctl \
+    -- add-br br-phys \
+    -- add-br br-eth0
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-eth0
+check ovs-vsctl add-port br-eth0 snoopvif2 \
+    -- set Interface snoopvif2 options:tx_pcap=hv2/snoopvif-tx.pcap \
+                                options:rxq_pcap=hv2/snoopvif-rx.pcap
+check ovs-vsctl add-port br-int vm2 \
+    -- set Interface vm2 external-ids:iface-id=vm2 \
+                         options:tx_pcap=hv2/vm2-tx.pcap \
+                         options:rxq_pcap=hv2/vm2-rx.pcap
+
+wait_for_ports_up vm1 vm2
+OVN_POPULATE_ARP
+check ovn-nbctl --wait=hv sync
+
+dnl Helper: construct ARP request.
+build_arp_request() {
+    local sha=$1 spa=$2 tpa=$3
+    fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
+             ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', \
+                 psrc='${spa}', pdst='${tpa}')"
+}
+
+dnl Helper: construct expected ARP reply.
+build_arp_reply() {
+    local req_sha=$1 req_spa=$2 reply_sha=$3 reply_spa=$4
+    fmt_pkt "Ether(dst='${req_sha}', src='${reply_sha}')/ \
+             ARP(op=2, hwsrc='${reply_sha}', hwdst='${req_sha}', \
+                 psrc='${reply_spa}', pdst='${req_spa}')"
+}
+
+dnl Helper: construct ND solicitation.
+build_nd_ns() {
+    local sha=$1 spa=$2 tpa=$3 sol_mcast=$4
+    fmt_pkt "Ether(dst='33:33:ff:00:00:0${tpa##*:}', src='${sha}')/ \
+             IPv6(src='${spa}', dst='${sol_mcast}')/ \
+             ICMPv6ND_NS(tgt='${tpa}')/ \
+             ICMPv6NDOptSrcLLAddr(lladdr='${sha}')"
+}
+
+dnl Helper: construct expected ND advertisement.
+build_nd_na() {
+    local req_sha=$1 req_spa=$2 reply_sha=$3 reply_tgt=$4
+    fmt_pkt "Ether(dst='${req_sha}', src='${reply_sha}')/ \
+             IPv6(src='${reply_tgt}', dst='${req_spa}')/ \
+             ICMPv6ND_NA(tgt='${reply_tgt}', R=0, S=1, O=1)/ \
+             ICMPv6NDOptDstLLAddr(lladdr='${reply_sha}')"
+}
+
+test_arp_nd_localnet() {
+    AS_BOX([ARP from localnet on hv1 for vm1 - expect reply])
+    as hv1 reset_pcap_file snoopvif1 hv1/snoopvif
+    as hv2 reset_pcap_file snoopvif2 hv2/snoopvif
+    as hv1 reset_pcap_file vm1 hv1/vm1
+    as hv2 reset_pcap_file vm2 hv2/vm2
+
+    dnl ARP request from br-eth0 on hv1 for vm1 (10.0.0.1).
+    dnl vm1 is resident on hv1, so hv1 should reply.
+    local arp_req=$(build_arp_request "f0:00:00:00:00:99" "10.0.0.99" "10.0.0.1")
+    as hv1 ovs-appctl netdev-dummy/receive snoopvif1 $arp_req
+    local arp_rep=$(build_arp_reply "f0:00:00:00:00:99" "10.0.0.99" \
+                                    "f0:00:00:00:00:01" "10.0.0.1")
+    echo $arp_rep > expected_arp_reply
+    OVN_CHECK_PACKETS_CONTAIN([hv1/snoopvif-tx.pcap], [expected_arp_reply])
+
+    AS_BOX([ARP from localnet on hv2 for vm1 - expect no reply])
+    as hv2 reset_pcap_file snoopvif2 hv2/snoopvif
+
+    dnl ARP request from br-eth0 on hv2 for vm1 (10.0.0.1).
+    dnl vm1 is NOT resident on hv2, so hv2 should NOT reply.
+    dnl To avoid relying on sleep, we also send an ARP request for vm2
+    dnl (which IS resident on hv2) and wait for that reply.  This proves
+    dnl the pipeline is running and any reply for vm1 would have appeared.
+    as hv2 ovs-appctl netdev-dummy/receive snoopvif2 $arp_req
+
+    local arp_req_vm2=$(build_arp_request "f0:00:00:00:00:99" "10.0.0.99" "10.0.0.2")
+    as hv2 ovs-appctl netdev-dummy/receive snoopvif2 $arp_req_vm2
+    local arp_rep_vm2=$(build_arp_reply "f0:00:00:00:00:99" "10.0.0.99" \
+                                        "f0:00:00:00:00:02" "10.0.0.2")
+    echo $arp_rep_vm2 > expected_arp_vm2
+    OVN_CHECK_PACKETS_CONTAIN([hv2/snoopvif-tx.pcap], [expected_arp_vm2])
+
+    dnl Now verify that no ARP reply for vm1 was generated on hv2.
+    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/snoopvif-tx.pcap | \
+              grep -c "$arp_rep"], [1], [dnl
+0
+])
+
+    AS_BOX([ARP from vm2 VIF for vm1 - expect proxy reply])
+    as hv2 reset_pcap_file vm2 hv2/vm2
+    local arp_req2=$(build_arp_request "f0:00:00:00:00:02" "10.0.0.2" "10.0.0.1")
+    as hv2 ovs-appctl netdev-dummy/receive vm2 $arp_req2
+    local arp_rep2=$(build_arp_reply "f0:00:00:00:00:02" "10.0.0.2" \
+                                     "f0:00:00:00:00:01" "10.0.0.1")
+    echo $arp_rep2 > expected_arp_proxy
+    OVN_CHECK_PACKETS_CONTAIN([hv2/vm2-tx.pcap], [expected_arp_proxy])
+
+    AS_BOX([ND from localnet on hv1 for vm1 - expect reply])
+    as hv1 reset_pcap_file snoopvif1 hv1/snoopvif
+    as hv2 reset_pcap_file snoopvif2 hv2/snoopvif
+
+    dnl ND solicitation from br-eth0 on hv1 for vm1 IPv6 (fd01::1).
+    dnl vm1 is resident on hv1, so hv1 should reply.
+    local nd_ns=$(build_nd_ns "f0:00:00:00:00:99" "fd01::99" "fd01::1" "ff02::1:ff00:1")
+    as hv1 ovs-appctl netdev-dummy/receive snoopvif1 $nd_ns
+    local nd_na=$(build_nd_na "f0:00:00:00:00:99" "fd01::99" \
+                               "f0:00:00:00:00:01" "fd01::1")
+    echo $nd_na > expected_nd_reply
+    OVN_CHECK_PACKETS_CONTAIN([hv1/snoopvif-tx.pcap], [expected_nd_reply])
+
+    AS_BOX([ND from localnet on hv2 for vm1 - expect no reply])
+    as hv2 reset_pcap_file snoopvif2 hv2/snoopvif
+
+    dnl ND solicitation from br-eth0 on hv2 for vm1 IPv6 (fd01::1).
+    dnl vm1 is NOT resident on hv2, so hv2 should NOT reply.
+    dnl Same technique: send ND for vm2 (resident) and wait for that reply.
+    as hv2 ovs-appctl netdev-dummy/receive snoopvif2 $nd_ns
+
+    local nd_ns_vm2=$(build_nd_ns "f0:00:00:00:00:99" "fd01::99" "fd01::2" "ff02::1:ff00:2")
+    as hv2 ovs-appctl netdev-dummy/receive snoopvif2 $nd_ns_vm2
+    local nd_na_vm2=$(build_nd_na "f0:00:00:00:00:99" "fd01::99" \
+                                   "f0:00:00:00:00:02" "fd01::2")
+    echo $nd_na_vm2 > expected_nd_vm2
+    OVN_CHECK_PACKETS_CONTAIN([hv2/snoopvif-tx.pcap], [expected_nd_vm2])
+
+    dnl Now verify that no ND advertisement for vm1 was generated on hv2.
+    AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv2/snoopvif-tx.pcap | \
+              grep -c "$nd_na"], [1], [dnl
+0
+])
+
+    AS_BOX([ND from vm2 VIF for vm1 - expect proxy reply])
+    as hv2 reset_pcap_file vm2 hv2/vm2
+    local nd_ns2=$(build_nd_ns "f0:00:00:00:00:02" "fd01::2" "fd01::1" "ff02::1:ff00:1")
+    as hv2 ovs-appctl netdev-dummy/receive vm2 $nd_ns2
+    local nd_na2=$(build_nd_na "f0:00:00:00:00:02" "fd01::2" \
+                                "f0:00:00:00:00:01" "fd01::1")
+    echo $nd_na2 > expected_nd_proxy
+    OVN_CHECK_PACKETS_CONTAIN([hv2/vm2-tx.pcap], [expected_nd_proxy])
+}
+
+AS_BOX([FDB learning disabled])
+test_arp_nd_localnet
+
+AS_BOX([FDB learning enabled])
+dnl Use 'set' instead of 'lsp-set-options' to preserve network_name.
+check ovn-nbctl --wait=hv set Logical_Switch_Port ln1 \
+    options:localnet_learn_fdb=true
+test_arp_nd_localnet
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([send reverse arp for router without ipv4 address])
 ovn_start
 # Create logical switch
