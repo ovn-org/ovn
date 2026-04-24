@@ -513,6 +513,12 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
     return !od->nbr && !od->nbs;
 };
 
+static inline bool
+ls_has_localnet_port(const struct ovn_datapath *od)
+{
+    return !vector_is_empty(&od->localnet_ports);
+}
+
 /* Pipeline stages. */
 #define PIPELINE_STAGES                                                   \
     /* Logical switch ingress stages. */                                  \
