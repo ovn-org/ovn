@@ -3858,6 +3858,33 @@ Packets that reach this table are ready for delivery.  It contains:
 - A priority-0 logical flow that matches all packets not already handled (match
   ``1``) and drops them (action ``drop;``).
 
+.. _route-administrative-distance:
+
+Route Administrative Distance in OVN
+------------------------------------
+In OVN, routes are selected based on an administrative distance, similar
+to traditional networking but with some differences.  Routes with higher
+priority are preferred over those with lower priority. The priority order,
+from highest to lowest, is as follows:
+
+- *High-priority static routes* - includes routes with ``override-connected``
+  option set, as well as ic-learned routes with ``override-connected`` option
+  set to true.
+
+- *Ic-learned connected routes with route_table* - connected routes
+  learned via IC that have the ``route_table`` parameter set.
+
+- *Connected routes* - directly connected routes, including ic-learned
+  connected routes that do not have a ``route_table`` set.
+
+- *Static routes* - manually configured static routes.
+
+- *Learned routes* - routes learned from outside via ovn-controller.
+
+- *Src-ip routes* - source-based static IP routes.
+  Please see the ``OVN_Northbound`` database ``Logical_Router_Static_Route``
+  table documentation in ``ovn-nb`` for details.
+
 .. _drop-sampling:
 
 Drop sampling

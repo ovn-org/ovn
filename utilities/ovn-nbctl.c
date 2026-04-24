@@ -461,7 +461,7 @@ Logical router port commands:\n\
 \n\
 Route commands:\n\
   [--may-exist] [--policy=POLICY] [--ecmp] [--ecmp-symmetric-reply]\n\
-  [--route-table=ROUTE_TABLE] [--bfd]\n\
+  [--override-connected] [--route-table=ROUTE_TABLE] [--bfd]\n\
   lr-route-add ROUTER PREFIX NEXTHOP [PORT]\n\
                             add a route to ROUTER\n\
   [--if-exists] [--policy=POLICY] [--route-table=ROUTE_TABLE]\n\
@@ -5263,6 +5263,8 @@ nbctl_lr_route_add(struct ctl_context *ctx)
                                            "--ecmp-symmetric-reply") != NULL;
     bool ecmp = shash_find(&ctx->options, "--ecmp") != NULL ||
                 ecmp_symmetric_reply;
+    bool override_connected = shash_find(&ctx->options,
+                                         "--override-connected") != NULL;
     struct nbrec_logical_router_static_route *route =
         nbctl_lr_get_route(lr, prefix, next_hop, is_src_route, ecmp,
                            route_table);
@@ -5350,11 +5352,20 @@ nbctl_lr_route_add(struct ctl_context *ctx)
         nbrec_logical_router_static_route_set_route_table(route, route_table);
     }
 
-    if (ecmp_symmetric_reply) {
-        const struct smap options = SMAP_CONST1(&options,
-                                                "ecmp_symmetric_reply",
-                                                "true");
+    if (ecmp_symmetric_reply || override_connected) {
+        struct smap options = SMAP_INITIALIZER(&options);
+
+        if (ecmp_symmetric_reply) {
+            smap_add(&options, "ecmp_symmetric_reply", "true");
+        }
+
+        if (override_connected) {
+            smap_add(&options, ROUTE_OVERRIDE_CONNECTED, "true");
+        }
+
         nbrec_logical_router_static_route_set_options(route, &options);
+
+        smap_destroy(&options);
     }
 
     nbrec_logical_router_update_static_routes_addvalue(lr, route);
@@ -7464,6 +7475,10 @@ print_route(const struct nbrec_logical_router_static_route *route,
         ds_put_cstr(s, " ecmp-symmetric-reply");
     }
 
+    if (smap_get_bool(&route->options, ROUTE_OVERRIDE_CONNECTED, false)) {
+        ds_put_cstr(s, " override-connected");
+    }
+
     if (route->bfd) {
         ds_put_cstr(s, " bfd");
     }
@@ -9447,8 +9462,8 @@ static const struct ctl_command_syntax nbctl_commands[] = {
     /* logical router route commands. */
     { "lr-route-add", 3, 4, "ROUTER PREFIX NEXTHOP [PORT]",
       nbctl_pre_lr_route_add, nbctl_lr_route_add, NULL,
-      "--may-exist,--ecmp,--ecmp-symmetric-reply,--policy=,"
-      "--route-table=,--bfd?", RW },
+      "--may-exist,--ecmp,--ecmp-symmetric-reply,--override-connected,"
+      "--policy=,--route-table=,--bfd?", RW },
     { "lr-route-del", 1, 4, "ROUTER [PREFIX [NEXTHOP [PORT]]]",
       nbctl_pre_lr_route_del, nbctl_lr_route_del, NULL,
       "--if-exists,--policy=,--route-table=", RW },

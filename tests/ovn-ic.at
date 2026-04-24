@@ -885,9 +885,10 @@ check ovn_as az1 ovn-nbctl lb-add lb_v6 [[4242::1]]:80 "[[4242::2]]:80"
 check ovn_as az1 ovn-nbctl lr-lb-add lr1 lb_v6
 OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 4242])
 
-AT_CHECK([ovn-ic-sbctl list route | grep 'ip_prefix.*4242' -A 2], [0], [dnl
+AT_CHECK([ovn-ic-sbctl list route | grep 'ip_prefix.*4242' -A 3], [0], [dnl
 ip_prefix           : "4242::1/128"
 nexthop             : "2001:db8:1::1"
+options             : {}
 origin              : loadbalancer
 ])
 
@@ -1211,6 +1212,7 @@ Route Table <main>:
 Route Table rtb1:
              10.11.1.0/24             169.254.100.1 dst-ip (learned)
              10.11.2.0/24               169.254.0.1 dst-ip
+           192.168.0.0/24             169.254.100.1 dst-ip (learned) override-connected
              10.22.2.0/24               169.254.0.2 src-ip
                 0.0.0.0/0             169.254.100.1 dst-ip (learned)
 ])
@@ -1332,8 +1334,11 @@ check ovn-ic-nbctl --wait=sb sync
 OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
              grep learned | awk '{print $1, $2, $5}' | sort ], [0], [dnl
 192.168.0.0/24 169.254.101.2 ecmp
+192.168.0.0/24 169.254.101.2 override-connected
 192.168.0.0/24 169.254.102.2 ecmp
+192.168.0.0/24 169.254.102.2 override-connected
 192.168.0.0/24 169.254.103.2 ecmp
+192.168.0.0/24 169.254.103.2 override-connected
 ])
 
 # Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
@@ -1341,22 +1346,27 @@ OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11]
 IPv4 Routes
 Route Table rtb1:
             10.10.10.0/24             169.254.101.2 dst-ip (learned)
+           192.168.0.0/24             169.254.101.2 dst-ip (learned) override-connected
 ])
 OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
 IPv4 Routes
 Route Table rtb2:
             10.10.10.0/24             169.254.102.2 dst-ip (learned)
+           192.168.0.0/24             169.254.102.2 dst-ip (learned) override-connected
 ])
 OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
 IPv4 Routes
 Route Table rtb3:
             10.10.10.0/24             169.254.103.2 dst-ip (learned)
+           192.168.0.0/24             169.254.103.2 dst-ip (learned) override-connected
 ])
 
 # Test routes from lr12 didn't leak as learned to lr21
 OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 192.168 | sort], [0], [dnl
            192.168.0.0/24             169.254.101.2 dst-ip (learned) ecmp
+           192.168.0.0/24             169.254.101.2 dst-ip (learned) override-connected
            192.168.0.0/24             169.254.102.2 dst-ip (learned) ecmp
+           192.168.0.0/24             169.254.102.2 dst-ip (learned) override-connected
 ])
 
 OVN_CLEANUP_IC([az1], [az2])
@@ -1457,8 +1467,11 @@ check ovn-ic-nbctl --wait=sb sync
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 2001:db8:200 |
              grep learned | awk '{print $1, $2, $5}' | sort], [0], [dnl
 2001:db8:200::/64 2001:db8:1::2 ecmp
+2001:db8:200::/64 2001:db8:1::2 override-connected
 2001:db8:200::/64 2001:db8:2::2 ecmp
+2001:db8:200::/64 2001:db8:2::2 override-connected
 2001:db8:200::/64 2001:db8:3::2 ecmp
+2001:db8:200::/64 2001:db8:3::2 override-connected
 ])
 
 # Test static routes from lr12 rtbs rtb1,rtb2,rtb3 were learned to lr11
@@ -1466,18 +1479,21 @@ OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11 | gre
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb1 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb1:
+        2001:db8:200::/64             2001:db8:1::2 dst-ip (learned) override-connected
        2001:db8:aaaa::/64             2001:db8:1::2 dst-ip (learned)
 ])
 OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb2 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb2:
+        2001:db8:200::/64             2001:db8:2::2 dst-ip (learned) override-connected
        2001:db8:aaaa::/64             2001:db8:2::2 dst-ip (learned)
 ])
 OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11 | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl --route-table=rtb3 lr-route-list lr11], [0], [dnl
 IPv6 Routes
 Route Table rtb3:
+        2001:db8:200::/64             2001:db8:3::2 dst-ip (learned) override-connected
        2001:db8:aaaa::/64             2001:db8:3::2 dst-ip (learned)
 ])
 
@@ -1485,7 +1501,9 @@ Route Table rtb3:
 OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep "2001:db8:2::2" | grep learned])
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep 2001 | sort], [0], [dnl
         2001:db8:200::/64             2001:db8:1::2 dst-ip (learned) ecmp
+        2001:db8:200::/64             2001:db8:1::2 dst-ip (learned) override-connected
         2001:db8:200::/64             2001:db8:2::2 dst-ip (learned) ecmp
+        2001:db8:200::/64             2001:db8:2::2 dst-ip (learned) override-connected
 ])
 
 OVN_CLEANUP_IC([az1], [az2])
@@ -4836,6 +4854,166 @@ for i in 1 2; do
 done
 
 OVN_CLEANUP_IC
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- east-west - 2az])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add rtb-1
+ovn-ic-nbctl ts-add rtb-2
+
+ovn_start az1
+ovn_as az1
+
+check ovn_as az1 ovn-ic-nbctl --wait=sb sync
+check ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=true
+check ovn_as az1 ovn-nbctl set nb_global . options:ic-route-adv=true
+
+check ovn_as az1 ovn-nbctl ls-add subnet-A
+check ovn_as az1 ovn-nbctl lsp-add subnet-A subnet-A-up -- lsp-set-type subnet-A-up router -- lsp-set-addresses subnet-A-up router -- lsp-set-options subnet-A-up router-port=subnet-A
+check ovn_as az1 ovn-nbctl lsp-add subnet-A client -- lsp-set-addresses client "0a:00:43:1e:92:20 172.31.0.4"
+
+check ovn_as az1 ovn-nbctl ls-add subnet-B
+check ovn_as az1 ovn-nbctl lsp-add subnet-B subnet-B-up -- lsp-set-type subnet-B-up router -- lsp-set-addresses subnet-B-up router -- lsp-set-options subnet-B-up router-port=subnet-B
+check ovn_as az1 ovn-nbctl lsp-add subnet-B server -- lsp-set-addresses server "0a:00:b9:86:a4:00 172.31.1.4"
+
+check ovn_as az1 ovn-nbctl lsp-add rtb-1 rtb-1-down1 -- lsp-set-type rtb-1-down1 router -- lsp-set-addresses rtb-1-down1 router -- lsp-set-options rtb-1-down1 router-port=rtb-1
+check ovn_as az1 ovn-nbctl lsp-add rtb-2 rtb-2-down1 -- lsp-set-type rtb-2-down1 router -- lsp-set-addresses rtb-2-down1 router -- lsp-set-options rtb-2-down1 router-port=rtb-2
+
+check ovn_as az1 ovn-nbctl lr-add rt1
+check ovn_as az1 ovn-nbctl lrp-add rt1 subnet-A "d0:fe:00:00:00:14" "172.31.0.1/24" -- lrp-set-options subnet-A route_table=table1
+check ovn_as az1 ovn-nbctl lrp-add rt1 subnet-B "d0:fe:00:00:00:15" "172.31.1.1/24" -- lrp-set-options subnet-B route_table=table1
+check ovn_as az1 ovn-nbctl lrp-add rt1 rtb-1 "00:00:a0:9e:9d:40" "169.254.100.1/27" -- lrp-set-options rtb-1 route_table=table1
+check ovn_as az1 ovn-nbctl lrp-add rt1 rtb-2 "00:00:60:15:b8:20" "169.254.100.33/27" -- lrp-set-options rtb-2 route_table=table2
+
+ovn_start az2
+ovn_as az2
+
+check ovn_as az2 ovn-ic-nbctl --wait=sb sync
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-learn=true
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-adv=true
+
+check ovn_as az2 ovn-nbctl ls-add subnet-C
+check ovn_as az2 ovn-nbctl lsp-add subnet-C subnet-C-up -- lsp-set-type subnet-C-up router -- lsp-set-addresses subnet-C-up router -- lsp-set-options subnet-C-up router-port=subnet-C
+check ovn_as az2 ovn-nbctl lsp-add subnet-C filter1 -- lsp-set-addresses filter1 "0a:01:4f:43:ce:e1 172.31.2.4"
+
+check ovn_as az2 ovn-nbctl ls-add subnet-D
+check ovn_as az2 ovn-nbctl lsp-add subnet-D subnet-D-up -- lsp-set-type subnet-D-up router -- lsp-set-addresses subnet-D-up router -- lsp-set-options subnet-D-up router-port=subnet-D
+check ovn_as az2 ovn-nbctl lsp-add subnet-D filter2 -- lsp-set-addresses filter2 "0a:01:39:eb:b1:41 172.31.3.4"
+
+check ovn_as az2 ovn-nbctl lsp-add rtb-1 rtb-1-down2 -- lsp-set-type rtb-1-down2 router -- lsp-set-addresses rtb-1-down2 router -- lsp-set-options rtb-1-down2 router-port=rtb-1
+check ovn_as az2 ovn-nbctl lsp-add rtb-2 rtb-2-down2 -- lsp-set-type rtb-2-down2 router -- lsp-set-addresses rtb-2-down2 router -- lsp-set-options rtb-2-down2 router-port=rtb-2
+
+check ovn_as az2 ovn-nbctl lr-add rt1
+check ovn_as az2 ovn-nbctl lrp-add rt1 subnet-C "d0:fe:00:00:00:16" "172.31.2.1/24" -- lrp-set-options subnet-C route_table=table2
+check ovn_as az2 ovn-nbctl lrp-add rt1 subnet-D "d0:fe:00:00:00:17" "172.31.3.1/24" -- lrp-set-options subnet-D route_table=table2
+check ovn_as az2 ovn-nbctl lrp-add rt1 rtb-1 "00:01:a0:9e:9d:40" "169.254.100.2/27" -- lrp-set-options rtb-1 route_table=table1
+check ovn_as az2 ovn-nbctl lrp-add rt1 rtb-2 "00:01:60:15:b8:20" "169.254.100.34/27" -- lrp-set-options rtb-2 route_table=table2
+
+check ovn_as az2 ovn-nbctl --route-table=table1 --override-connected lr-route-add rt1 "172.31.0.0/24" "172.31.2.4"
+check ovn_as az2 ovn-nbctl --route-table=table1 --override-connected lr-route-add rt1 "172.31.1.0/24" "172.31.3.4"
+
+check ovn-ic-nbctl --wait=sb sync
+
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list rt1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+            172.31.2.0/24             169.254.100.2 dst-ip (learned) ecmp
+            172.31.2.0/24            169.254.100.34 dst-ip (learned) ecmp
+            172.31.3.0/24             169.254.100.2 dst-ip (learned) ecmp
+            172.31.3.0/24            169.254.100.34 dst-ip (learned) ecmp
+
+Route Table table1:
+            172.31.0.0/24             169.254.100.2 dst-ip (learned) override-connected
+            172.31.1.0/24             169.254.100.2 dst-ip (learned) override-connected
+            172.31.2.0/24             169.254.100.2 dst-ip (learned) override-connected
+            172.31.3.0/24             169.254.100.2 dst-ip (learned) override-connected
+
+Route Table table2:
+            172.31.2.0/24            169.254.100.34 dst-ip (learned) override-connected
+            172.31.3.0/24            169.254.100.34 dst-ip (learned) override-connected
+])
+
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list rt1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+            172.31.0.0/24             169.254.100.1 dst-ip (learned) ecmp
+            172.31.0.0/24            169.254.100.33 dst-ip (learned) ecmp
+            172.31.1.0/24             169.254.100.1 dst-ip (learned) ecmp
+            172.31.1.0/24            169.254.100.33 dst-ip (learned) ecmp
+
+Route Table table1:
+            172.31.0.0/24                172.31.2.4 dst-ip override-connected
+            172.31.0.0/24             169.254.100.1 dst-ip (learned) override-connected
+            172.31.1.0/24                172.31.3.4 dst-ip override-connected
+            172.31.1.0/24             169.254.100.1 dst-ip (learned) override-connected
+
+Route Table table2:
+            172.31.0.0/24            169.254.100.33 dst-ip (learned) override-connected
+            172.31.1.0/24            169.254.100.33 dst-ip (learned) override-connected
+])
+
+AZF1="az1/az1_flow.txt"
+AZF2="az2/az2_flow.txt"
+ovn_as az1 ovn-sbctl lflow-list rt1 > $AZF1
+ovn_as az2 ovn-sbctl lflow-list rt1 > $AZF2
+
+VA1=$(grep "ip_routing_pre.*rtb-1" $AZF1 | sed -n 's/.*reg7 = \([[0-9]]*\).*/\1/p')
+VA2=$(grep "ip_routing_pre.*rtb-2" $AZF1 | sed -n 's/.*reg7 = \([[0-9]]*\).*/\1/p')
+
+AT_CHECK([grep "ip_routing[[^_]]" $AZF1 | sed "s/reg7 == $VA1/reg7 == rtb-1/g" | sed "s/reg7 == $VA2/reg7 == rtb-2/g" |  ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 172.31.0.1; eth.src = d0:fe:00:00:00:14; outport = "subnet-A"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 172.31.1.1; eth.src = d0:fe:00:00:00:15; outport = "subnet-B"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.2.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.2; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.2.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.34; reg5 = 169.254.100.33; eth.src = 00:00:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.3.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.2; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.3.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.34; reg5 = 169.254.100.33; eth.src = 00:00:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-1 && ip4.dst == 172.31.2.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.2; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-1 && ip4.dst == 172.31.3.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.2; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-2 && ip4.dst == 172.31.2.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.34; reg5 = 169.254.100.33; eth.src = 00:00:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-2 && ip4.dst == 172.31.3.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.34; reg5 = 169.254.100.33; eth.src = 00:00:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1846 , match=(reg7 == rtb-1 && ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.2; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1846 , match=(reg7 == rtb-1 && ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.2; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1878 , match=(ip4.dst == 169.254.100.0/27), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 169.254.100.1; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1878 , match=(ip4.dst == 169.254.100.32/27), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 169.254.100.33; eth.src = 00:00:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "rtb-1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:a0ff:fe9e:9d40; eth.src = 00:00:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "rtb-2" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::200:60ff:fe15:b820; eth.src = 00:00:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "subnet-A" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::d2fe:ff:fe00:14; eth.src = d0:fe:00:00:00:14; outport = "subnet-A"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "subnet-B" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::d2fe:ff:fe00:15; eth.src = d0:fe:00:00:00:15; outport = "subnet-B"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+
+VA1=$(grep "ip_routing_pre.*rtb-1" $AZF2 | sed -n 's/.*reg7 = \([[0-9]]*\).*/\1/p')
+VA2=$(grep "ip_routing_pre.*rtb-2" $AZF2 | sed -n 's/.*reg7 = \([[0-9]]*\).*/\1/p')
+
+AT_CHECK([grep "ip_routing[[^_]]" $AZF2 | sed "s/reg7 == $VA1/reg7 == rtb-1/g" | sed "s/reg7 == $VA2/reg7 == rtb-2/g" |  ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=10550, match=(nd_rs || nd_ra), action=(drop;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.1; reg5 = 169.254.100.2; eth.src = 00:01:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.33; reg5 = 169.254.100.34; eth.src = 00:01:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.1; reg5 = 169.254.100.2; eth.src = 00:01:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.33; reg5 = 169.254.100.34; eth.src = 00:01:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.2.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 172.31.2.1; eth.src = d0:fe:00:00:00:16; outport = "subnet-C"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1842 , match=(ip4.dst == 172.31.3.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 172.31.3.1; eth.src = d0:fe:00:00:00:17; outport = "subnet-D"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-1 && ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.1; reg5 = 169.254.100.2; eth.src = 00:01:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-1 && ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.1; reg5 = 169.254.100.2; eth.src = 00:01:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-2 && ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.33; reg5 = 169.254.100.34; eth.src = 00:01:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1844 , match=(reg7 == rtb-2 && ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 169.254.100.33; reg5 = 169.254.100.34; eth.src = 00:01:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1846 , match=(reg7 == rtb-1 && ip4.dst == 172.31.0.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 172.31.2.4; reg5 = 172.31.2.1; eth.src = d0:fe:00:00:00:16; outport = "subnet-C"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1846 , match=(reg7 == rtb-1 && ip4.dst == 172.31.1.0/24), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 172.31.3.4; reg5 = 172.31.3.1; eth.src = d0:fe:00:00:00:17; outport = "subnet-D"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1878 , match=(ip4.dst == 169.254.100.0/27), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 169.254.100.2; eth.src = 00:01:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=1878 , match=(ip4.dst == 169.254.100.32/27), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = ip4.dst; reg5 = 169.254.100.34; eth.src = 00:01:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "rtb-1" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::201:a0ff:fe9e:9d40; eth.src = 00:01:a0:9e:9d:40; outport = "rtb-1"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "rtb-2" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::201:60ff:fe15:b820; eth.src = 00:01:60:15:b8:20; outport = "rtb-2"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "subnet-C" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::d2fe:ff:fe00:16; eth.src = d0:fe:00:00:00:16; outport = "subnet-C"; flags.loopback = 1; reg9[[9]] = 0; next;)
+  table=??(lr_in_ip_routing   ), priority=2322 , match=(inport == "subnet-D" && ip6.dst == fe80::/64), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = ip6.dst; xxreg1 = fe80::d2fe:ff:fe00:17; eth.src = d0:fe:00:00:00:17; outport = "subnet-D"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+
+OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])

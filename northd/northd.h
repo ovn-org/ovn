@@ -846,15 +846,16 @@ enum route_source {
 struct parsed_route {
     struct hmap_node key_node;
     struct in6_addr prefix;
-    unsigned int plen;
     struct in6_addr *nexthop; /* NULL for ROUTE_SOURCE_CONNECTED */
-    bool is_src_route;
+    unsigned int plen;
     uint32_t route_table_id;
     uint32_t hash;
+    bool is_src_route;
     bool ecmp_symmetric_reply;
+    bool override_connected;
     bool is_discard_route;
-    const struct ovn_datapath *od;
     bool stale;
+    const struct ovn_datapath *od;
     struct sset ecmp_selection_fields;
     enum route_source source;
     const struct ovsdb_idl_row *source_hint;
@@ -881,6 +882,7 @@ struct parsed_route *parsed_route_add(
     uint32_t route_table_id,
     bool is_src_route,
     bool ecmp_symmetric_reply,
+    bool override_connected,
     const struct sset *ecmp_selection_fields,
     enum route_source source,
     const struct ovsdb_idl_row *source_hint,

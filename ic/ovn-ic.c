@@ -1309,6 +1309,7 @@ struct ic_route_info {
     const char *origin;
     const char *route_table;
     const char *route_tag;
+    bool override_connected;
     struct uuid ic_route_uuid;
 
     const struct nbrec_logical_router *nb_lr;
@@ -1326,16 +1327,25 @@ struct ic_route_info {
     const struct nbrec_load_balancer *nb_lb;
 };
 
+static inline bool
+get_override_connected(const struct smap *options)
+{
+    return smap_get_bool(options, ROUTE_OVERRIDE_CONNECTED, false);
+}
+
 static uint32_t
 ic_route_hash(const struct in6_addr *prefix, unsigned int plen,
               const struct in6_addr *nexthop, const char *origin,
-              const char *route_table, const struct uuid *ic_route_uuid)
+              const char *route_table,
+              const struct uuid *ic_route_uuid,
+              bool override_connected)
 {
     uint32_t basis = ic_route_uuid ? uuid_hash(ic_route_uuid) : 0;
     basis = hash_bytes(prefix, sizeof *prefix, basis);
     basis = hash_int((uint32_t) plen, basis);
     basis = hash_string(origin, basis);
     basis = hash_string(route_table, basis);
+    basis = hash_boolean(override_connected, basis);
     return hash_bytes(nexthop, sizeof *nexthop, basis);
 }
 
@@ -1343,16 +1353,18 @@ static struct ic_route_info *
 ic_route_find(struct hmap *routes, const struct in6_addr *prefix,
               unsigned int plen, const struct in6_addr *nexthop,
               const char *origin, const char *route_table,
-              const struct uuid *ic_route_uuid, uint32_t hash)
+              const struct uuid *ic_route_uuid,
+              bool override_connected, uint32_t hash)
 {
     struct ic_route_info *r;
     if (!hash) {
         hash = ic_route_hash(prefix, plen, nexthop, origin, route_table,
-                             ic_route_uuid);
+                             ic_route_uuid, override_connected);
     }
     HMAP_FOR_EACH_WITH_HASH (r, node, hash, routes) {
         if (ipv6_addr_equals(&r->prefix, prefix) &&
             r->plen == plen &&
+            r->override_connected == override_connected &&
             ipv6_addr_equals(&r->nexthop, nexthop) &&
             !strcmp(r->origin, origin) &&
             !strcmp(r->route_table ? r->route_table : "", route_table) &&
@@ -1410,11 +1422,14 @@ add_to_routes_learned(struct hmap *routes_learned,
         return false;
     }
     const char *origin = smap_get_def(&nb_route->options, "origin", "");
+    bool override_connected = get_override_connected(&nb_route->options);
 
     uint32_t hash = ic_route_hash(&prefix, plen, &nexthop, origin,
-                                  nb_route->route_table, ic_route_uuid);
+                                  nb_route->route_table, ic_route_uuid,
+                                  override_connected);
     if (ic_route_find(routes_learned, &prefix, plen, &nexthop, origin,
-                      nb_route->route_table, ic_route_uuid, hash)) {
+                      nb_route->route_table, ic_route_uuid,
+                      override_connected, hash)) {
         /* Route was added to learned on previous iteration. */
         return true;
     }
@@ -1428,6 +1443,7 @@ add_to_routes_learned(struct hmap *routes_learned,
     ic_route->route_table = nb_route->route_table;
     ic_route->nb_lr = nb_lr;
     ic_route->ic_route_uuid = *ic_route_uuid;
+    ic_route->override_connected = override_connected;
     hmap_insert(routes_learned, &ic_route->node, hash);
 
     return true;
@@ -1588,7 +1604,7 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
                  const struct nbrec_logical_router_static_route *nb_route,
                  const struct nbrec_logical_router *nb_lr,
                  const struct nbrec_load_balancer *nb_lb,
-                 const char *route_tag)
+                 const char *route_tag, bool override_connected)
 {
     ovs_assert(nb_route || nb_lrp || nb_lb || nb_lr);
 
@@ -1597,10 +1613,10 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
     }
 
     uint hash = ic_route_hash(&prefix, plen, &nexthop, origin,
-                              route_table, NULL);
+                              route_table, NULL, override_connected);
 
     if (!ic_route_find(routes_ad, &prefix, plen, &nexthop, origin, route_table,
-                       NULL, hash)) {
+                       NULL, override_connected, hash)) {
         struct ic_route_info *ic_route = xzalloc(sizeof *ic_route);
         ic_route->prefix = prefix;
         ic_route->plen = plen;
@@ -1612,6 +1628,7 @@ add_to_routes_ad(struct hmap *routes_ad, const struct in6_addr prefix,
         ic_route->nb_lr = nb_lr;
         ic_route->nb_lb = nb_lb;
         ic_route->route_tag = route_tag;
+        ic_route->override_connected = override_connected;
         hmap_insert(routes_ad, &ic_route->node, hash);
     } else {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -1645,6 +1662,8 @@ add_static_to_routes_ad(
 {
     struct in6_addr prefix, nexthop;
     unsigned int plen;
+    bool override_connected = get_override_connected(&nb_route->options);
+
     if (!parse_route(nb_route->ip_prefix, nb_route->nexthop,
                      &prefix, &plen, &nexthop)) {
         return;
@@ -1684,7 +1703,7 @@ add_static_to_routes_ad(
 
     add_to_routes_ad(routes_ad, prefix, plen, nexthop, ROUTE_ORIGIN_STATIC,
                      nb_route->route_table, NULL, nb_route, nb_lr,
-                     NULL, route_tag);
+                     NULL, route_tag, override_connected);
 }
 
 static void
@@ -1693,8 +1712,9 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
                          const struct lport_addresses *nexthop_addresses,
                          const struct smap *nb_options,
                          const struct nbrec_logical_router *nb_lr,
-                         const char *route_tag,
                          const struct nbrec_logical_router_port *ts_lrp,
+                         const char *route_tag,
+                         const char *ts_route_table,
                          bool is_src_dynamic)
 {
     struct in6_addr prefix, nexthop;
@@ -1745,11 +1765,25 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
         ds_destroy(&msg);
     }
 
+    /* Create additional route to local and remote networks that have
+     * common route table name with port attached to transit switch having
+     * same route table name.
+     * As a result, traffic that is processed within such route table and is
+     * routed cross az will select port attached to transit switch specially
+     * allocated to process traffic within that route table.
+     */
+
+    if (*ts_route_table) {
+        add_to_routes_ad(routes_ad, prefix, plen, nexthop,
+                         ROUTE_ORIGIN_CONNECTED, ts_route_table,
+                         nb_lrp, NULL, nb_lr, NULL, route_tag, true);
+    }
+
     const char *origin = is_src_dynamic ? ROUTE_ORIGIN_CONNECTED_DYNAMIC :
                                           ROUTE_ORIGIN_CONNECTED;
     /* directly-connected routes go to <main> route table */
     add_to_routes_ad(routes_ad, prefix, plen, nexthop, origin,
-                     NULL, nb_lrp, NULL, nb_lr, NULL, route_tag);
+                     NULL, nb_lrp, NULL, nb_lr, NULL, route_tag, false);
 }
 
 static void
@@ -1807,7 +1841,7 @@ add_lb_vip_to_routes_ad(struct hmap *routes_ad, const char *vip_key,
 
     /* Lb vip routes go to <main> route table */
     add_to_routes_ad(routes_ad, vip_ip, plen, nexthop, ROUTE_ORIGIN_LB,
-                     NULL, NULL, NULL, nb_lr, nb_lb, route_tag);
+                     NULL, NULL, NULL, nb_lr, nb_lb, route_tag, false);
 out:
     free(vip_str);
 }
@@ -2189,11 +2223,15 @@ sync_learned_routes(struct ic_context *ctx,
                 continue;
             }
 
+            bool override_connected =
+                get_override_connected(&isb_route->options);
             struct ic_route_info *route_learned
                 = ic_route_find(&ic_lr->routes_learned, &prefix, plen,
                                 &nexthop, isb_route->origin,
                                 isb_route->route_table,
-                                &isb_route->header_.uuid, 0);
+                                &isb_route->header_.uuid,
+                                override_connected, 0);
+
             if (route_learned) {
                 hmap_remove(&ic_lr->routes_learned, &route_learned->node);
                 free(route_learned);
@@ -2214,6 +2252,10 @@ sync_learned_routes(struct ic_context *ctx,
                 nbrec_logical_router_static_route_update_options_setkey(
                     nb_route, "origin", isb_route->origin);
                 free(uuid_s);
+                if (override_connected) {
+                    nbrec_logical_router_static_route_update_options_setkey(
+                        nb_route, ROUTE_OVERRIDE_CONNECTED, "true");
+                }
                 nbrec_logical_router_update_static_routes_addvalue(ic_lr->lr,
                     nb_route);
             }
@@ -2300,9 +2342,11 @@ advertise_routes(struct ic_context *ctx,
             icsbrec_route_delete(isb_route);
             continue;
         }
+        bool override_connected = get_override_connected(&isb_route->options);
         struct ic_route_info *route_adv =
             ic_route_find(routes_ad, &prefix, plen, &nexthop,
-                          isb_route->origin, isb_route->route_table, NULL, 0);
+                          isb_route->origin, isb_route->route_table,
+                          NULL, override_connected, 0);
         if (!route_adv) {
             /* Delete the extra route from IC-SB. */
             VLOG_DBG("Delete route %s -> %s from IC-SB, which is not found"
@@ -2346,6 +2390,10 @@ advertise_routes(struct ic_context *ctx,
         icsbrec_route_set_route_table(isb_route, route_adv->route_table
                                                  ? route_adv->route_table
                                                  : "");
+        if (route_adv->override_connected) {
+            icsbrec_route_update_options_setkey(isb_route,
+                ROUTE_OVERRIDE_CONNECTED, "true");
+        }
         free(prefix_s);
         free(nexthop_s);
 
@@ -2400,7 +2448,8 @@ build_ts_routes_to_adv(struct ic_context *ctx,
                 add_network_to_routes_ad(routes_ad, lrp->networks[j], lrp,
                                          ts_port_addrs,
                                          &nb_global->options,
-                                         lr, route_tag, ts_lrp, false);
+                                         lr, ts_lrp, route_tag,
+                                         ts_route_table, false);
             }
         } else {
             /* The router port of the TS port is ignored. */
@@ -2455,7 +2504,7 @@ build_ts_routes_to_adv(struct ic_context *ctx,
         add_network_to_routes_ad(routes_ad, sb_route->ip_prefix, NULL,
                                  ts_port_addrs,
                                  &nb_global->options,
-                                 lr, route_tag, ts_lrp, true);
+                                 lr, ts_lrp, route_tag, ts_route_table, true);
     }
     sbrec_learned_route_index_destroy_row(filter);
 }

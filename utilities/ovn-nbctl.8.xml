@@ -1194,6 +1194,7 @@
       <dt>[<code>--may-exist</code>] [<code>--policy</code>=<var>POLICY</var>]
         [<code>--route-table</code>=<var>ROUTE_TABLE</var>]
         [<code>--ecmp</code>] [<code>--ecmp-symmetric-reply</code>]
+        [<code>--override-connected</code>]
         [<code>--bfd[=<var>UUID</var></code>]]
         <code>lr-route-add</code> <var>router</var>
         <var>prefix</var> <var>nexthop</var> [<var>port</var>]</dt>
@@ -1240,6 +1241,11 @@
           sent out over that same route. Setting
           <code>--ecmp-symmetric-reply</code> implies <code>--ecmp</code> so
           it is not necessary to set both.
+        </p>
+
+        <p>
+          The <code>--override-connected</code> option makes it so that
+          route's priority to be highest among routes with same prefix.
         </p>
 
         <p>

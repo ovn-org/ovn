@@ -358,6 +358,14 @@
         have more than one Transit Switch, which interconnects them,
         directly-connected routes will be added via each transit switch port
         and configured as ECMP routes.
+        Additionally, these routes will be advertised to other AZ and learned
+        into route table that has the same name in the remote logical router.
+        When learned, these routes are automatically marked with
+        the <code>override-connected</code> option, giving them higher priority
+        than any local connected route with same prefix in that route table.
+        This enables policy-based routing scenarios where traffic processed
+        within a specific route table can be forcibly forwarded to remote AZ
+        even when local connected route exists.
         </p>
         <p>
         Static routes within route tables will be advertised and learned only
@@ -398,6 +406,25 @@
           See <em>External IDs</em> at the beginning of this document.
         </p>
       </column>
+    </group>
+
+    <group title="Options">
+      <column name="options">
+        This column provides general key/value settings. The supported
+        options are described individually below.
+      </column>
+
+      <column name="options" key="override-connected"
+              type='{"type": "boolean"}'>
+        <p>
+            This option is a copy of its Northbound DB counterpart.
+        </p>
+        <p>
+            For connected routes this option is set to true if there is a route
+            table associated with given connected route, i.e.
+            <ref table="Route" column="route_table"/> is not empty.
+        </p>
+     </column>
     </group>
   </table>
 

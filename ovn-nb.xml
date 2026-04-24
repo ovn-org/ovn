@@ -5072,6 +5072,14 @@ or
           <li>static</li>
         </ol>
       </column>
+      <column name="options" key="override-connected">
+        This option can be manually set for local static routes and
+        automatically set for ovn-interconnected learned routes.
+        Default value: <code>false</code>.
+
+        This option raises route's priority to be highest among routes
+        with same prefix.
+      </column>
     </group>
 
   </table>

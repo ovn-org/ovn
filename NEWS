@@ -12,6 +12,10 @@ Post v26.03.0
      * Add ECMP/multi-homing support for EVPN FDB entries. FDB entries
        backed by a kernel nexthop group are load-balanced via OpenFlow
        select groups with weighted buckets.
+   - Added "override-connected" option to Logical Router Static Routes to mark
+     static routes as higher-priority than connected routes, which in turn led
+     to changes in administrative distance for specific route types. Please see
+     the "Route Administrative Distance" section of the ovn-northd manpage.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------
