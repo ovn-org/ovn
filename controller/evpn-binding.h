@@ -93,7 +93,6 @@ void evpn_vtep_binding_list(struct unixctl_conn *conn, int argc,
                              const char *argv[], void *data_);
 const struct evpn_datapath *evpn_datapath_find(
         const struct hmap *evpn_datapaths, uint32_t vni);
-void evpn_datapaths_clear(struct hmap *evpn_datapaths);
 void evpn_datapaths_destroy(struct hmap *evpn_datapaths);
 void evpn_multicast_groups_destroy(struct hmap *multicast_groups);
 void evpn_multicast_group_list(struct unixctl_conn *conn, int argc,

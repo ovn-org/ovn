@@ -6392,7 +6392,6 @@ en_evpn_vtep_binding_clear_tracked_data(void *data_)
     struct ed_type_evpn_vtep_binding *data = data_;
     hmapx_clear(&data->updated_bindings);
     uuidset_clear(&data->removed_bindings);
-    evpn_datapaths_clear(&data->datapaths);
     hmapx_clear(&data->updated_multicast_groups);
     uuidset_clear(&data->removed_multicast_groups);
 }

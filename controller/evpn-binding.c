@@ -32,6 +32,7 @@ static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
 
 static void collect_evpn_datapaths(const struct hmap *local_datapaths,
                                    struct hmap *evpn_datapaths);
+static void evpn_datapaths_clear(struct hmap *evpn_datapaths);
 
 struct evpn_tunnel {
     uint16_t dst_port;
@@ -62,6 +63,7 @@ evpn_binding_run(const struct evpn_binding_ctx_in *b_ctx_in,
     struct hmapx stale_mc_groups = HMAPX_INITIALIZER(&stale_mc_groups);
     uint32_t hint = OVN_MIN_EVPN_KEY;
 
+    evpn_datapaths_clear(b_ctx_out->datapaths);
     collect_evpn_datapaths(b_ctx_in->local_datapaths, b_ctx_out->datapaths);
 
     struct evpn_binding *binding;
@@ -233,7 +235,7 @@ evpn_datapath_find(const struct hmap *evpn_datapaths, uint32_t vni)
     return NULL;
 }
 
-void
+static void
 evpn_datapaths_clear(struct hmap *evpn_datapaths)
 {
     struct evpn_datapath *edp;
