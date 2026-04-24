@@ -707,7 +707,7 @@ ovn_igmp_group_aggregate_ports(struct ovn_igmp_group *igmp_group,
         free(entry);
     }
 
-    if (!vector_is_empty(&igmp_group->datapath->localnet_ports)) {
+    if (ls_has_localnet_port(igmp_group->datapath)) {
         ovn_multicast_add_ports(mcast_groups, igmp_group->datapath,
             &igmp_group->mcgroup,
             vector_get_array(&igmp_group->datapath->localnet_ports),
