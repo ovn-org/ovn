@@ -489,6 +489,21 @@
       </li>
 
       <li>
+        <p>
+          For each localnet logical port <var>p</var>, a priority-50
+          fallback flow is added with the match
+          <code>inport == <var>p</var></code> and action
+          <code>flags.localnet = 1; next;</code>.  This marks traffic
+          arriving from localnet ports so that downstream stages (e.g.,
+          ARP/ND responder) can condition their behavior.  When FDB
+          learning is enabled on the localnet port, the priority-100
+          flow described above already sets <code>flags.localnet</code>,
+          so this priority-50 flow only takes effect when FDB learning
+          is not configured.
+        </p>
+      </li>
+
+      <li>
         One priority-0 fallback flow that matches all packets and advances to
         the next table.
       </li>
@@ -1734,12 +1749,16 @@
     </p>
 
     <p>
-      Note that ARP requests received from <code>localnet</code> logical
-      inports can either go directly to VMs, in which case the VM responds or
-      can hit an ARP responder for a logical router port if the packet is used
-      to resolve a logical router port next hop address.  In either case,
-      logical switch ARP responder rules will not be hit.  It contains these
-      logical flows:
+      ARP/ND requests received from <code>localnet</code> logical inports
+      do hit the ARP/ND responder, but the response is limited to the
+      chassis that hosts the target VIF.  This is achieved by adding
+      a <code>flags.localnet</code> check to the priority-50 reply flows
+      (see below): when the request arrives from a localnet port
+      (<code>flags.localnet == 1</code>), only the chassis on which the
+      target port is resident will reply.  When the request arrives from
+      a non-localnet port (<code>flags.localnet == 0</code>), the
+      response is unconditional, preserving VIF-to-VIF proxy ARP/ND
+      behavior.  It contains these logical flows:
      </p>
 
     <ul>
@@ -1750,18 +1769,10 @@
         router ingress pipeline.
       </li>
       <li>
-        If the logical switch has no router ports with options:arp_proxy
-        configured add a priority-100 flows to skip the ARP responder if inport
-        is of type <code>localnet</code> advances directly to the next table.
-        ARP requests sent to <code>localnet</code> ports can be received by
-        multiple hypervisors.  Now, because the same mac binding rules are
-        downloaded to all hypervisors, each of the multiple hypervisors will
-        respond.  This will confuse L2 learning on the source of the ARP
-        requests.  ARP requests received on an inport of type
-        <code>router</code> are not expected to hit any logical switch ARP
-        responder flows.  However, no skip flows are installed for these
-        packets, as there would be some additional flow cost for this and the
-        value appears limited.
+        ARP/ND requests received on an inport of type <code>router</code> are
+        not expected to hit any logical switch ARP responder flows.  However,
+        no skip flows are installed for these packets, as there would be some
+        additional flow cost for this and the value appears limited.
       </li>
 
       <li>
@@ -1815,6 +1826,18 @@ outport = inport;
 flags.loopback = 1;
 output;
         </pre>
+
+        <p>
+          On logical switches that have a localnet port, the match for
+          these flows includes an additional condition:
+          <code>((flags.localnet == 1 &amp;&amp;
+          is_chassis_resident(<var>port</var>)) ||
+          flags.localnet == 0)</code>.
+          This ensures that when an ARP request arrives from a localnet
+          port, only the chassis hosting the target VIF responds.  When
+          the request arrives from a non-localnet port, the response is
+          unconditional, preserving VIF-to-VIF proxy ARP behavior.
+        </p>
 
         <p>
           These flows are omitted for logical ports (other than router ports or
@@ -1878,6 +1901,19 @@ nd_na_router {
         </pre>
 
         <p>
+          On logical switches that have a localnet port, the match for
+          these flows includes an additional condition:
+          <code>((flags.localnet == 1 &amp;&amp;
+          is_chassis_resident(<var>port</var>)) ||
+          flags.localnet == 0)</code>.
+          This ensures that when an ND solicitation arrives from a
+          localnet port, only the chassis hosting the target VIF
+          responds.  When the solicitation arrives from a non-localnet
+          port, the response is unconditional, preserving VIF-to-VIF
+          proxy ND behavior.
+        </p>
+
+        <p>
           These flows are omitted for logical ports (other than router ports or
           <code>localport</code> ports) that are down (unless <code>
           ignore_lsp_down</code> is configured as true in <code>options</code>
@@ -1896,8 +1932,8 @@ nd_na_router {
 
       <li>
         <p>
-          Priority-100 flows with match criteria like the ARP and ND flows
-          above, except that they only match packets from the
+          Priority-100 flows with match criteria similar to the ARP and ND
+          flows above, except that they only match packets from the
           <code>inport</code> that owns the IP addresses in question, with
           action <code>next;</code>.  These flows prevent OVN from replying to,
           for example, an ARP request emitted by a VM for its own IP address.

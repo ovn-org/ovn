@@ -10402,23 +10402,41 @@ build_arp_nd_service_monitor_lflow(const char *svc_monitor_mac,
     }
 }
 
-/* Ingress table 24: ARP/ND responder, skip requests coming from localnet
- * ports. (priority 100); see ovn-northd.8.xml for the rationale. */
-
+/* Ingress table: Lookup FDB.  Set flags.localnet for packets arriving from
+ * localnet ports so that downstream stages (e.g., ARP/ND responder) can
+ * condition their behavior on whether the packet came from localnet. */
 static void
-build_lswitch_arp_nd_responder_skip_local(struct ovn_port *op,
-                                          struct lflow_table *lflows,
-                                          struct ds *match)
+build_lswitch_from_localnet_op(struct ovn_port *op,
+                               struct lflow_table *lflows,
+                               struct ds *match)
 {
     ovs_assert(op->nbsp);
-    if (!lsp_is_localnet(op->nbsp) || op->od->has_arp_proxy_port) {
+    if (!lsp_is_localnet(op->nbsp)) {
         return;
     }
     ds_clear(match);
     ds_put_format(match, "inport == %s", op->json_key);
-    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 100, ds_cstr(match),
-                  "next;", op->lflow_ref, WITH_IO_PORT(op->key),
+    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_LOOKUP_FDB, 50,
+                  ds_cstr(match), "flags.localnet = 1; next;",
+                  op->lflow_ref, WITH_IO_PORT(op->key),
                   WITH_HINT(&op->nbsp->header_));
+}
+
+/* On switches with localnet ports, restrict ARP/ND replies for
+ * localnet-sourced requests to the chassis hosting the target VIF
+ * (preventing duplicate replies from every hypervisor).  Non-localnet
+ * requests (VIF-to-VIF) are answered unconditionally as before. */
+static void
+build_lswitch_arp_nd_local_resp_match(struct ds *match,
+                                      const struct ovn_port *op)
+{
+    if (!ls_has_localnet_port(op->od)) {
+        return;
+    }
+
+    ds_put_format(match,
+        " && ((flags.localnet == 1 && is_chassis_resident(%s))"
+            " || flags.localnet == 0)", op->json_key);
 }
 
 /* Ingress table 24: ARP/ND responder, reply for known IPs.
@@ -10562,6 +10580,8 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                     ds_truncate(match, match_len);
                 }
                 ds_put_cstr(match, " && eth.dst == ff:ff:ff:ff:ff:ff");
+                size_t match_arp_len = match->length;
+                build_lswitch_arp_nd_local_resp_match(match, op);
 
                 ds_clear(actions);
                 ds_put_format(actions,
@@ -10593,6 +10613,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                  * address is intended to detect situations where the
                  * network is not working as configured, so dropping the
                  * request would frustrate that intent.) */
+                ds_truncate(match, match_arp_len);
                 ds_put_format(match, " && inport == %s", op->json_key);
                 ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 100,
                               ds_cstr(match), "next;", op->lflow_ref,
@@ -10632,6 +10653,8 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
                     "nd_ns_mcast && ip6.dst == %s && nd.target == %s",
                     op->lsp_addrs[i].ipv6_addrs[j].sn_addr_s,
                     op->lsp_addrs[i].ipv6_addrs[j].addr_s);
+                size_t match_nd_len = match->length;
+                build_lswitch_arp_nd_local_resp_match(match, op);
 
                 ds_clear(actions);
                 ds_put_format(actions,
@@ -10658,6 +10681,7 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
 
                 /* Do not reply to a solicitation from the port that owns
                  * the address (otherwise DAD detection will fail). */
+                ds_truncate(match, match_nd_len);
                 ds_put_format(match, " && inport == %s", op->json_key);
                 ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 100,
                               ds_cstr(match), "next;", op->lflow_ref,
@@ -19554,7 +19578,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
     build_mirror_lflows(op, ls_ports, lflows);
     build_lswitch_port_sec_op(op, lflows, actions, match);
     build_lswitch_learn_fdb_op(op, lflows, actions, match);
-    build_lswitch_arp_nd_responder_skip_local(op, lflows, match);
+    build_lswitch_from_localnet_op(op, lflows, match);
     build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                              meter_groups, actions, match);
     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
