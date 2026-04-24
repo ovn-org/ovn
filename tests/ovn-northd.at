@@ -19439,6 +19439,7 @@ check ovn-nbctl ls-add $nfsw
 for i in {1..4}; do
     port=$nfsw-p$i
     check ovn-nbctl lsp-add $nfsw $port
+    check ovn-nbctl --wait=sb sync
     check ovn-sbctl set port_binding $port up=true
     check ovn-nbctl lsp-add $sw child-$i $port 100
 done
