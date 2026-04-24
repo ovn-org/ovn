@@ -1788,7 +1788,7 @@ peer_needs_cr_port_creation(struct ovn_port *op)
 {
     if ((op->nbrp->n_gateway_chassis || op->nbrp->ha_chassis_group)
         && vector_len(&op->od->l3dgw_ports) == 1 && op->peer && op->peer->nbsp
-        && vector_is_empty(&op->peer->od->localnet_ports)) {
+        && !ls_has_localnet_port(op->peer->od)) {
         return true;
     }
 
@@ -2837,7 +2837,7 @@ ovn_port_update_sbrec(struct ovsdb_idl_txn *ovnsb_txn,
             smap_clone(&options, &op->nbsp->options);
 
             if (queue_id) {
-                if (!vector_is_empty(&op->od->localnet_ports)) {
+                if (ls_has_localnet_port(op->od)) {
                     struct ovn_port *port = vector_get(&op->od->localnet_ports,
                                                        0, struct ovn_port *);
                     const char *physical_network = smap_get(
@@ -3954,7 +3954,7 @@ should_add_router_port_garp(const struct ovn_port *op, const char *chassis)
                                 vector_len(&op->peer->od->l3dgw_ports));
             }
         }
-    } else if (chassis && !vector_is_empty(&op->od->localnet_ports)) {
+    } else if (chassis && ls_has_localnet_port(op->od)) {
         add_router_port_garp = true;
     }
 
@@ -6263,7 +6263,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
                       WITH_IO_PORT(op->key), WITH_HINT(&op->nbsp->header_));
 
         if (!lsp_is_localnet(op->nbsp) &&
-            vector_is_empty(&op->od->localnet_ports)) {
+            !ls_has_localnet_port(op->od)) {
             return;
         }
 
@@ -6277,7 +6277,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
                           ds_cstr(match), ds_cstr(actions), op->lflow_ref,
                           WITH_IO_PORT(op->key),
                           WITH_HINT(&op->nbsp->header_));
-        } else if (!vector_is_empty(&op->od->localnet_ports)) {
+        } else if (ls_has_localnet_port(op->od)) {
             const struct ovn_port *lp = vector_get(&op->od->localnet_ports, 0,
                                                    struct ovn_port *);
             ds_put_format(match, "outport == %s && inport == %s",
@@ -10897,7 +10897,7 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     }
 
     bool is_external = lsp_is_external(op->nbsp);
-    if (is_external && (vector_is_empty(&op->od->localnet_ports) ||
+    if (is_external && (!ls_has_localnet_port(op->od) ||
                         !op->nbsp->ha_chassis_group)) {
         /* If it's an external port and there are no localnet ports
          * and if it doesn't belong to an HA chassis group ignore it. */
@@ -11322,7 +11322,7 @@ build_lswitch_ip_unicast_lookup(struct ovn_port *op,
 
         if (peer_lrp_is_centralized &&
             !vector_is_empty(&op->peer->od->l3dgw_ports) &&
-            !vector_is_empty(&op->od->localnet_ports)) {
+            ls_has_localnet_port(op->od)) {
             add_lrp_chassis_resident_check(op->peer, match);
         } else if (op->cr_port) {
             /* If the op has a chassis resident port, it means
@@ -17226,7 +17226,7 @@ build_lrouter_ipv4_ip_input(struct ovn_port *op,
 
         if (od_is_centralized(op->od) &&
             !vector_is_empty(&op->od->l3dgw_ports) && op->peer
-            && !vector_is_empty(&op->peer->od->localnet_ports)) {
+            && ls_has_localnet_port(op->peer->od)) {
             add_lrp_chassis_resident_check(op, match);
         }
 
