@@ -7460,7 +7460,9 @@ AT_CHECK([grep -e "ls_in_.*_fdb.*S1-vm1" S1flows | ovn_strip_lflows], [0], [dnl
 ])
 
 #Verify the flows for a non-default port type (localnet port)
-AT_CHECK([grep -e "ls_in_.*_fdb.*S1-localnet" S1flows], [1], [])
+AT_CHECK([grep -e "ls_in_.*_fdb.*S1-localnet" S1flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "S1-localnet"), action=(flags.localnet = 1; next;)
+])
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
@@ -9721,6 +9723,7 @@ AT_CHECK([ovn-nbctl --wait=sb sync])
 # Check MAC learning flows with 'localnet_learn_fdb' default (false)
 AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "ln_port"), action=(flags.localnet = 1; next;)
   table=??(ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
 ])
 
@@ -9729,6 +9732,7 @@ AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=true])
 AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln_port"), action=(flags.localnet = 1; reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "ln_port"), action=(flags.localnet = 1; next;)
   table=??(ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_put_fdb      ), priority=100  , match=(inport == "ln_port" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
@@ -9737,6 +9741,7 @@ AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_s
 AT_CHECK([ovn-nbctl --wait=sb lsp-set-options ln_port localnet_learn_fdb=false])
 AT_CHECK([ovn-sbctl dump-flows ls0 | grep -e 'ls_in_\(put\|lookup\)_fdb' | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "ln_port"), action=(flags.localnet = 1; next;)
   table=??(ls_in_put_fdb      ), priority=0    , match=(1), action=(next;)
 ])
 
@@ -10080,6 +10085,110 @@ AT_CAPTURE_FILE([S1flows])
 
 AT_CHECK([grep -e "ls_in_arp_rsp" S1flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ARP/ND responder for localnet-sourced requests])
+ovn_start
+
+dnl Switch with localnet port.
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-localnet-port ls1 ln1 physnet1
+check ovn-nbctl lsp-add ls1 vm1 \
+    -- lsp-set-addresses vm1 "00:00:00:00:00:01 10.0.0.1 fd01::1"
+check ovn-nbctl lsp-add ls1 vm2 \
+    -- lsp-set-addresses vm2 "00:00:00:00:00:02 10.0.0.2 fd01::2"
+
+dnl Switch without localnet port.
+check ovn-nbctl ls-add ls2
+check ovn-nbctl --wait=sb lsp-add ls2 vm3 \
+    -- lsp-set-addresses vm3 "00:00:00:00:00:03 10.0.0.3 fd01::3"
+
+AS_BOX([FDB learning disabled])
+
+dnl ls1: ls_in_lookup_fdb should have priority 0 default +
+dnl priority 50 flags.localnet.
+AT_CHECK([ovn-sbctl dump-flows ls1 | grep -e 'ls_in_lookup_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "ln1"), action=(flags.localnet = 1; next;)
+])
+
+dnl ls1: ls_in_arp_rsp should include flags.localnet condition for
+dnl priority 50 ARP/ND reply flows but NOT for priority 100 self-reply
+dnl flows (since those match on inport == VIF, flags.localnet is always 0).
+AT_CHECK([ovn-sbctl dump-flows ls1 | grep -e 'ls_in_arp_rsp' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.1 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.2 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm2"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:1 && nd.target == fd01::1 && inport == "vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:2 && nd.target == fd01::2 && inport == "vm2"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.1 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && ((flags.localnet == 1 && is_chassis_resident("vm1")) || flags.localnet == 0)), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:01; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:01; arp.tpa = arp.spa; arp.spa = 10.0.0.1; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.2 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && ((flags.localnet == 1 && is_chassis_resident("vm2")) || flags.localnet == 0)), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:02; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:02; arp.tpa = arp.spa; arp.spa = 10.0.0.2; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:1 && nd.target == fd01::1 && ((flags.localnet == 1 && is_chassis_resident("vm1")) || flags.localnet == 0)), action=(nd_na { eth.src = 00:00:00:00:00:01; ip6.src = fd01::1; nd.target = fd01::1; nd.tll = 00:00:00:00:00:01; outport = inport; flags.loopback = 1; output; };)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:2 && nd.target == fd01::2 && ((flags.localnet == 1 && is_chassis_resident("vm2")) || flags.localnet == 0)), action=(nd_na { eth.src = 00:00:00:00:00:02; ip6.src = fd01::2; nd.target = fd01::2; nd.tll = 00:00:00:00:00:02; outport = inport; flags.loopback = 1; output; };)
+])
+
+dnl ls2: ls_in_arp_rsp should NOT include flags.localnet condition.
+AT_CHECK([ovn-sbctl dump-flows ls2 | grep -e 'ls_in_arp_rsp' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.3 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm3"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:3 && nd.target == fd01::3 && inport == "vm3"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.3 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:03; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:03; arp.tpa = arp.spa; arp.spa = 10.0.0.3; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:3 && nd.target == fd01::3), action=(nd_na { eth.src = 00:00:00:00:00:03; ip6.src = fd01::3; nd.target = fd01::3; nd.tll = 00:00:00:00:00:03; outport = inport; flags.loopback = 1; output; };)
+])
+
+dnl ls2: ls_in_lookup_fdb should only have priority 0 default,
+dnl no priority 50 flags.localnet.
+AT_CHECK([ovn-sbctl dump-flows ls2 | grep -e 'ls_in_lookup_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+])
+
+AS_BOX([Enable FDB learning on ln1])
+check ovn-nbctl --wait=sb lsp-set-options ln1 localnet_learn_fdb=true
+
+dnl ls1: ls_in_lookup_fdb should have priority 100 FDB +
+dnl priority 50 fallback.
+AT_CHECK([ovn-sbctl dump-flows ls1 | grep -e 'ls_in_lookup_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_lookup_fdb   ), priority=100  , match=(inport == "ln1"), action=(flags.localnet = 1; reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "ln1"), action=(flags.localnet = 1; next;)
+])
+
+dnl ls1: ls_in_arp_rsp should be unchanged.
+AT_CHECK([ovn-sbctl dump-flows ls1 | grep -e 'ls_in_arp_rsp' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.1 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.2 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm2"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:1 && nd.target == fd01::1 && inport == "vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:2 && nd.target == fd01::2 && inport == "vm2"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.1 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && ((flags.localnet == 1 && is_chassis_resident("vm1")) || flags.localnet == 0)), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:01; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:01; arp.tpa = arp.spa; arp.spa = 10.0.0.1; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.2 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && ((flags.localnet == 1 && is_chassis_resident("vm2")) || flags.localnet == 0)), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:02; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:02; arp.tpa = arp.spa; arp.spa = 10.0.0.2; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:1 && nd.target == fd01::1 && ((flags.localnet == 1 && is_chassis_resident("vm1")) || flags.localnet == 0)), action=(nd_na { eth.src = 00:00:00:00:00:01; ip6.src = fd01::1; nd.target = fd01::1; nd.tll = 00:00:00:00:00:01; outport = inport; flags.loopback = 1; output; };)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:2 && nd.target == fd01::2 && ((flags.localnet == 1 && is_chassis_resident("vm2")) || flags.localnet == 0)), action=(nd_na { eth.src = 00:00:00:00:00:02; ip6.src = fd01::2; nd.target = fd01::2; nd.tll = 00:00:00:00:00:02; outport = inport; flags.loopback = 1; output; };)
+])
+
+AS_BOX([Disable FDB learning])
+check ovn-nbctl --wait=sb lsp-set-options ln1 localnet_learn_fdb=false
+
+AT_CHECK([ovn-sbctl dump-flows ls1 | grep -e 'ls_in_lookup_fdb' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lookup_fdb   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_lookup_fdb   ), priority=50   , match=(inport == "ln1"), action=(flags.localnet = 1; next;)
+])
+
+AT_CHECK([ovn-sbctl dump-flows ls1 | grep -e 'ls_in_arp_rsp' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.1 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(arp.tpa == 10.0.0.2 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && inport == "vm2"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:1 && nd.target == fd01::1 && inport == "vm1"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=100  , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:2 && nd.target == fd01::2 && inport == "vm2"), action=(next;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.1 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && ((flags.localnet == 1 && is_chassis_resident("vm1")) || flags.localnet == 0)), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:01; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:01; arp.tpa = arp.spa; arp.spa = 10.0.0.1; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(arp.tpa == 10.0.0.2 && arp.op == 1 && eth.dst == ff:ff:ff:ff:ff:ff && ((flags.localnet == 1 && is_chassis_resident("vm2")) || flags.localnet == 0)), action=(eth.dst = eth.src; eth.src = 00:00:00:00:00:02; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 00:00:00:00:00:02; arp.tpa = arp.spa; arp.spa = 10.0.0.2; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:1 && nd.target == fd01::1 && ((flags.localnet == 1 && is_chassis_resident("vm1")) || flags.localnet == 0)), action=(nd_na { eth.src = 00:00:00:00:00:01; ip6.src = fd01::1; nd.target = fd01::1; nd.tll = 00:00:00:00:00:01; outport = inport; flags.loopback = 1; output; };)
+  table=??(ls_in_arp_rsp      ), priority=50   , match=(nd_ns_mcast && ip6.dst == ff02::1:ff00:2 && nd.target == fd01::2 && ((flags.localnet == 1 && is_chassis_resident("vm2")) || flags.localnet == 0)), action=(nd_na { eth.src = 00:00:00:00:00:02; ip6.src = fd01::2; nd.target = fd01::2; nd.tll = 00:00:00:00:00:02; outport = inport; flags.loopback = 1; output; };)
 ])
 
 OVN_CLEANUP_NORTHD
