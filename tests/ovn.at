@@ -46157,3 +46157,66 @@ AT_CHECK([grep -q "WARN.*dynamic-routing" hv/ovn-controller.log], [1])
 OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([IPv4 over v6 Neigh solicitation test])
+ovn_start
+
+net_add n1
+sim_add hv
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 10.0.0.3"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24 1000::1/64
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
+
+# localnet port
+check ovn-nbctl lsp-add-localnet-port public ln-public phys
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-public hv 20
+check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.3
+
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=sw0-port1 \
+    options:tx_pcap=hv/vif1-tx.pcap \
+    options:rxq_pcap=hv/vif1-rx.pcap \
+    ofport-request=1
+
+wait_for_ports_up
+
+# Add a learnt route manually
+dp_uuid=$(fetch_column datapath _uuid external_ids:name=lr0)
+lrp_uuid=$(fetch_column port_binding _uuid logical_port=lr0-public)
+
+check_uuid ovn-sbctl create learned_route datapath=$dp_uuid logical_port=$lrp_uuid \
+ip_prefix=0.0.0.0/0 nexthop='"fe80::42:ff:fe00:1ff"'
+
+check ovn-nbctl --wait=hv sync
+
+# Send an IPv4 packet from sw0-port1 destined to outside
+packet=$(fmt_pkt "Ether(dst='00:00:00:00:ff:01', src='50:54:00:00:00:01')/ \
+                      IP(dst='8.8.8.8', src='10.0.0.3')/ICMP()")
+check as hv ovs-appctl netdev-dummy/receive vif1 $packet
+
+nd_ns=$(fmt_pkt "Ether(dst='33:33:ff:00:01:ff', src='00:00:20:20:12:13')/ \
+                       IPv6(src='fe80::200:20ff:fe20:1213', \
+                       dst='ff02::1:ff00:1ff')/ICMPv6ND_NS(tgt='fe80::42:ff:fe00:1ff')/\
+                       ICMPv6NDOptSrcLLAddr(lladdr='00:00:20:20:12:13')")
+
+echo $nd_ns > expected_nd_ns
+OVN_CHECK_PACKETS_CONTAIN([hv/br-phys_n1-tx.pcap], [expected_nd_ns])
+
+OVN_CLEANUP([hv])
+AT_CLEANUP
+])
+

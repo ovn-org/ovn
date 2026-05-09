@@ -6541,17 +6541,27 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
 
     /* We might be here without actually currently handling an IPv6 packet.
      * This can happen in the case where we route IPv4 packets over an IPv6
-     * link.
-     * In these cases we have no destination IPv6 address from the packet that
-     * we can reuse. But we receive the actual destination IPv6 address via
-     * userdata anyway, so what we pass to compose_nd_ns is irrelevant.
-     * This is just a hope since we do not parse the userdata. If we land here
-     * for whatever reason without being an IPv6 packet and without userdata we
-     * will send out a wrong packet.
-     */
+     * link (e.g. RFC 5549 / BGP unnumbered, where an IPv4 destination is
+     * resolved via an IPv6 link-local nexthop).
+     *
+     * In that case we have no destination IPv6 address in the trigger packet
+     * to reuse. compose_nd_ns() needs a valid destination so it can derive
+     * the correct solicited-node multicast (ff02::1:ff{addr[13:16]}) for
+     * eth.dst and ip6.dst -- userdata only sets nd.target on the new packet
+     * and does not rewrite ip6.dst, so a wrong ipv6_dst here egresses on the
+     * wire as-is.
+     *
+     * The fallback nd_ns logical flow in S_ROUTER_IN_ARP_REQUEST stores the
+     * actual IPv6 nexthop in xxreg0 (REG_NEXT_HOP_IPV6) before invoking the
+     * nd_ns action, so for the IPv4-over-IPv6 case read xxreg0 from the
+     * trigger packet's flow metadata. */
     struct in6_addr ipv6_dst = IN6ADDR_EXACT_INIT;
     if (get_dl_type(ip_flow) == htons(ETH_TYPE_IPV6)) {
         ipv6_dst = ip_flow->ipv6_dst;
+    } else {
+        ovs_be128 nexthop_be =
+            hton128(flow_get_xxreg(&pin->flow_metadata.flow, 0));
+        memcpy(&ipv6_dst, &nexthop_be, sizeof ipv6_dst);
     }
     compose_nd_ns(&packet, ip_flow->dl_src, &ipv6_src,
                   &ipv6_dst);
