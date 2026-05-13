@@ -4863,12 +4863,14 @@ pflow_output_sb_port_binding_handler(struct engine_node *node,
      */
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, p_ctx.port_binding_table) {
+        bool removed = sbrec_port_binding_is_deleted(pb);
+
         /* Trigger a full recompute if type column is updated. */
-        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE)) {
+        if (!removed && !sbrec_port_binding_is_new(pb) &&
+            sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE)) {
             destroy_physical_ctx(&p_ctx);
             return false;
         }
-        bool removed = sbrec_port_binding_is_deleted(pb);
         if (!physical_handle_flows_for_lport(pb, removed, &p_ctx,
                                              &pfo->flow_table)) {
             destroy_physical_ctx(&p_ctx);
