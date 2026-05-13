@@ -1298,6 +1298,38 @@ send_na() {
     check as $hv ovs-appctl netdev-dummy/receive $dev $packet >&2
 }
 
+send_udp() {
+    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IP(dst='${idst}', src='${isrc}')/UDP()")
+    check as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+send_udp6() {
+    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/UDP()")
+    check as $hv ovs-appctl netdev-dummy/receive $dev $packet
+}
+
+dump_arp() {
+    local op=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5 hwdst=$6
+
+    local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
+                      ARP(op=$op, hwsrc='${eth_src}', hwdst='${hwdst}', \
+                      psrc='${spa}', pdst='${tpa}')")
+    echo $packet
+}
+
+dump_ns() {
+    local hdst=$1 hsrc=$2 idst=$3 isrc=$4 tgt=$5
+    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
+                            IPv6(dst='${idst}', src='${isrc}')/ \
+                            ICMPv6ND_NS(tgt='${tgt}')/ \
+                            ICMPv6NDOptSrcLLAddr(lladdr='${hsrc}')")
+    echo $packet
+}
+
 # Wrapper on top of ovn-trace, stripping some things and storing the trace
 # output to a file called 'trace'.  For now it strips the rows starting
 # with a '#'.  This should correspond to the flow key and might be displayed
