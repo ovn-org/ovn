@@ -5025,6 +5025,9 @@ OVS_WAIT_UNTIL([
     test "${n_reset}" = "1"
 ])
 
+ovn-appctl coverage/show > ovn_counters
+AT_CHECK([test 50 -gt $(ovn-appctl -t ovn-controller coverage/read-counter pinctrl_notify_handler_thread)], [0])
+
 # Check that we do not get too many immediate wake up.
 # Tolerate a few for any race conditions.
 AT_CHECK([test 5 -gt `cat ovn-controller.log | \

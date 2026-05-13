@@ -5823,6 +5823,9 @@ ip_mcast_sync(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct ip_mcast_snoop_cfg cfg;
         bool flush_groups = false;
 
+        if (!get_local_datapath(local_datapaths, dp_key)) {
+            continue;
+        }
         ip_mcast_snoop_cfg_load(&cfg, ip_mcast);
         if (ip_mcast_snoop_state_update(dp_key, &cfg, &flush_groups)) {
             notify = true;
