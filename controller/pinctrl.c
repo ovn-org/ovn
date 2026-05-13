@@ -395,6 +395,7 @@ COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
 COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
 COVERAGE_DEFINE(pinctrl_notify_main_thread);
+COVERAGE_DEFINE(pinctrl_notify_handler_thread);
 COVERAGE_DEFINE(pinctrl_total_pin_pkts);
 
 struct empty_lb_backends_event {
@@ -3952,6 +3953,7 @@ pinctrl_recv(struct rconn *swconn, const struct ofp_header *oh,
 static void
 notify_pinctrl_handler(void)
 {
+    COVERAGE_INC(pinctrl_notify_handler_thread);
     seq_change(pinctrl_handler_seq);
 }
 
