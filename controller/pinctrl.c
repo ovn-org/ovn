@@ -4120,6 +4120,8 @@ pinctrl_handler(void *arg_)
         latch_wait(&pctrl->pinctrl_thread_exit);
 
         ovsrcu_quiesce_start();
+        /* Wake-up periodicaly for coverage counters sync.*/
+        poll_timer_wait(1000);
         poll_block();
     }
 
