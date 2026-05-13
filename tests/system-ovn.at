@@ -5030,7 +5030,7 @@ AT_CHECK([test 50 -gt $(ovn-appctl -t ovn-controller coverage/read-counter pinct
 
 # Check that we do not get too many immediate wake up.
 # Tolerate a few for any race conditions.
-AT_CHECK([test 5 -gt `cat ovn-controller.log | \
+AT_CHECK([test 5 -gt `grep ovn_pinctrl0 ovn-controller.log | \
 grep -c "wakeup due to 0-ms timeout at controller/pinctrl.c:"`])
 
 OVN_CLEANUP_CONTROLLER([hv1])
