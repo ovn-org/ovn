@@ -298,6 +298,7 @@ reset_timers_for_claimed_cr(struct if_status_mgr *mgr)
     SSET_FOR_EACH_SAFE (cr_logical_port, claimed_cr) {
         garp_rarp_node_reset_timers(cr_logical_port);
         sset_delete(claimed_cr, SSET_NODE_FROM_NAME(cr_logical_port));
+        garp_rarp_data_has_changed = true;
     }
 
 }
@@ -565,7 +566,7 @@ garp_rarp_get_data(void)
 bool
 garp_rarp_data_changed(void) {
     bool ret = garp_rarp_data_has_changed;
-    garp_rarp_data_has_changed = true;
+    garp_rarp_data_has_changed = false;
     return ret;
 }
 
