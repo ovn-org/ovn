@@ -36728,15 +36728,6 @@ AT_CHECK([ovn-nbctl --wait=hv sync])
 OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -c connected])
 OVS_WAIT_UNTIL([grep pinctrl hv2/ovn-controller.log | grep -c connected])
 
-send_udp() {
-    hv=$1
-    dev=$2
-    byte=$3
-
-    packet=$(fmt_pkt "Ether(dst='00:00:00:00:10:00', src='00:00:00:00:10:${byte}')/ \
-                      IP(dst='192.168.20.${byte}', src='192.168.10.${byte}')/UDP()")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
 # Check if the option is not present by default
 AT_CHECK([fetch_column nb:logical_router options name="gw-1" | grep -q mac_binding_age_threshold], [1])
 AT_CHECK([fetch_column nb:logical_router options name="gw-2" | grep -q mac_binding_age_threshold], [1])
@@ -36770,8 +36761,8 @@ $sorted_table
 timestamp=$(fetch_column mac_binding timestamp ip="192.168.10.20")
 binding_uuid=$(fetch_column mac_binding _uuid ip="192.168.10.20")
 
-send_udp hv1 ext1 10
-send_udp hv2 ext2 20
+send_udp hv1 ext1 00:00:00:00:10:00 00:00:00:00:10:10 192.168.20.10 192.168.10.10
+send_udp hv2 ext2 00:00:00:00:10:00 00:00:00:00:10:20 192.168.20.20 192.168.10.20
 
 OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep "192.168.10.10" | grep -q "n_packets=1"])
 OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep "192.168.10.20" | grep -q "n_packets=1"])
@@ -36782,9 +36773,9 @@ AT_CHECK([fetch_column nb:logical_router options | grep -q mac_binding_age_thres
 AT_CHECK([ovn-nbctl --wait=sb sync])
 
 # Wait send few packets for "192.168.10.20" to indicate that it is still in use
-send_udp hv2 ext2 20
+send_udp hv2 ext2 00:00:00:00:10:00 00:00:00:00:10:20 192.168.20.20 192.168.10.20
 sleep 1
-send_udp hv2 ext2 20
+send_udp hv2 ext2 00:00:00:00:10:00 00:00:00:00:10:20 192.168.20.20 192.168.10.20
 
 # Set the timeout for OVS_WAIT* functions to 10 seconds
 OVS_CTL_TIMEOUT=10
@@ -37062,18 +37053,10 @@ sleep 2
 send_garp hv1 vif1 2 00:00:00:00:10:10 ff:ff:ff:ff:ff:ff 192.168.10.10 192.168.10.10
 wait_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
 
-send_udp() {
-    local hv=$1 dev=$2 byte=$3
-
-    packet=$(fmt_pkt "Ether(dst='00:00:00:00:10:00', src='00:00:00:00:10:${byte}')/ \
-                      IP(dst='192.168.20.${byte}', src='192.168.10.${byte}')/UDP()")
-    check as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
 uuid=$(fetch_column mac_binding _uuid ip="192.168.10.10" logical_port="lr-ls1")
 for i in $(seq 12); do
     # Keep one entry alive by sending traffic that uses it.
-    send_udp hv1 vif1 10
+    send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:10 192.168.20.10 192.168.10.10
     sleep 1
     # The entry must not expire.
     check_row_count mac_binding 1 ip="192.168.10.10" logical_port="lr-ls1"
@@ -37155,38 +37138,6 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
-
-send_udp() {
-    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
-    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
-                            IP(dst='${idst}', src='${isrc}')/UDP()")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
-send_udp6() {
-    local hv=$1 dev=$2 hdst=$3 hsrc=$4 idst=$5 isrc=$6
-    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
-                            IPv6(dst='${idst}', src='${isrc}')/UDP()")
-    as $hv ovs-appctl netdev-dummy/receive $dev $packet
-}
-
-dump_arp() {
-    local op=$1 eth_src=$2 eth_dst=$3 spa=$4 tpa=$5 hwdst=$6
-
-    local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
-                      ARP(op=$op, hwsrc='${eth_src}', hwdst='${hwdst}', \
-                      psrc='${spa}', pdst='${tpa}')")
-    echo $packet
-}
-
-dump_ns() {
-    local hdst=$1 hsrc=$2 idst=$3 isrc=$4 tgt=$5
-    local packet=$(fmt_pkt "Ether(dst='${hdst}', src='${hsrc}')/ \
-                            IPv6(dst='${idst}', src='${isrc}')/ \
-                            ICMPv6ND_NS(tgt='${tgt}')/
-                            ICMPv6NDOptSrcLLAddr(lladdr='${hsrc}')")
-    echo $packet
-}
 
 aging_th=10
 net_add n1
