@@ -386,6 +386,13 @@ for i in 1 2; do
     done
 done
 
+# Check that adding a new port with a non-default type does not trigger
+# a physical_run.
+OVN_CONTROLLER_EXPECT_NO_HIT(
+    [hv1 hv2], [physical_run],
+    [ovn-nbctl --wait=hv lsp-add ls1 lsp-remote -- lsp-set-type lsp-remote remote]
+)
+
 for i in 1 2; do
     j=$((i%2 + 1))
     as=as$i

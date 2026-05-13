@@ -962,7 +962,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([ovn-controller - ovn IP check path ports])
+AT_SETUP([ovn-controller - ovn IP check patch ports])
 AT_KEYWORDS([ovn-ip-patch-ports])
 
 ovn_start
@@ -1002,6 +1002,18 @@ OVS_WAIT_UNTIL([as hv1 ovs-ofctl dump-flows br-int | grep table=OFTABLE_LOCAL_OU
 check as hv1 ovn-appctl -t ovn-controller inc-engine/clear-stats
 check ovn-nbctl --wait=hv lsp-set-type ls0-rp localnet
 check_controller_engine_stats hv1 pflow_output recompute nocompute
+
+# Check that adding a new port with a non-default type does not trigger
+# a pflow_output recompute.
+check as hv1 ovn-appctl -t ovn-controller inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-add ls0 lsp-remote -- lsp-set-type lsp-remote remote
+check_controller_engine_stats hv1 pflow_output norecompute compute
+
+# Check that deleting a port with a non-default type does not trigger
+# a pflow_output recompute.
+check as hv1 ovn-appctl -t ovn-controller inc-engine/clear-stats
+check ovn-nbctl --wait=hv lsp-del lsp-remote
+check_controller_engine_stats hv1 pflow_output norecompute compute
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP
