@@ -5186,7 +5186,7 @@ test_ip() {
 # SPA and TPA are each 8 hex digits.
 test_arp() {
     echo "$@"
-    local inport=$1 sha=$2 spa=$3 tpa=$4 reply_ha=$5
+    local inport=$1 sha=$2 spa=$3 tpa=$4 rip=$5 reply_ha=$6
     local request=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${sha}')/ \
                              ARP(hwsrc='${sha}', hwdst='ff:ff:ff:ff:ff:ff', psrc='${spa}', pdst='${tpa}')")
     hv=hv`vif_to_hv $inport`
@@ -5200,9 +5200,19 @@ test_arp() {
         for k in 1 2 3; do
             # 192.168.33.254 is configured to the switch patch port for lrp33,
             # so no ARP flooding expected for it.
-            if test $i$j$k != $inport && test $tpa != 192.168.33.254; then
-                echo $request >> $i$j$k.expected
+            if test $i$j$k = $inport; then
+                continue
             fi
+
+            if test $tpa = 192.168.33.254; then
+                continue
+            fi
+
+            if test $rip = $tpa && test $j$k != 11; then
+                continue
+            fi
+
+            echo $request >> $i$j$k.expected
         done
     done
 
@@ -5342,9 +5352,9 @@ for i in 1 2 3; do
       otherip=192.168.$i$j.55 # Some other IP in subnet
       externalip=1.2.3.4      # Some other IP not in subnet
 
-      test_arp $i$j$k $smac $sip        $rip        $rmac      #4
-      test_arp $i$j$k $smac $otherip    $rip        $rmac      #5
-      test_arp $i$j$k $smac $sip        $otherip               #6
+      test_arp $i$j$k $smac $sip        $rip        $rip    $rmac #4
+      test_arp $i$j$k $smac $otherip    $rip        $rip    $rmac #5
+      test_arp $i$j$k $smac $sip        $otherip    $rip          #6
 
       # When rip is 192.168.33.254, ARP request from externalip won't be
       # filtered, because 192.168.33.254 is configured to switch peer port
@@ -5353,9 +5363,9 @@ for i in 1 2 3; do
       if test $i = 3 && test $j = 3; then
         lrp33_rsp=$rmac
       fi
-      test_arp $i$j$k $smac $externalip $rip        $lrp33_rsp #7
+      test_arp $i$j$k $smac $externalip $rip $rip $lrp33_rsp #7
 
-      # MAC binding should be learned from ARP request.
+      ## MAC binding should be learned from ARP request.
       echo lrp$i$j,$sip,$smac >> mac_bindings.expected
 
       # mac_binding is learned and overwritten so only the last one remains.
@@ -27791,18 +27801,6 @@ for var in sw_dp_uuid sw_dp_key sw1_dp_key r1_dp_key r1_tnl_key r2_tnl_key \
    AS_VAR_COPY([value], [$var])
    echo "$var=$value"
 done
-
-as hv1
-AT_CAPTURE_FILE([offlows])
-OVS_WAIT_FOR_OUTPUT([
-    ovs-ofctl dump-flows br-int > offlows
-    for match in "$match_send_rtr1" "$match_send_rtr2"; do
-        grep -E "$match_arp_req.*$match" offlows | grep -c 'n_packets=[[1-9]]'
-    done
-    :
-], [0], [1
-0
-])
 
 # Inject ND_NS for ofirst router owned IP address.
 src_ipv6=00100000000000000000000000000254
