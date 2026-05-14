@@ -1102,10 +1102,18 @@ main(int argc, char *argv[])
 
                 /* Make sure we don't bump the next_cfg when we shouldn't.
                  * This should prevent ovn-nbctl sync calls to return before
-                 * the SB updates are actually done. */
+                 * the SB updates are actually done.
+                 *
+                 * Track that the abort was intentional so we can distinguish
+                 * it from a real commit failure below; otherwise the abort
+                 * would feed back into the force-recompute path, creating a
+                 * busy loop whenever NB.nb_cfg keeps advancing but the
+                 * engine produces no SB activity. */
+                bool ovnsb_txn_aborted_intentionally = false;
                 if (!activity && ovnsb_txn &&
                     ovnsb_idl_loop.cur_cfg != ovnsb_idl_loop.next_cfg) {
                     ovsdb_idl_txn_abort(ovnsb_txn);
+                    ovnsb_txn_aborted_intentionally = true;
                 }
 
                 /* If there are any errors, we force a full recompute in order
@@ -1116,7 +1124,8 @@ main(int argc, char *argv[])
                     inc_proc_northd_force_recompute_immediate();
                 }
 
-                if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
+                if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop) &&
+                    !ovnsb_txn_aborted_intentionally) {
                     VLOG_INFO("OVNSB commit failed, "
                               "force recompute next time.");
                     inc_proc_northd_force_recompute_immediate();
