@@ -8695,6 +8695,7 @@ build_lswitch_rport_arp_req_flow(
 {
     struct ds match   = DS_EMPTY_INITIALIZER;
     struct ds m       = DS_EMPTY_INITIALIZER;
+    struct ds m_garp  = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     arp_nd_ns_match(ips, addr_family, &m);
@@ -8716,17 +8717,28 @@ build_lswitch_rport_arp_req_flow(
                       patch_op->cr_port->json_key);
     }
 
+    if (addr_family == AF_INET) {
+        ds_clone(&m_garp, &m);
+        ds_put_format(&m_garp, " && arp.spa == %s", ips);
+    }
+
     /* Send a the packet to the router pipeline.  If the switch has non-router
      * ports then flood it there as well.
      */
     if (vector_len(&od->router_ports) != od->nbs->n_ports) {
         ds_put_format(&actions, "clone {outport = %s; output; }; "
-                                "outport = \""MC_FLOOD_L2"\"; output;",
+                                "outport = \""MC_UNKNOWN"\"; output;",
                       patch_op->json_key);
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
                                 priority, ds_cstr(&match),
                                 ds_cstr(&actions), stage_hint,
                                 lflow_ref);
+        if (addr_family == AF_INET) {
+            ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
+                                    priority + 10, ds_cstr(&m_garp),
+                                    "outport = \""MC_FLOOD_L2"\"; output;",
+                                    stage_hint, lflow_ref);
+        }
     } else {
         ds_put_format(&actions, "outport = %s; output;", patch_op->json_key);
         ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
@@ -8743,7 +8755,7 @@ build_lswitch_rport_arp_req_flow(
         ds_clear(&actions);
         if (vector_len(&od->router_ports) != od->nbs->n_ports) {
             ds_put_format(&actions, "clone {outport = %s; output; }; "
-                                    "outport = \""MC_FLOOD_L2"\"; output;",
+                                    "outport = \""MC_UNKNOWN"\"; output;",
                           patch_op->cr_port->json_key);
             ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
                                     priority, ds_cstr(&match),
@@ -8762,6 +8774,7 @@ build_lswitch_rport_arp_req_flow(
 
     ds_destroy(&m);
     ds_destroy(&match);
+    ds_destroy(&m_garp);
     ds_destroy(&actions);
 }
 
@@ -10151,7 +10164,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                        "broadcast-arps-to-all-routers", true)) {
         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 72,
                       "eth.mcast && (arp.op == 1 || nd_ns)",
-                      "outport = \""MC_FLOOD_L2"\"; output;",
+                      "outport = \""MC_UNKNOWN"\"; output;",
                       lflow_ref);
     }
 
