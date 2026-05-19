@@ -15933,6 +15933,53 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - learned routes on unnumbered LRP])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 option:dynamic-routing=true
+check ovn-nbctl lrp-add lr0 lrp1 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lrp-add lr0 lrp2 00:00:00:00:ff:02
+check ovn-nbctl --wait=sb lrp-add lr0 lrp3 00:00:00:00:ff:03
+datapath=$(fetch_column datapath_binding _uuid external_ids:name=lr0)
+lrp2=$(fetch_column port_binding _uuid logical_port=lrp2)
+lrp3=$(fetch_column port_binding _uuid logical_port=lrp3)
+
+check_uuid ovn-sbctl create Learned_Route \
+    datapath=$datapath                    \
+    logical_port=$lrp2                    \
+    ip_prefix=42.42.42.42/32              \
+    nexthop=192.168.2.42
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -F "42.42.42.42" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=258  , match=(reg7 == 0 && ip4.dst == 42.42.42.42/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 192.168.2.42; eth.src = 00:00:00:00:ff:02; outport = "lrp2"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+check_uuid ovn-sbctl create Learned_Route \
+    datapath=$datapath                    \
+    logical_port=$lrp3                    \
+    ip_prefix=42.42.42.42/32              \
+    nexthop=192.168.3.42
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep -w "lr_in_ip_routing" lr0flows | grep -F "42.42.42.42" | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=258  , match=(reg7 == 0 && ip4.dst == 42.42.42.42/32), action=(ip.ttl--; flags.loopback = 1; reg8[[0..15]] = 1; reg8[[16..31]] = select(1, 2);)
+])
+
+AT_CHECK([grep "lr_in_ip_routing_ecmp" lr0flows | grep "42" | sed -e 's/reg8\[[16..31\]] == [[12]]/reg8\[[16..31\]] == ??/g' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ??), action=(reg0 = 192.168.2.42; eth.src = 00:00:00:00:ff:02; outport = "lrp2"; reg9[[9]] = 1; next;)
+  table=??(lr_in_ip_routing_ecmp), priority=100  , match=(reg8[[0..15]] == 1 && reg8[[16..31]] == ??), action=(reg0 = 192.168.3.42; eth.src = 00:00:00:00:ff:03; outport = "lrp3"; reg9[[9]] = 1; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing - route learning cleanup - router recreation])
 AT_KEYWORDS([dynamic-routing])
 ovn_start

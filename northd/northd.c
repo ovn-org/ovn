@@ -11804,10 +11804,15 @@ add_ecmp_symmetric_reply_flows(struct lflow_table *lflows,
                   ds_cstr(route_match));
     ds_clear(&actions);
     ds_put_format(&actions, "ip.ttl--; flags.loopback = 1; "
-                  "eth.src = %s; %s = %s; outport = %s; next;",
-                  out_port->lrp_networks.ea_s,
-                  is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
-                  port_ip, out_port->json_key);
+                  "eth.src = %s; ",
+                  out_port->lrp_networks.ea_s);
+    if (port_ip) {
+        ds_put_format(&actions, "%s = %s; ",
+                      is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
+                      port_ip);
+    }
+    ds_put_format(&actions, "outport = %s; next;",
+                  out_port->json_key);
     ovn_lflow_add_with_hint(lflows, od, S_ROUTER_IN_IP_ROUTING, 10300,
                            ds_cstr(&match), ds_cstr(&actions),
                            route->source_hint,
@@ -11953,13 +11958,15 @@ build_ecmp_route_flow(struct lflow_table *lflows,
         ds_put_format(&actions, "%s = ",
                       is_ipv4_nexthop ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6);
         ipv6_format_mapped(route->nexthop, &actions);
-        ds_put_format(&actions, "; "
-                      "%s = %s; "
-                      "eth.src = %s; "
+        if (route->lrp_addr_s) {
+            ds_put_format(&actions, "; %s = %s",
+                          is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
+                          route->lrp_addr_s);
+        }
+        ds_put_format(&actions,
+                      "; eth.src = %s; "
                       "outport = %s; "
                       REGBIT_NEXTHOP_IS_IPV4" = %d; ",
-                      is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
-                      route->lrp_addr_s,
                       route->out_port->lrp_networks.ea_s,
                       route->out_port->json_key,
                       is_ipv4_nexthop);
@@ -12019,15 +12026,17 @@ add_route(struct lflow_table *lflows, const struct ovn_datapath *od,
                                            REG_NEXT_HOP_IPV6,
                           is_ipv4_prefix ? "4" : "6");
         }
-        ds_put_format(&common_actions, "; "
-                      "%s = %s; "
-                      "eth.src = %s; "
+        if (lrp_addr_s) {
+            ds_put_format(&common_actions, "; %s = %s",
+                          is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
+                          lrp_addr_s);
+        }
+        ds_put_format(&common_actions,
+                      "; eth.src = %s; "
                       "outport = %s; "
                       "flags.loopback = 1; "
                       REGBIT_NEXTHOP_IS_IPV4" = %d; "
                       "next;",
-                      is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
-                      lrp_addr_s,
                       op->lrp_networks.ea_s,
                       op->json_key,
                       is_ipv4_nexthop);
