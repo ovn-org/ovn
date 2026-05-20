@@ -1019,6 +1019,94 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - localnet port change and chassisredirect bridged redirect])
+AT_KEYWORDS([ovn-localnet-cr-bridged])
+
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+dnl Create the full topology with localnet ports, router,
+dnl gateway chassis, and bridged redirect.  Bind VIFs so the
+dnl datapaths are local.
+check ovn-nbctl                                                                \
+    -- ls-add ls1                                                              \
+      -- lsp-add-localnet-port ls1 ln1 phys                                    \
+        -- set logical_switch_port ln1 tag_request=101                         \
+      -- lsp-add ls1 lp1                                                       \
+        -- lsp-set-addresses lp1 "00:00:00:00:00:01 192.168.1.10"              \
+      -- lsp-add ls1 lp2                                                       \
+        -- lsp-set-addresses lp2 "00:00:00:00:00:02 192.168.1.11"              \
+      -- lsp-add-router-port ls1 ls1-to-router router-to-ls1                   \
+    -- ls-add ls-underlay                                                      \
+      -- lsp-add-localnet-port ls-underlay ln-underlay phys                    \
+        -- set logical_switch_port ln-underlay tag_request=1000                \
+      -- lsp-add-router-port ls-underlay underlay-to-router router-to-underlay \
+    -- lr-add lr1                                                              \
+      -- lrp-add lr1 router-to-ls1 00:00:01:01:02:03 192.168.1.1/24            \
+      -- lrp-add lr1 router-to-underlay 00:00:01:01:02:07 172.31.0.1/24        \
+        -- lrp-set-gateway-chassis router-to-underlay hv1                      \
+        -- lrp-set-redirect-type router-to-underlay bridged
+
+check as hv1 ovs-vsctl add-port br-int vif0 \
+    -- set Interface vif0 external_ids:iface-id=lp1
+check as hv2 ovs-vsctl add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lp2
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Verify initial state: hv2 has the CR bridged redirect flow.
+router_dp_key=$(printf "%x" $(fetch_column datapath tunnel_key external_ids:name=lr1))
+cr_key=$(printf "%x" $(fetch_column port_binding tunnel_key logical_port=cr-router-to-underlay))
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q "reg15=0x${cr_key},metadata=0x${router_dp_key}"])
+
+dnl Delete the localnet port on ls-underlay.
+check ovn-nbctl --wait=hv lsp-del ln-underlay
+AT_CHECK([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep "reg15=0x${cr_key},metadata=0x${router_dp_key}"], [1])
+
+dnl Pre-create the patch port that the new localnet port
+dnl would need.  This way, when the localnet port binding arrives,
+dnl patch_run() sees the patch port already exists and non_vif_data
+dnl does NOT change, forcing pflow_output to handle the
+dnl change incrementally instead of recomputing.
+check as hv2 ovs-vsctl                                     \
+    -- add-port br-int patch-br-int-to-ln-underlay         \
+    -- set Interface patch-br-int-to-ln-underlay           \
+       type=patch options:peer=patch-ln-underlay-to-br-int
+check as hv2 ovs-vsctl                                     \
+    -- add-port br-phys patch-ln-underlay-to-br-int        \
+    -- set Interface patch-ln-underlay-to-br-int           \
+       type=patch options:peer=patch-br-int-to-ln-underlay
+check ovn-nbctl --wait=hv sync
+
+dnl Re-add the localnet port.  The patch port already exists,
+dnl so non_vif_data should not change, and pflow_output should
+dnl be handled incrementally.
+check ovn-nbctl --wait=hv                                   \
+    -- lsp-add-localnet-port ls-underlay ln-underlay phys   \
+    -- set logical_switch_port ln-underlay tag_request=1000
+
+dnl Verify the CR bridged redirect flow is back.
+OVS_WAIT_UNTIL([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_LOCAL_OUTPUT | grep -q "reg15=0x${cr_key},metadata=0x${router_dp_key}"])
+
+OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
 AT_SETUP([ovn-controller - I-P for address set update: no conjunction])
 AT_KEYWORDS([as-i-p])
 
