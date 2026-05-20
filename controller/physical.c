@@ -3749,6 +3749,24 @@ physical_handle_flows_for_lport(const struct sbrec_port_binding *pb,
         }
     }
 
+    /* Chassisredirect ports on peer router datapaths may have bridged
+     * redirect flows that depend on this localnet port
+     * (put_remote_port_redirect_bridged() calls get_localnet_port()).
+     * Re-evaluate those CR ports. */
+    if (type == LP_LOCALNET && !removed && ldp) {
+        const struct peer_ports *pp;
+        VECTOR_FOR_EACH_PTR (&ldp->peer_ports, pp) {
+            const struct sbrec_port_binding *cr_pb =
+                lport_get_cr_port(p_ctx->sbrec_port_binding_by_name,
+                                  pp->remote, NULL);
+            if (cr_pb) {
+                ofctrl_remove_flows(flow_table, &cr_pb->header_.uuid);
+                physical_eval_port_binding(p_ctx, cr_pb, LP_CHASSISREDIRECT,
+                                           flow_table);
+            }
+        }
+    }
+
     if (sbrec_port_binding_is_updated(
             pb, SBREC_PORT_BINDING_COL_ADDITIONAL_CHASSIS) || removed) {
         physical_multichassis_reprocess(pb, p_ctx, flow_table);
