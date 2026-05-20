@@ -36,6 +36,11 @@ struct ofctrl_seqno_update {
                                 * application.
                                 */
     uint64_t req_cfg;          /* Application specific seqno. */
+    uint64_t req_ts;           /* Opaque per-request timestamp captured by
+                                * the caller at the moment the update was
+                                * queued.  Carried through to the acked
+                                * state so consumers can pair the acked
+                                * seqno with the input that produced it. */
 };
 
 /* List of in flight sequence number updates. */
@@ -51,6 +56,9 @@ struct ofctrl_seqno_state {
                                  * application consumed acked requests.
                                  */
     uint64_t cur_cfg;           /* Last acked application seqno. */
+    uint64_t cur_cfg_req_ts;    /* req_ts that was paired with cur_cfg when
+                                 * the update was queued.  0 if the caller
+                                 * didn't supply a timestamp. */
     uint64_t req_cfg;           /* Last requested application seqno. */
 };
 
@@ -73,6 +81,7 @@ ofctrl_acked_seqnos_get(size_t seqno_type)
     struct ofctrl_acked_seqnos *acked_seqnos = xmalloc(sizeof *acked_seqnos);
     acked_seqnos->acked = vector_clone(&state->acked_cfgs);
     acked_seqnos->last_acked = state->cur_cfg;
+    acked_seqnos->last_acked_req_ts = state->cur_cfg_req_ts;
 
     vector_clear(&state->acked_cfgs);
     if (vector_capacity(&state->acked_cfgs) >= VECTOR_THRESHOLD) {
@@ -140,6 +149,7 @@ ofctrl_seqno_add_type(void)
     struct ofctrl_seqno_state state = (struct ofctrl_seqno_state) {
         .acked_cfgs = VECTOR_EMPTY_INITIALIZER(uint64_t),
         .cur_cfg = 0,
+        .cur_cfg_req_ts = 0,
         .req_cfg = 0,
     };
     vector_push(&ofctrl_seqno_states, &state);
@@ -152,6 +162,19 @@ ofctrl_seqno_add_type(void)
  */
 void
 ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
+{
+    ofctrl_stamped_seqno_update_create(seqno_type, new_cfg, 0);
+}
+
+/* Like ofctrl_seqno_update_create() but also records 'req_ts', an opaque
+ * timestamp captured by the caller (e.g. SB_Global nb_cfg_timestamp at the
+ * moment 'new_cfg' was read).  The timestamp is carried unchanged to
+ * ofctrl_acked_seqnos_get() so consumers can pair the eventual ack with the
+ * input state that produced it.
+ */
+void
+ofctrl_stamped_seqno_update_create(size_t seqno_type, uint64_t new_cfg,
+                                   uint64_t req_ts)
 {
     struct ofctrl_seqno_state *state = ofctrl_seqno_state_get(seqno_type);
 
@@ -169,6 +192,7 @@ ofctrl_seqno_update_create(size_t seqno_type, uint64_t new_cfg)
         .seqno_type = seqno_type,
         .flow_cfg = ofctrl_req_seqno,
         .req_cfg = new_cfg,
+        .req_ts = req_ts,
     };
     vector_push(&ofctrl_seqno_updates, &update);
 }
@@ -190,6 +214,7 @@ ofctrl_seqno_run(uint64_t flow_cfg)
         struct ofctrl_seqno_state *state =
             ofctrl_seqno_state_get(update->seqno_type);
         state->cur_cfg = update->req_cfg;
+        state->cur_cfg_req_ts = update->req_ts;
         vector_push(&state->acked_cfgs, &update->req_cfg);
 
         index++;
