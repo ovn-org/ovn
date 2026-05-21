@@ -25,8 +25,6 @@ lflow_lr_stateful_handler(struct engine_node *, void *data);
 enum engine_input_handler_result
 lflow_ls_stateful_handler(struct engine_node *node, void *data);
 enum engine_input_handler_result
-lflow_ls_arp_handler(struct engine_node *, void *);
-enum engine_input_handler_result
 lflow_multicast_igmp_handler(struct engine_node *node, void *data);
 enum engine_input_handler_result
 lflow_group_ecmp_route_change_handler(struct engine_node *node, void *data);
