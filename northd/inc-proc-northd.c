@@ -34,7 +34,6 @@
 #include "en-lr-stateful.h"
 #include "en-lr-nat.h"
 #include "en-ls-stateful.h"
-#include "en-ls-arp.h"
 #include "en-multicast.h"
 #include "en-northd.h"
 #include "en-lflow.h"
@@ -177,7 +176,6 @@ static ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(lr_nat, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(lr_stateful, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(ls_stateful, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(ls_arp, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(route_policies);
 static ENGINE_NODE(routes);
 static ENGINE_NODE(bfd);
@@ -316,9 +314,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      ls_stateful_port_group_handler);
     engine_add_input(&en_ls_stateful, &en_nb_acl, ls_stateful_acl_handler);
 
-    engine_add_input(&en_ls_arp, &en_lr_nat, ls_arp_lr_nat_handler);
-    engine_add_input(&en_ls_arp, &en_northd, ls_arp_northd_handler);
-
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
     engine_add_input(&en_mac_binding_aging, &en_mac_binding_aging_waker, NULL);
@@ -422,7 +417,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_port_group, engine_noop_handler);
     engine_add_input(&en_lflow, &en_lr_stateful, lflow_lr_stateful_handler);
     engine_add_input(&en_lflow, &en_ls_stateful, lflow_ls_stateful_handler);
-    engine_add_input(&en_lflow, &en_ls_arp, lflow_ls_arp_handler);
     engine_add_input(&en_lflow, &en_multicast_igmp,
                      lflow_multicast_igmp_handler);
     engine_add_input(&en_lflow, &en_sb_acl_id, NULL);

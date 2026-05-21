@@ -174,9 +174,6 @@ digraph "Incremental-Processing-Engine" {
 	northd -> ls_stateful [[label="ls_stateful_northd_handler"]];
 	port_group -> ls_stateful [[label="ls_stateful_port_group_handler"]];
 	NB_acl -> ls_stateful [[label="ls_stateful_acl_handler"]];
-	ls_arp [[style=filled, shape=box, fillcolor=white, label="ls_arp"]];
-	lr_nat -> ls_arp [[label="ls_arp_lr_nat_handler"]];
-	northd -> ls_arp [[label="ls_arp_northd_handler"]];
 	SB_igmp_group [[style=filled, shape=box, fillcolor=white, label="SB_igmp_group"]];
 	multicast_igmp [[style=filled, shape=box, fillcolor=white, label="multicast_igmp"]];
 	northd -> multicast_igmp [[label="multicast_igmp_northd_handler"]];
@@ -198,7 +195,6 @@ digraph "Incremental-Processing-Engine" {
 	port_group -> lflow [[label="engine_noop_handler"]];
 	lr_stateful -> lflow [[label="lflow_lr_stateful_handler"]];
 	ls_stateful -> lflow [[label="lflow_ls_stateful_handler"]];
-	ls_arp -> lflow [[label="lflow_ls_arp_handler"]];
 	multicast_igmp -> lflow [[label="lflow_multicast_igmp_handler"]];
 	SB_acl_id -> lflow [[label=""]];
 	ic_learned_svc_monitors -> lflow [[label="lflow_ic_learned_svc_mons_handler"]];

@@ -43,12 +43,6 @@ Ingress table 0 contains these logical flows:
   want to prevent duplicate replies and advertisements. This is achieved by a
   rule with priority 80 that sets ``REGBIT_PORT_SEC_DROP" = 1; next;"``.
 
-- For each logical switch that has connected physical ports (localnet or
-  l2gateway) and is also connected to a distributed router, filtering rules are
-  added for ARP requests coming from localnet or l2gateway ports, allowed for
-  processing on gateway chassis. The ``REGBIT_EXT_ARP`` register is set for all
-  ARP requests originating from physical ports with priority 75 flow.
-
 - For each (enabled) vtep logical port, a priority 70 flow is added which
   matches on all packets and applies the action ``next(pipeline=ingress,
   table=S_SWITCH_IN_L3_LKUP) = 1;`` to skip most stages of ingress pipeline and
@@ -103,10 +97,6 @@ Ingress table 1 contains these logical flows:
 
 - One priority-0 fallback flow that matches all packets and advances to the next
   table.
-
-- Priority 75: Allows ``REGBIT_EXT_ARP`` packets only on gateway chassis and
-  chassis with distributed NAT entries. Priority 70: Drops ``REGBIT_EXT_ARP``
-  packets on non-gateway chassis (complements the priority 75 flow).
 
 .. _ls-in-2:
 
