@@ -25,6 +25,7 @@
 OVN on Windows
 =======================
 
-TODO
-----
-* This document needs to be updated.
+OVN on Windows is not currently tested or built.  While the build
+system contains some Windows-related scaffolding inherited from
+Open vSwitch, there are no maintained build instructions or CI
+coverage for this platform.
