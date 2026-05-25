@@ -37247,6 +37247,123 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - probing multi-subnet source IP])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+aging_th=10
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+
+check ovn-nbctl                                                             \
+    -- ls-add ls1                                                           \
+    -- lr-add lr                                                            \
+    -- set logical_router lr options:mac_binding_age_threshold=$aging_th    \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 10.10.10.1/24 42.42.42.1/24      \
+       fd11::1/64 fd12::1/64                                                \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                                \
+    -- lsp-add ls1 vif1                                                     \
+    -- lsp-set-addresses vif1 "unknown"
+
+check ovs-vsctl                                                             \
+    -- add-port br-int vif1                                                 \
+    -- set interface vif1 external-ids:iface-id=vif1                        \
+    options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Wait for pinctrl thread to be connected.
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
+
+# Create MAC bindings in both IPv4 subnets.
+send_garp hv1 vif1 2 00:00:00:00:10:1a ff:ff:ff:ff:ff:ff 10.10.10.100 10.10.10.100
+wait_row_count mac_binding 1 ip="10.10.10.100" logical_port="lr-ls1"
+
+send_garp hv1 vif1 2 00:00:00:00:10:1b ff:ff:ff:ff:ff:ff 42.42.42.253 42.42.42.253
+wait_row_count mac_binding 1 ip="42.42.42.253" logical_port="lr-ls1"
+
+# Create MAC bindings in both IPv6 subnets.
+send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1
+wait_row_count mac_binding 1 ip=\"fd11::64\" logical_port=\"lr-ls1\"
+
+send_na hv1 vif1 00:00:00:00:10:1b 00:00:00:00:10:00 fd12::64 fd12::1
+wait_row_count mac_binding 1 ip=\"fd12::64\" logical_port=\"lr-ls1\"
+
+# Record UUIDs for all MAC bindings.
+uuid_v4_1=$(fetch_column Mac_Binding _uuid ip=10.10.10.100)
+uuid_v4_2=$(fetch_column Mac_Binding _uuid ip=42.42.42.253)
+uuid_v6_1=$(fetch_column Mac_Binding _uuid ip=\"fd11::64\")
+uuid_v6_2=$(fetch_column Mac_Binding _uuid ip=\"fd12::64\")
+
+# Send IPv4 and IPv6 UDP traffic to refresh entries in OFTABLE_MAC_BINDING.
+# Use different src MACs than the ones from GARP/NA to avoid resetting
+# OFTABLE_MAC_CACHE_USE idle_age (which would keep the timestamp fresh
+# and suppress probing via the cooldown mechanism).
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 42.42.42.253 10.10.10.100
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2b 10.10.10.100 42.42.42.253
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd12::64 fd11::64
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2b fd11::64 fd12::64
+
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
+                  sed 's/reg15=0x.,metadata=0x./reg15=<cleared>,metadata=<cleared>/g' | \
+                  grep -q "reg0=0xa0a0a64,reg15=<cleared>,metadata=<cleared> actions=mod_dl_dst:00:00:00:00:10:1a"])
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
+                  sed 's/reg15=0x.,metadata=0x./reg15=<cleared>,metadata=<cleared>/g' | \
+                  grep -q "reg0=0x2a2a2afd,reg15=<cleared>,metadata=<cleared> actions=mod_dl_dst:00:00:00:00:10:1b"])
+
+# Wait until all entries in OFTABLE_MAC_CACHE_USE are stale.
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/nw_src=10.10.10.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/nw_src=42.42.42.253/{print substr($6,10,1)}') -ge $((aging_th/2))])
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/ipv6_src=fd11::64/{print substr($6,10,1)}') -ge $((aging_th/2))])
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/ipv6_src=fd12::64/{print substr($6,10,1)}') -ge $((aging_th/2))])
+
+# Send traffic to trigger probing for all entries.
+# Again use different src MACs to only hit OFTABLE_MAC_BINDING (not MAC_CACHE_USE).
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 42.42.42.253 10.10.10.100
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2b 10.10.10.100 42.42.42.253
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd12::64 fd11::64
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2b fd11::64 fd12::64
+
+# Verify ARP probes use the correct source IPs from matching subnets.
+# ARP for 10.10.10.100 must use source IP 10.10.10.1 (first subnet).
+dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 10.10.10.1 10.10.10.100 00:00:00:00:00:00 > expected
+# ARP for 42.42.42.253 must use source IP 42.42.42.1 (second subnet).
+dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 42.42.42.1 42.42.42.253 00:00:00:00:00:00 >> expected
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected])
+
+# Verify NS probes use the correct source IPs from matching subnets.
+# NS for fd11::64 must use source IP fd11::1 (first IPv6 subnet).
+dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 > expected_v6
+# NS for fd12::64 must use source IP fd12::1 (second IPv6 subnet).
+dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd12::1 fd12::64 >> expected_v6
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_v6])
+
+# Send ARP/NA replies and check MAC_Binding UUIDs remain consistent.
+send_garp hv1 vif1 2 00:00:00:00:10:1a 00:00:00:00:10:00 10.10.10.100 10.10.10.1
+send_garp hv1 vif1 2 00:00:00:00:10:1b 00:00:00:00:10:00 42.42.42.253 42.42.42.1
+send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1
+send_na hv1 vif1 00:00:00:00:10:1b 00:00:00:00:10:00 fd12::64 fd12::1
+
+check_column "$uuid_v4_1" Mac_Binding _uuid ip=10.10.10.100
+check_column "$uuid_v4_2" Mac_Binding _uuid ip=42.42.42.253
+check_column "$uuid_v6_1" Mac_Binding _uuid ip=\"fd11::64\"
+check_column "$uuid_v6_2" Mac_Binding _uuid ip=\"fd12::64\"
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing distributed GW router])
 AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
