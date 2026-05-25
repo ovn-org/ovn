@@ -41210,26 +41210,25 @@ wait_for_ports_up
 AT_CHECK([ovn-nbctl --wait=hv sync])
 
 send_dhcp_packet() {
-    src_mac=${1}
-    src_ip=${2}
-    dst_mac=${3}
-    dst_ip=${4}
-    op_code=${5}
-    msg_type=${6}
-    yiaddr=$7
-    giaddr=${8}
-    sid=${9}
-    iface=${10}
-    #echo "ARGS: ${1} ${2} ${3} ${4} ${5} ${6} ${7} ${8} ${9} ${10}"
+    local src_mac=${1}
+    local src_ip=${2}
+    local dst_mac=${3}
+    local dst_ip=${4}
+    local op_code=${5}
+    local msg_type=${6}
+    local yiaddr=$7
+    local giaddr=${8}
+    local sid=${9}
+    local iface=${10}
     echo "ARGS: $@"
     if [[ $op_code == "01" ]]; then
-        ip_len=0111
-        udp_len=00fd
-        src_port=0044
+        local ip_len=0111
+        local udp_len=00fd
+        local src_port=0044
     else
-        ip_len=011d
-        udp_len=0109
-        src_port=0043
+        local ip_len=011d
+        local udp_len=0109
+        local src_port=0043
     fi
     flags=0000
 
@@ -41277,16 +41276,23 @@ dhcp_relay_resp_table=$(ovn-debug lflow-stage-to-oftable lr_in_dhcp_relay_resp)
 # Send DHCP valid discovery
 src_mac="505400000010"
 src_ip=`ip_to_hex 0.0.0.0`
+src_ip2=`ip_to_hex 192.168.1.2`
 dst_mac="ffffffffffff"
 dst_ip=`ip_to_hex 255.255.255.255`
 yiaddr=`ip_to_hex 0.0.0.0`
 giaddr=`ip_to_hex 0.0.0.0`
 sid=$src_ip
+
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
+send_dhcp_packet $src_mac $src_ip2 $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
 
+# The default set match ip4.src == {0.0.0.0, lrp_cidr} compiles to
+# two OF flows; only the 0.0.0.0 one sees the DISCOVER packet.
+# Sort for stable ordering.
 OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_req_table | grep -v NXST | grep 255.255.255.255 | grep resubmit |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
+n_packets=1
 n_packets=1
 ])
 
@@ -41295,9 +41301,11 @@ n_packets=1
 giaddr=`ip_to_hex 192.168.1.1`
 # send packet
 send_dhcp_packet $src_mac $src_ip $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
+send_dhcp_packet $src_mac $src_ip2 $dst_mac $dst_ip 01 01 $yiaddr $giaddr $sid vif0
 
 OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=$dhcp_relay_req_table | grep -v NXST | grep 255.255.255.255 | grep drop |
 cut -d ' ' -f5-5 | sed "s/,//"], [0], [dnl
+n_packets=1
 n_packets=1
 ])
 

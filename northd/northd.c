@@ -10064,7 +10064,8 @@ build_lswitch_dhcp_relay_flows(struct ovn_port *op,
     }
 
     struct ovn_port *rp = sp->peer;
-    if (!rp || !rp->nbrp || !rp->nbrp->dhcp_relay || rp->peer != sp) {
+    if (!rp || !rp->nbrp || !rp->nbrp->dhcp_relay || rp->peer != sp ||
+        !rp->lrp_networks.n_ipv4_addrs) {
         return;
     }
 
@@ -10088,12 +10089,14 @@ build_lswitch_dhcp_relay_flows(struct ovn_port *op,
 
     ds_put_format(
         match, "inport == %s && eth.src == %s && "
-        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "ip4.src == {0.0.0.0, %s/%u} && ip4.dst == 255.255.255.255 && "
         "udp.src == 68 && udp.dst == 67",
-        op->json_key, op->lsp_addrs[0].ea_s);
+        op->json_key, op->lsp_addrs[0].ea_s,
+        rp->lrp_networks.ipv4_addrs[0].network_s,
+        rp->lrp_networks.ipv4_addrs[0].plen);
     ds_put_format(actions,
                   "eth.dst = %s; outport = %s; next; /* DHCP_RELAY_REQ */",
-                  rp->lrp_networks.ea_s,sp->json_key);
+                  rp->lrp_networks.ea_s, sp->json_key);
     ovn_lflow_add(lflows, op->od,
                   S_SWITCH_IN_L2_LKUP, 100,
                   ds_cstr(match),
@@ -16714,9 +16717,11 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
 
     ds_put_format(
         match, "inport == %s && "
-        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "ip4.src == {0.0.0.0, %s/%u} && ip4.dst == 255.255.255.255 && "
         "ip.frag == 0 && udp.src == 68 && udp.dst == 67",
-        op->json_key);
+        op->json_key,
+        op->lrp_networks.ipv4_addrs[0].network_s,
+        op->lrp_networks.ipv4_addrs[0].plen);
     ds_put_format(actions,
                   REGBIT_DHCP_RELAY_REQ_CHK
                   " = dhcp_relay_req_chk(%s, %s);"
@@ -16735,10 +16740,12 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
 
     ds_put_format(
         match, "inport == %s && "
-        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "ip4.src == {0.0.0.0, %s/%u} && ip4.dst == 255.255.255.255 && "
         "udp.src == 68 && udp.dst == 67 && "
         REGBIT_DHCP_RELAY_REQ_CHK,
-        op->json_key);
+        op->json_key,
+        op->lrp_networks.ipv4_addrs[0].network_s,
+        op->lrp_networks.ipv4_addrs[0].plen);
     ds_put_format(actions,
                   "ip4.src = %s; ip4.dst = %s; udp.src = 67; next; "
                   "/* DHCP_RELAY_REQ */",
@@ -16753,10 +16760,12 @@ build_dhcp_relay_flows_for_lrouter_port(struct ovn_port *op,
 
     ds_put_format(
         match, "inport == %s && "
-        "ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && "
+        "ip4.src == {0.0.0.0, %s/%u} && ip4.dst == 255.255.255.255 && "
         "udp.src == 68 && udp.dst == 67 && "
         REGBIT_DHCP_RELAY_REQ_CHK" == 0",
-        op->json_key);
+        op->json_key,
+        op->lrp_networks.ipv4_addrs[0].network_s,
+        op->lrp_networks.ipv4_addrs[0].plen);
     ds_put_format(actions, "drop; /* DHCP_RELAY_REQ */");
 
     ovn_lflow_add(lflows, op->od, S_ROUTER_IN_DHCP_RELAY_REQ, 1,
