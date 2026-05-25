@@ -45,16 +45,16 @@ Sphinx. A detailed guide on installing Sphinx in many environments is available
 on the `Sphinx website`__ but, for most Linux distributions, you can install
 with your package manager. For example, on Debian/Ubuntu run::
 
-    $ sudo apt-get install python-sphinx
+    $ sudo apt-get install python3-sphinx
 
 Similarly, on RHEL/Fedora run::
 
-    $ sudo dnf install python-sphinx
+    $ sudo dnf install python3-sphinx
 
 A ``requirements.txt`` is also provided in the ``/Documentation``, should you
 wish to install using ``pip``::
 
-    $ virtualenv .venv
+    $ python3 -m venv .venv
     $ source .venv/bin/activate
     $ pip install -r Documentation/requirements.txt
 
@@ -71,19 +71,33 @@ available on the `Sphinx website`__.
 Building
 --------
 
-Once Sphinx installed, the documentation can be built using the provided
-Makefile targets::
+Before building documentation, the OVN build system must be configured.
+This requires the OVS submodule to be prepared first::
+
+    $ git submodule update --init
+    $ cd ovs
+    $ ./boot.sh && ./configure
+    $ cd ..
+    $ ./boot.sh && ./configure
+
+Once Sphinx is installed and OVN is configured, the documentation can be
+built using the provided Makefile targets::
 
     $ make docs-check
 
 .. important::
 
    The ``docs-check`` target will fail if there are any syntax errors.
-   However, it won't catch more succint issues such as style or grammar issues.
-   As a result, you should always inspect changes visually to ensure the result
-   is as intended.
+   However, it won't catch more subtle issues such as style or grammar
+   errors.  As a result, you should always inspect changes visually to
+   ensure the result is as intended.
 
-Once built, documentation is available in the ``/Documentation/_build`` folder.
-Open the root ``index.html`` to browse the documentation.
+Once built, documentation is available in the ``/Documentation/_build``
+folder.  Open the root ``index.html`` to browse the documentation.
+
+To build the man page distribution documents (as used by the
+`OVN website <https://docs.ovn.org>`__)::
+
+    $ make dist-docs
 
 __ http://www.sphinx-doc.org/en/master/config.html
