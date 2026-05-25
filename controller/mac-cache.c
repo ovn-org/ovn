@@ -968,13 +968,29 @@ mac_binding_probe_stats_run(struct ovs_list *stats_list, uint64_t *req_delay,
             continue;
         }
 
-        bool is_mb_v4 = IN6_IS_ADDR_V4MAPPED(&mb->data.ip);
-        if ((is_mb_v4 && laddr.n_ipv4_addrs)
-                || (!is_mb_v4 && laddr.n_ipv6_addrs)) {
-            struct in6_addr local =
-                is_mb_v4 ? in6_addr_mapped_ipv4(laddr.ipv4_addrs[0].addr)
-                         : laddr.ipv6_addrs[0].addr;
+        struct in6_addr local = in6addr_any;
+        if (IN6_IS_ADDR_V4MAPPED(&mb->data.ip)) {
+            ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&mb->data.ip);
+            for (size_t i = 0; i < laddr.n_ipv4_addrs; i++) {
+                struct ipv4_netaddr address = laddr.ipv4_addrs[i];
+                if (address.network == (ip4 & address.mask)) {
+                    local = in6_addr_mapped_ipv4(address.addr);
+                    break;
+                }
+            }
+        } else {
+            for (size_t i = 0; i < laddr.n_ipv6_addrs; i++) {
+                struct ipv6_netaddr address = laddr.ipv6_addrs[i];
+                struct in6_addr neigh_prefix =
+                    ipv6_addr_bitand(&mb->data.ip, &address.mask);
+                if (ipv6_addr_equals(&address.network, &neigh_prefix)) {
+                    local = address.addr;
+                    break;
+                }
+            }
+        }
 
+        if (!ipv6_addr_equals(&local, &in6addr_any)) {
             mac_binding_update_log("Sending ARP/ND request for active",
                                    &mb->data, true, threshold,
                                    stats->idle_age_ms, since_updated_ms);
