@@ -122,7 +122,7 @@ a version mismatch between the ovn-controller and ovn-northd is detected.
 Steps
 -----
 
-This section documents individual steps in a upgrade procedure in no particular
+This section documents individual steps in an upgrade procedure in no particular
 order.  For information on ordering of the steps, please refer to the `Upgrade
 procedures`_ section.
 
@@ -179,14 +179,14 @@ During database upgrading, if there is schema change, the DB file will be
 converted to the new schema automatically, if the schema change is backward
 compatible.  OVN tries the best to keep the DB schemas backward compatible.
 
-However, there can be situations that an incompatible change is reasonble.  An
-example of such case is to add constraints in the table to ensure correctness.
-If there were already data that violates the new constraints got added somehow,
-it will result in DB upgrade failures.  In this case, user should manually
-correct data using ovn-nbctl (for north-bound DB) or ovn-sbctl (for south-
-bound DB), and then upgrade again following previous steps.  Below is a list
-of known incompatible schema changes and how to fix when error
-encountered.
+However, there can be situations that an incompatible change is reasonable.
+An example of such case is to add constraints in the table to ensure
+correctness.  If there were already data that violates the new constraints
+got added somehow, it will result in DB upgrade failures.  In this case,
+user should manually correct data using ovn-nbctl (for north-bound DB) or
+ovn-sbctl (for south-bound DB), and then upgrade again following previous
+steps.  Below is a list of known incompatible schema changes and how to
+fix when error encountered.
 
 Post-split releases (20.03+)
 ''''''''''''''''''''''''''''

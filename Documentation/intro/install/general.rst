@@ -39,7 +39,7 @@ repository, which you can clone into a directory named "ovn" with::
 
 Cloning the repository leaves the "main" branch initially checked
 out.  This is the right branch for general development.
-If, on the other hand, if you want to build a particular released
+If you want to build a particular released
 version, you can check it out by running a command such as the
 following from the "ovn" directory::
 
@@ -291,17 +291,19 @@ to LIBS::
     $ ./configure LIBS=-ljemalloc
 
 Example usage::
+
     $ # Clone OVS repo
-    $cd /home/foo/ovs
-    $./boot.sh
-    $mkdir _gcc
-    $cd _gcc && ../configure && cd ..
-    $make -C _gcc
+    $ cd /home/foo/ovs
+    $ ./boot.sh
+    $ mkdir _gcc
+    $ cd _gcc && ../configure && cd ..
+    $ make -C _gcc
 
     $ # Clone OVN repo
-    $cd /home/foo/ovn
-    $./boot.sh
-    $./configure --with-ovs-source=/home/foo/ovs/ --with-ovs-build=/home/foo/ovs/_gcc
+    $ cd /home/foo/ovn
+    $ ./boot.sh
+    $ ./configure --with-ovs-source=/home/foo/ovs/ \
+        --with-ovs-build=/home/foo/ovs/_gcc
 
 It is expected to configure both Open vSwitch and OVN with the same prefix.
 
@@ -421,7 +423,7 @@ Unix domain socket::
 Starting OVN Central services in containers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For OVN central node, we dont need to load ovs kernel modules on host.
+For OVN central node, we don't need to load ovs kernel modules on host.
 Hence, OVN central containers OS need not depend on host OS.
 
 Also we can leverage deploying entire OVN control plane in a pod spec for use
@@ -544,7 +546,7 @@ domain socket::
 Starting OVN host service in containers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For OVN host too, we dont need to load ovs kernel modules on host.
+For OVN host too, we don't need to load ovs kernel modules on host.
 Hence, OVN host container OS need not depend on host OS.
 
 Also we can leverage deploying OVN host in a pod spec for use cases like
@@ -552,7 +554,7 @@ OVN-kubernetes to manage OVS which can be running as a service on host or in
 container.
 
 Start ovsdb-server and ovs-vswitchd components as per
-http://docs.openvswitch.org/en/latest/intro/install/general/
+https://docs.openvswitch.org/en/latest/intro/install/general/
 
 start local ovn-controller with below command if ovs is also running in
 container::
