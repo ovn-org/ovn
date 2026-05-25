@@ -134,8 +134,6 @@ following to obtain better warnings:
 
 - flake8 (for Python code)
 
-You may find the ovs-dev script found in ``ovs/utilities/ovs-dev.py`` useful.
-
 .. _general-install-reqs:
 
 Installation Requirements
@@ -146,8 +144,7 @@ To simply install and run OVN you require the following software:
 
 - Shared libraries compatible with those used for the build.
 
-On Linux you should ensure that ``/dev/urandom`` exists. To support TAP
-devices, you must also ensure that ``/dev/net/tun`` exists.
+On Linux you should ensure that ``/dev/urandom`` exists.
 
 .. _general-bootstrapping:
 
@@ -213,7 +210,7 @@ shared libraries instead::
 
     $ ./configure --enable-shared
 
-To use a specific C compiler for compiling Open vSwitch user programs, also
+To use a specific C compiler for compiling OVN user programs, also
 specify it on the configure command line, like so::
 
     $ ./configure CC=gcc-4.2
@@ -248,15 +245,8 @@ recommended to use ``-march=native`` settings::
     $ ./configure CFLAGS="-g -O2 -march=native"
 
 With this, GCC will detect the processor and automatically set appropriate
-flags for it. This should not be used if you are compiling OVS outside the
+flags for it. This should not be used if you are compiling OVN outside the
 target machine.
-
-.. note::
-  CFLAGS are not applied when building the Linux kernel module. Custom CFLAGS
-  for the kernel module are supplied using the ``EXTRA_CFLAGS`` variable when
-  running make. For example::
-
-      $ make EXTRA_CFLAGS="-Wno-error=date-time"
 
 If you are a developer and want to enable Address Sanitizer for debugging
 purposes, at about a 2x runtime cost, you can add
@@ -264,17 +254,6 @@ purposes, at about a 2x runtime cost, you can add
 example::
 
     $ ./configure CFLAGS="-g -O2 -fsanitize=address -fno-omit-frame-pointer -fno-common"
-
-To build the Linux kernel module, so that you can run the kernel-based switch,
-pass the location of the kernel build directory on ``--with-linux``. For
-example, to build for a running instance of Linux::
-
-    $ ./configure --with-linux=/lib/modules/$(uname -r)/build
-
-.. note::
-  If ``--with-linux`` requests building for an unsupported version of Linux,
-  then ``configure`` will fail with an error message. Refer to the
-  :doc:`/faq/index` for advice in that case.
 
 If you plan to do much OVN development, you might want to add
 ``--enable-Werror``, which adds the ``-Werror`` option to the compiler command
@@ -307,9 +286,10 @@ directory, e.g. to try out both GCC and Clang builds. For example::
     $ mkdir _gcc && (cd _gcc && ./configure CC=gcc)
     $ mkdir _clang && (cd _clang && ./configure CC=clang)
 
-Under certain loads the ovsdb-server and other components perform better when
-using the jemalloc memory allocator, instead of the glibc memory allocator. If
-you wish to link with jemalloc add it to LIBS::
+Under certain loads the OVN database servers and other components
+perform better when using the jemalloc memory allocator, instead of
+the glibc memory allocator.  If you wish to link with jemalloc add it
+to LIBS::
 
     $ ./configure LIBS=-ljemalloc
 
@@ -376,8 +356,9 @@ the daemons can be started by using the ovn-ctl utility.  This will take care
 to setup initial conditions, and start the daemons in the correct order.
 The ovn-ctl utility is located in '$(pkgdatadir)/scripts', and defaults to
 '/usr/local/share/ovn/scripts'.  ovn-ctl utility requires the 'ovs-lib'
-helper shell script which is present in '/usr/local/share/openvswitch/scripts'.
-So invoking ovn-ctl as "./ovn-ctl" will fail.
+helper shell script provided by Open vSwitch, which is typically present in
+'/usr/local/share/openvswitch/scripts'.  So invoking ovn-ctl as
+"./ovn-ctl" will fail unless Open vSwitch is properly installed.
 
 An example after install might be::
 
@@ -611,4 +592,5 @@ When using ovn in container, exec to container to run above commands::
 Reporting Bugs
 --------------
 
-Report problems to bugs@openvswitch.org.
+Report problems to https://github.com/ovn-org/ovn/issues or
+discuss@openvswitch.org.
