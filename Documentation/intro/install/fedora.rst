@@ -25,110 +25,114 @@
 Fedora, RHEL 8.x+ Packaging for OVN
 ======================================
 
-This document provides instructions for building and installing OVN
-RPM packages on a Fedora Linux host. Instructions for the installation of OVN
-on a Fedora Linux host without using RPM packages can be found in the
+This document provides instructions for installing OVN on Fedora,
+RHEL 8.x and later, and CentOS Stream, either from distribution
+packages or by building RPM packages from source.  Instructions for
+installing OVN from source without packaging can be found in the
 :doc:`general`.
 
-These instructions are applicable for Fedora, RHEL 8.x and later, and
-CentOS Stream.
+Installing from Packages
+-------------------------
+
+Fedora provides ``ovn``, ``ovn-central``, ``ovn-host``,
+``ovn-vtep``, and ``ovn-br-controller`` RPM packages.  Use ``dnf``
+to install them as superuser.
+
+For a central node (runs OVN databases and ovn-northd)::
+
+    $ sudo dnf install ovn-central
+
+For each host/hypervisor (runs ovn-controller)::
+
+    $ sudo dnf install ovn-host
+
+Additional packages::
+
+    $ sudo dnf install ovn                 # shared components
+    $ sudo dnf install ovn-vtep            # VTEP gateway support
+    $ sudo dnf install ovn-br-controller   # bridge controller
+
+For RHEL and CentOS Stream, the OVN packages may be available through
+EPEL or the distribution's own repositories.
+
+.. note::
+  The packaged version available in distributions may not be the latest
+  OVN release.
+
+Building RPM Packages from Source
+---------------------------------
 
 Build Requirements
-------------------
+~~~~~~~~~~~~~~~~~~
 
-You will need to install all required packages to build the RPMs.
-Newer distributions use ``dnf`` but if it's not available, then use
-``yum`` instructions.
+Install RPM tools and generic build dependencies::
 
-The command below will install RPM tools and generic build dependencies.
-And (optionally) include these packages: libcap-ng libcap-ng-devel.
+    $ sudo dnf install @'Development Tools' rpm-build dnf-plugins-core
 
-DNF:
-::
-
-    $ dnf install @'Development Tools' rpm-build dnf-plugins-core
-
-YUM:
-::
-
-    $ yum install @'Development Tools' rpm-build yum-utils
-
-Then it is necessary to install OVN specific build dependencies.
-The dependencies are listed in the SPEC file, but first it is necessary
-to replace the VERSION tag to be a valid SPEC.
+Then install OVN-specific build dependencies.  The dependencies are
+listed in the SPEC file, but first it is necessary to replace the
+VERSION tag to be a valid SPEC.
 
 The command below will create a temporary SPEC file::
 
     $ sed -e 's/@VERSION@/0.0.1/' rhel/ovn-fedora.spec.in \
       > /tmp/ovn.spec
 
-And to install specific dependencies, use the corresponding tool below.
-For some of the dependencies on RHEL you may need to add two additional
-repositories to help yum-builddep, e.g.::
+And to install the specific dependencies::
 
-    $ subscription-manager repos --enable=rhel-7-server-extras-rpms
-    $ subscription-manager repos --enable=rhel-7-server-optional-rpms
-
-DNF::
-
-    $ dnf builddep /tmp/ovn.spec
-
-YUM::
-
-    $ yum-builddep /tmp/ovn.spec
+    $ sudo dnf builddep /tmp/ovn.spec
 
 Once that is completed, remove the file ``/tmp/ovn.spec``.
 
-Bootstraping
-------------
+Bootstrapping
+~~~~~~~~~~~~~
 
 Refer to :ref:`general-bootstrapping`.
 
 Configuring
------------
+~~~~~~~~~~~
 
 Refer to :ref:`general-configuring`.
 
 Building
---------
+~~~~~~~~
 
-OVN RPMs
-~~~~~~~~~~~~~~~
+To build OVN RPMs, first generate the OVS source tarball in the OVS
+source directory (the OVS submodule must be built first, as described
+in :ref:`general-bootstrapping`)::
 
-To build OVN RPMs, first generate openvswitch source tarball in
-your openvwitch source directory by running
+    $ make -C ovs dist
 
-::
-
-    $make dist
-
-And then execute the following in the OVN source directory
-(in which `./configure` was executed):
-
-::
+Then execute the following from the OVN source directory (in which
+``./configure`` was executed)::
 
     $ make rpm-fedora
 
-This will create the RPMs `ovn`, `ovn-central`, `ovn-host`, `ovn-vtep`,
-`ovn-docker`, ``ovn-debuginfo``, ``ovn-central-debuginfo``,
-``ovn-host-debuginfo`` and ```ovn-vtep-debuginfo```.
-
+This will create the RPMs ``ovn``, ``ovn-central``, ``ovn-host``,
+``ovn-vtep``, ``ovn-docker``, and ``ovn-br-controller``, along with
+their debuginfo variants.
 
 You can also have the above commands automatically run the OVN unit
-tests.  This can take several minutes.
-
-::
+tests.  This can take several minutes::
 
     $ make rpm-fedora RPMBUILD_OPT="--with check"
 
-
 Installing
-----------
+~~~~~~~~~~
 
-RPM packages can be installed by using the command ``rpm -i``. Package
-installation requires superuser privileges.
+RPM packages can be installed by using the command ``rpm -i``.
+Package installation requires superuser privileges::
+
+    $ sudo rpm -i ovn-*.rpm
+
+Or install specific packages::
+
+    $ sudo rpm -i ovn-<version>.rpm              # shared components
+    $ sudo rpm -i ovn-central-<version>.rpm      # on central node
+    $ sudo rpm -i ovn-host-<version>.rpm         # on each host
 
 Reporting Bugs
 --------------
 
-Report problems to bugs@openvswitch.org.
+Report problems to https://github.com/ovn-org/ovn/issues or
+discuss@openvswitch.org.

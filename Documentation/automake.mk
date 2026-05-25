@@ -8,7 +8,6 @@ DOC_SOURCE = \
 	Documentation/intro/install/index.rst \
 	Documentation/intro/install/debian.rst \
 	Documentation/intro/install/documentation.rst \
-	Documentation/intro/install/distributions.rst \
 	Documentation/intro/install/fedora.rst \
 	Documentation/intro/install/general.rst \
 	Documentation/intro/install/ovn-upgrades.rst \
