@@ -420,6 +420,12 @@ Unix domain socket::
 
     $ ovn-northd --pidfile --detach --log-file
 
+If your deployment uses OVN Interconnection (OVN IC), you also need to
+start the IC databases and daemon::
+
+    $ ovn-ctl start_ic_ovsdb
+    $ ovn-ctl start_ic
+
 Starting OVN Central services in containers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
