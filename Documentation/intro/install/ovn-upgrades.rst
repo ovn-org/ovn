@@ -133,7 +133,7 @@ ovn-controller service.  You can restart with ovn-ctl::
 
 or with systemd::
 
-    $ sudo systemd restart ovn-controller
+    $ sudo systemctl restart ovn-controller
 
 Upgrade OVN Databases and ovn-northd
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -160,8 +160,8 @@ databases.
 
 You may perform this restart using the ovn-ctl script::
 
-    $ sudo /usr/share/openvswitch/scripts/ovn-ctl restart_ic
-    $ sudo /usr/share/openvswitch/scripts/ovn-ctl restart_ic_ovsdb
+    $ sudo /usr/share/ovn/scripts/ovn-ctl restart_ic
+    $ sudo /usr/share/ovn/scripts/ovn-ctl restart_ic_ovsdb
 
 or if you're using a Linux distribution with systemd::
 
