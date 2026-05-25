@@ -43,14 +43,14 @@ If, on the other hand, if you want to build a particular released
 version, you can check it out by running a command such as the
 following from the "ovn" directory::
 
-    $ git checkout v20.09.0
+    $ git checkout v26.03.0
 
 The repository also has a branch for each release series.  For
-example, to obtain the latest fixes in the OVN 20.09.x release series,
+example, to obtain the latest fixes in the OVN 26.03.x release series,
 which might include bug fixes that have not yet been in any released
 version, you can check it out from the "ovn" directory with::
 
-    $ git checkout origin/branch-20.09
+    $ git checkout origin/branch-26.03
 
 If you do not want to use Git, you can also obtain tarballs for `OVN
 release versions <https://www.ovn.org/en/releases/>`, or download a
@@ -87,9 +87,6 @@ need the following software:
   - GCC 4.6 or later.
 
   - Clang 3.4 or later.
-
-  - MSVC 2013. Refer to :doc:`windows` for additional Windows build
-    instructions.
 
 - libssl, from OpenSSL, is optional but recommended if you plan to connect the
   OVN services to the OVN DB ovsdb-servers securely. If libssl is installed,
@@ -511,14 +508,12 @@ Start OVN containers using unix socket::
       <docker_repo>:<tag> ovn-northd
 
 .. note::
-    Current ovn central components comes up in docker image in a standalone
+    Current OVN central components come up in Docker image in a standalone
     and cluster mode with protocol tcp.
 
-    The debian docker file use ubuntu 16.04 as a base image for reference.
+    The Debian Dockerfile uses Ubuntu 24.04 as a base image for reference.
 
-    User can use any other base image for debian, e.g. u14.04, etc.
-
-    RHEL based docker support is now added with centos7 as a base image.
+    RHEL-based Docker support uses Fedora as a base image.
 
 Starting OVN host service
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

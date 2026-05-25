@@ -21,18 +21,17 @@
 
       Avoid deeper levels because they do not render well.
 
-===========================================
-Fedora, RHEL 7.x+ Packaging for OVN
-===========================================
+======================================
+Fedora, RHEL 8.x+ Packaging for OVN
+======================================
 
 This document provides instructions for building and installing OVN
 RPM packages on a Fedora Linux host. Instructions for the installation of OVN
-Fedora Linux host without using RPM packages can be found in the
+on a Fedora Linux host without using RPM packages can be found in the
 :doc:`general`.
 
-These instructions have been tested with Fedora 29 and 30, and are also
-applicable for RHEL 7.x and its derivatives, including CentOS 7.x and
-Scientific Linux 7.x.
+These instructions are applicable for Fedora, RHEL 8.x and later, and
+CentOS Stream.
 
 Build Requirements
 ------------------
