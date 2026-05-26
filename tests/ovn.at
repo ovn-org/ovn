@@ -10385,7 +10385,11 @@ check ovn-nbctl --wait=hv set Logical_Switch_Port ln1 \
     options:localnet_learn_fdb=true
 test_arp_nd_localnet
 
-OVN_CLEANUP([hv1],[hv2])
+OVN_CLEANUP([hv1
+/left allocated/d
+], [hv2
+/left allocated/d
+])
 AT_CLEANUP
 ])
 
