@@ -78,6 +78,10 @@ static void remove_lrouter_lb_reachable_ips(struct lr_stateful_record *,
                                             enum lb_neighbor_responder_mode,
                                             const struct sset *lb_ips_v4,
                                             const struct sset *lb_ips_v6);
+static void update_lrouter_lb_adv_ips(struct lr_stateful_record *,
+                                      bool advertise,
+                                      const struct sset *lb_ips_v4,
+                                      const struct sset *lb_ips_v6);
 static bool lr_stateful_rebuild_vip_nats(struct lr_stateful_record *);
 
 /* 'lr_stateful' engine node manages the NB logical router LB data.
@@ -242,6 +246,10 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
         const struct uuid *lb_uuid = &clb->lb->nlb->header_.uuid;
         const struct ovn_northd_lb *lb = clb->lb;
 
+        bool advertise = lb->nlb
+            ? smap_get_bool(&lb->nlb->options,
+                            "dynamic-routing-advertise", true)
+            : true;
         const struct ovn_lb_datapaths *lb_dps = ovn_lb_datapaths_find(
             input_data.lb_datapaths_map, lb_uuid);
         ovs_assert(lb_dps);
@@ -260,13 +268,16 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
             remove_ips_from_lb_ip_set(lr_stateful_rec->lb_ips, lb->routable,
                                       &clb->deleted_vips_v4,
                                       &clb->deleted_vips_v6);
-            add_ips_to_lb_ip_set(lr_stateful_rec->lb_ips, lb->routable,
+            add_ips_to_lb_ip_set(lr_stateful_rec->lb_ips,
+                                 lb->routable, advertise,
                                  &clb->inserted_vips_v4,
                                  &clb->inserted_vips_v6);
 
             remove_lrouter_lb_reachable_ips(lr_stateful_rec, lb->neigh_mode,
                                             &clb->deleted_vips_v4,
                                             &clb->deleted_vips_v6);
+            update_lrouter_lb_adv_ips(lr_stateful_rec, advertise,
+                                      &lb->ips_v4, &lb->ips_v6);
             add_neigh_ips_to_lrouter(lr_stateful_rec, od, lb->neigh_mode,
                                      &clb->inserted_vips_v4,
                                      &clb->inserted_vips_v6);
@@ -650,6 +661,31 @@ remove_lrouter_lb_reachable_ips(struct lr_stateful_record *lr_stateful_rec,
     SSET_FOR_EACH (ip_address, lb_ips_v6) {
         sset_find_and_delete(&lr_stateful_rec->lb_ips->ips_v6_reachable,
                              ip_address);
+    }
+}
+
+static void
+update_lrouter_lb_adv_ips(struct lr_stateful_record *lr_stateful_rec,
+                          bool advertise,
+                          const struct sset *lb_ips_v4,
+                          const struct sset *lb_ips_v6)
+{
+    const char *ip_address;
+    SSET_FOR_EACH (ip_address, lb_ips_v4) {
+        if (advertise) {
+            sset_add(&lr_stateful_rec->lb_ips->ips_v4_adv, ip_address);
+        } else {
+            sset_find_and_delete(&lr_stateful_rec->lb_ips->ips_v4_adv,
+                                 ip_address);
+        }
+    }
+    SSET_FOR_EACH (ip_address, lb_ips_v6) {
+        if (advertise) {
+            sset_add(&lr_stateful_rec->lb_ips->ips_v6_adv, ip_address);
+        } else {
+            sset_find_and_delete(&lr_stateful_rec->lb_ips->ips_v6_adv,
+                                 ip_address);
+        }
     }
 }
 

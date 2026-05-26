@@ -17809,8 +17809,18 @@ check ovn-nbctl --wait=sb set NAT $lr_ext1_nat_uuid options:dynamic-routing-adve
 check ovn-nbctl --wait=sb set NAT $lr_ext2_nat_uuid options:dynamic-routing-advertise=false
 check_row_count Advertised_Route $((2 * n_ext_rtrs))
 
+lr_ext1_lb_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb-ext-1)
+lr_ext2_lb_uuid=$(fetch_column nb:Load_Balancer _uuid name=lb-ext-2)
+check ovn-nbctl --wait=sb set Load_Balancer $lr_ext1_lb_uuid options:dynamic-routing-advertise=false
+check ovn-nbctl --wait=sb set Load_Balancer $lr_ext2_lb_uuid options:dynamic-routing-advertise=false
+check_row_count Advertised_Route $((2 * n_ext_rtrs - 2))
+
 check ovn-nbctl --wait=sb set NAT $lr_ext1_nat_uuid options:dynamic-routing-advertise=true
 check ovn-nbctl --wait=sb set NAT $lr_ext2_nat_uuid options:dynamic-routing-advertise=true
+check_row_count Advertised_Route $((2 * n_ext_rtrs))
+
+check ovn-nbctl --wait=sb set Load_Balancer $lr_ext1_lb_uuid options:dynamic-routing-advertise=true
+check ovn-nbctl --wait=sb set Load_Balancer $lr_ext2_lb_uuid options:dynamic-routing-advertise=true
 check_row_count Advertised_Route $n_advertised_routes
 
 OVN_CLEANUP_NORTHD

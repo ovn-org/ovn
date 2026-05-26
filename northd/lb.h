@@ -39,9 +39,11 @@ struct ovn_lb_ip_set {
     struct sset ips_v4;
     struct sset ips_v4_routable;
     struct sset ips_v4_reachable;
+    struct sset ips_v4_adv;
     struct sset ips_v6;
     struct sset ips_v6_routable;
     struct sset ips_v6_reachable;
+    struct sset ips_v6_adv;
 };
 
 struct ovn_lb_ip_set *ovn_lb_ip_set_create(void);
@@ -119,7 +121,7 @@ void ovn_northd_lb_reinit(struct ovn_northd_lb *,
 void build_lrouter_lb_ips(struct ovn_lb_ip_set *,
                           const struct ovn_northd_lb *);
 void add_ips_to_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
-                          bool is_routable,
+                          bool is_routable, bool advertise,
                           const struct sset *lb_ips_v4,
                           const struct sset *lb_ips_v6);
 void remove_ips_from_lb_ip_set(struct ovn_lb_ip_set *lb_ips,

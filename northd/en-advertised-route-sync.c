@@ -302,11 +302,11 @@ build_lb_route_for_port(const struct ovn_port *advertising_op,
     const struct ovn_datapath *advertising_od = advertising_op->od;
 
     const char *ip_address;
-    SSET_FOR_EACH (ip_address, &lb_ips->ips_v4) {
+    SSET_FOR_EACH (ip_address, &lb_ips->ips_v4_adv) {
         ar_entry_add(routes, advertising_od, advertising_op,
                      ip_address, tracked_port, ROUTE_SOURCE_LB);
     }
-    SSET_FOR_EACH (ip_address, &lb_ips->ips_v6) {
+    SSET_FOR_EACH (ip_address, &lb_ips->ips_v6_adv) {
         ar_entry_add(routes, advertising_od, advertising_op,
                      ip_address, tracked_port, ROUTE_SOURCE_LB);
     }

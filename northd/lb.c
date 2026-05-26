@@ -48,9 +48,11 @@ ovn_lb_ip_set_create(void)
     sset_init(&lb_ip_set->ips_v4);
     sset_init(&lb_ip_set->ips_v4_routable);
     sset_init(&lb_ip_set->ips_v4_reachable);
+    sset_init(&lb_ip_set->ips_v4_adv);
     sset_init(&lb_ip_set->ips_v6);
     sset_init(&lb_ip_set->ips_v6_routable);
     sset_init(&lb_ip_set->ips_v6_reachable);
+    sset_init(&lb_ip_set->ips_v6_adv);
 
     return lb_ip_set;
 }
@@ -64,9 +66,11 @@ ovn_lb_ip_set_destroy(struct ovn_lb_ip_set *lb_ip_set)
     sset_destroy(&lb_ip_set->ips_v4);
     sset_destroy(&lb_ip_set->ips_v4_routable);
     sset_destroy(&lb_ip_set->ips_v4_reachable);
+    sset_destroy(&lb_ip_set->ips_v4_adv);
     sset_destroy(&lb_ip_set->ips_v6);
     sset_destroy(&lb_ip_set->ips_v6_routable);
     sset_destroy(&lb_ip_set->ips_v6_reachable);
+    sset_destroy(&lb_ip_set->ips_v6_adv);
     free(lb_ip_set);
 }
 
@@ -78,9 +82,11 @@ ovn_lb_ip_set_clone(struct ovn_lb_ip_set *lb_ip_set)
     sset_clone(&clone->ips_v4, &lb_ip_set->ips_v4);
     sset_clone(&clone->ips_v4_routable, &lb_ip_set->ips_v4_routable);
     sset_clone(&clone->ips_v4_reachable, &lb_ip_set->ips_v4_reachable);
+    sset_clone(&clone->ips_v4_adv, &lb_ip_set->ips_v4_adv);
     sset_clone(&clone->ips_v6, &lb_ip_set->ips_v6);
     sset_clone(&clone->ips_v6_routable, &lb_ip_set->ips_v6_routable);
     sset_clone(&clone->ips_v6_reachable, &lb_ip_set->ips_v6_reachable);
+    sset_clone(&clone->ips_v6_adv, &lb_ip_set->ips_v6_adv);
 
     return clone;
 }
@@ -639,12 +645,16 @@ void
 build_lrouter_lb_ips(struct ovn_lb_ip_set *lb_ips,
                      const struct ovn_northd_lb *lb)
 {
-    add_ips_to_lb_ip_set(lb_ips, lb->routable, &lb->ips_v4, &lb->ips_v6);
+    bool advertise = lb->nlb
+        ? smap_get_bool(&lb->nlb->options, "dynamic-routing-advertise", true)
+        : true;
+    add_ips_to_lb_ip_set(lb_ips, lb->routable, advertise,
+                         &lb->ips_v4, &lb->ips_v6);
 }
 
 void
 add_ips_to_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
-                     bool is_routable,
+                     bool is_routable, bool advertise,
                      const struct sset *lb_ips_v4,
                      const struct sset *lb_ips_v6)
 {
@@ -655,11 +665,17 @@ add_ips_to_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
         if (is_routable) {
             sset_add(&lb_ips->ips_v4_routable, ip_address);
         }
+        if (advertise) {
+            sset_add(&lb_ips->ips_v4_adv, ip_address);
+        }
     }
     SSET_FOR_EACH (ip_address, lb_ips_v6) {
         sset_add(&lb_ips->ips_v6, ip_address);
         if (is_routable) {
             sset_add(&lb_ips->ips_v6_routable, ip_address);
+        }
+        if (advertise) {
+            sset_add(&lb_ips->ips_v6_adv, ip_address);
         }
     }
 }
@@ -674,12 +690,14 @@ remove_ips_from_lb_ip_set(struct ovn_lb_ip_set *lb_ips,
 
     SSET_FOR_EACH (ip_address, lb_ips_v4) {
         sset_find_and_delete(&lb_ips->ips_v4, ip_address);
+        sset_find_and_delete(&lb_ips->ips_v4_adv, ip_address);
         if (is_routable) {
             sset_find_and_delete(&lb_ips->ips_v4_routable, ip_address);
         }
     }
     SSET_FOR_EACH (ip_address, lb_ips_v6) {
         sset_find_and_delete(&lb_ips->ips_v6, ip_address);
+        sset_find_and_delete(&lb_ips->ips_v6_adv, ip_address);
         if (is_routable) {
             sset_find_and_delete(&lb_ips->ips_v6_routable, ip_address);
         }

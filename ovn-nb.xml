@@ -2801,6 +2801,13 @@ or
         generated.
       </column>
 
+      <column name="options" key="dynamic-routing-advertise">
+        If the CMS sets <ref column="options" key="dynamic-routing-redistribute"
+        table="Logical_Router_Port"/> to <code>lb</code>, this parameter is
+        used by the CMS to enable/disable the advertisement of the current LB
+        Service IP via the <ref table="Advertised_Route" db="OVN_Southbound"/>
+        table.  Default: <code>true</code>.
+      </column>
     </group>
   </table>
 
