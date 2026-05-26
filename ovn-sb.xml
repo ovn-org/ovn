@@ -3889,6 +3889,15 @@ tcp.flags = RST;
         <code>queue_id</code> used in OpenFlow in <code>struct
         ofp_action_enqueue</code>.
       </column>
+
+      <column name="options" key="dynamic-routing-advertise">
+        If the CMS sets <ref column="other_config"
+        key="dynamic-routing-redistribute" table="Logical_Switch"/> to
+        <code>fdb</code> and/or <code>ip</code>, this parameter is used
+        by the CMS to enable/disable the advertisement of LSP IPs/MAC binding.
+        Default: <code>true</code>.
+      </column>
+
     </group>
 
     <group title="Distributed Gateway Port Options">

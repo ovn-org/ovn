@@ -280,6 +280,10 @@ neighbor_collect_mac_to_advertise(const struct neighbor_ctx_in *n_ctx_in,
             continue;
         }
 
+        if (!smap_get_bool(&pb->options, "dynamic-routing-advertise", true)) {
+            continue;
+        }
+
         for (size_t i = 0; i < pb->n_mac; i++) {
             struct lport_addresses addresses;
             if (!extract_lsp_addresses(pb->mac[i], &addresses)) {

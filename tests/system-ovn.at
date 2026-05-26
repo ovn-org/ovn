@@ -18398,6 +18398,22 @@ f0:00:0f:16:01:20 dev $LO_NAME master $BR_NAME static
 f0:00:0f:16:01:20 dev $LO_NAME vlan 1 master $BR_NAME static
 ])
 
+ls_evpn_w1_uuid=$(fetch_column nb:Logical_Switch_Port _uuid name="workload1")
+check ovn-nbctl --wait=hv set Logical_Switch_Port $ls_evpn_w1_uuid options:dynamic-routing-advertise=false
+ls_evpn_w2_uuid=$(fetch_column nb:Logical_Switch_Port _uuid name="workload2")
+check ovn-nbctl --wait=hv set Logical_Switch_Port $ls_evpn_w2_uuid options:dynamic-routing-advertise=false
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
+])
+
+check ovn-nbctl --wait=hv set Logical_Switch_Port $ls_evpn_w1_uuid options:dynamic-routing-advertise=true
+check ovn-nbctl --wait=hv set Logical_Switch_Port $ls_evpn_w2_uuid options:dynamic-routing-advertise=true
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
+f0:00:0f:16:01:10 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:10 dev $LO_NAME vlan 1 master $BR_NAME static
+f0:00:0f:16:01:20 dev $LO_NAME master $BR_NAME static
+f0:00:0f:16:01:20 dev $LO_NAME vlan 1 master $BR_NAME static
+])
+
 check ovn-nbctl --wait=hv lsp-del workload2
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
 f0:00:0f:16:01:10 dev $LO_NAME master $BR_NAME static
@@ -18643,6 +18659,13 @@ AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.10 lladdr f0:
 AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.1 lladdr f0:00:0f:16:01:01 NOARP'])
 AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'])
 AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::1 lladdr f0:00:0f:16:01:01 NOARP'])
+
+check ovn-nbctl --wait=hv set Logical_Switch_Port $ls_evpn_w1_uuid options:dynamic-routing-advertise=false
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'], [1])
+check ovn-nbctl --wait=hv set Logical_Switch_Port $ls_evpn_w1_uuid options:dynamic-routing-advertise=true
+AT_CHECK([ip neigh show dev $BR_NAME nud noarp | grep -q '172.16.1.10 lladdr f0:00:0f:16:01:10 NOARP'])
+AT_CHECK([ip -6 neigh show dev $BR_NAME nud noarp | grep -q '172:16::10 lladdr f0:00:0f:16:01:10 NOARP'])
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
 f0:00:0f:16:01:01 dev $LO_NAME master $BR_NAME static

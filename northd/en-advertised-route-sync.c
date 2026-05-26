@@ -939,6 +939,11 @@ build_advertised_mac_binding(const struct ovn_datapath *od, struct hmap *map)
             continue;
         }
 
+        if (!smap_get_bool(&op->nbsp->options,
+                           "dynamic-routing-advertise", true)) {
+            continue;
+        }
+
         if (lsp_is_router(op->nbsp) && op->peer) {
             advertised_mac_binding_add(map, od->sdp->sb_dp, op->sb,
                                        &op->peer->lrp_networks);
