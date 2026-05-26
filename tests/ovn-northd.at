@@ -15906,8 +15906,15 @@ check_column 10.0.1.0/24 Advertised_Route ip_prefix datapath=$datapath logical_p
 
 # Adding a static route adds an additional entry.
 check ovn-nbctl --wait=sb lr-route-add lr0 192.168.0.0/24 10.0.0.10
+lsr_uuid=$(fetch_column nb:Logical_Router_Static_Route _uuid nexthop="10.0.0.10")
+
 check_row_count Advertised_Route 3
 check_row_count Advertised_Route 2 logical_port=$pb
+check_row_count Advertised_Route 1 logical_port=$pb ip_prefix=192.168.0.0/24
+
+check ovn-nbctl --wait=sb set Logical_Router_Static_Route $lsr_uuid options:dynamic-routing-advertise=false
+check_row_count Advertised_Route 0 logical_port=$pb ip_prefix=192.168.0.0/24
+check ovn-nbctl --wait=sb set Logical_Router_Static_Route $lsr_uuid options:dynamic-routing-advertise=true
 check_row_count Advertised_Route 1 logical_port=$pb ip_prefix=192.168.0.0/24
 
 # Adding two static ECMP routes adds no additional entry.

@@ -5079,13 +5079,13 @@ or
           <li>static</li>
         </ol>
       </column>
-      <column name="options" key="override-connected">
-        This option can be manually set for local static routes and
-        automatically set for ovn-interconnected learned routes.
-        Default value: <code>false</code>.
 
-        This option raises route's priority to be highest among routes
-        with same prefix.
+      <column name="options" key="dynamic-routing-advertise">
+        If the CMS sets <ref column="options" key="dynamic-routing-redistribute"
+        table="Logical_Router"/> to <code>static</code>, this parameter can
+        be used to enable/disable the advertisement of the current static route
+        via the <ref table="Advertised_Route" db="OVN_Southbound"/> table.
+        Default: <code>true</code>.
       </column>
     </group>
 

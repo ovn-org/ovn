@@ -12138,6 +12138,7 @@ parsed_route_init(const struct ovn_datapath *od,
                   bool override_connected,
                   const struct sset *ecmp_selection_fields,
                   enum route_source source,
+                  bool dynamic_routing_advertise,
                   const struct ovn_port *tracked_port,
                   const struct ovsdb_idl_row *source_hint)
 {
@@ -12156,6 +12157,7 @@ parsed_route_init(const struct ovn_datapath *od,
     new_pr->lrp_addr_s = nullable_xstrdup(lrp_addr_s);
     new_pr->out_port = out_port;
     new_pr->tracked_port = tracked_port;
+    new_pr->dynamic_routing_advertise = dynamic_routing_advertise;
     new_pr->source = source;
     if (ecmp_selection_fields) {
         sset_clone(&new_pr->ecmp_selection_fields, ecmp_selection_fields);
@@ -12181,7 +12183,7 @@ parsed_route_clone(const struct parsed_route *pr)
         pr->od, nexthop, pr->prefix, pr->plen, pr->is_discard_route,
         pr->lrp_addr_s, pr->out_port, pr->route_table_id, pr->is_src_route,
         pr->ecmp_symmetric_reply, pr->override_connected,
-        &pr->ecmp_selection_fields, pr->source,
+        &pr->ecmp_selection_fields, pr->source, pr->dynamic_routing_advertise,
         pr->tracked_port, pr->source_hint);
 
     new_pr->hash = pr->hash;
@@ -12245,6 +12247,7 @@ parsed_route_add(const struct ovn_datapath *od,
                  bool override_connected,
                  const struct sset *ecmp_selection_fields,
                  enum route_source source,
+                 bool dynamic_routing_advertise,
                  const struct ovsdb_idl_row *source_hint,
                  const struct ovn_port *tracked_port,
                  struct hmap *routes)
@@ -12255,7 +12258,8 @@ parsed_route_add(const struct ovn_datapath *od,
                             lrp_addr_s, out_port, route_table_id,
                             is_src_route, ecmp_symmetric_reply,
                             override_connected, ecmp_selection_fields,
-                            source, tracked_port, source_hint);
+                            source, dynamic_routing_advertise,
+                            tracked_port, source_hint);
 
     new_pr->hash = route_hash(new_pr);
 
@@ -12396,10 +12400,13 @@ parsed_routes_add_static(const struct ovn_datapath *od,
         source = ROUTE_SOURCE_STATIC;
     }
 
+    bool dynamic_routing_advertise = smap_get_bool(&route->options,
+                                                   "dynamic-routing-advertise",
+                                                   true);
     parsed_route_add(od, nexthop, &prefix, plen, is_discard_route, lrp_addr_s,
                      out_port, route_table_id, is_src_route,
                      ecmp_symmetric_reply, override_connected,
-                     &ecmp_selection_fields, source,
+                     &ecmp_selection_fields, source, dynamic_routing_advertise,
                      &route->header_, NULL, routes);
     sset_destroy(&ecmp_selection_fields);
 }
@@ -12417,7 +12424,7 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
         parsed_route_add(od, NULL, &prefix, addr->plen,
                          false, addr->addr_s, op, 0, false, false,
                          false, NULL, ROUTE_SOURCE_CONNECTED,
-                         &op->nbrp->header_, NULL, routes);
+                         true, &op->nbrp->header_, NULL, routes);
     }
 
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
@@ -12425,7 +12432,7 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
 
         parsed_route_add(od, NULL, &addr->network, addr->plen, false,
                          addr->addr_s, op, 0, false, false, false,
-                         NULL, ROUTE_SOURCE_CONNECTED,
+                         NULL, ROUTE_SOURCE_CONNECTED, true,
                          &op->nbrp->header_, NULL, routes);
     }
 }

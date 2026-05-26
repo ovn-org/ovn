@@ -857,6 +857,7 @@ struct parsed_route {
     char *lrp_addr_s;
     const struct ovn_port *out_port;
     const struct ovn_port *tracked_port; /* May be NULL. */
+    bool dynamic_routing_advertise;
 };
 
 struct parsed_route *parsed_route_clone(const struct parsed_route *);
@@ -880,6 +881,7 @@ struct parsed_route *parsed_route_add(
     bool override_connected,
     const struct sset *ecmp_selection_fields,
     enum route_source source,
+    bool dynamic_routing_advertise,
     const struct ovsdb_idl_row *source_hint,
     const struct ovn_port *tracked_port,
     struct hmap *routes);

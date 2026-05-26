@@ -708,6 +708,10 @@ advertised_route_table_sync(
             continue;
         }
 
+        if (!route->dynamic_routing_advertise) {
+            continue;
+        }
+
         if (!should_advertise_route(route->od, route->out_port,
                                     route->source)) {
             continue;
