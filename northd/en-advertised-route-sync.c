@@ -185,6 +185,11 @@ build_nat_route_for_port(const struct ovn_port *advertising_op,
             continue;
         }
 
+        if (!smap_get_bool(&nat->nb->options,
+                           "dynamic-routing-advertise", true)) {
+            continue;
+        }
+
         const struct ovn_port *tracked_port =
             nat->is_distributed
             ? ovn_port_find(ls_ports, nat->nb->logical_port)

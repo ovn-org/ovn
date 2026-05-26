@@ -16478,6 +16478,14 @@ check_row_count Advertised_Route 3 tracked_port!='[[]]'
 check_column '' Advertised_Route tracked_port \
     datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.100
 
+lr1_nat_uuid=$(fetch_column nb:NAT _uuid external_ip=10.0.0.100)
+check ovn-nbctl --wait=sb set NAT $lr1_nat_uuid options:dynamic-routing-advertise=false
+check_row_count Advertised_Route 4
+check ovn-nbctl --wait=sb set NAT $lr1_nat_uuid options:dynamic-routing-advertise=true
+check_row_count Advertised_Route 5
+check_column '' Advertised_Route tracked_port \
+    datapath=$datapath logical_port=$sw0 ip_prefix=10.0.0.100
+
 # Adding a static route to lr1 will be advertised just normally.
 check ovn-nbctl --wait=sb lr-route-add lr0 172.16.0.0/24 10.0.0.200
 check_row_count Advertised_Route 6
@@ -17155,6 +17163,12 @@ check_row_count Advertised_Route 1 \
     logical_port=$pb               \
     tracked_port=[[]]
 
+lr0_nat_uuid=$(fetch_column nb:NAT _uuid external_ip=172.16.1.10)
+check ovn-nbctl --wait=sb set NAT $lr0_nat_uuid options:dynamic-routing-advertise=false
+check_row_count Advertised_Route 0
+check ovn-nbctl --wait=sb set NAT $lr0_nat_uuid options:dynamic-routing-advertise=true
+check_row_count Advertised_Route 1
+
 # Add LR with distributed LRP connected to GW router through join LS
 # and switch dynamic-routing-redistribute to lrp-guest-join so that
 # it advertises NAT routes from the neighbors in the join LS.
@@ -17189,6 +17203,26 @@ check_row_count Advertised_Route 1 \
 
 # Routes to NAT addresses of neighboring routers are advertised with
 # tracked port pointing to the LRP of the neighboring router.
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.2.10"        \
+    datapath=$datapath             \
+    logical_port=$pb               \
+    tracked_port=$pb2
+
+lr0_guest_nat_uuid=$(fetch_column nb:NAT _uuid external_ip=172.16.2.10)
+check ovn-nbctl --wait=sb set NAT $lr0_nat_uuid options:dynamic-routing-advertise=false
+check ovn-nbctl --wait=sb set NAT $lr0_guest_nat_uuid options:dynamic-routing-advertise=false
+check_row_count Advertised_Route 0
+
+check ovn-nbctl --wait=sb set NAT $lr0_nat_uuid options:dynamic-routing-advertise=true
+check ovn-nbctl --wait=sb set NAT $lr0_guest_nat_uuid options:dynamic-routing-advertise=true
+
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath             \
+    logical_port=$pb               \
+    tracked_port=[[]]
 check_row_count Advertised_Route 1 \
     ip_prefix="172.16.2.10"        \
     datapath=$datapath             \
@@ -17767,6 +17801,16 @@ check ovn-nbctl --wait=sb                                                 \
 dnl Expect two routes to be advertised for lr-int and two routes to be
 dnl advertised for each lr-ext.
 n_advertised_routes=$((2 * ($n_ext_rtrs + 1)))
+check_row_count Advertised_Route $n_advertised_routes
+
+lr_ext1_nat_uuid=$(fetch_column nb:NAT _uuid external_ip=21.0.0.42)
+lr_ext2_nat_uuid=$(fetch_column nb:NAT _uuid external_ip=22.0.0.42)
+check ovn-nbctl --wait=sb set NAT $lr_ext1_nat_uuid options:dynamic-routing-advertise=false
+check ovn-nbctl --wait=sb set NAT $lr_ext2_nat_uuid options:dynamic-routing-advertise=false
+check_row_count Advertised_Route $((2 * n_ext_rtrs))
+
+check ovn-nbctl --wait=sb set NAT $lr_ext1_nat_uuid options:dynamic-routing-advertise=true
+check ovn-nbctl --wait=sb set NAT $lr_ext2_nat_uuid options:dynamic-routing-advertise=true
 check_row_count Advertised_Route $n_advertised_routes
 
 OVN_CLEANUP_NORTHD

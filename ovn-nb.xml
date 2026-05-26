@@ -5461,6 +5461,14 @@ or
       <code>ovn-northd</code> manpage section on IP Routing.
     </column>
 
+    <column name="options" key="dynamic-routing-advertise">
+      If the CMS sets <ref column="options" key="dynamic-routing-redistribute"
+      table="Logical_Router_Port"/> to <code>nat</code>, this parameter is
+      used by the CMS to enable/disable the advertisement of the current NAT
+      external IP via the <ref table="Advertised_Route" db="OVN_Southbound"/>
+      table. Default: <code>true</code>.
+    </column>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.
