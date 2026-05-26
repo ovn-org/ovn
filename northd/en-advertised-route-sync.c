@@ -460,16 +460,28 @@ publish_host_routes(struct dynamic_routes_data *data,
     if (peer_od->nbr) {
         /* This is a LRP directly connected to another LRP. */
         const struct ovn_port *lrp = op->peer;
-        publish_lport_addresses(&data->routes, op->od, op,
-                                &lrp->lrp_networks, lrp);
+        if (smap_get_bool(&lrp->nbrp->options,
+                          "dynamic-routing-advertise", true)) {
+            publish_lport_addresses(&data->routes, op->od, op,
+                                    &lrp->lrp_networks, lrp);
+        }
         return;
     }
 
     struct ovn_port *port;
     HMAP_FOR_EACH (port, dp_node, &peer_od->ports) {
+        if (!smap_get_bool(&port->nbsp->options,
+                           "dynamic-routing-advertise", true)) {
+            continue;
+        }
+
         if (port->peer && port->peer->nbrp) {
             /* This is a LSP connected to an LRP */
             const struct ovn_port *lrp = port->peer;
+            if (!smap_get_bool(&lrp->nbrp->options,
+                               "dynamic-routing-advertise", true)) {
+                continue;
+            }
             publish_lport_addresses(&data->routes, op->od, op,
                                     &lrp->lrp_networks, lrp);
             /* Track the LR datapath on the other side of LS

@@ -1470,6 +1470,14 @@
           limit.
         </column>
 
+        <column name="options" key="dynamic-routing-advertise">
+          If the CMS sets <ref column="options"
+          key="dynamic-routing-redistribute" table="Logical_Router_Port"/> to
+          <code>connected-as-host</code>, this parameter is used by the CMS to
+          enable/disable the advertisement of the current host IP via the
+          <ref table="Advertised_Route" db="OVN_Southbound"/> table.
+          Default: <code>true</code>.
+        </column>
       </group>
 
       <group title="Options for localnet ports">
@@ -4672,6 +4680,15 @@ or
           Logical_Router will be used.
         </p>
 
+      </column>
+
+      <column name="options" key="dynamic-routing-advertise">
+        If the CMS sets <ref column="options" key="dynamic-routing-redistribute"
+        table="Logical_Router_Port"/> to <code>connected-as-host</code>,
+        this parameter is used by the CMS to enable/disable the advertisement
+        of the current host IP via the <ref table="Advertised_Route"
+        db="OVN_Southbound"/> table.
+        Default: <code>true</code>.
       </column>
 
       <column name="options"
