@@ -21508,6 +21508,10 @@ grep controller | grep tp_src=546 | grep \
 check ovn-nbctl --wait=hv lsp-add-localnet-port ls1 ln-public phys
 
 ln_public_key=$(fetch_column Port_Binding tunnel_key logical_port=ln-public)
+# DHCP lflows for external ports now match on the external LSP's inport
+# (after the inport-rewrite at table 0), so the OF flow's reg14 value is
+# the external LSP's tunnel_key, not the localnet's.
+lp_ext1_key=$(fetch_column Port_Binding tunnel_key logical_port=ls1-lp_ext1)
 
 # The ls1-lp_ext1 should be bound to hv1 as only hv1 is part of the
 # ha chassis group.
@@ -21519,13 +21523,13 @@ wait_for_ports_up ls1-lp_ext1
 (ovn-sbctl dump-flows lr0; ovn-sbctl dump-flows ls1) > sbflows
 as hv1 ovs-ofctl dump-flows br-int > brintflows
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
-grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
+grep controller | grep "0a.00.00.06" | grep reg14=0x$lp_ext1_key | \
 wc -l], [0], [1
 ])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
-grep reg14=0x$ln_public_key | wc -l], [0], [1
+grep reg14=0x$lp_ext1_key | wc -l], [0], [1
 ])
 
 # There should be no DHCPv4/v6 flows for ls1-lp_ext1 on hv2
@@ -21769,15 +21773,16 @@ ovn-sbctl find port_binding logical_port=ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv2_uuid
 wait_for_ports_up ls1-lp_ext1
 
-# There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2
+# There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2.
+# reg14 carries the external LSP's tunnel_key (after inport rewrite).
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
-grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
+grep controller | grep "0a.00.00.06" | grep reg14=0x$lp_ext1_key | \
 wc -l], [0], [1
 ])
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
-grep reg14=0x$ln_public_key | wc -l], [0], [1
+grep reg14=0x$lp_ext1_key | wc -l], [0], [1
 ])
 
 # There should be no DHCPv4/v6 flows for ls1-lp_ext1 on hv1
@@ -21787,7 +21792,7 @@ grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
-grep reg14=0x$ln_public_key | wc -l], [0], [0
+grep reg14=0x$lp_ext1_key | wc -l], [0], [0
 ])
 
 # Send DHCPDISCOVER again for hv1/ext1. The DHCP response should come from

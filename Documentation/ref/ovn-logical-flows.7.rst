@@ -43,6 +43,14 @@ Ingress table 0 contains these logical flows:
   want to prevent duplicate replies and advertisements. This is achieved by a
   rule with priority 80 that sets ``REGBIT_PORT_SEC_DROP" = 1; next;"``.
 
+- For each ``type=external`` logical port on a switch that has a localnet port,
+  a priority 75 flow matches on ``inport == <localnet_port> && eth.src ==
+  <external_mac>`` and applies ``flags.localnet = 1; inport = <external_lsp>;
+  next;``.  This rewrites ``inport`` from the localnet port to the external LSP
+  so that all downstream stages observe the correct logical inport for traffic
+  originating from the baremetal member.
+
+
 - For each (enabled) vtep logical port, a priority 70 flow is added which
   matches on all packets and applies the action ``next(pipeline=ingress,
   table=S_SWITCH_IN_L3_LKUP) = 1;`` to skip most stages of ingress pipeline and

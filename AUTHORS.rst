@@ -209,6 +209,7 @@ Jarno Rajahalme                    jarno@ovn.org
 Jason Kölker                       jason@koelker.net
 Jason Wessel                       jason.wessel@windriver.com
 Jasper Capel                       jasper@capel.tv
+JayGue Lee                         enginrect@gmail.com
 Jean Tourrilhes                    jt@hpl.hp.com
 Jeremy Stribling
 Jeroen van Bemmel                  jvb127@gmail.com
