@@ -265,16 +265,24 @@ tunnel_add(struct tunnel_ctx *tc,
         /* Force NAT-T traversal via configuration */
         /* Two ipsec backends are supported: libreswan and strongswan */
         /* libreswan param: encapsulation; strongswan param: forceencaps */
-        bool encapsulation;
-        bool forceencaps;
-        encapsulation = smap_get_bool(&sbg->options, "ipsec_encapsulation",
-                                      false);
-        forceencaps = smap_get_bool(&sbg->options, "ipsec_forceencaps", false);
-        if (encapsulation) {
-            smap_add(&options, "ipsec_encapsulation", "yes");
-        }
-        if (forceencaps) {
-            smap_add(&options, "ipsec_forceencaps", "yes");
+
+        struct smap_node *node;
+        SMAP_FOR_EACH (node, &sbg->options) {
+            static const char ipsec_prefix[] = "ipsec_";
+            if (!strncmp(ipsec_prefix, node->key, strlen(ipsec_prefix))) {
+                if (!strcmp(node->key, "ipsec_encapsulation") ||
+                    !strcmp(node->key, "ipsec_forceencaps")) {
+                    if (!strcasecmp(node->value, "true") ||
+                        !strcasecmp(node->value, "yes")) {
+                        smap_add(&options, node->key, "yes");
+                    }
+                    continue;
+                }
+
+                if (node->value) {
+                    smap_add(&options, node->key, node->value);
+                }
+            }
         }
     }
 

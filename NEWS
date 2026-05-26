@@ -1,5 +1,7 @@
 Post v26.03.0
 -------------
+   - Added ability to set any "ipsec_*" NB_Global option to configure the
+     IPsec backend.
    - Documented missing ovn-nbctl commands: "mirror-rule-add",
      "mirror-rule-del", "lr-nat-update-ext-ip",
      "ha-chassis-group-set-chassis-prio", "lsp-add-router-port",

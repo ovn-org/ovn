@@ -601,6 +601,13 @@
         Tunnel encryption configuration. If this column is set to be true, all
         OVN tunnels will be encrypted with IPsec.
       </column>
+
+      <column name="options" key="ipsec_*">
+        IPsec configuration parameters are passed to IPsec backend by prefixing
+        libreswan/strongswan options with ipsec_. Please reference
+        <code>ipsec.conf</code>(5) for a comprehensive set of instructions on
+        IPsec configuration.
+      </column>
     </group>
 
     <group title="Read-only Options">

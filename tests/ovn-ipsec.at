@@ -45,6 +45,10 @@ ovs-vsctl \
 # Enable IPsec
 check ovn-nbctl set nb_global . ipsec=true
 check ovn-nbctl set nb_global . options:ipsec_encapsulation=true
+check ovn-nbctl set nb_global . options:ipsec_replay-window=100
+check ovn-nbctl set nb_global . options:ipsec_dpd-delay=30s
+check ovn-nbctl set nb_global . options:ipsec_dpd-timeout=120s
+check ovn-nbctl set nb_global . options:ipsec_salifetime=8h
 
 check ovn-nbctl --wait=hv sync
 
@@ -52,9 +56,17 @@ OVS_WAIT_UNTIL([test x`as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_i
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.2])
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:remote_name | tr -d '\n'], [0], [hv1])
 AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:ipsec_encapsulation | tr -d '\n'], [0], [yes])
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:ipsec_replay-window | tr -d '\n'], [0], ["100"])
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:ipsec_dpd-delay | tr -d '\n'], [0], ["30s"])
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:ipsec_dpd-timeout | tr -d '\n'], [0], ["120s"])
+AT_CHECK([as hv2 ovs-vsctl get Interface ovn-hv1-0 options:ipsec_salifetime | tr -d '\n'], [0], ["8h"])
 OVS_WAIT_UNTIL([test x`as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_ip | tr -d '"\n'` = x192.168.0.2])
 AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:local_ip | tr -d '"\n'], [0], [192.168.0.1])
 AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:remote_name | tr -d '\n'], [0], [hv2])
 AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:ipsec_encapsulation | tr -d '\n'], [0], [yes])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:ipsec_replay-window | tr -d '\n'], [0], ["100"])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:ipsec_dpd-delay | tr -d '\n'], [0], ["30s"])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:ipsec_dpd-timeout | tr -d '\n'], [0], ["120s"])
+AT_CHECK([as hv1 ovs-vsctl get Interface ovn-hv2-0 options:ipsec_salifetime | tr -d '\n'], [0], ["8h"])
 
 AT_CLEANUP

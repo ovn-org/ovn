@@ -166,6 +166,13 @@ You can also check the logs of the ``ovs-monitor-ipsec`` daemon and the IKE
 daemon to locate issues.  ``ovs-monitor-ipsec`` outputs log messages to
 ``/var/log/openvswitch/ovs-monitor-ipsec.log``.
 
+The ipsec_encapsulation and ipsec_forceencaps options are boolean
+and only accept true or yes. Additional "ipsec_*" options such as
+the one below can be set to pass configuration directly to the underlying
+IPsec backend.
+
+    $ ovn-nbctl set nb_global . options:ipsec_replay-window=128
+
 Bug Reporting
 -------------
 
