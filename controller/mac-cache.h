@@ -18,8 +18,8 @@
 
 #include <stdint.h>
 
+#include "cmap.h"
 #include "dp-packet.h"
-#include "openvswitch/hmap.h"
 #include "openvswitch/hmap.h"
 #include "openvswitch/list.h"
 #include "openvswitch/ofpbuf.h"
@@ -115,25 +115,25 @@ struct bp_packet_data {
 };
 
 struct buffered_packets {
-    struct hmap_node hmap_node;
+    struct cmap_node cmap_node;
 
-    struct mac_binding_data mb_data;
+    struct mac_binding_data mb_data;  /* Immutable after insert. */
 
-    /* Queue of packet_data associated with this struct. */
+    /* Queue of packet_data associated with this struct.
+     * Handler thread only. */
     struct vector queue;
 
-    /* Timestamp in ms when the buffered packet should expire. */
+    /* Timestamp in ms when the buffered packet should expire.
+     * Handler thread only. */
     long long int expire_at_ms;
 
-    /* Timestamp in ms when the buffered packet should do full SB lookup.*/
-    long long int lookup_at_ms;
-};
+    /* Resolved MAC address packed as uint64. 0 means unresolved.
+     * Written by main thread, read by handler thread. */
+    atomic_uint64_t resolved_mac;
 
-struct buffered_packets_ctx {
-    /* Map of all buffered packets waiting for the MAC address. */
-    struct hmap buffered_packets;
-    /* List of packet data that are ready to be sent. */
-    struct vector ready_packets_data;
+    /* Timestamp in ms when the buffered packet should do full SB lookup.
+     * Main thread only. */
+    long long int lookup_at_ms;
 };
 
 /* Thresholds. */
@@ -211,27 +211,23 @@ void fdb_stats_run(struct vector *stats_vec, uint64_t *req_delay, void *data);
 void bp_packet_data_destroy(struct bp_packet_data *pd);
 
 struct buffered_packets *
-buffered_packets_add(struct buffered_packets_ctx *ctx,
+buffered_packets_add(struct cmap *bp_map,
                      struct mac_binding_data mb_data);
 
 void buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
                                           const struct ofputil_packet_in *pin,
                                           const struct ofpbuf *continuation);
 
-void buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
-                              const struct hmap *recent_mbs,
-                              struct ovsdb_idl_index *sbrec_pb_by_key,
-                              struct ovsdb_idl_index *sbrec_dp_by_key,
-                              struct ovsdb_idl_index *sbrec_pb_by_name,
-                              struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
+bool buffered_packets_lookup_run(struct cmap *bp_map,
+                                 const struct hmap *recent_mbs,
+                                 struct ovsdb_idl_index *sbrec_pb_by_key,
+                                 struct ovsdb_idl_index *sbrec_dp_by_key,
+                                 struct ovsdb_idl_index *sbrec_pb_by_name,
+                                 struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
 
-void buffered_packets_ctx_init(struct buffered_packets_ctx *ctx);
+void buffered_packets_run(struct cmap *bp_map, struct vector *rpd);
 
-void buffered_packets_ctx_destroy(struct buffered_packets_ctx *ctx);
-
-bool buffered_packets_ctx_is_ready_to_send(struct buffered_packets_ctx *ctx);
-
-bool buffered_packets_ctx_has_packets(struct buffered_packets_ctx *ctx);
+void buffered_packets_map_destroy(struct cmap *bp_map);
 
 void mac_binding_probe_stats_process_flow_stats(
         struct vector *stats_vec,

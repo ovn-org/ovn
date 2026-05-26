@@ -59,12 +59,11 @@ static void
 mac_cache_update_req_delay(struct hmap *thresholds, uint64_t *req_delay);
 
 static struct buffered_packets *
-buffered_packets_find(struct buffered_packets_ctx *ctx,
+buffered_packets_find(struct cmap *bp_map,
                       const struct mac_binding_data *mb_data);
 
 static void
-buffered_packets_remove(struct buffered_packets_ctx *ctx,
-                        struct buffered_packets *bp);
+buffered_packets_free(struct buffered_packets *bp);
 
 static void
 buffered_packets_db_lookup(struct buffered_packets *bp,
@@ -550,24 +549,24 @@ bp_packet_data_destroy(struct bp_packet_data *pd) {
 }
 
 struct buffered_packets *
-buffered_packets_add(struct buffered_packets_ctx *ctx,
-                     struct mac_binding_data mb_data) {
+buffered_packets_add(struct cmap *bp_map, struct mac_binding_data mb_data) {
     uint32_t hash = mac_binding_data_hash(&mb_data);
 
-    struct buffered_packets *bp = buffered_packets_find(ctx, &mb_data);
+    struct buffered_packets *bp = buffered_packets_find(bp_map, &mb_data);
     if (!bp) {
-        if (hmap_count(&ctx->buffered_packets) >= MAX_BUFFERED_PACKETS) {
+        if (cmap_count(bp_map) >= MAX_BUFFERED_PACKETS) {
             return NULL;
         }
 
         bp = xmalloc(sizeof *bp);
-        hmap_insert(&ctx->buffered_packets, &bp->hmap_node, hash);
         bp->mb_data = mb_data;
+        atomic_init(&bp->resolved_mac, 0);
         /* Schedule the freshly added buffered packet to do lookup
          * immediately. */
         bp->lookup_at_ms = 0;
         bp->queue = VECTOR_CAPACITY_INITIALIZER(struct bp_packet_data,
                                                 BUFFER_QUEUE_DEPTH);
+        cmap_insert(bp_map, &bp->cmap_node, hash);
     }
 
     bp->expire_at_ms = time_msec() + BUFFERED_PACKETS_TIMEOUT_MS;
@@ -605,24 +604,27 @@ buffered_packets_packet_data_enqueue(struct buffered_packets *bp,
     vector_push(&bp->queue, &pd);
 }
 
-void
-buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
-                         const struct hmap *recent_mbs,
-                         struct ovsdb_idl_index *sbrec_pb_by_key,
-                         struct ovsdb_idl_index *sbrec_dp_by_key,
-                         struct ovsdb_idl_index *sbrec_pb_by_name,
-                         struct ovsdb_idl_index *sbrec_mb_by_lport_ip) {
+bool
+buffered_packets_lookup_run(struct cmap *bp_map, const struct hmap *recent_mbs,
+                            struct ovsdb_idl_index *sbrec_pb_by_key,
+                            struct ovsdb_idl_index *sbrec_dp_by_key,
+                            struct ovsdb_idl_index *sbrec_pb_by_name,
+                            struct ovsdb_idl_index *sbrec_mb_by_lport_ip) {
     struct ds ip = DS_EMPTY_INITIALIZER;
     long long now = time_msec();
+    bool updated = false;
 
     struct buffered_packets *bp;
-    HMAP_FOR_EACH_SAFE (bp, hmap_node, &ctx->buffered_packets) {
-        struct eth_addr mac = eth_addr_zero;
-        /* Remove expired buffered packets. */
-        if (now > bp->expire_at_ms) {
-            buffered_packets_remove(ctx, bp);
+    CMAP_FOR_EACH (bp, cmap_node, bp_map) {
+        uint64_t mac64;
+        atomic_read(&bp->resolved_mac, &mac64);
+        /* MAC for given entry was already resolved,
+         * no need to resolve it again. */
+        if (mac64) {
             continue;
         }
+
+        struct eth_addr mac = eth_addr_zero;
 
         struct mac_binding *mb = mac_binding_find(recent_mbs, &bp->mb_data);
         if (mb) {
@@ -634,12 +636,45 @@ buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
                                        sbrec_mb_by_lport_ip);
             /* Schedule next lookup even if we found the MAC address,
              * if the address was found this struct will be deleted anyway. */
+
             bp->lookup_at_ms = now + BUFFERED_PACKETS_LOOKUP_MS;
         }
 
-        if (eth_addr_is_zero(mac)) {
+        if (!eth_addr_is_zero(mac)) {
+            atomic_store(&bp->resolved_mac, eth_addr_to_uint64(mac));
+            updated = true;
+        }
+    }
+
+    ds_destroy(&ip);
+
+    return updated;
+}
+
+void
+buffered_packets_run(struct cmap *bp_map, struct vector *rpd)
+{
+    long long now = time_msec();
+
+    struct buffered_packets *bp;
+    CMAP_FOR_EACH (bp, cmap_node, bp_map) {
+        uint32_t hash = mac_binding_data_hash(&bp->mb_data);
+
+        /* Remove expired buffered packets. */
+        if (now > bp->expire_at_ms) {
+            cmap_remove(bp_map, &bp->cmap_node, hash);
+            ovsrcu_postpone(buffered_packets_free, bp);
             continue;
         }
+
+        uint64_t mac64;
+        atomic_read(&bp->resolved_mac, &mac64);
+        if (!mac64) {
+            continue;
+        }
+
+        struct eth_addr mac;
+        eth_addr_from_uint64(mac64, &mac);
 
         struct bp_packet_data *pd;
         VECTOR_FOR_EACH_PTR (&bp->queue, pd) {
@@ -650,45 +685,25 @@ buffered_packets_ctx_run(struct buffered_packets_ctx *ctx,
             eth->eth_dst = mac;
         }
 
-        vector_push_array(&ctx->ready_packets_data,
-                          vector_get_array(&bp->queue),
+        vector_push_array(rpd, vector_get_array(&bp->queue),
                           vector_len(&bp->queue));
         vector_clear(&bp->queue);
-        buffered_packets_remove(ctx, bp);
+
+        cmap_remove(bp_map, &bp->cmap_node, hash);
+        ovsrcu_postpone(buffered_packets_free, bp);
     }
-
-    ds_destroy(&ip);
-}
-
-bool
-buffered_packets_ctx_is_ready_to_send(struct buffered_packets_ctx *ctx) {
-    return !vector_is_empty(&ctx->ready_packets_data);
-}
-
-bool
-buffered_packets_ctx_has_packets(struct buffered_packets_ctx *ctx) {
-    return !hmap_is_empty(&ctx->buffered_packets);
 }
 
 void
-buffered_packets_ctx_init(struct buffered_packets_ctx *ctx) {
-    ctx->ready_packets_data = VECTOR_EMPTY_INITIALIZER(struct bp_packet_data);
-    hmap_init(&ctx->buffered_packets);
-}
-
-void
-buffered_packets_ctx_destroy(struct buffered_packets_ctx *ctx) {
-    struct bp_packet_data *pd;
-    VECTOR_FOR_EACH_PTR (&ctx->ready_packets_data, pd) {
-        bp_packet_data_destroy(pd);
-    }
-    vector_destroy(&ctx->ready_packets_data);
-
+buffered_packets_map_destroy(struct cmap *bp_map) {
     struct buffered_packets *bp;
-    HMAP_FOR_EACH_SAFE (bp, hmap_node, &ctx->buffered_packets) {
-        buffered_packets_remove(ctx, bp);
+    CMAP_FOR_EACH (bp, cmap_node, bp_map) {
+        cmap_remove(bp_map, &bp->cmap_node,
+                    mac_binding_data_hash(&bp->mb_data));
+        ovsrcu_postpone(buffered_packets_free, bp);
     }
-    hmap_destroy(&ctx->buffered_packets);
+
+    cmap_destroy(bp_map);
 }
 
 static uint32_t
@@ -771,12 +786,12 @@ mac_cache_update_req_delay(struct hmap *thresholds, uint64_t *req_delay)
 }
 
 static struct buffered_packets *
-buffered_packets_find(struct buffered_packets_ctx *ctx,
+buffered_packets_find(struct cmap *bp_map,
                       const struct mac_binding_data *mb_data) {
     uint32_t hash = mac_binding_data_hash(mb_data);
 
     struct buffered_packets *bp;
-    HMAP_FOR_EACH_WITH_HASH (bp, hmap_node, hash, &ctx->buffered_packets) {
+    CMAP_FOR_EACH_WITH_HASH (bp, cmap_node, hash, bp_map) {
         if (mac_binding_data_equals(&bp->mb_data, mb_data)) {
             return bp;
         }
@@ -786,14 +801,12 @@ buffered_packets_find(struct buffered_packets_ctx *ctx,
 }
 
 static void
-buffered_packets_remove(struct buffered_packets_ctx *ctx,
-                        struct buffered_packets *bp) {
+buffered_packets_free(struct buffered_packets *bp) {
     struct bp_packet_data *pd;
     VECTOR_FOR_EACH_PTR (&bp->queue, pd) {
         bp_packet_data_destroy(pd);
     }
 
-    hmap_remove(&ctx->buffered_packets, &bp->hmap_node);
     vector_destroy(&bp->queue);
     free(bp);
 }
