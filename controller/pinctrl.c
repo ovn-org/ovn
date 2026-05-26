@@ -185,16 +185,15 @@ struct pinctrl {
 static struct pinctrl pinctrl;
 
 static bool pinctrl_is_sb_commited(int64_t commit_cfg, int64_t cur_cfg);
-static void init_buffered_packets_ctx(void);
-static void destroy_buffered_packets_ctx(void);
+static void init_buffered_packets_map(void);
+static void destroy_buffered_packets_map(void);
 static void
 run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
                      const struct hmap *local_datapaths,
                      struct ovsdb_idl_index *sbrec_port_binding_by_key,
                      struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
-    OVS_REQUIRES(pinctrl_mutex);
+                     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip);
 
 static void pinctrl_handle_put_mac_binding(const struct flow *md,
                                            const struct flow *headers,
@@ -209,8 +208,7 @@ static void run_put_mac_bindings(
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
     OVS_REQUIRES(pinctrl_mutex);
 static void wait_put_mac_bindings(void);
-static void send_mac_binding_buffered_pkts(struct rconn *swconn)
-    OVS_REQUIRES(pinctrl_mutex);
+static void send_mac_binding_buffered_pkts(struct rconn *swconn);
 
 static void pinctrl_activation_strategy_handler(const struct match *md);
 
@@ -562,7 +560,7 @@ pinctrl_init(void)
     init_send_arps_nds();
     init_ipv6_ras();
     init_ipv6_prefixd();
-    init_buffered_packets_ctx();
+    init_buffered_packets_map();
     init_activated_ports();
     init_event_table();
     ip_mcast_snoop_init();
@@ -1577,18 +1575,18 @@ prepare_ipv6_prefixd(struct ovsdb_idl_txn *ovnsb_idl_txn,
     }
 }
 
-static struct buffered_packets_ctx buffered_packets_ctx;
+static struct cmap buffered_packets_map;
 
 static void
-init_buffered_packets_ctx(void)
+init_buffered_packets_map(void)
 {
-    buffered_packets_ctx_init(&buffered_packets_ctx);
+    cmap_init(&buffered_packets_map);
 }
 
 static void
-destroy_buffered_packets_ctx(void)
+destroy_buffered_packets_map(void)
 {
-    buffered_packets_ctx_destroy(&buffered_packets_ctx);
+    buffered_packets_map_destroy(&buffered_packets_map);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -1596,7 +1594,6 @@ static void
 pinctrl_handle_buffered_packets(const struct ofputil_packet_in *pin,
                                 const struct ofpbuf *continuation,
                                 bool is_arp)
-OVS_REQUIRES(pinctrl_mutex)
 {
     const struct match *md = &pin->flow_metadata;
     struct mac_binding_data mb_data;
@@ -1613,7 +1610,7 @@ OVS_REQUIRES(pinctrl_mutex)
                           md->flow.regs[MFF_LOG_OUTPORT - MFF_REG0],
                           ip, eth_addr_zero);
 
-    struct buffered_packets *bp = buffered_packets_add(&buffered_packets_ctx,
+    struct buffered_packets *bp = buffered_packets_add(&buffered_packets_map,
                                                        mb_data);
     if (!bp) {
         COVERAGE_INC(pinctrl_drop_buffered_packets_map);
@@ -1643,9 +1640,7 @@ pinctrl_handle_arp(struct rconn *swconn, const struct flow *ip_flow,
         return;
     }
 
-    ovs_mutex_lock(&pinctrl_mutex);
     pinctrl_handle_buffered_packets(pin, continuation, true);
-    ovs_mutex_unlock(&pinctrl_mutex);
 
     /* Compose an ARP packet. */
     uint64_t packet_stub[128 / 8];
@@ -4081,12 +4076,12 @@ pinctrl_handler(void *arg_)
                     send_arp_nd_run(swconn, &send_arp_nd_time);
                     send_ipv6_ras(swconn, &send_ipv6_ra_time);
                     send_ipv6_prefixd(swconn, &send_prefixd_time);
-                    send_mac_binding_buffered_pkts(swconn);
                     bfd_monitor_send_msg(swconn, &bfd_time);
                     ovs_mutex_unlock(&pinctrl_mutex);
                 } else {
                     lock_failed = true;
                 }
+                send_mac_binding_buffered_pkts(swconn);
                 send_garp_rarp_run(swconn, &send_garp_rarp_time);
                 ip_mcast_querier_run(swconn, &send_mcast_query_time);
             }
@@ -4226,11 +4221,6 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   sbrec_port_binding_by_key,
                   sbrec_igmp_groups,
                   sbrec_ip_multicast_opts);
-    run_buffered_binding(mac_binding_table, local_datapaths,
-                         sbrec_port_binding_by_key,
-                         sbrec_datapath_binding_by_key,
-                         sbrec_port_binding_by_name,
-                         sbrec_mac_binding_by_lport_ip);
     sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
@@ -4241,6 +4231,12 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     run_activated_ports(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                         sbrec_port_binding_by_key, chassis);
     ovs_mutex_unlock(&pinctrl_mutex);
+
+    run_buffered_binding(mac_binding_table, local_datapaths,
+                         sbrec_port_binding_by_key,
+                         sbrec_datapath_binding_by_key,
+                         sbrec_port_binding_by_name,
+                         sbrec_mac_binding_by_lport_ip);
 }
 
 /* Table of ipv6_ra_state structures, keyed on logical port name.
@@ -4758,7 +4754,7 @@ pinctrl_destroy(void)
     destroy_send_arps_nds();
     destroy_ipv6_ras();
     destroy_ipv6_prefixd();
-    destroy_buffered_packets_ctx();
+    destroy_buffered_packets_map();
     destroy_activated_ports();
     event_table_destroy();
     destroy_put_mac_bindings();
@@ -4843,30 +4839,24 @@ pinctrl_handle_put_mac_binding(const struct flow *md,
     notify_pinctrl_main();
 }
 
-#define READY_PACKETS_VEC_CAPACITY_THRESHOLD 1024
-
 /* Called with in the pinctrl_handler thread context. */
 static void
 send_mac_binding_buffered_pkts(struct rconn *swconn)
-    OVS_REQUIRES(pinctrl_mutex)
 {
     enum ofp_version version = rconn_get_version(swconn);
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
-    struct vector *rpd = &buffered_packets_ctx.ready_packets_data;
+    struct vector rpd = VECTOR_EMPTY_INITIALIZER(struct bp_packet_data);
+
+    buffered_packets_run(&buffered_packets_map, &rpd);
 
     struct bp_packet_data *pd;
-    VECTOR_FOR_EACH_PTR (rpd, pd) {
+    VECTOR_FOR_EACH_PTR (&rpd, pd) {
         queue_msg(swconn, ofputil_encode_resume(&pd->pin, pd->continuation,
                                                 proto));
         bp_packet_data_destroy(pd);
     }
 
-    vector_clear(rpd);
-    if (vector_capacity(rpd) >= READY_PACKETS_VEC_CAPACITY_THRESHOLD) {
-        VLOG_DBG("The ready_packets_data vector capacity (%"PRIuSIZE") "
-                 "is over threshold.", vector_capacity(rpd));
-        vector_shrink_to_fit(rpd);
-    }
+    vector_destroy(&rpd);
 }
 
 static void
@@ -4935,9 +4925,8 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
                      struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_name,
                      struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
-    OVS_REQUIRES(pinctrl_mutex)
 {
-    if (!buffered_packets_ctx_has_packets(&buffered_packets_ctx)) {
+    if (cmap_is_empty(&buffered_packets_map)) {
         return;
     }
 
@@ -4983,18 +4972,16 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
         mac_binding_add(&recent_mbs, mb_data, smb, 0);
     }
 
-    buffered_packets_ctx_run(&buffered_packets_ctx, &recent_mbs,
-                                 sbrec_port_binding_by_key,
-                                 sbrec_datapath_binding_by_key,
-                                 sbrec_port_binding_by_name,
-                                 sbrec_mac_binding_by_lport_ip);
+    if (buffered_packets_lookup_run(&buffered_packets_map, &recent_mbs,
+                                    sbrec_port_binding_by_key,
+                                    sbrec_datapath_binding_by_key,
+                                    sbrec_port_binding_by_name,
+                                    sbrec_mac_binding_by_lport_ip)) {
+        notify_pinctrl_handler();
+    }
 
     mac_bindings_clear(&recent_mbs);
     hmap_destroy(&recent_mbs);
-
-    if (buffered_packets_ctx_is_ready_to_send(&buffered_packets_ctx)) {
-        notify_pinctrl_handler();
-    }
 }
 
 static void
@@ -6438,7 +6425,7 @@ may_inject_pkts(void)
             !cmap_is_empty(&garp_rarp_get_data()->data) ||
             ipv6_prefixd_should_inject() ||
             !ovs_list_is_empty(&mcast_query_list) ||
-            buffered_packets_ctx_is_ready_to_send(&buffered_packets_ctx) ||
+            !cmap_is_empty(&buffered_packets_map) ||
             bfd_monitor_should_inject());
 }
 
@@ -6528,9 +6515,7 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
         return;
     }
 
-    ovs_mutex_lock(&pinctrl_mutex);
     pinctrl_handle_buffered_packets(pin, continuation, false);
-    ovs_mutex_unlock(&pinctrl_mutex);
 
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
