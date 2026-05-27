@@ -185,6 +185,7 @@ struct ovsdb_idl_txn *run_idl_loop(struct ovsdb_idl_loop *idl_loop,
 #define OVN_EVPN_KEY_FLAG 31
 #define OVN_MIN_EVPN_KEY (1u << OVN_EVPN_KEY_FLAG)
 #define OVN_MAX_EVPN_KEY (OVN_MAX_DP_GLOBAL_NUM | OVN_MIN_EVPN_KEY)
+#define OVN_IS_EVPN_KEY(key) (((key) & OVN_MIN_EVPN_KEY) == OVN_MIN_EVPN_KEY)
 
 struct hmap;
 void ovn_destroy_tnlids(struct hmap *tnlids);

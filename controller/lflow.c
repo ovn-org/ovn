@@ -229,6 +229,27 @@ is_chassis_resident_cb(const void *c_aux_, const char *port_name)
     }
 }
 
+static bool
+lport_id_is_local(const struct lflow_ctx_in *l_ctx_in,
+                  const struct uuid *lflow_uuid,
+                  int64_t dp_id, int64_t port_id)
+{
+    /* To/from EVPN VTEP logical port keys are always local. */
+    if (OVN_IS_EVPN_KEY(port_id)) {
+        return true;
+    }
+
+    char buf[16];
+    get_unique_lport_key(dp_id, port_id, buf, sizeof(buf));
+
+    if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
+        VLOG_DBG("lflow "UUID_FMT" port %s in match is not local, skip",
+                 UUID_ARGS(lflow_uuid), buf);
+        return false;
+    }
+    return true;
+}
+
 /* Adds the logical flows from the Logical_Flow table to flow tables. */
 static void
 add_logical_flows(struct lflow_ctx_in *l_ctx_in,
@@ -936,22 +957,15 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
 
     struct expr_match *m;
     HMAP_FOR_EACH (m, hmap_node, matches) {
-        match_set_metadata(&m->match, htonll(ldp->datapath->tunnel_key));
+        int64_t dp_id = ldp->datapath->tunnel_key;
+        match_set_metadata(&m->match, htonll(dp_id));
         if (ldp->is_switch) {
             unsigned int reg_index
                 = (ingress ? MFF_LOG_INPORT : MFF_LOG_OUTPORT) - MFF_REG0;
             int64_t port_id = m->match.flow.regs[reg_index];
-            if (port_id) {
-                int64_t dp_id = ldp->datapath->tunnel_key;
-                char buf[16];
-                get_unique_lport_key(dp_id, port_id, buf, sizeof(buf));
-                if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
-                    VLOG_DBG("lflow "UUID_FMT
-                             " port %s in match is not local, skip",
-                             UUID_ARGS(&lflow->header_.uuid),
-                             buf);
-                    continue;
-                }
+            if (port_id && !lport_id_is_local(l_ctx_in, &lflow->header_.uuid,
+                                              dp_id, port_id)) {
+                continue;
             }
         }
 
@@ -1090,11 +1104,8 @@ consider_logical_flow__(const struct sbrec_logical_flow *lflow,
                      "found, skip", UUID_ARGS(&lflow->header_.uuid), io_port);
             return;
         }
-        char buf[16];
-        get_unique_lport_key(dp->tunnel_key, pb->tunnel_key, buf, sizeof buf);
-        if (!sset_contains(l_ctx_in->related_lport_ids, buf)) {
-            VLOG_DBG("lflow "UUID_FMT" matches inport/outport %s that's not "
-                     "local, skip", UUID_ARGS(&lflow->header_.uuid), io_port);
+        if (!lport_id_is_local(l_ctx_in, &lflow->header_.uuid,
+                               dp->tunnel_key, pb->tunnel_key)) {
             return;
         }
     }

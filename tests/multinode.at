@@ -3627,11 +3627,16 @@ check multinode_nbctl --wait=hv \
     -- acl-add ls from-lport 100 "ip" allow-related \
     -- acl-add ls to-lport 100 "ip" allow-related
 
-dnl Verify fabric-to-workload pings still work with stateful ACL.
+dnl Verify fabric-to-workload pings still work with stateful ACL (both directions).
 OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.11])
 OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::11])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.12])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::12])
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w1 ping    -W 1 -c 1 10.0.0.41])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w1 ping -6 -W 1 -c 1 10::41])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w2 ping    -W 1 -c 1 10.0.0.42])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w2 ping -6 -W 1 -c 1 10::42])
 
 dnl Also add a load balancer and verify pings still work.
 check multinode_nbctl --wait=hv \
@@ -3642,6 +3647,11 @@ OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping    -W 1 -c 1 10
 OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::11])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping    -W 1 -c 1 10.0.0.12])
 OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec fabric_workload ping -6 -W 1 -c 1 10::12])
+
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w1 ping    -W 1 -c 1 10.0.0.41])
+OVS_WAIT_UNTIL([m_as ovn-gw-1 ip netns exec w1 ping -6 -W 1 -c 1 10::41])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w2 ping    -W 1 -c 1 10.0.0.42])
+OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec w2 ping -6 -W 1 -c 1 10::42])
 
 dnl Cleanup ACL and LB.
 check multinode_nbctl --wait=hv \
