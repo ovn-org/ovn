@@ -16,8 +16,6 @@
 #ifndef OVN_BFD_H
 #define OVN_BFD_H 1
 
-#include <stdbool.h>
-
 struct hmap;
 struct ovsdb_idl;
 struct ovsdb_idl_index;
@@ -37,7 +35,7 @@ void bfd_run(const struct ovsrec_interface_table *,
              const struct sbrec_chassis *,
              const struct sbrec_sb_global_table *);
 
-bool bfd_calculate_chassis(
+void bfd_calculate_chassis(
     const struct sbrec_chassis *,
     const struct sbrec_ha_chassis_group_table *,
     struct sset *);
