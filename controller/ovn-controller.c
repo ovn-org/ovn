@@ -7554,6 +7554,24 @@ main(int argc, char *argv[])
                 ovsrec_open_vswitch_update_other_config_setkey(
                     cfg, "vlan-limit", "0");
             }
+            /* Clear flow-restore-wait. OVN at one point would set
+             * flow-restore-wait in order to try to synchronize with
+             * OVS. However, that resulted in a bug, so that behavior
+             * was reverted. If upgrading from a version where OVN
+             * manipulted flow-restore-wait, then flow-restore-wait
+             * needs to be cleared in order for OVS to function
+             * properly. This is (hopefully) a temporary measure until
+             * a more reliable method of synchronizing with OVS is
+             * devised.
+             */
+            if (smap_get_bool(&cfg->external_ids,
+                              "ovn-managed-flow-restore-wait", false) &&
+                smap_get(&cfg->other_config, "flow-restore-wait")) {
+                ovsrec_open_vswitch_update_other_config_delkey(
+                    cfg, "flow-restore-wait");
+                ovsrec_open_vswitch_update_external_ids_delkey(
+                   cfg, "ovn-managed-flow-restore-wait");
+            }
         }
 
         static bool chassis_idx_stored = false;
