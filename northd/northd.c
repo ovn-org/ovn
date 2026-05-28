@@ -5126,6 +5126,9 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             goto fail;
         }
 
+        if (sparse_array_get(&nd->ls_datapaths.dps, synced->sdp->index)) {
+            goto fail;
+        }
         struct ovn_datapath *od = ovn_datapath_create(
             &nd->ls_datapaths.datapaths, &new_ls->header_.uuid, new_ls,
             NULL, synced->sdp);
@@ -5456,6 +5459,9 @@ northd_handle_lr_changes(const struct northd_input *ni,
         /* If the logical router is create with the below columns set,
          * then we can't handle it in the incremental processor goto fail. */
         if (new_lr->copp || (new_lr->n_ports > 0)) {
+            goto fail;
+        }
+        if (sparse_array_get(&nd->lr_datapaths.dps, synced->sdp->index)) {
             goto fail;
         }
         struct ovn_datapath *od = ovn_datapath_create(
