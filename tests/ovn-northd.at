@@ -18627,6 +18627,26 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Datapath incremental processing index reuse])
+ovn_start
+
+check ovn-nbctl --wait=sb ls-add sw-old
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb ls-del sw-old -- ls-add sw-new
+check_engine_compute northd recompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check ovn-nbctl --wait=sb lr-add lr-old
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-del lr-old -- lr-add lr-new
+check_engine_compute northd recompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Synced logical switch and router incremental procesesing])
 ovn_start
 
