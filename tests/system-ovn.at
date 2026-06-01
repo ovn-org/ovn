@@ -14284,6 +14284,8 @@ NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.1.12 | FORMAT_PING], \
 ])
 
 check ovn-nbctl --wait=hv set load_balancer lb0 options:add_route=false
+# Wait for revalidation of stale megaflows which may lag behind.
+check ovs-appctl revalidator/wait
 NS_CHECK_EXEC([vm1], [ping -q -c 3 -i 0.3 -w 2 172.18.1.12 | FORMAT_PING], \
 [0], [dnl
 7 packets transmitted, 0 received, 100% packet loss, time 0ms
