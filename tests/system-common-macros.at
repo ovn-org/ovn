@@ -178,6 +178,27 @@ m4_define([NETNS_START_DHCPD],
     ]
 )
 
+# NETNS_START_UDP_ECHO([namespace], [ip-version], [port], [pidfile])
+#
+# Start a "persistent" UDP echo server within 'namespace', listening on 'port'
+# and echoing back any data it receives. 'ip-version' is either "4" or "6".
+# The server keeps running across multiple client connections (nc's "-k").
+#
+# nc's "-k" makes it fork child processes that keep the listening port open, so
+# killing only the parent leaves those children running and hangs the whole
+# test cleanup (especially on failures). This macro therefore installs a
+# cleanup hook that kills the child processes (pkill -P) before the parent.
+#
+# The parent PID is recorded in the 'pidfile' and the user can employ the same
+# (pkill -P && kill) technique to cleanly stop the server at will during the
+# test.
+#
+m4_define([NETNS_START_UDP_ECHO],
+   [ip netns exec $1 nc -$2 -k -l -u -p $3 -d 0.1 -c '/bin/cat' & echo $! > $4
+     echo "pkill -P \`cat $4\` && kill \`cat $4\`" >> cleanup
+   ]
+)
+
 # OVS_CHECK_CT_ZERO_SNAT()
 m4_define([OVS_CHECK_CT_ZERO_SNAT],
     [AT_SKIP_IF([! grep -q "Datapath supports ct_zero_snat" ovs-vswitchd.log])])

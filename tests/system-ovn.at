@@ -4565,19 +4565,12 @@ check ovn-nbctl --wait=hv lr-lb-add lr0 lb2
 # Wait until udp service_monitor are set to offline.
 wait_row_count Service_Monitor 2 status=offline protocol=udp
 
-# We need to use "-k" argument because we keep receiving health check probes.
-NETNS_DAEMONIZE([sw0-p1], [nc -4 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp1.pid])
-NETNS_DAEMONIZE([sw0-p2], [nc -4 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp2.pid])
+# Start persistent UDP service that keeps replying to the health-check probes.
+NETNS_START_UDP_ECHO([sw0-p1], [4], [53], [udp1.pid])
+NETNS_START_UDP_ECHO([sw0-p2], [4], [53], [udp2.pid])
 
-# UDP nc with "-k" is bit tricky to cleanup, especially on test failures, due to its
-# child processes keeping the listening port open. If they are not cleaned up properly,
-# the whole test cleanup hangs.
 udp1_pid=$(cat udp1.pid)
 udp2_pid=$(cat udp2.pid)
-echo "pkill -P $udp1_pid && kill $udp1_pid" >> cleanup
-echo "pkill -P $udp2_pid && kill $udp2_pid" >> cleanup
-:> udp1.pid
-:> udp2.pid
 
 wait_row_count Service_Monitor 2 status=online
 
@@ -4764,19 +4757,12 @@ check ovn-nbctl --wait=hv lr-lb-add lr0 lb2
 # Wait until udp service_monitor are set to offline.
 wait_row_count Service_Monitor 2 status=offline protocol=udp
 
-# We need to use "-k" argument because we keep receiving health check probes.
-NETNS_DAEMONIZE([sw0-p1], [nc -6 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp1.pid])
-NETNS_DAEMONIZE([sw0-p2], [nc -6 -k -l -u -p 53 -d 0.1 -c '/bin/cat'], [udp2.pid])
+# Start persistent UDP service that keeps replying to the health-check probes.
+NETNS_START_UDP_ECHO([sw0-p1], [6], [53], [udp1.pid])
+NETNS_START_UDP_ECHO([sw0-p2], [6], [53], [udp2.pid])
 
-# UDP nc with "-k" is bit tricky to cleanup, especially on test failures, due to its
-# child processes keeping the listening port open. If they are not cleaned up properly,
-# the whole test cleanup hangs.
 udp1_pid=$(cat udp1.pid)
 udp2_pid=$(cat udp2.pid)
-echo "pkill -P $udp1_pid && kill $udp1_pid" >> cleanup
-echo "pkill -P $udp2_pid && kill $udp2_pid" >> cleanup
-:> udp1.pid
-:> udp2.pid
 
 wait_row_count Service_Monitor 2 status=online
 
