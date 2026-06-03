@@ -1845,6 +1845,10 @@ AT_CHECK([ovn-nbctl lrp-list lr0 | uuidfilt], [0], [dnl
 <1> (lrp1)
 ])
 
+AT_CHECK([ovn-nbctl show lr0 | grep 'peer:'], [0], [dnl
+        peer: lrp1-peer
+])
+
 AT_CHECK([ovn-nbctl lrp-add lr0 lrp2 00:00:00:01:02:03])
 AT_CHECK([ovn-nbctl lrp-list lr0 | uuidfilt], [0], [dnl
 <0> (lrp0)

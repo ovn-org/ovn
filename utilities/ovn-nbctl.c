@@ -910,6 +910,10 @@ print_lr(const struct nbrec_logical_router *lr, struct ds *s)
             ds_put_cstr(s, "]\n");
             free(gcs);
         }
+
+        if (lrp->peer) {
+            ds_put_format(s, "        peer: %s\n", lrp->peer);
+        }
     }
 
     for (size_t i = 0; i < lr->n_nat; i++) {
@@ -1022,6 +1026,7 @@ nbctl_pre_show(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_networks);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_options);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_gateway_chassis);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_logical_router_port_col_peer);
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_gateway_chassis_col_chassis_name);
 
