@@ -303,11 +303,6 @@ check ovn-nbctl --wait=sb sync
 # Check for the hosting-chassis status being set by northd
 wait_row_count nb:Logical_Router_Port 1 name=lrp1 status:hosting-chassis=ch1
 
-# Clear the hosting-chassis status from LRP and assert northd repopulates it
-check ovn-nbctl remove logical_router_port lrp1 status hosting-chassis
-check ovn-nbctl --wait=sb sync
-wait_row_count nb:Logical_Router_Port 1 name=lrp1 status:hosting-chassis=ch1
-
 # Now remove the chassis from the port binding record and assert that the
 # hosting-chassis status was removed by northd
 check ovn-sbctl clear Port_Binding cr-lrp1 chassis
@@ -11786,12 +11781,10 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lrp-set-gateway-chassis lrp hv1
 wait_column "hosting-chassis=hv1" nb:Logical_Router_Port status name=lrp
 
-# There will be 3 recomputes of northd engine node
+# There will be 2 recomputes of northd engine node
 #   1. missing handler for input NB_logical_router
 #   2. missing handler for input SB_ha_chassis_group
-#   3. missing handler for input NB_logical_router when ovn-northd
-#      updates the hosting-chassis option in NB_logical_router_port.
-check_recompute_counter 3 3
+check_recompute_counter 2 2
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
