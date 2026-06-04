@@ -115,6 +115,19 @@ route_exchange_find_port(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     return NULL;
 }
 
+struct advertise_datapath_entry *
+advertise_datapath_find(const struct hmap *datapaths,
+                        const struct sbrec_datapath_binding *db)
+{
+    struct advertise_datapath_entry *ade;
+    HMAP_FOR_EACH_WITH_HASH (ade, node, db->tunnel_key, datapaths) {
+        if (ade->db == db) {
+            return ade;
+        }
+    }
+    return NULL;
+}
+
 static void
 build_port_mapping(struct smap *mapping, const char *port_mapping)
 {
@@ -170,19 +183,6 @@ advertise_datapath_cleanup(struct advertise_datapath_entry *ad)
     hmap_destroy(&ad->routes);
     smap_destroy(&ad->bound_ports);
     free(ad);
-}
-
-static struct advertise_datapath_entry*
-advertise_datapath_find(const struct hmap *datapaths,
-                        const struct sbrec_datapath_binding *db)
-{
-    struct advertise_datapath_entry *ade;
-    HMAP_FOR_EACH_WITH_HASH (ade, node, db->tunnel_key, datapaths) {
-        if (ade->db == db) {
-            return ade;
-        }
-    }
-    return NULL;
 }
 
 static struct advertise_datapath_entry *

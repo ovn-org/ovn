@@ -1,5 +1,7 @@
 OVN v26.03.2 - xx xxx xxxx
 --------------------------
+  - Dynamic Routing:
+    * Allow multiple routers to read the same VRF table.
 
 OVN v26.03.1 - 20 Apr 2026
 --------------------------

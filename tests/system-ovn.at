@@ -20289,6 +20289,8 @@ AT_CHECK([ip route add 10.10.3.1 via 20.0.0.25 vrf vrf-$vni proto zebra])
 # Verify routes do not appear in SB database.
 wait_row_count Learned_Route 0
 
+check ovn-nbctl --wait=hv remove Logical_Router lr-tenant options dynamic-routing dynamic-routing-vrf-id
+
 check ovn-nbctl --wait=hv set Logical_Router lr-frr options:dynamic-routing-no-learning=false
 
 # Verify learned route appears in SB database
@@ -20364,6 +20366,44 @@ OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0],
 ip_prefix           : "10.10.3.1"
 ip_prefix           : "10.10.4.1"
 ])
+
+# Verify that we can have one router read and another write from the same
+# vrf table.
+#
+# The router that advertises needs to have the gateway chassis set so remove the
+# redistribute routes from lr-frr.
+
+check ovn-nbctl remove Logical_Router lr-frr options \
+    dynamic-routing-redistribute
+check ovn-nbctl --wait=hv set Logical_Router lr-frr \
+    options:dynamic-routing-vrf-id=$vni
+
+check ovn-nbctl --wait=hv set Logical_Router lr-tenant \
+    options:dynamic-routing-vrf-id=$vni \
+    options:dynamic-routing=true \
+    options:dynamic-routing-redistribute=static \
+    options:dynamic-routing-no-learning=true
+
+# Verify that lr-frr has Learned_Routes but lr-tenant does not.
+dp_frr=$(fetch_column Datapath_Binding _uuid external_ids:name=lr-frr)
+dp_tenant=$(fetch_column Datapath_Binding _uuid external_ids:name=lr-tenant)
+wait_row_count Learned_Route 2 datapath=$dp_frr
+wait_row_count Learned_Route 0 datapath=$dp_tenant
+wait_row_count Advertised_Route 0 datapath=$dp_frr
+wait_row_count Advertised_Route 1 datapath=$dp_tenant
+OVN_ROUTE_EQUAL([vrf-$vni], [dnl
+blackhole 10.10.1.1 proto ovn metric 1000
+10.10.3.1 via 20.0.0.25 dev local-bgp-port proto zebra
+10.10.4.1 via 20.0.0.25 dev local-bgp-port proto zebra
+20.0.0.0/8 dev local-bgp-port proto kernel scope link src 20.0.0.4])
+OVS_WAIT_FOR_OUTPUT([ip route show table $vni type blackhole | wc -l], [0], [dnl
+1
+])
+
+check ovn-nbctl remove Logical_Router lr-tenant options \
+    dynamic-routing-vrf-id dynamic-routing \
+    dynamic-routing-redistribute \
+    dynamic-routing-no-learning
 
 # Remove lrp-local-bgp-port port.
 AS_BOX([$(date +%H:%M:%S.%03N) Remove lrp])
