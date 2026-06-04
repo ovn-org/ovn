@@ -200,7 +200,6 @@ re_nl_delete_route(uint32_t table_id, const struct advertise_route_entry *re)
 }
 
 struct route_msg_handle_data {
-    const struct sbrec_datapath_binding *db;
     struct hmapx *routes_to_advertise;
     struct vector *learned_routes;
     struct vector *stale_routes;
@@ -246,7 +245,6 @@ handle_route_msg(const struct route_table_msg *msg,
             }
             struct re_nl_received_route_node rr;
             rr = (struct re_nl_received_route_node) {
-                .db = handle_data->db,
                 .prefix = rd->rta_dst,
                 .plen = rd->rtm_dst_len,
                 .nexthop = nexthop->addr,
@@ -322,8 +320,7 @@ re_nl_encode_nexthop(struct ofpbuf *request, bool dst_is_ipv4,
 
 int
 re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
-                  struct vector *learned_routes,
-                  const struct sbrec_datapath_binding *db)
+                  struct vector *learned_routes)
 {
     struct hmapx routes_to_advertise = HMAPX_INITIALIZER(&routes_to_advertise);
     struct vector stale_routes =
@@ -342,7 +339,6 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         .routes_to_advertise = &routes_to_advertise,
         .learned_routes = learned_routes,
         .stale_routes = &stale_routes,
-        .db = db,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 

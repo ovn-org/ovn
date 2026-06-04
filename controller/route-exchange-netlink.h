@@ -42,7 +42,6 @@ struct vector;
 struct advertise_route_entry;
 
 struct re_nl_received_route_node {
-    const struct sbrec_datapath_binding *db;
     struct in6_addr prefix;
     unsigned int plen;
     struct in6_addr nexthop;
@@ -61,8 +60,7 @@ void re_route_format(struct ds *, uint32_t table_id,
                      const struct in6_addr *nexthop, int err);
 
 int re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
-                      struct vector *learned_routes,
-                      const struct sbrec_datapath_binding *db);
+                      struct vector *learned_routes);
 
 int re_nl_cleanup_routes(uint32_t table_id);
 

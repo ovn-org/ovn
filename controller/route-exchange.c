@@ -296,7 +296,7 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
             VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
 
         error = re_nl_sync_routes(table_id, &ad->routes,
-                                  &received_routes, ad->db);
+                                  &received_routes);
         SET_ROUTE_EXCHANGE_NL_STATUS(error);
 
         sb_sync_learned_routes(&received_routes, ad->db,
