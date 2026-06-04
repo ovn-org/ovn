@@ -11599,6 +11599,30 @@ check_recompute_counter 0 0 0 0 0 0
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
 
+dnl Remote ports should be incrementally processed
+check ovn-sbctl chassis-add remote-ch0 geneve 10.0.0.100
+check ovn-sbctl set chassis remote-ch0 \
+    other_config:is-remote=true
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-add ls0 rp0 \
+    -- lsp-set-type rp0 remote \
+    -- lsp-set-addresses rp0 "aa:aa:aa:00:00:10 192.168.0.20" \
+    -- lsp-set-options rp0 requested-chassis=remote-ch0
+wait_for_ports_up rp0
+check_recompute_counter 0 0 0 0 0 0
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb \
+    lsp-set-addresses rp0 "aa:aa:aa:00:00:11 192.168.0.21"
+check_recompute_counter 0 0 0 0 0 0
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-del rp0
+check_recompute_counter 0 0 0 0 0 0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE(1)
+
 check ovn-nbctl --wait=hv ls-del ls0
 
 OVN_CLEANUP([hv1])
