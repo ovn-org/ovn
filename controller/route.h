@@ -105,5 +105,8 @@ struct advertise_route_entry *
 advertise_route_find(unsigned int priority, const struct in6_addr *prefix,
                      unsigned int plen, const struct in6_addr *nexthop,
                      const struct hmap *advertised_routes);
+struct advertise_datapath_entry *
+advertise_datapath_find(const struct hmap *datapaths,
+                        const struct sbrec_datapath_binding *);
 
 #endif /* ROUTE_H */

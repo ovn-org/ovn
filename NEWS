@@ -9,6 +9,7 @@ Post v26.03.0
      "lb-add", "meter-add", "lr-policy-add", and "lr-policy-del", and
      fixed the "nfg-list" signature.
    - Dynamic Routing:
+     * Allow multiple routers to read the same VRF table.
      * Add support for hub-and-spoke propagation via the "hub-spoke" option
        in dynamic-routing-redistribute settings.
      * Add ECMP/multi-homing support for EVPN FDB entries. FDB entries
