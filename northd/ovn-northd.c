@@ -861,6 +861,8 @@ main(int argc, char *argv[])
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl, &nbrec_nb_global_col_hv_cfg);
     ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
                          &nbrec_nb_global_col_hv_cfg_timestamp);
+    ovsdb_idl_omit_alert(ovnnb_idl_loop.idl,
+                         &nbrec_logical_router_port_col_status);
 
     unixctl_command_register("nb-connection-status", "", 0, 0,
                              ovn_conn_show, ovnnb_idl_loop.idl);
