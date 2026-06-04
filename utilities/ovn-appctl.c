@@ -214,7 +214,6 @@ connect_to_target(const char *target)
     char *socket_name;
     int error;
 
-#ifndef _WIN32
     if (target[0] != '/') {
         char *pidfile_name;
         pid_t pid;
@@ -227,12 +226,6 @@ connect_to_target(const char *target)
         free(pidfile_name);
         socket_name = xasprintf("%s/%s.%ld.ctl",
                                 ovn_rundir(), target, (long int) pid);
-#else
-    /* On windows, if the 'target' contains ':', we make an assumption that
-     * it is an absolute path. */
-    if (!strchr(target, ':')) {
-        socket_name = xasprintf("%s/%s.ctl", ovn_rundir(), target);
-#endif
     } else {
         socket_name = xstrdup(target);
     }

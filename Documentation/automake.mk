@@ -11,7 +11,6 @@ DOC_SOURCE = \
 	Documentation/intro/install/fedora.rst \
 	Documentation/intro/install/general.rst \
 	Documentation/intro/install/ovn-upgrades.rst \
-	Documentation/intro/install/windows.rst \
 	Documentation/tutorials/index.rst \
 	Documentation/tutorials/ovn-openstack.rst \
 	Documentation/tutorials/ovn-sandbox.rst \

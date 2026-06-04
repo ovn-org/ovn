@@ -1168,12 +1168,6 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
          * "ovn/northd/northd.c:1234", down to just the part following the
          * last slash, e.g. "northd.c:1234". */
         const char *slash = strrchr(lflow->where, '/');
-#if _WIN32
-        const char *backslash = strrchr(lflow->where, '\\');
-        if (!slash || backslash > slash) {
-            slash = backslash;
-        }
-#endif
         const char *where = slash ? slash + 1 : lflow->where;
 
         struct smap ids = SMAP_INITIALIZER(&ids);
@@ -1213,12 +1207,6 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                  * like "ovn/northd/northd.c:1234", down to just the part
                  * following the last slash, e.g. "northd.c:1234". */
                 const char *slash = strrchr(lflow->where, '/');
-#if _WIN32
-                const char *backslash = strrchr(lflow->where, '\\');
-                if (!slash || backslash > slash) {
-                    slash = backslash;
-                }
-#endif
                 const char *where = slash ? slash + 1 : lflow->where;
 
                 if (strcmp(source, where)) {

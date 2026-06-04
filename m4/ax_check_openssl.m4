@@ -80,13 +80,8 @@ AC_DEFUN([AX_CHECK_OPENSSL], [
             if test -f "$ssldir/include/openssl/ssl.h"; then
                 SSL_INCLUDES="-I$ssldir/include"
                 SSL_LDFLAGS="-L$ssldir/lib"
-                if test "$WIN32" = "yes"; then
-                    SSL_LIBS="-lssleay32 -llibeay32"
-                    SSL_DIR=/$(echo ${ssldir} | ${SED} -e 's/://')
-                else
-                    SSL_LIBS="-lssl -lcrypto"
-                    SSL_DIR="$ssldir"
-                fi
+                SSL_LIBS="-lssl -lcrypto"
+                SSL_DIR="$ssldir"
                 found=true
                 AC_MSG_RESULT([yes])
                 break

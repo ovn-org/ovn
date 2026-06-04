@@ -40,7 +40,6 @@ Installation from Source
    :maxdepth: 2
 
    general
-   windows
 
 Installation from Packages
 --------------------------

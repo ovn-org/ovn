@@ -142,13 +142,6 @@
               to limit the log level change to only to the system log, to the
               console, or to a file, respectively.
             </p>
-
-            <p>
-              On Windows platform, <code>syslog</code> is accepted as a word
-              and is only useful if the target was started with the
-              <code>--syslog-target</code> option (the word has no effect
-              otherwise).
-            </p>
           </li>
 
           <li>

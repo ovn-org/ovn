@@ -18,6 +18,8 @@ Post v26.03.0
      static routes as higher-priority than connected routes, which in turn led
      to changes in administrative distance for specific route types. Please see
      the "Route Administrative Distance" section of the ovn-northd manpage.
+   - Windows support was broken since the split from OVS repository.
+     Remaining bits of the build system and the documentation are now removed.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

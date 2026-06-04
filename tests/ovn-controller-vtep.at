@@ -13,7 +13,6 @@ AT_BANNER([ovn_controller_vtep])
 #
 m4_define([OVN_CONTROLLER_VTEP_START], [
    AT_KEYWORDS([ovn])
-   # this will cause skip when 'make check' using Windows setup.
    sim="$1"
    tunnel_ip="$2"
    vtep_chassis=${sim:-br-vtep}

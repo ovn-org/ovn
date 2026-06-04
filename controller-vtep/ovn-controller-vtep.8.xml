@@ -74,12 +74,7 @@
           <code>unix:<var>file</var></code>
         </p>
         <p>
-          On POSIX, connect to the Unix domain server socket named
-          <var>file</var>.
-        </p>
-        <p>
-          On Windows, connect to a localhost TCP port whose value is written
-          in <var>file</var>.
+          Connect to the Unix domain server socket named <var>file</var>.
         </p>
       </li>
     </ul>

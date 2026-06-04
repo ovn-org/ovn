@@ -33,7 +33,6 @@
 VLOG_DEFINE_THIS_MODULE(chassis);
 
 #ifndef HOST_NAME_MAX
-/* For windows. */
 #define HOST_NAME_MAX 255
 #endif /* HOST_NAME_MAX */
 

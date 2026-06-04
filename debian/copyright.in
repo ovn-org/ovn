@@ -49,24 +49,6 @@ License:
   On Debian systems, the complete text of the GNU General Public License
   version 2 can be found in `/usr/share/common-licenses/GPL-2'
 
-* The following file is licensed under the GNU General Public License
-  version 2.
-
-        build-aux/cccl
-
-* The following files are licensed under the 2-clause BSD license.
-
-        lib/getopt_long.c
-        include/windows/getopt.h
-        datapath-windows/ovsext/Conntrack-tcp.c
-        lib/conntrack-tcp.c
-
-* The following files are licensed under the 3-clause BSD-license
-
-        include/windows/netinet/icmp6.h
-        include/windows/netinet/ip6.h
-        lib/strsep.c
-
 * The following components are dual-licensed under the
   GNU General Public License version 2 and the Apache License Version 2.0.
 

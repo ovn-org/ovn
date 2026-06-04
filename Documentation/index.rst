@@ -49,8 +49,7 @@ First Steps
 
 Getting started with Open Virtual Network (OVN) for Open vSwitch? Start here.
 
-- **Install:** :doc:`intro/install/general` |
-  :doc:`intro/install/windows`
+- **Install:** :doc:`intro/install/general`
 
 - **Tutorials:** :doc:`tutorials/ovn-sandbox` |
   :doc:`tutorials/ovn-openstack` |

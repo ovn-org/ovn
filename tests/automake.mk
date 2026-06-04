@@ -15,8 +15,7 @@ EXTRA_DIST += \
 	$(MULTINODE_TESTSUITE) \
 	tests/atlocal.in \
 	$(srcdir)/package.m4 \
-	$(srcdir)/tests/testsuite \
-	$(srcdir)/tests/testsuite.patch
+	$(srcdir)/tests/testsuite
 
 COMMON_MACROS_AT = \
 	tests/ovsdb-macros.at \
@@ -81,7 +80,6 @@ MULTINODE_TESTSUITE_AT = \
 check_SCRIPTS += tests/atlocal
 
 TESTSUITE = $(srcdir)/tests/testsuite
-TESTSUITE_PATCH = $(srcdir)/tests/testsuite.patch
 TESTSUITE_DIR = $(abs_top_builddir)/tests/testsuite.dir
 SYSTEM_DPDK_TESTSUITE = $(srcdir)/tests/system-dpdk-testsuite
 SYSTEM_KMOD_TESTSUITE = $(srcdir)/tests/system-kmod-testsuite
@@ -93,7 +91,7 @@ DISTCLEANFILES += tests/atconfig tests/atlocal
 MULTINODE_TESTSUITE = $(srcdir)/tests/multinode-testsuite
 MULTINODE_TESTSUITE_DIR = $(abs_top_builddir)/tests/multinode-testsuite.dir
 MULTINODE_TESTSUITE_RESULTS = $(MULTINODE_TESTSUITE_DIR)/results
-AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(PTHREAD_WIN32_DIR_DLL):$(SSL_DIR):controller-vtep:northd:utilities:controller:ic:br-controller
+AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddir)/ovsdb:$(ovs_builddir)/vtep:tests:$(SSL_DIR):controller-vtep:northd:utilities:controller:ic:br-controller
 
 export ovs_srcdir
 export ovs_builddir
@@ -237,16 +235,9 @@ check-multinode: all
 
 AUTOTEST = $(AUTOM4TE) --language=autotest
 
-if WIN32
-$(TESTSUITE): package.m4 $(TESTSUITE_AT) $(COMMON_MACROS_AT) $(TESTSUITE_PATCH)
-	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o testsuite.tmp $@.at
-	patch -p0 testsuite.tmp $(TESTSUITE_PATCH)
-	$(AM_V_at)mv testsuite.tmp $@
-else
 $(TESTSUITE): package.m4 $(TESTSUITE_AT) $(COMMON_MACROS_AT)
 	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at
 	$(AM_V_at)mv $@.tmp $@
-endif
 
 $(SYSTEM_DPDK_TESTSUITE): package.m4 $(SYSTEM_TESTSUITE_AT) $(SYSTEM_DPDK_TESTSUITE_AT) $(COMMON_MACROS_AT)
 	$(AM_V_GEN)$(AUTOTEST) -I '$(srcdir)' -o $@.tmp $@.at

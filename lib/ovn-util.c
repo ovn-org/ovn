@@ -670,16 +670,9 @@ default_br_db(void)
 char *
 get_abs_unix_ctl_path(const char *path)
 {
-#ifdef _WIN32
-    enum { WINDOWS = 1 };
-#else
-    enum { WINDOWS = 0 };
-#endif
-
     long int pid = getpid();
     char *abs_path
         = (path ? abs_file_name(ovn_rundir(), path)
-           : WINDOWS ? xasprintf("%s/%s.ctl", ovn_rundir(), program_name)
            : xasprintf("%s/%s.%ld.ctl", ovn_rundir(), program_name, pid));
     return abs_path;
 }
@@ -689,20 +682,8 @@ ovn_set_pidfile(const char *name)
 {
     char *pidfile_name = NULL;
 
-#ifndef _WIN32
     pidfile_name = name ? abs_file_name(ovn_rundir(), name)
                         : xasprintf("%s/%s.pid", ovn_rundir(), program_name);
-#else
-    if (name) {
-        if (strchr(name, ':')) {
-            pidfile_name = xstrdup(name);
-        } else {
-            pidfile_name = xasprintf("%s/%s", ovn_rundir(), name);
-        }
-    } else {
-        pidfile_name = xasprintf("%s/%s.pid", ovn_rundir(), program_name);
-    }
-#endif
 
     /* Call openvswitch lib function. */
     set_pidfile(pidfile_name);

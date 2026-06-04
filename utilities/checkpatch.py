@@ -1073,10 +1073,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                 interim_line_check(current_file, cmp_line, lineno)
                 continue
 
-            # Skip files which have /datapath in them, since they are
-            # linux or windows coding standards
-            if current_file.startswith('datapath'):
-                continue
+            # Linux headers use Linux kernel coding style for the most part.
             if current_file.startswith('include/linux'):
                 continue
             # "sparse" includes could be copy-pasted from different sources

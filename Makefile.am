@@ -20,16 +20,6 @@ AM_LDFLAGS = $(SSL_LDFLAGS)
 AM_LDFLAGS += $(OVS_LDFLAGS)
 
 AM_CPPFLAGS += -I $(top_srcdir)/include
-
-if WIN32
-AM_CPPFLAGS += $(PTHREAD_INCLUDES)
-AM_CPPFLAGS += $(MSVC_CFLAGS)
-AM_LDFLAGS += $(PTHREAD_LDFLAGS)
-AM_LDFLAGS += $(MSVC64_LDFLAGS)
-PLATFORM = $(MSVC_PLATFORM)
-endif
-
-AM_CPPFLAGS += -I $(top_srcdir)/include
 AM_CPPFLAGS += -I $(top_srcdir)/ovn
 AM_CPPFLAGS += -I $(top_builddir)/include
 AM_CPPFLAGS += -I $(top_srcdir)/lib
@@ -57,18 +47,13 @@ endif
 
 AM_CTAGSFLAGS = $(OVS_CTAGS_IDENTIFIERS_LIST)
 
-if WIN32
-psep=";"
-else
-psep=":"
-endif
 # PYTHONDONTWRITEBYTECODE=yes keeps Python from creating .pyc and .pyo
 # files.  Creating .py[co] works OK for any given version of Open
 # vSwitch, but it causes trouble if you switch from a version with
 # foo/__init__.py into an (older) version with plain foo.py, since
 # foo/__init__.pyc will cause Python to ignore foo.py.
 run_python = \
-	PYTHONPATH=$(OVS_SRCDIR)/python$(psep)$$PYTHONPATH \
+	PYTHONPATH=$(OVS_SRCDIR)/python:$$PYTHONPATH \
 	PYTHONDONTWRITEBYTECODE=yes $(PYTHON3)
 
 ALL_LOCAL =
@@ -176,7 +161,7 @@ submodules = $(shell grep 'path =' $(srcdir)/.gitmodules | sed -E 's/[\t ]*path 
 
 SUFFIXES += .in
 .in:
-	$(AM_V_GEN)PYTHONPATH=$(OVS_SRCDIR)/python$(psep)$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON3) $(srcdir)/build-aux/soexpand.py -I$(srcdir) -I$(OVS_SRCDIR) < $< | \
+	$(AM_V_GEN)PYTHONPATH=$(OVS_SRCDIR)/python:$$PYTHONPATH:$(srcdir)/python $(PYTHON3) $(srcdir)/build-aux/soexpand.py -I$(srcdir) -I$(OVS_SRCDIR) < $< | \
 	  $(PYTHON3) $(srcdir)/build-aux/dpdkstrip.py $(DPDKSTRIP_FLAGS) | \
 	  sed \
 	    -e 's,[@]PKIDIR[@],$(PKIDIR),g' \
@@ -275,7 +260,7 @@ config-h-check:
 	fi
 .PHONY: config-h-check
 
-# Check for printf() type modifiers that MSVC doesn't support.
+# Check for non-portable printf() type modifiers.
 ALL_LOCAL += printf-check
 printf-check:
 	@cd $(srcdir); \
@@ -444,7 +429,7 @@ CLEANFILES += flake8-check
 
 include $(srcdir)/manpages.mk
 $(srcdir)/manpages.mk: $(MAN_ROOTS) build-aux/sodepends.py $(OVS_SRCDIR)/python/ovs_build_helpers/soutil.py
-	@PYTHONPATH=$(OVS_SRCDIR)/python$(psep)$$PYTHONPATH$(psep)$(srcdir)/python $(PYTHON3) $(srcdir)/build-aux/sodepends.py -I. -Isrcdir,$(srcdir) -IOVS_MANDIR,$(OVS_MANDIR) $(MAN_ROOTS) >$(@F).tmp
+	@PYTHONPATH=$(OVS_SRCDIR)/python:$$PYTHONPATH:$(srcdir)/python $(PYTHON3) $(srcdir)/build-aux/sodepends.py -I. -Isrcdir,$(srcdir) -IOVS_MANDIR,$(OVS_MANDIR) $(MAN_ROOTS) >$(@F).tmp
 	@if cmp -s $(@F).tmp $@; then \
 	  touch $@; \
 	  rm -f $(@F).tmp; \
@@ -452,35 +437,6 @@ $(srcdir)/manpages.mk: $(MAN_ROOTS) build-aux/sodepends.py $(OVS_SRCDIR)/python/
 	  mv $(@F).tmp $@; \
 	fi
 CLEANFILES += manpage-dep-check
-
-if VSTUDIO_DDK
-ALL_LOCAL += ovsext
-ARCH = x64
-ovsext: datapath-windows/ovsext.sln $(srcdir)/datapath-windows/include/OvsDpInterface.h
-if VSTUDIO_WIN8
-	MSBuild.exe //nologo //maxcpucount datapath-windows/ovsext.sln /target:Build /property:Configuration="Win8$(VSTUDIO_CONFIG)" /property:Version="$(PACKAGE_VERSION)" //p:Platform=$(ARCH)
-endif
-if VSTUDIO_WIN8_1
-	MSBuild.exe //nologo //maxcpucount datapath-windows/ovsext.sln /target:Build /property:Configuration="Win8.1$(VSTUDIO_CONFIG)" /property:Version="$(PACKAGE_VERSION)" //p:Platform=$(ARCH)
-endif
-if VSTUDIO_WIN10
-	MSBuild.exe //nologo //maxcpucount datapath-windows/ovsext.sln /target:Build /property:Configuration="Win10$(VSTUDIO_CONFIG)" /property:Version="$(PACKAGE_VERSION)" //p:Platform=$(ARCH)
-endif
-
-
-CLEAN_LOCAL += ovsext_clean
-ovsext_clean: datapath-windows/ovsext.sln
-if VSTUDIO_WIN8
-	MSBuild.exe //nologo //maxcpucount datapath-windows/ovsext.sln /target:Clean /property:Configuration="Win8$(VSTUDIO_CONFIG)" /property:Version="$(PACKAGE_VERSION)" //p:Platform=$(ARCH)
-endif
-if VSTUDIO_WIN8_1
-	MSBuild.exe //nologo //maxcpucount datapath-windows/ovsext.sln /target:Clean /property:Configuration="Win8.1$(VSTUDIO_CONFIG)" /property:Version="$(PACKAGE_VERSION)" //p:Platform=$(ARCH)
-endif
-if VSTUDIO_WIN10
-	MSBuild.exe //nologo //maxcpucount datapath-windows/ovsext.sln /target:Clean /property:Configuration="Win10$(VSTUDIO_CONFIG)" /property:Version="$(PACKAGE_VERSION)" //p:Platform=$(ARCH)
-endif
-endif
-.PHONY: ovsext
 
 clang-analyze: clean
 	@which clang scan-build >/dev/null 2>&1 || \

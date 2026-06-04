@@ -1058,7 +1058,6 @@ test_tree_shape_exhaustively(struct expr *expr, struct shash *symtab,
     }
 }
 
-#ifndef _WIN32
 static void
 wait_pid(pid_t *pids, int *n)
 {
@@ -1087,7 +1086,6 @@ wait_pid(pid_t *pids, int *n)
     }
     ovs_fatal(0, "waitpid returned unknown child");
 }
-#endif
 
 static void
 test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
@@ -1118,10 +1116,8 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
         free(name);
     }
 
-#ifndef _WIN32
     pid_t *children = xmalloc(test_parallel * sizeof *children);
     int n_children = 0;
-#endif
 
     int n_tested = 0;
     for (int i = 0; i < 2; i++) {
@@ -1144,7 +1140,6 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 ds_destroy(&s);
             }
 
-#ifndef _WIN32
             if (test_parallel > 1) {
                 pid_t pid = xfork();
                 if (!pid) {
@@ -1160,9 +1155,7 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
                     }
                     children[n_children++] = pid;
                 }
-            } else
-#endif
-            {
+            } else {
                 n_tested += test_tree_shape_exhaustively(
                     expr, &symtab, terminals, n_terminals,
                     nvars, test_nvars, test_bits,
@@ -1171,12 +1164,11 @@ test_exhaustive(struct ovs_cmdl_context *ctx OVS_UNUSED)
             expr_destroy(expr);
         }
     }
-#ifndef _WIN32
+
     while (n_children > 0) {
         wait_pid(children, &n_children);
     }
     free(children);
-#endif
 
     printf("Tested ");
     switch (operation) {
