@@ -4067,8 +4067,8 @@ destroy_northd_tracked_data(struct northd_data *nd)
 static bool
 lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *nbsp)
 {
-    /* Support only normal VIF for now. */
-    if (nbsp->type[0]) {
+    /* Support only normal VIF and remote ports for now. */
+    if (nbsp->type[0] && !lsp_is_remote(nbsp)) {
         return false;
     }
 
