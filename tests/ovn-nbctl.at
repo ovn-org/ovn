@@ -246,29 +246,29 @@ ovn_nbctl_test_acl() {
    AT_CHECK([grep 'label must in range 0...4294967295' stderr], [0], [ignore])
 
    AT_CHECK([ovn-nbctl $2 acl-list $1], [0], [dnl
-from-lport   600 (udp) drop log()
-from-lport   400 (tcp) drop
-from-lport   200 (ip) drop
-from-lport    70 (icmp) allow-related label=1234
-from-lport   500 (tcp) allow [[after-lb]]
-from-lport   300 (tcp) drop [[after-lb]]
-from-lport   300 (udp) allow [[after-lb]]
-  to-lport   500 (udp) drop log(name=test,severity=info)
-  to-lport   300 (tcp) drop
-  to-lport   100 (ip) drop
-  to-lport    70 (icmp) allow-related label=1235
+from-lport   600 (udp) drop log() [[tier 0]]
+from-lport   400 (tcp) drop [[tier 0]]
+from-lport   200 (ip) drop [[tier 0]]
+from-lport    70 (icmp) allow-related label=1234 [[tier 0]]
+from-lport   500 (tcp) allow [[tier 0]] [[after-lb]]
+from-lport   300 (tcp) drop [[tier 0]] [[after-lb]]
+from-lport   300 (udp) allow [[tier 0]] [[after-lb]]
+  to-lport   500 (udp) drop log(name=test,severity=info) [[tier 0]]
+  to-lport   300 (tcp) drop [[tier 0]]
+  to-lport   100 (ip) drop [[tier 0]]
+  to-lport    70 (icmp) allow-related label=1235 [[tier 0]]
 ])
 
    dnl Delete in one direction.
    AT_CHECK([ovn-nbctl $2 acl-del $1 to-lport])
    AT_CHECK([ovn-nbctl $2 acl-list $1], [0], [dnl
-from-lport   600 (udp) drop log()
-from-lport   400 (tcp) drop
-from-lport   200 (ip) drop
-from-lport    70 (icmp) allow-related label=1234
-from-lport   500 (tcp) allow [[after-lb]]
-from-lport   300 (tcp) drop [[after-lb]]
-from-lport   300 (udp) allow [[after-lb]]
+from-lport   600 (udp) drop log() [[tier 0]]
+from-lport   400 (tcp) drop [[tier 0]]
+from-lport   200 (ip) drop [[tier 0]]
+from-lport    70 (icmp) allow-related label=1234 [[tier 0]]
+from-lport   500 (tcp) allow [[tier 0]] [[after-lb]]
+from-lport   300 (tcp) drop [[tier 0]] [[after-lb]]
+from-lport   300 (udp) allow [[tier 0]] [[after-lb]]
 ])
 
    dnl Delete all ACLs.
@@ -283,8 +283,8 @@ from-lport   300 (udp) allow [[after-lb]]
    dnl Delete a single flow.
    AT_CHECK([ovn-nbctl $2 acl-del $1 from-lport 400 tcp])
    AT_CHECK([ovn-nbctl $2 acl-list $1], [0], [dnl
-from-lport   600 (udp) drop
-from-lport   200 (ip) drop
+from-lport   600 (udp) drop [[tier 0]]
+from-lport   200 (ip) drop [[tier 0]]
 ])
 }
 
@@ -2857,11 +2857,24 @@ check_column 3 nb:ACL tier priority=1001
 check ovn-nbctl --tier=2 acl-add ls from-lport 1002 "ip" drop
 check_column 2 nb:ACL tier priority=1002
 
+check ovn-nbctl acl-add ls from-lport 999 "ip" allow
+AT_CHECK([ovn-nbctl acl-list ls], [0], [dnl
+from-lport   999 (ip) allow [[tier 0]]
+from-lport  1002 (ip) drop [[tier 2]]
+from-lport  1001 (ip) drop [[tier 3]]
+from-lport  1000 (ip) drop [[tier 3]]
+])
+check ovn-nbctl acl-del ls from-lport 999 "ip"
+
 # Removing the tier 3 acls from ls should result in 1 ACL
 # remaining.
 check ovn-nbctl --tier=3 acl-del ls
 check_row_count nb:ACL 1
 check_column 2 nb:ACL tier priority=1002
+
+AT_CHECK([ovn-nbctl acl-list ls], [0], [dnl
+from-lport  1002 (ip) drop [[tier 2]]
+])
 
 # Add two egress ACLs at tier 2.
 check ovn-nbctl --tier=2 acl-add ls to-lport 1000 "ip" drop
@@ -2910,11 +2923,22 @@ check_row_count nb:ACL 1 tier=1
 check_row_count nb:ACL 1 tier=2
 check_row_count nb:ACL 1 tier=3
 
+AT_CHECK([ovn-nbctl acl-list ls], [0], [dnl
+from-lport  1000 (ip) drop [[tier 1]]
+from-lport  1000 (ip) drop [[tier 2]]
+from-lport  1000 (ip) drop [[tier 3]]
+])
+
 # Specifying tier 1 should result in only one ACL being deleted.
 check ovn-nbctl --tier=1 acl-del ls from-lport 1000 "ip"
 check_row_count nb:ACL 2
 check_row_count nb:ACL 1 tier=2
 check_row_count nb:ACL 1 tier=3
+
+AT_CHECK([ovn-nbctl acl-list ls], [0], [dnl
+from-lport  1000 (ip) drop [[tier 2]]
+from-lport  1000 (ip) drop [[tier 3]]
+])
 
 # Not specifying a tier should result in all ACLs being deleted.
 check ovn-nbctl acl-del ls from-lport 1000 "ip"
