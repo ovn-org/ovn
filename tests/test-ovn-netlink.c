@@ -222,7 +222,7 @@ test_route_sync(struct ovs_cmdl_context *ctx)
     }
 
     ovs_assert(re_nl_sync_routes(table_id, &routes_to_advertise,
-                                 &received_routes, NULL) == 0);
+                                 &received_routes) == 0);
 
     struct ds msg = DS_EMPTY_INITIALIZER;
 
