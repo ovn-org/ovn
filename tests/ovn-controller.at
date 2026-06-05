@@ -4044,3 +4044,71 @@ OVN_CLEANUP([hv1], [hv2
 /already has encap ip.*cannot duplicate on/d])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - Delete container child port does not bounce parent])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+as hv1 check ovs-vsctl -- add-port br-int vif \
+          -- set Interface vif external-ids:iface-id=lsp0
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 lsp0
+for i in 1 2 3; do
+    check ovn-nbctl lsp-add ls0 lsp-cont$i lsp0 $i
+done
+
+wait_for_ports_up
+ch=$(fetch_column Chassis _uuid name=hv1)
+for port in lsp0 lsp-cont1 lsp-cont2 lsp-cont3; do
+    wait_row_count Port_Binding 1 logical_port=$port chassis=$ch
+done
+
+OVS_WAIT_UNTIL([test `as hv1 ovs-vsctl get Interface vif external_ids:ovn-installed` = '"true"'])
+
+# Case 1: delete one child (lsp-cont3); two siblings remain.
+check ovn-nbctl --wait=hv lsp-del lsp-cont3
+for port in lsp0 lsp-cont1 lsp-cont2; do
+    wait_column "true" sb:Port_Binding up logical_port=$port
+done
+AT_CHECK([test `as hv1 ovs-vsctl get Interface vif external_ids:ovn-installed` = '"true"'])
+
+# Force a full recompute and re-check.
+as hv1 ovn-appctl -t ovn-controller recompute
+check ovn-nbctl --wait=hv sync
+for port in lsp0 lsp-cont1 lsp-cont2; do
+    wait_column "true" sb:Port_Binding up logical_port=$port
+done
+AT_CHECK([test `as hv1 ovs-vsctl get Interface vif external_ids:ovn-installed` = '"true"'])
+
+# Case 2: delete remaining children; parent has zero children.
+for i in 1 2; do
+    check ovn-nbctl --wait=hv lsp-del lsp-cont$i
+done
+wait_column "true" sb:Port_Binding up logical_port=lsp0
+AT_CHECK([test `as hv1 ovs-vsctl get Interface vif external_ids:ovn-installed` = '"true"'])
+
+# Force recompute with no children and verify parent is still stable.
+as hv1 ovn-appctl -t ovn-controller recompute
+check ovn-nbctl --wait=hv sync
+wait_column "true" sb:Port_Binding up logical_port=lsp0
+AT_CHECK([test `as hv1 ovs-vsctl get Interface vif external_ids:ovn-installed` = '"true"'])
+
+# Throughout the whole test, the parent's vif must never have its
+# ovn-installed external-id cleared, and neither the parent nor any
+# child should have been bounced down in the Southbound DB.
+AT_CHECK([grep -q "Removing iface vif ovn-installed in OVS" hv1/ovn-controller.log], [1], [])
+for port in lsp0 lsp-cont1 lsp-cont2 lsp-cont3; do
+    AT_CHECK([grep -q "Setting lport $port down in Southbound" hv1/ovn-controller.log], [1], [])
+done
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
