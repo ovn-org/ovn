@@ -305,6 +305,7 @@ MJ Ponsonby                        mj.ponsonby@canonical.com
 Mohammad Heib                      mheib@redhat.com
 Moshe Levi                         moshele@mellanox.com
 Murphy McCauley                    murphy.mccauley@gmail.com
+Mykola Yurchenko                   myurchenko@nvidia.com
 Natasha Gude
 Neal Shrader                       neal@digitalocean.com
 Neil McKee                         neil.mckee@inmon.com
