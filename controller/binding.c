@@ -1612,6 +1612,15 @@ is_binding_lport_this_chassis(struct binding_lport *b_lport,
              || is_postponed_port(b_lport->pb->logical_port)));
 }
 
+/* Returns 'true' if an lport of this type is bound through a parent's
+ * local_binding rather than its own.  Container, virtual and mirror ports
+ * share the parent VIF's OVS interface and local_binding. */
+static bool
+is_lport_type_child(enum en_lport_type type)
+{
+    return type == LP_CONTAINER || type == LP_VIRTUAL || type == LP_MIRROR;
+}
+
 /* Returns 'true' if the 'lbinding' has binding lports of type
  * LP_CONTAINER/LP_MIRROR, 'false' otherwise. */
 static bool
@@ -2988,7 +2997,8 @@ handle_deleted_vif_lport(const struct sbrec_port_binding *pb,
     }
 
     handle_deleted_lport(pb, b_ctx_in, b_ctx_out);
-    if (lbinding && lbinding->iface && lbinding->iface->name) {
+    if (!is_lport_type_child(lport_type) &&
+        lbinding && lbinding->iface && lbinding->iface->name) {
         if_status_mgr_remove_ovn_installed(b_ctx_out->if_mgr,
                                            lbinding->iface);
     }
