@@ -7459,7 +7459,6 @@ main(int argc, char *argv[])
 
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
     char *ovs_remote = parse_options(argc, argv);
     fatal_ignore_sigpipe();
 
@@ -8386,9 +8385,6 @@ loop_done:
         memory_wait();
         ovsrcu_quiesce_start();
         poll_block();
-        if (should_service_stop()) {
-            exit_args.exiting = true;
-        }
     }
 
     const struct ovsrec_open_vswitch_table *ovs_table =
@@ -8496,7 +8492,6 @@ loop_done:
     free(cli_system_id);
     ovn_exit_args_finish(&exit_args);
     unixctl_server_destroy(unixctl);
-    service_stop();
     ovsrcu_exit();
     dns_resolve_destroy();
     route_exchange_destroy();

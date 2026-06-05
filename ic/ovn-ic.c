@@ -3444,7 +3444,6 @@ main(int argc, char *argv[])
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
     parse_options(argc, argv);
 
     daemonize_start(false, false);
@@ -4063,9 +4062,6 @@ main(int argc, char *argv[])
         }
 
         poll_block();
-        if (should_service_stop()) {
-            exiting = true;
-        }
     }
     inc_proc_ic_cleanup();
 
@@ -4075,7 +4071,6 @@ main(int argc, char *argv[])
     ovsdb_idl_loop_destroy(&ovninb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnisb_idl_loop);
     ovsdb_idl_loop_destroy(&ovnisb_unlocked_idl_loop);
-    service_stop();
 
     exit(res);
 }

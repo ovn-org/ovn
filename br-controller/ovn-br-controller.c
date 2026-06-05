@@ -131,7 +131,6 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
 
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
     char *ovs_remote = parse_options(argc, argv);
     fatal_ignore_sigpipe();
 
@@ -322,9 +321,6 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         ovsdb_idl_track_clear(ovs_idl_loop.idl);
 
         poll_block();
-        if (should_service_stop()) {
-            exit_args.exiting = true;
-        }
     }
 
     engine_set_context(NULL);
@@ -333,7 +329,6 @@ main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
     free(ovs_remote);
     ovn_exit_args_finish(&exit_args);
     unixctl_server_destroy(unixctl);
-    service_stop();
     exit(0);
 }
 

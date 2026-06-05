@@ -835,7 +835,6 @@ main(int argc, char *argv[])
     fatal_ignore_sigpipe();
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
     parse_options(argc, argv, &state.paused, &n_threads);
 
     daemonize_start(false, false);
@@ -1217,9 +1216,6 @@ main(int argc, char *argv[])
 
         stopwatch_stop(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
         poll_block();
-        if (should_service_stop()) {
-            exit_args.exiting = true;
-        }
         stopwatch_start(NORTHD_LOOP_STOPWATCH_NAME, time_msec());
     }
     inc_proc_northd_cleanup();
@@ -1228,7 +1224,6 @@ main(int argc, char *argv[])
     ovsdb_idl_loop_destroy(&ovnsb_idl_loop);
     ovn_exit_args_finish(&exit_args);
     unixctl_server_destroy(unixctl);
-    service_stop();
     run_update_worker_pool(0);
     ovsrcu_exit();
 

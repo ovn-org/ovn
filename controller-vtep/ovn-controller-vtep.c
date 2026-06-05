@@ -115,7 +115,6 @@ main(int argc, char *argv[])
 
     ovs_cmdl_proctitle_init(argc, argv);
     ovn_set_program_name(argv[0]);
-    service_start(&argc, &argv);
     parse_options(argc, argv);
     fatal_ignore_sigpipe();
 
@@ -229,9 +228,6 @@ main(int argc, char *argv[])
         ovsdb_idl_loop_commit_and_wait(&vtep_idl_loop);
         ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
         poll_block();
-        if (should_service_stop()) {
-            exiting = true;
-        }
     }
 
     /* It's time to exit.  Clean up the databases. */
@@ -267,7 +263,6 @@ main(int argc, char *argv[])
     free(ovnsb_remote);
     free(vtep_remote);
     free(default_db_);
-    service_stop();
 
     exit(retval);
 }

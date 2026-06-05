@@ -106,7 +106,7 @@ static char * OVS_WARN_UNUSED_RESULT main_loop(
     struct ctl_command *commands, size_t n_commands,
     struct ovsdb_idl *idl, const struct timer *);
 static void server_loop(const struct ovn_dbctl_options *dbctl_options,
-                        struct ovsdb_idl *idl, int argc, char *argv[]);
+                        struct ovsdb_idl *idl);
 static void ovn_dbctl_exit(int status);
 
 static void
@@ -209,7 +209,7 @@ ovn_dbctl_main(int argc, char *argv[],
     set_idl_probe_interval(idl, db, DEFAULT_UTILS_PROBE_INTERVAL_MSEC);
 
     if (daemon_mode) {
-        server_loop(dbctl_options, idl, argc, argv_);
+        server_loop(dbctl_options, idl);
     } else {
         struct ctl_command *commands;
         size_t n_commands;
@@ -1124,12 +1124,11 @@ update_inactivity_probe(struct server_cmd_run_ctx *ctx)
 
 static void
 server_loop(const struct ovn_dbctl_options *dbctl_options,
-            struct ovsdb_idl *idl, int argc, char *argv[])
+            struct ovsdb_idl *idl)
 {
     struct unixctl_server *server = NULL;
     bool exiting = false;
 
-    service_start(&argc, &argv);
     daemonize_start(false, false);
 
     char *abs_unixctl_path = get_abs_unix_ctl_path(unixctl_path);
