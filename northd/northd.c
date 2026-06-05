@@ -1432,8 +1432,10 @@ tag_alloc_add_existing_tags(struct hmap *tag_alloc_table,
                             const struct nbrec_logical_switch_port *nbsp)
 {
     /* Add the tags of already existing nested containers.  If there is no
-     * 'nbsp->parent_name' or no 'nbsp->tag' set, there is nothing to do. */
-    if (!nbsp->parent_name || !nbsp->parent_name[0] || !nbsp->tag) {
+     * 'nbsp->parent_name', no 'nbsp->tag', or no 'nbsp->tag_request' that
+     * still owns the tag, there is nothing to do. */
+    if (!nbsp->parent_name || !nbsp->parent_name[0] || !nbsp->tag ||
+        !nbsp->tag_request) {
         return;
     }
 
@@ -1447,6 +1449,11 @@ tag_alloc_create_new_tag(struct hmap *tag_alloc_table,
                          const struct nbrec_logical_switch_port *nbsp)
 {
     if (!nbsp->tag_request) {
+        /* 'tag' is derived from 'tag_request'.  If the request is gone,
+         * clear any previously derived tag. */
+        if (nbsp->tag) {
+            nbrec_logical_switch_port_set_tag(nbsp, NULL, 0);
+        }
         return;
     }
 
@@ -1475,6 +1482,9 @@ tag_alloc_create_new_tag(struct hmap *tag_alloc_table,
     } else if (*nbsp->tag_request != 0) {
         /* For everything else, copy the contents of 'tag_request' to 'tag'. */
         nbrec_logical_switch_port_set_tag(nbsp, nbsp->tag_request, 1);
+    } else if (nbsp->tag) {
+        /* tag_request == 0 with no parent: clear any previously set tag. */
+        nbrec_logical_switch_port_set_tag(nbsp, NULL, 0);
     }
 }
 
