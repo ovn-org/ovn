@@ -3670,9 +3670,11 @@ or
         </p>
 
         <p>
-          This defines nexthop used by IPv4 advertised routes instead of the
-          routes being advertised as blackhole. This can be either valid IPv4
-          or IPv6 address.
+          This defines the nexthop used by IPv4 advertised routes instead of
+          the routes being advertised as blackhole.  This can be either a
+          valid IPv4 or IPv6 address.  When an IPv6 address is used, it
+          enables RFC 5549-style routing where IPv4 traffic is forwarded
+          over an IPv6-only peering link.
         </p>
       </column>
 

@@ -29,3 +29,4 @@ Dynamic Routing
    :maxdepth: 2
 
    architecture
+   configuration-examples
