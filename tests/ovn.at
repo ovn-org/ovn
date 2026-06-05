@@ -10650,6 +10650,15 @@ check_row_count Port_Binding 1 logical_port=c7 tag=$c5_tag
 check_row_count Port_Binding 1 logical_port=c5 tag=$c5_tag
 check_row_count Port_Binding 2 parent_port=parent2 tag=$c5_tag
 
+AS_BOX([clear tag_request for child port])
+AT_CHECK([ovn-nbctl --wait=sb lsp-add ls1 c8 parent2 42])
+AT_CHECK([ovn-nbctl lsp-get-tag c8], [0], [42
+])
+check_row_count Port_Binding 1 logical_port=c8 tag=42
+AT_CHECK([ovn-nbctl --wait=sb clear logical_switch_port c8 tag_request])
+AT_CHECK([ovn-nbctl lsp-get-tag c8], [0], [])
+check_column "" Port_Binding tag logical_port=c8
+
 AS_BOX([tag_request without parent_name])
 AT_CHECK([ovn-nbctl ls-add ls2])
 dnl When there is no parent_name provided (for say, 'localnet'), 'tag_request'
@@ -10668,6 +10677,17 @@ dnl change the tag_request.
 AT_CHECK([ovn-nbctl --wait=sb  set logical_switch_port local1 tag_request=50])
 AT_CHECK([ovn-nbctl lsp-get-tag local1], [0], [50
 ])
+dnl clear the tag_request.
+AT_CHECK([ovn-nbctl --wait=sb clear logical_switch_port local1 tag_request])
+AT_CHECK([ovn-nbctl lsp-get-tag local1], [0], [])
+check_column "" Port_Binding tag logical_port=local1
+dnl setting tag_request back to 0 should also clear a previously set tag.
+AT_CHECK([ovn-nbctl --wait=sb set logical_switch_port local1 tag_request=50])
+AT_CHECK([ovn-nbctl lsp-get-tag local1], [0], [50
+])
+AT_CHECK([ovn-nbctl --wait=sb set logical_switch_port local1 tag_request=0])
+AT_CHECK([ovn-nbctl lsp-get-tag local1], [0], [])
+check_column "" Port_Binding tag logical_port=local1
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
