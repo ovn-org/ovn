@@ -12533,6 +12533,118 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([dns lookup : dns_server_ip])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+
+check ovn-nbctl lsp-add ls1 ls1-lp1 \
+-- lsp-set-addresses ls1-lp1 "f0:00:00:00:00:01 10.0.0.4"
+check ovn-nbctl lsp-set-port-security ls1-lp1 "f0:00:00:00:00:01 10.0.0.4"
+
+DNS1=`ovn-nbctl create DNS records={}`
+check ovn-nbctl set DNS $DNS1 records:vm1.ovn.org="10.0.0.4"
+check ovn-nbctl set Logical_switch ls1 dns_records="$DNS1"
+
+# Only intercept DNS queries sent to this specific IP, not all UDP port-53 traffic.
+check ovn-nbctl set Logical_switch ls1 other_config:dns_server_ip=10.0.0.53
+
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+ovn-sbctl dump-flows > sbflows
+AT_CAPTURE_FILE([sbflows])
+
+# DNS lookup/response flows must match only the configured dns_server_ip.
+AT_CHECK([grep "ls_in_dns_lookup" sbflows | grep "ip4.dst == 10.0.0.53"], [0], [ignore])
+AT_CHECK([grep "ls_in_dns_response" sbflows | grep "ip4.dst == 10.0.0.53"], [0], [ignore])
+# There must be no catch-all IPv4 DNS flow.
+AT_CHECK([grep "ls_in_dns_lookup" sbflows | grep -v "ip4.dst" | grep " ip4"], [1], [ignore])
+
+# vm1.ovn.org A-record query/response data (DNS label encoding).
+query_name=03766d31036f766e036f726700
+dns_req_data=010201200001000000000000${query_name}00010001
+dns_resp_data=010281200001000100000000${query_name}00010001${query_name}0001000100000e1000040a000004
+
+# Build and inject a DNS/UDP/IPv4 packet. When expect_reply=1 the expected
+# response is appended to $inport.expected for later OVN_CHECK_PACKETS.
+test_dns_server_ip() {
+    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5 expect_reply=$6
+    local query_data=$7
+    shift 7
+
+    local ip_len udp_len
+    ip_len=`expr 28 + ${#query_data} / 2`
+    udp_len=`expr $ip_len - 20`
+    ip_len=$(printf "%x" $ip_len)
+    udp_len=$(printf "%x" $udp_len)
+
+    local request=${dst_mac}${src_mac}0800450000${ip_len}0000000080110000
+    request=${request}${src_ip}${dst_ip}9234003500${udp_len}0000${query_data}
+
+    if test "$expect_reply" = "1"; then
+        local resp_data=$1
+        ip_len=`expr 28 + ${#resp_data} / 2`
+        udp_len=`expr $ip_len - 20`
+        ip_len=$(printf "%x" $ip_len)
+        udp_len=$(printf "%x" $udp_len)
+        local reply=${src_mac}${dst_mac}0800450000${ip_len}0000000080110000
+        reply=${reply}${dst_ip}${src_ip}0035923400${udp_len}0000${resp_data}
+        echo $reply >> ${inport}.expected
+    fi
+    as hv1 ovs-appctl netdev-dummy/receive hv1-vif${inport} $request
+}
+
+AT_CAPTURE_FILE([ofctl_monitor0.log])
+as hv1 ovs-ofctl -t 300 monitor br-int resume --detach --no-chdir \
+--pidfile=ovs-ofctl0.pid 2> ofctl_monitor0.log
+
+AS_BOX([Query to dns_server_ip should be intercepted and answered by OVN])
+src_ip=`ip_to_hex 10 0 0 4`
+dst_ip=`ip_to_hex 10 0 0 53`
+test_dns_server_ip 1 f00000000001 f000000000d0 $src_ip $dst_ip 1 \
+    $dns_req_data $dns_resp_data
+
+# NXT_RESUMEs should be 1.
+OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected], ["cut -c -48"])
+# Skip the IPv4 checksum.
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [1.expected], ["cut -c 53-"])
+
+reset_pcap_file hv1-vif1 hv1/vif1
+rm -f 1.expected
+
+AS_BOX([Query to a different IP should not be intercepted])
+src_ip=`ip_to_hex 10 0 0 4`
+dst_ip=`ip_to_hex 8 8 8 8`
+test_dns_server_ip 1 f00000000001 f000000000d0 $src_ip $dst_ip 0 $dns_req_data
+
+# NXT_RESUME count must remain 1 (packet was not intercepted by OVN DNS).
+OVS_WAIT_UNTIL([test 1 = `cat ofctl_monitor*.log | grep -c NXT_RESUME`])
+
+$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap > 1.packets
+AT_CHECK([cat 1.packets], [0], [])
+
+OVN_CLEANUP([hv1])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([dns lookup : EDNS])
 OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT()
 ovn_start
