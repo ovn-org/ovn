@@ -42,7 +42,10 @@ m4_define([NS_CHECK_EXEC],
 #
 # Expands into the proper ovs-vsctl commands to create a bridge with the
 # appropriate type, and allows additional arguments to be passed.
-m4_define([ADD_BR], [ovs-vsctl _ADD_BR([$1]) -- $2])
+# A stable datapath-id derived from the bridge name is set.
+m4_define([ADD_BR],
+  [dpid=$(printf '%016x' $(echo '$1' | cksum | cut -d ' ' -f1))
+   ovs-vsctl _ADD_BR([$1]) -- set Bridge $1 other-config:datapath-id="$dpid" -- $2])
 
 # ADD_VETH([port], [namespace], [ovs-br], [ip_addr] [mac_addr], [gateway],
 #          [ip_addr_flags] [ip6_addr] [gateway6])
