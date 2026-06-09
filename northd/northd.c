@@ -8768,8 +8768,7 @@ build_lb_health_check_response_lflows(
     const struct ovn_lb_datapaths *lb_dps,
     const struct ovn_datapaths *lr_datapaths,
     const struct shash *meter_groups,
-    struct ds *match,
-    struct ds *action)
+    struct ds *match)
 {
     /* For each LB backend that is monitored by a source_ip belonging
      * to a real LRP, install rule that punts service check replies to the
@@ -8816,7 +8815,6 @@ build_lb_health_check_response_lflows(
             }
 
             ds_clear(match);
-            ds_clear(action);
 
             /* icmp6 type 1 and icmp4 type 3 are included in the match, because
              * the controller is using them to detect unreachable ports. */
@@ -9993,6 +9991,13 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
 {
     struct ds match = DS_EMPTY_INITIALIZER;
 
+    /* With the early inport rewrite installed at
+     * S_SWITCH_IN_CHECK_PORT_SEC, packets from the external LSP arrive
+     * here with MFF_LOG_INPORT == op (the external LSP), not the
+     * localnet port (which was the value at table 0).  The match is
+     * therefore keyed on op->json_key.  The 'port' (localnet) argument
+     * is still used for incremental processing tagging through
+     * WITH_IO_PORT below. */
     for (size_t i = 0; i < op->n_lsp_addrs; i++) {
         struct ovn_port *rp;
         VECTOR_FOR_EACH (&op->od->router_ports, rp) {
@@ -10003,7 +10008,7 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                         &match, "inport == %s && eth.src == %s"
                         " && !is_chassis_resident(%s)"
                         " && arp.tpa == %s && arp.op == 1",
-                        port->json_key,
+                        op->json_key,
                         op->lsp_addrs[i].ea_s, op->json_key,
                         rp->lsp_addrs[k].ipv4_addrs[l].addr_s);
                     ovn_lflow_add(lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT,
@@ -10019,7 +10024,7 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                         &match, "inport == %s && eth.src == %s"
                         " && !is_chassis_resident(%s)"
                         " && nd_ns && ip6.dst == {%s, %s} && nd.target == %s",
-                        port->json_key,
+                        op->json_key,
                         op->lsp_addrs[i].ea_s, op->json_key,
                         rp->lsp_addrs[k].ipv6_addrs[l].addr_s,
                         rp->lsp_addrs[k].ipv6_addrs[l].sn_addr_s,
@@ -10037,7 +10042,7 @@ build_drop_arp_nd_flows_for_unbound_router_ports(struct ovn_port *op,
                     &match, "inport == %s && eth.src == %s"
                     " && eth.dst == %s"
                     " && !is_chassis_resident(%s)",
-                    port->json_key,
+                    op->json_key,
                     op->lsp_addrs[i].ea_s, rp->lsp_addrs[k].ea_s,
                     op->json_key);
                 ovn_lflow_add(lflows, op->od, S_SWITCH_IN_EXTERNAL_PORT, 100,
@@ -10740,24 +10745,20 @@ build_lswitch_dhcp_options_and_response(struct ovn_port *op,
     }
 
     for (size_t i = 0; i < op->n_lsp_addrs; i++) {
-        if (is_external) {
-            struct ovn_port *lp;
-            VECTOR_FOR_EACH (&op->od->localnet_ports, lp) {
-                build_dhcpv4_options_flows(
-                    op, &op->lsp_addrs[i], lp, is_external,
-                    meter_groups, lflows, op->lflow_ref);
-                build_dhcpv6_options_flows(
-                    op, &op->lsp_addrs[i], lp, is_external,
-                    meter_groups, lflows, op->lflow_ref);
-            }
-        } else {
-            build_dhcpv4_options_flows(op, &op->lsp_addrs[i], op,
-                                       is_external, meter_groups,
-                                       lflows, op->lflow_ref);
-            build_dhcpv6_options_flows(op, &op->lsp_addrs[i], op,
-                                       is_external, meter_groups,
-                                       lflows, op->lflow_ref);
-        }
+        /* For both regular VIF and type=external LSPs we pass the LSP
+         * itself (op) as the inport.  For external ports, the inport
+         * rewrite added in build_lswitch_external_lsp_inport_rewrite()
+         * at S_SWITCH_IN_CHECK_PORT_SEC has already substituted
+         * MFF_LOG_INPORT from the localnet port to the external LSP by
+         * the time we reach S_SWITCH_IN_DHCP_OPTIONS.  So a single set
+         * of DHCP lflows keyed on the external LSP is enough; we no
+         * longer need to enumerate every localnet port. */
+        build_dhcpv4_options_flows(op, &op->lsp_addrs[i], op,
+                                   is_external, meter_groups,
+                                   lflows, op->lflow_ref);
+        build_dhcpv6_options_flows(op, &op->lsp_addrs[i], op,
+                                   is_external, meter_groups,
+                                   lflows, op->lflow_ref);
     }
 }
 
@@ -10833,6 +10834,51 @@ build_lswitch_external_port(struct ovn_port *op,
     VECTOR_FOR_EACH (&op->od->localnet_ports, lp) {
         build_drop_arp_nd_flows_for_unbound_router_ports(op, lp, lflows,
                                                          op->lflow_ref);
+    }
+}
+
+/* For each external LSP on a switch with a localnet port, rewrite
+ * MFF_LOG_INPORT from the localnet port to the external LSP when
+ * eth.src matches one of the external port's MACs.  This makes
+ * downstream stages observe inport == <external_lsp> for traffic
+ * originating from that baremetal MAC.  Intentionally placed at
+ * S_SWITCH_IN_CHECK_PORT_SEC priority 75 so it fires before the
+ * existing priority-70 generic port-sec rules but does not collide
+ * with the priority-100 disabled-port drop. */
+static void
+build_lswitch_external_lsp_inport_rewrite(struct ovn_port *op,
+                                          struct lflow_table *lflows,
+                                          struct ds *match,
+                                          struct ds *actions)
+{
+    ovs_assert(op->nbsp);
+    if (!lsp_is_external(op->nbsp)) {
+        return;
+    }
+    if (!ls_has_localnet_port(op->od)) {
+        return;
+    }
+    /* Also set flags.localnet here.  The existing S_SWITCH_IN_LOOKUP_FDB
+     * lflow generated by build_lswitch_learn_fdb_op() sets
+     * flags.localnet = 1 only when inport == <localnet> at that table;
+     * once we have rewritten inport to the external LSP, that match no
+     * longer fires.  Copy the assignment into our rewrite action so
+     * downstream stages keyed on flags.localnet == 1 continue to work
+     * for the external LSP case. */
+    struct ovn_port *lp;
+    VECTOR_FOR_EACH (&op->od->localnet_ports, lp) {
+        for (size_t i = 0; i < op->n_lsp_addrs; i++) {
+            ds_clear(match);
+            ds_clear(actions);
+            ds_put_format(match, "inport == %s && eth.src == %s",
+                          lp->json_key, op->lsp_addrs[i].ea_s);
+            ds_put_format(actions,
+                          "flags.localnet = 1; inport = %s; next;",
+                          op->json_key);
+            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_CHECK_PORT_SEC, 75,
+                          ds_cstr(match), ds_cstr(actions),
+                          op->lflow_ref);
+        }
     }
 }
 
@@ -13537,7 +13583,7 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
 
         build_lb_health_check_response_lflows(
             lflows, lb, lb_vip, &lb->vips_nb[i], lb_dps, lr_datapaths,
-            meter_groups, match, action);
+            meter_groups, match);
 
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
             continue;
@@ -19405,6 +19451,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
                                              meter_groups, actions, match);
     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
     build_lswitch_external_port(op, lflows);
+    build_lswitch_external_lsp_inport_rewrite(op, lflows, match, actions);
     build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
     build_lswitch_ip_unicast_lookup(op, lflows, actions,
                                     match);

@@ -2,6 +2,18 @@ OVN v26.03.2 - xx xxx xxxx
 --------------------------
   - Dynamic Routing:
     * Allow multiple routers to read the same VRF table.
+  - Fixed Load_Balancer health check replies failing silently for
+    baremetal pool members whose backend LSP is type=external on a
+    Logical_Switch that has a localnet port.  ovn-northd now installs
+    an early inport-rewrite lflow at ls_in_check_port_sec that
+    substitutes MFF_LOG_INPORT from the localnet port to the external
+    LSP when eth.src matches the external port's MAC, so every
+    downstream pipeline stage (including the per-backend HM reply
+    lflow and the generic per-LS svc_monitor_mac lflow) observes
+    inport == <external_lsp> and pinctrl_find_svc_monitor() succeeds.
+    The DHCP and unbound-router ARP/ND drop lflows for external
+    ports were updated to key on the external LSP's inport
+    accordingly.
 
 OVN v26.03.1 - 20 Apr 2026
 --------------------------
