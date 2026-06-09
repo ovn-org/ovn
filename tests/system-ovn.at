@@ -17725,7 +17725,7 @@ ADD_VETH(bar1, bar1, br-int, "192.168.2.2/24", "f0:00:00:01:02:05", \
 check ovn-nbctl lsp-add bar bar1 \
 -- lsp-set-addresses bar1 "f0:00:00:01:02:05 192.168.2.2"
 
-check ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.5"
+check ovn-nbctl set logical_router R2 options:lb_force_snat_ip="20.0.0.2"
 
 AT_CHECK([ovn-nbctl -- create chassis_template_var chassis="hv1" \
           variables="{vip=172.16.1.1,vport1=8000,backends1=\"192.168.1.2:80,192.168.2.2:80\"}"],
@@ -17741,12 +17741,12 @@ check ovn-nbctl --wait=hv sync
 OVS_START_L7([foo1], [http])
 OVS_START_L7([bar1], [http])
 
-NETNS_START_TCPDUMP([foo1], [-neei foo1 src 20.0.0.5 and tcp], [foo1])
-NETNS_START_TCPDUMP([bar1], [-neei bar1 src 20.0.0.5 and tcp], [bar1])
+NETNS_START_TCPDUMP([foo1], [-neei foo1 src 20.0.0.2 and tcp], [foo1])
+NETNS_START_TCPDUMP([bar1], [-neei bar1 src 20.0.0.2 and tcp], [bar1])
 
 check ovs-appctl dpctl/flush-conntrack
 for i in $(seq 10); do
-    NS_EXEC([alice1], [wget 172.16.1.1:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
+    NS_CHECK_EXEC([alice1], [wget 172.16.1.1:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
 done
 
 OVS_WAIT_UNTIL([
@@ -17758,10 +17758,10 @@ OVS_WAIT_UNTIL([
     test "${n_pkt}" -ge 1
 ])
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.5) | \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(20.0.0.2) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/'], [0], [dnl
-tcp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.5,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
-tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.5,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=192.168.1.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.1.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
+tcp,orig=(src=172.16.1.2,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply=(src=192.168.2.2,dst=20.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,protoinfo=(state=<cleared>)
 ])
 
 OVN_CLEANUP_CONTROLLER([hv1])
