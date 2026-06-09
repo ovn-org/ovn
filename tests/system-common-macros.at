@@ -477,6 +477,10 @@ m4_define([NS_CHECK_CONNECTIVITY__],
     if test -n "$is_v6"; then
         proto="-6"
     fi
+
+    # Wait for revalidation of stale megaflows which may lag behind.
+    check ovs-appctl revalidator/wait
+
     # Start a simple TCP and UDP echo server that replies with "ack <received_msg>".
     NETNS_DAEMONIZE($ns_dst, [nc $proto -l -p 1235 -d 0.1 -c '/bin/cat'], [nc-$ns_dst-$ip-tcp.pid])
     NETNS_DAEMONIZE($ns_dst, [nc $proto -l -u -p 1234 -d 0.1 -c '/bin/cat'], [nc-$ns_dst-$ip-udp.pid])

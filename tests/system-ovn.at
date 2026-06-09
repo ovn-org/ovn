@@ -20921,7 +20921,8 @@ ADD_VETH(ext-foo, ext-foo, br-ext, "172.16.1.100/24", "00:10:10:01:02:13", \
 # one - to check distributed NAT on non gw-chassis.
 check ovn-nbctl lrp-set-gateway-chassis rp-public hv2
 check ovn-nbctl lr-nat-del lr1
-check ovn-nbctl lr-nat-add lr1 dnat_and_snat 172.16.0.1 192.168.1.2 sw01-x 00:00:04:00:00:01
+check ovn-nbctl --wait=hv lr-nat-add lr1 \
+    dnat_and_snat 172.16.0.1 192.168.1.2 sw01-x 00:00:04:00:00:01
 
 NS_EXEC([ext-foo], [ip r add 172.16.0.1/32 dev ext-foo])
 NS_CHECK_CONNECTIVITY([ext-foo], [sw01-x], 172.16.0.1)
