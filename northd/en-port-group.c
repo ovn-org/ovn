@@ -558,14 +558,33 @@ port_group_nb_port_group_handler(struct engine_node *node, void *data_)
         HMAPX_INITIALIZER(&updated_ls_port_groups);
 
     struct sset stale_sb_port_groups = SSET_INITIALIZER(&stale_sb_port_groups);
+    /* Process all deletions first. */
     NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg, nb_pg_table) {
+        if (!nbrec_port_group_is_deleted(nb_pg)) {
+            continue;
+        }
+
         ls_port_group_process(&data->ls_port_groups,
                               &data->port_groups_lses,
                               &data->ls_port_groups_sets_changed,
                               input_data.ls_ports,
                               nb_pg, &updated_ls_port_groups,
                               &stale_sb_port_groups);
+    }
+
+    /* Then process all additions/updates. */
+    NBREC_PORT_GROUP_TABLE_FOR_EACH_TRACKED (nb_pg, nb_pg_table) {
+        if (nbrec_port_group_is_deleted(nb_pg)) {
+            continue;
         }
+
+        ls_port_group_process(&data->ls_port_groups,
+                              &data->port_groups_lses,
+                              &data->ls_port_groups_sets_changed,
+                              input_data.ls_ports,
+                              nb_pg, &updated_ls_port_groups,
+                              &stale_sb_port_groups);
+    }
 
     /* Changes have been successfully processed incrementally now update
      * the SB too. */
@@ -598,6 +617,7 @@ port_group_nb_port_group_handler(struct engine_node *node, void *data_)
                 sorted_array_from_sset(&ls_pg_rec->ports);
             update_sb_port_group(&nb_ports, sb_pg);
             sorted_array_destroy(&nb_ports);
+            sset_find_and_delete(&stale_sb_port_groups, sb_pg_name_cstr);
         }
     }
     ds_destroy(&sb_pg_name);

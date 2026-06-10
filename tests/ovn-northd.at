@@ -10893,6 +10893,35 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Port Group recreation incremental processing])
+AT_KEYWORDS([incremental processing])
+ovn_start
+
+check ovn-nbctl ls-add ls -- lsp-add ls lsp
+check ovn-nbctl --wait=sb pg-add pg lsp
+
+ls_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
+check_column "lsp" sb:Port_Group ports name="${ls_key}_pg"
+
+dnl Simulate northd handling a batch of transactions that recreate the
+dnl port group.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+sleep_northd
+check ovn-nbctl pg-del pg
+check ovn-nbctl pg-add pg lsp
+wake_up_northd
+
+check ovn-nbctl --wait=sb sync
+check_engine_stats northd norecompute compute
+check_engine_stats port_group norecompute compute
+check_engine_stats lflow norecompute compute
+check_column "lsp" sb:Port_Group ports name="${ls_key}_pg"
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Check default drop])
 AT_KEYWORDS([drop])
