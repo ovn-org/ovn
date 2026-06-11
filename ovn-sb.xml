@@ -1310,9 +1310,34 @@
                 defined in the RFC 1191 with the value specified in
                 <var>constant</var>.
               </p>
+            </li>
+
+            <li>
+              <code>icmp4.inner_ip4.src</code>
+              <p>
+                This field rewrites the source IPv4 address carried in the
+                inner (original-packet) IPv4 header that is embedded in the
+                payload of an ICMPv4 error message, setting it to
+                <var>constant</var>.  The inner IPv4 header checksum and the
+                outer ICMP checksum are recomputed accordingly.  The action
+                has no effect on packets that are not ICMPv4 errors.
+              </p>
 
               <p>
-                Eg. icmp4.frag_mtu = 1500;
+                It can be used by stateless NAT to fix up inbound ICMPv4
+                errors, for example <code>Fragmentation Needed</code> messages
+                used for Path MTU discovery (RFC 1191).  A stateless
+                <code>dnat_and_snat</code> rule rewrites only the outer
+                destination of such an error, while the embedded inner header
+                still carries the external (post-NAT) IP as its source.  As a
+                result conntrack in the downstream logical switch cannot
+                correlate the error with the tracked flow.  Un-NATing the inner
+                source back to the logical IP lets conntrack relate the error
+                and lets the originating workload honor the PMTU signal.
+              </p>
+
+              <p>
+                Eg. <code>icmp4.inner_ip4.src = 10.0.0.10;</code>
               </p>
             </li>
           </ul>

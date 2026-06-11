@@ -835,7 +835,13 @@ OVNACTS
      *   - The 32-bit DHCP relay IP.
      *   - The 32-bit DHCP server IP.
      */                                                                       \
-    ACTION_OPCODE(DHCP_RELAY_RESP_CHK)
+    ACTION_OPCODE(DHCP_RELAY_RESP_CHK)                                        \
+                                                                              \
+    /* icmp4.inner_ip4.src = <value>
+     * Arguments follow the action_header, in this format:
+     *   - The 32-bit IPv4 address.
+     */                                                                       \
+    ACTION_OPCODE(PUT_ICMP4_INNER_IP4_SRC)
 
 
 enum action_opcode {

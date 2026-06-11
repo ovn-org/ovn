@@ -2795,6 +2795,12 @@ execute_ovnfield_load(const struct ovnact_load *load,
                              ntohs(load->imm.value.be16_int));
         break;
     }
+    case OVN_ICMP4_INNER_IP4_SRC: {
+        ovntrace_node_append(super, OVNTRACE_NODE_MODIFY,
+                             "icmp4.inner_ip4.src = "IP_FMT,
+                             IP_ARGS(load->imm.value.be32_int));
+        break;
+    }
     case OVN_FIELD_N_IDS:
     default:
         OVS_NOT_REACHED();

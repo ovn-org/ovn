@@ -250,6 +250,13 @@ enum ovn_field_id {
      */
     OVN_ICMP6_FRAG_MTU,
 
+    /*
+     * Name: "icmp4.inner_ip4.src" -
+     * Type: be32
+     * Description: Sets the inner payload IPv4 source address if present.
+     */
+    OVN_ICMP4_INNER_IP4_SRC,
+
     OVN_FIELD_N_IDS
 };
 
@@ -258,6 +265,8 @@ struct ovn_field {
     const char *name;
     unsigned int n_bytes;       /* Width of the field in bytes. */
     unsigned int n_bits;        /* Number of significant bits in field. */
+    bool is_note; /* If true, the field is encoded as 'note' action, else as
+                   * controller action. */
 };
 
 static inline const struct ovn_field *

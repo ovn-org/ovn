@@ -2024,6 +2024,7 @@ is_paused_nested_action(enum action_opcode opcode)
     case ACTION_OPCODE_SPLIT_BUF_ACTION:
     case ACTION_OPCODE_DHCP_RELAY_REQ_CHK:
     case ACTION_OPCODE_DHCP_RELAY_RESP_CHK:
+    case ACTION_OPCODE_PUT_ICMP4_INNER_IP4_SRC:
     default:
         return false;
     }
@@ -4066,6 +4067,10 @@ format_OVNFIELD_LOAD(const struct ovnact_load *load , struct ds *s)
         ds_put_format(s, "%s = %u;", f->name,
                       ntohs(load->imm.value.be16_int));
         break;
+    case OVN_ICMP4_INNER_IP4_SRC:
+        ds_put_format(s, "%s = "IP_FMT";", f->name,
+                      IP_ARGS(load->imm.value.be32_int));
+        break;
 
     case OVN_FIELD_N_IDS:
     default:
@@ -4075,11 +4080,30 @@ format_OVNFIELD_LOAD(const struct ovnact_load *load , struct ds *s)
 
 static void
 encode_OVNFIELD_LOAD(const struct ovnact_load *load,
-                     const struct ovnact_encode_params *ep OVS_UNUSED,
+                     const struct ovnact_encode_params *ep,
                      struct ofpbuf *ofpacts)
 {
     const struct ovn_field *f = ovn_field_from_name(load->dst.symbol->name);
-    size_t offset = encode_start_ovn_field_note(f->id, ofpacts);
+    size_t offset = 0;
+    if (f->is_note) {
+        offset = encode_start_ovn_field_note(f->id, ofpacts);
+    } else {
+        enum action_opcode opcode;
+        switch (f->id) {
+        case OVN_ICMP4_INNER_IP4_SRC:
+            opcode = ACTION_OPCODE_PUT_ICMP4_INNER_IP4_SRC;
+            break;
+
+        case OVN_ICMP4_FRAG_MTU:
+        case OVN_ICMP6_FRAG_MTU:
+        case OVN_FIELD_N_IDS:
+        default:
+            OVS_NOT_REACHED();
+        }
+
+        offset = encode_start_controller_op(opcode, true, ep->ctrl_meter_id,
+                                            ofpacts);
+    }
 
     switch (f->id) {
     case OVN_ICMP4_FRAG_MTU: {
@@ -4090,12 +4114,20 @@ encode_OVNFIELD_LOAD(const struct ovnact_load *load,
         ofpbuf_put(ofpacts, &load->imm.value.be32_int, sizeof(ovs_be32));
         break;
     }
+    case OVN_ICMP4_INNER_IP4_SRC: {
+        ofpbuf_put(ofpacts, &load->imm.value.be32_int, sizeof(ovs_be32));
+        break;
+    }
     case OVN_FIELD_N_IDS:
     default:
         OVS_NOT_REACHED();
     }
 
-    encode_finish_ovn_field_note(offset, ofpacts);
+    if (f->is_note) {
+        encode_finish_ovn_field_note(offset, ofpacts);
+    } else {
+        encode_finish_controller_op(offset, ofpacts);
+    }
 }
 
 static void
