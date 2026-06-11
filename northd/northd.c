@@ -12177,6 +12177,10 @@ parsed_route_lookup(struct hmap *routes, size_t hash,
             continue;
         }
 
+        if (pr->od != new_pr->od) {
+            continue;
+        }
+
         return pr;
     }
 
@@ -12249,15 +12253,14 @@ parsed_route_clone(const struct parsed_route *pr)
     return new_pr;
 }
 
-/* Searches for a parsed_route in a hmap based on datapath, source and
+/* Searches for a parsed_route in a hmap based on source and
  * source_hint. */
 struct parsed_route *
-parsed_route_lookup_by_source(const struct ovn_datapath *od,
-                              enum route_source source,
+parsed_route_lookup_by_source(enum route_source source,
                               const struct ovsdb_idl_row *source_hint,
                               const struct hmap *routes)
 {
-    size_t hash = uuid_hash(&od->key);
+    size_t hash = uuid_hash(&source_hint->uuid);
     struct parsed_route *route;
     HMAP_FOR_EACH_WITH_HASH (route, key_node, hash, routes) {
         if (route->source == source &&
@@ -12274,7 +12277,7 @@ parsed_route_lookup_by_source(const struct ovn_datapath *od,
  * This is distinct from route_hash which is stored in parsed_route->hash. */
 size_t
 parsed_route_hash(const struct parsed_route *pr) {
-    return uuid_hash(&pr->od->key);
+    return uuid_hash(&pr->source_hint->uuid);
 }
 
 void
