@@ -263,6 +263,10 @@ static void pinctrl_handle_nd_ns(struct rconn *swconn,
                                  const struct ofputil_packet_in *pin,
                                  struct ofpbuf *userdata,
                                  const struct ofpbuf *continuation);
+static void pinctrl_handle_put_icmp4_inner_ip4_src(
+    struct rconn *swconn, const struct flow *in_flow,
+    struct dp_packet *pkt_in, struct ofputil_packet_in *pin,
+    struct ofpbuf *userdata, struct ofpbuf *continuation);
 static void
 pinctrl_handle_event(struct ofpbuf *userdata)
     OVS_REQUIRES(pinctrl_mutex);
@@ -3928,6 +3932,10 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
     }
 
+    case ACTION_OPCODE_PUT_ICMP4_INNER_IP4_SRC:
+        pinctrl_handle_put_icmp4_inner_ip4_src(swconn, &headers, &packet, &pin,
+                                               &userdata, &continuation);
+        break;
     default:
         VLOG_WARN_RL(&rl, "unrecognized packet-in opcode %"PRIu32,
                      ntohl(ah->opcode));
@@ -6673,6 +6681,121 @@ exit:
     }
     queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
     dp_packet_uninit(pkt_out_ptr);
+}
+
+static bool is_icmpv4_error(const struct icmp_header *ih)
+{
+    switch (ih->icmp_type) {
+    case ICMP4_DST_UNREACH:
+    case ICMP4_TIME_EXCEEDED:
+    case ICMP4_PARAM_PROB:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* Called in the pinctrl_handler thread context. */
+static void
+pinctrl_handle_put_icmp4_inner_ip4_src(struct rconn *swconn,
+                                       const struct flow *in_flow,
+                                       struct dp_packet *pkt_in,
+                                       struct ofputil_packet_in *pin,
+                                       struct ofpbuf *userdata,
+                                       struct ofpbuf *continuation)
+{
+    enum ofp_version version = rconn_get_version(swconn);
+    enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
+    struct dp_packet *pkt_out = NULL;
+
+    /* This action only works for ICMPv4 packets. */
+    if (!is_icmpv4(in_flow, NULL)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl,
+                     "put_icmp4_inner_ip4_src action on non-ICMPv4 packet");
+        goto exit;
+    }
+
+    /* A later IPv4 fragment carries no L4 header: the bytes at the L4 offset
+     * are payload continuation, not an ICMP header, so there is nothing to
+     * rewrite here.  The northd match on icmp4.type already excludes later
+     * fragments; this keeps the controller path robust regardless. */
+    if (in_flow->nw_frag & FLOW_NW_FRAG_LATER) {
+        goto exit;
+    }
+
+    ovs_be32 *ip4_src = ofpbuf_try_pull(userdata, sizeof *ip4_src);
+    if (!ip4_src) {
+        goto exit;
+    }
+
+    /* dp_packet_clone() already copies l2_pad_size, l2_5_ofs, l3_ofs,
+     * l4_ofs, packet_type and md. */
+    pkt_out = dp_packet_clone(pkt_in);
+
+    struct icmp_header *ih = dp_packet_l4(pkt_out);
+    size_t l4_size = dp_packet_l4_size(pkt_out);
+
+    /* Need the 8-byte ICMP header plus at least a minimal inner IPv4
+     * header.  Check on lengths so we never synthesize an out-of-bounds
+     * pointer. */
+    if (!ih || l4_size < sizeof *ih + sizeof(struct ip_header)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "put_icmp4_inner_ip4_src: ICMP payload too short "
+                     "to contain an inner IPv4 header");
+        goto exit;
+    }
+
+    if (!is_icmpv4_error(ih)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(
+            &rl, "put_icmp4_inner_ip4_src action on non-ICMPv4 error packet");
+        goto exit;
+    }
+
+    /* Known-good: at least sizeof(struct ip_header) bytes are available
+     * from inner_ip to the tail (guaranteed by the check above). */
+    struct ip_header *inner_ip = ALIGNED_CAST(struct ip_header *,
+                                              (char *) ih + sizeof *ih);
+    size_t inner_avail = l4_size - sizeof *ih;   /* no underflow: checked */
+    size_t inner_ihl_bytes = IP_IHL(inner_ip->ip_ihl_ver) * 4;
+
+    if (inner_ihl_bytes < sizeof *inner_ip || inner_ihl_bytes > inner_avail) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "put_icmp4_inner_ip4_src: inner IPv4 header "
+                     "length (%"PRIuSIZE") invalid", inner_ihl_bytes);
+        goto exit;
+    }
+
+    ovs_be32 old_inner_ip_src = get_16aligned_be32(&inner_ip->ip_src);
+    put_16aligned_be32(&inner_ip->ip_src, *ip4_src);
+
+    /* Fix the inner IPv4 header checksum incrementally (not a full
+     * recompute): a header that arrived with a bad checksum must stay bad
+     * -- we must not launder it. */
+    inner_ip->ip_csum = recalc_csum32(inner_ip->ip_csum,
+                                      old_inner_ip_src, *ip4_src);
+
+    /* No outer ICMP checksum update is needed: it covers the inner IP
+     * source (changed by +D) and the inner IP checksum field (changed by
+     * -D by the incremental update above) and nothing else here, so the
+     * two deltas cancel -- for any inner header, valid or not.
+     *
+     * The inner L4 (TCP/UDP) checksum is now stale w.r.t. its
+     * pseudo-header and is deliberately left unchanged: stateless NAT does
+     * not remap ports, and the inner L4 checksum of an ICMP-quoted packet
+     * is not validated for error correlation (conntrack matches the inner
+     * 4-tuple).  The outer IPv4 header is unchanged, so its checksum stays
+     * valid too. */
+
+    pin->packet = dp_packet_data(pkt_out);
+    pin->packet_len = dp_packet_size(pkt_out);
+
+exit:
+    queue_msg(swconn, ofputil_encode_resume(pin, continuation, proto));
+    if (pkt_out) {
+        dp_packet_delete(pkt_out);
+    }
 }
 
 static void
