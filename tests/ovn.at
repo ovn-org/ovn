@@ -22719,6 +22719,114 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+AT_SETUP([stateless NAT - icmp4.inner_ip4.src rewrite])
+AT_KEYWORDS([stateless-nat icmp4-inner-ip4-src])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+CHECK_SCAPY
+ovn_start
+
+# Topology:
+#   "external" host (ext1, on the public LS) --- lr0 (gw router) --- vm1 (on sw0)
+#
+# lr0 has a stateless dnat_and_snat rule that maps the external IP
+# 172.168.0.110 to the logical IP 10.0.0.3 (vm1).  With
+# options:stateless_icmp_helper defaulting to true, ovn-northd emits a
+# higher-priority DNAT flow that matches inbound ICMPv4 "Fragmentation
+# Needed" errors (type 3, code 4) destined to the external IP and applies
+# the action "ip4.dst = 10.0.0.3; icmp4.inner_ip4.src = 10.0.0.3;".
+#
+# An inbound ICMP error quotes the VM's original outbound (post-SNAT)
+# datagram, so its inner source is the external IP 172.168.0.110.  This test
+# injects such an error from the external side and verifies that
+# ovn-controller (pinctrl) DNATs the outer destination to 10.0.0.3 and
+# un-NATs the inner (embedded) IPv4 source back to 10.0.0.3 - while leaving
+# the inner destination untouched - before delivering the packet to vm1.
+
+vm1_mac=50:54:00:00:00:01
+vm1_ip=10.0.0.3
+rtr_int_mac=00:00:00:00:ff:01
+rtr_ext_mac=00:00:20:20:12:13
+ext1_mac=00:00:00:00:00:99
+ext1_ip=172.168.0.50
+nat_ext_ip=172.168.0.110
+
+# Internal switch with vm1.
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-vm1
+check ovn-nbctl lsp-set-addresses sw0-vm1 "$vm1_mac $vm1_ip"
+
+# Router (gateway router pinned to hv1).
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 $rtr_int_mac 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+# Public switch with the external host.
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public $rtr_ext_mac 172.168.0.100/24
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
+check ovn-nbctl lsp-add public ext1
+check ovn-nbctl lsp-set-addresses ext1 "$ext1_mac $ext1_ip"
+
+check ovn-nbctl set logical_router lr0 options:chassis=hv1
+
+# Stateless dnat_and_snat: external 172.168.0.110 <-> logical 10.0.0.3.
+check ovn-nbctl --wait=sb --stateless lr-nat-add lr0 dnat_and_snat \
+    $nat_ext_ip $vm1_ip
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-vm1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=ext1 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap \
+    ofport-request=2
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# The inner packet is the original (post-SNAT) datagram quoted in the ICMP
+# error.  Use a raw 8-byte blob for the embedded L4 header so that no inner
+# L4 checksum (which the action does not recompute) is involved.
+inner_l4="0102030405060708"
+
+# ICMP fragmentation-needed error from ext1 to the NAT external IP.  The
+# embedded original packet is the VM's outbound datagram after stateless
+# SNAT, so its inner source is the external IP and its inner destination is
+# some far host (50.0.0.100).
+packet=$(fmt_pkt "Ether(dst='$rtr_ext_mac', src='$ext1_mac')/ \
+                  IP(src='$ext1_ip', dst='$nat_ext_ip', ttl=64)/ \
+                  ICMP(type=3, code=4, nexthopmtu=1400)/ \
+                  IP(src='$nat_ext_ip', dst='50.0.0.100', ttl=63, proto=17)/ \
+                  bytes.fromhex('$inner_l4')")
+
+# Expected packet delivered to vm1: the router has DNATed the outer
+# destination to 10.0.0.3, decremented the outer TTL, rewritten the L2
+# addresses, and (via pinctrl) un-NATed the inner IPv4 source to 10.0.0.3.
+# The inner destination (50.0.0.100) is left unchanged.
+expected=$(fmt_pkt "Ether(dst='$vm1_mac', src='$rtr_int_mac')/ \
+                    IP(src='$ext1_ip', dst='$vm1_ip', ttl=63)/ \
+                    ICMP(type=3, code=4, nexthopmtu=1400)/ \
+                    IP(src='$vm1_ip', dst='50.0.0.100', ttl=63, proto=17)/ \
+                    bytes.fromhex('$inner_l4')")
+echo $expected > vif1.expected
+
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif2 $packet
+
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([IP packet buffering])
 AT_KEYWORDS([ip-buffering])
@@ -26942,14 +27050,16 @@ test_ip vif11 f00000000011 000001010203 $sip $dip vif-north
 # Confirm that South to North traffic works fine.
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv4/vif-north-tx.pcap], [vif-north.expected])
 
-# Confirm that NATing happened without connection tracker
+# Confirm that NATing happened without connection tracker.
+# Two ip4.dst= flows are expected: the regular stateless DNAT flow plus the
+# default stateless_icmp_helper flow (which also carries icmp4.inner_ip4.src).
 ovn-sbctl dump-flows router > sbflows
 AT_CAPTURE_FILE([sbflows])
 AT_CHECK([for regex in ct_snat ct_dnat ip4.dst= ip4.src=; do
   grep -c "$regex" sbflows;
 done], [0], [0
 0
-1
+2
 1
 ])
 

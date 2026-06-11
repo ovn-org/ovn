@@ -1094,13 +1094,29 @@ check ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 echo
 echo "IPv4: stateless"
 check ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
+dnl Two ip4.dst= flows: the regular stateless DNAT flow plus the default
+dnl stateless_icmp_helper flow that also rewrites the inner ICMPv4 src.
+check_flow_match_sets 2 0 0 2 1 0 0
+dnl stateless_icmp_helper defaults to true, so the inner-IP rewrite flow
+dnl is present.
+check_flow_matches "icmp4.inner_ip4.src" 1
+check ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
+
+echo
+echo "IPv4: stateless, stateless_icmp_helper=false"
+check ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
+check ovn-nbctl --wait=sb set NAT . options:stateless_icmp_helper=false
+dnl With the helper disabled, only the regular stateless DNAT flow remains
+dnl and the inner-IP rewrite flow is gone.
 check_flow_match_sets 2 0 0 1 1 0 0
+check_flow_matches "icmp4.inner_ip4.src" 0
 check ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 echo
 echo "IPv4: stateless with match"
 check ovn-nbctl --wait=sb --match="udp" --stateless lr-nat-add R1 dnat_and_snat  172.16.1.1 50.0.0.11
-check_flow_match_sets 2 0 0 1 1 0 0
+dnl As above, the stateless_icmp_helper flow adds a second ip4.dst= flow.
+check_flow_match_sets 2 0 0 2 1 0 0
 check ovn-nbctl lr-nat-del R1 dnat_and_snat  172.16.1.1
 
 echo
@@ -1125,6 +1141,39 @@ echo
 echo "IPv6: stateless with match"
 check ovn-nbctl --wait=sb --match="udp" --stateless lr-nat-add R1 dnat_and_snat fd01::1 fd11::2
 check_flow_match_sets 2 0 0 0 0 1 1
+check ovn-nbctl lr-nat-del R1 dnat_and_snat fd01::1
+
+echo
+echo "IPv4: stateless, stateless_icmp_helper rate-limited by CoPP"
+dnl The inner-IP rewrite flow round-trips through ovn-controller, so it is
+dnl emitted with the router's icmp4-error CoPP meter (when configured) to
+dnl rate-limit the punt.
+check ovn-nbctl --wait=sb meter-add m-icmp4-err drop 100 pktps 10
+check ovn-nbctl --wait=sb copp-add copp-r1 icmp4-error m-icmp4-err
+check ovn-nbctl --wait=sb lr-copp-add copp-r1 R1
+check ovn-nbctl --wait=sb --stateless lr-nat-add R1 dnat_and_snat 172.16.1.1 50.0.0.11
+ovn-sbctl dump-flows R1 > r1-flows
+AT_CAPTURE_FILE([r1-flows])
+check_flow_matches "icmp4.inner_ip4.src" 1
+dnl The stateless_icmp_helper flow carries the icmp4-error meter.
+AT_CHECK([ovn-sbctl list logical_flow | grep "icmp4.inner_ip4.src" -A 2 | \
+          grep -q "controller_meter.*m-icmp4-err"], [0], [], [ignore])
+AT_CHECK([ovn-sbctl dump-flows R1 | grep "lr_in_dnat" | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1")), action=(ip4.dst=50.0.0.11; next;)
+  table=??(lr_in_dnat         ), priority=101  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && icmp4 && icmp4.type == 3), action=(ip4.dst=50.0.0.11; icmp4.inner_ip4.src = 50.0.0.11; next;)
+])
+
+check ovn-nbctl --wait=sb set nat . match="udp"
+ovn-sbctl dump-flows R1 > r1-flows
+AT_CAPTURE_FILE([r1-flows])
+check_flow_matches "icmp4.inner_ip4.src" 1
+dnl The stateless_icmp_helper set to true and NAT entry has match set.
+AT_CHECK([ovn-sbctl dump-flows R1 | grep "lr_in_dnat" | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=300  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && (udp)), action=(ip4.dst=50.0.0.11; next;)
+  table=??(lr_in_dnat         ), priority=301  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && icmp4 && icmp4.type == 3), action=(ip4.dst=50.0.0.11; icmp4.inner_ip4.src = 50.0.0.11; next;)
+])
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP

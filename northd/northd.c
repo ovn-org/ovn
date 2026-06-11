@@ -17666,7 +17666,9 @@ static void
 build_lrouter_in_dnat_flow(struct lflow_table *lflows,
                            const struct ovn_datapath *od,
                            const struct lr_nat_record *lrnat_rec,
-                           const struct ovn_nat *nat_entry, struct ds *match,
+                           const struct ovn_nat *nat_entry,
+                           const struct shash *meter_groups,
+                           struct ds *match,
                            struct ds *actions, bool distributed_nat,
                            int cidr_bits, bool is_v6,
                            struct ovn_port *l3dgw_port, bool stateless,
@@ -17733,12 +17735,53 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
         ds_put_format(actions, ");");
     }
 
+    /* For stateless DNAT, the action above only rewrites the outer IPv4
+     * destination.  An inbound ICMPv4 error (RFC 792 / RFC 1191) carries
+     * the original (post-NAT) packet inside its payload, whose source is
+     * the external (post-SNAT) IP.  The conntrack-based ACL check in the
+     * downstream logical switch zone uses that inner tuple to match the
+     * reverse direction of the tracked outgoing flow; without un-NATing
+     * the inner ip4.src back to the logical IP, that lookup fails and the
+     * error is dropped as ct.inv.
+     *
+     * Emit a higher-priority flow that matches the same external IP plus any
+     * ICMPv4 Destination Unreachable error (type 3) and rewrites the outer
+     * ip4.dst and the embedded inner ip4.src to the logical IP.  Every type-3
+     * code quotes the original datagram (RFC 792), so the inner-source un-NAT
+     * is correct for all of them; this covers Fragmentation Needed (code 4,
+     * for PMTUD per RFC 1191) as well as host/port unreachable and the rest,
+     * so PMTUD works end-to-end through stateless NAT. */
+    if (stateless && !is_v6 &&
+        smap_get_bool(&nat_entry->nb->options, "stateless_icmp_helper",
+                      true)) {
+        const char *icmp4_meter = copp_meter_get(COPP_ICMP4_ERR,
+                                                 od->nbr->copp,
+                                                 meter_groups);
+        size_t match_len = match->length;
+
+        ds_put_cstr(match, " && icmp4 && icmp4.type == 3");
+
+        struct ds icmp_err_acts = DS_EMPTY_INITIALIZER;
+        ds_put_format(&icmp_err_acts,
+                      "ip4.dst=%s; icmp4.inner_ip4.src = %s; next;",
+                      nat->logical_ip, nat->logical_ip);
+
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, priority + 1,
+                      ds_cstr(match), ds_cstr(&icmp_err_acts), lflow_ref,
+                      WITH_CTRL_METER(icmp4_meter),
+                      WITH_HINT(&nat->header_));
+
+        ds_truncate(match, match_len);
+        ds_destroy(&icmp_err_acts);
+    }
+
     if (nat->match[0]) {
         ds_put_format(match, " && (%s)", nat->match);
     }
 
     ovn_lflow_add(lflows, od, S_ROUTER_IN_DNAT, priority, ds_cstr(match),
                   ds_cstr(actions), lflow_ref, WITH_HINT(&nat->header_));
+
 }
 
 static void
@@ -18486,8 +18529,9 @@ build_lrouter_nat_defrag_and_lb(
                                          lflow_ref);
         }
         /* S_ROUTER_IN_DNAT */
-        build_lrouter_in_dnat_flow(lflows, od, lrnat_rec, nat_entry, match,
-                                   actions, nat_entry->is_distributed,
+        build_lrouter_in_dnat_flow(lflows, od, lrnat_rec, nat_entry,
+                                   meter_groups, match, actions,
+                                   nat_entry->is_distributed,
                                    cidr_bits, is_v6, nat_entry->l3dgw_port,
                                    stateless, lflow_ref);
 

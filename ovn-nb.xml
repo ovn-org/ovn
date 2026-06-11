@@ -5457,6 +5457,44 @@ or
       tracking state or not.
     </column>
 
+    <column name="options" key="stateless_icmp_helper"
+            type='{"type": "boolean"}'>
+      <p>
+        Applies only to stateless <code>dnat_and_snat</code> rules (that
+        is, NATs with <ref column="options" key="stateless"/> set to
+        <code>true</code>) on IPv4 addresses. Defaults to
+        <code>true</code>.
+      </p>
+
+      <p>
+        A stateless DNAT rule rewrites only the outer IPv4 destination of
+        inbound packets. For an inbound ICMPv4 error (for example a
+        <code>Fragmentation Needed</code> message generated for Path MTU
+        discovery, RFC 1191), the original packet embedded in the ICMP
+        payload still carries the external, post-NAT IP as its source.
+        When the error reaches the downstream logical switch, conntrack
+        cannot correlate the embedded tuple with the tracked outgoing
+        flow, the packet is marked <code>ct.inv</code> and dropped by the
+        ACL stage, and PMTU discovery breaks.
+      </p>
+
+      <p>
+        When this option is <code>true</code>, <code>ovn-northd</code>
+        emits an additional, higher-priority logical flow in the router
+        ingress DNAT stage that matches ICMPv4 Destination Unreachable
+        (type 3) errors destined to the external IP. Every type-3 code
+        quotes the original datagram, so this covers
+        <code>Fragmentation Needed</code> (code 4) for PMTU discovery as
+        well as host/port unreachable and the rest. It rewrites the outer
+        IPv4 destination to the logical IP and, using the
+        <code>icmp4.inner_ip4.src</code> action, un-NATs the embedded
+        inner IPv4 source from the external IP back to the logical IP, so
+        that conntrack can correlate the error and PMTU discovery works
+        end-to-end. Set it to <code>false</code> to suppress this flow for
+        an individual NAT entry.
+      </p>
+    </column>
+
     <column name="options" key="add_route">
       If set to <code>true</code>, then neighbor routers will have logical
       flows added that will allow for routing to the NAT address. It also will

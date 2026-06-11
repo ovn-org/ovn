@@ -2809,6 +2809,24 @@ flows do not get programmed for load balancers with IPv6 *VIPs*.
   rule is of type dnat_and_snat and has ``stateless=true`` in the options, then
   the action would be ``ip4/6.dst=(B)``.
 
+  For an IPv4 stateless ``dnat_and_snat`` rule that has
+  ``options:stateless_icmp_helper`` set to ``true`` (the default), an
+  additional flow at priority *P + 1* is added that matches ``ip && ip4.dst
+  == A && icmp4 && icmp4.type == 3`` with the action
+  ``ip4.dst = B; icmp4.inner_ip4.src = B; next;``, where *P* is the priority of
+  the flow above. This rewrites the outer destination and un-NATs the source
+  embedded in the inbound ICMPv4 Destination Unreachable error payload (from
+  the external IP *A* back to the logical IP *B*) - every type-3 code quotes
+  the original datagram, including ``Fragmentation Needed`` (code 4) - so that
+  conntrack in the downstream logical switch can correlate the error with the
+  tracked outgoing flow and Path MTU discovery (RFC 1191) works end-to-end
+  across stateless NAT. See ``options:stateless_icmp_helper`` in the ``NAT``
+  table of the
+  ``OVN_Northbound`` database (``ovn-nb`` (5)). The priority is *P + 1* so that
+  the ``exempted_ext_ips`` bypass flow (at *P + 2*) still wins for traffic
+  excluded from NAT, and non-ICMP traffic falls through to the regular
+  stateless DNAT flow.
+
   If the NAT rule has ``allowed_ext_ips`` configured, then there is an
   additional match ``ip4.src == allowed_ext_ips``. Similarly, for IPV6, match
   would be ``ip6.src == allowed_ext_ips``.
@@ -2848,6 +2866,20 @@ the egress pipeline.
   with an action ``ct_dnat(B);``.  The match will include ``ip6.dst == B`` in
   the IPv6 case. If the NAT rule is of type dnat_and_snat and has
   ``stateless=true`` in the options, then the action would be ``ip4/6.dst=(B)``.
+
+  For an IPv4 stateless ``dnat_and_snat`` rule that has
+  ``options:stateless_icmp_helper`` set to ``true`` (the default), an
+  additional priority-101 flow is added that matches ``ip && ip4.dst == B &&
+  inport == GW && icmp4 && icmp4.type == 3`` with the action
+  ``ip4.dst = B; icmp4.inner_ip4.src = B; next;``. This rewrites the outer
+  destination and un-NATs the source embedded in the inbound ICMPv4
+  Destination Unreachable error payload (back to the logical IP *B*) - every
+  type-3 code quotes the original datagram, including ``Fragmentation Needed``
+  (code 4) - so that conntrack in the downstream logical switch can correlate
+  the error with the tracked outgoing flow and Path MTU discovery (RFC 1191)
+  works end-to-end across stateless NAT. See
+  ``options:stateless_icmp_helper`` in the ``NAT`` table of the
+  ``OVN_Northbound`` database (``ovn-nb`` (5)).
 
   If the NAT rule cannot be handled in a distributed manner, then the
   priority-100 flow above is only programmed on the gateway chassis.
