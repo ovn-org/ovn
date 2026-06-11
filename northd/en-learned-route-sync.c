@@ -230,15 +230,9 @@ routes_table_sync(
 
 static struct parsed_route *
 find_learned_route(const struct sbrec_learned_route *learned_route,
-                   const struct ovn_datapaths *lr_datapaths,
                    const struct hmap *routes)
 {
-    const struct ovn_datapath *od = ovn_datapath_from_sbrec_(
-        &lr_datapaths->datapaths, learned_route->datapath);
-    if (!od) {
-        return NULL;
-    }
-    return parsed_route_lookup_by_source(od, ROUTE_SOURCE_LEARNED,
+    return parsed_route_lookup_by_source(ROUTE_SOURCE_LEARNED,
                                          &learned_route->header_, routes);
 }
 
@@ -273,8 +267,7 @@ learned_route_sync_sb_learned_route_change_handler(struct engine_node *node,
 
         if (sbrec_learned_route_is_deleted(changed_route)) {
             struct parsed_route *route = find_learned_route(
-                changed_route, &northd_data->lr_datapaths,
-                &data->parsed_routes);
+                changed_route, &data->parsed_routes);
             if (!route) {
                 goto fail;
             }
