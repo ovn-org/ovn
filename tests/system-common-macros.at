@@ -119,7 +119,7 @@ m4_define([DAEMONIZE],
 #
 m4_define([NETNS_DAEMONIZE],
    [ip netns exec $1 $2 & echo $! > $3
-     echo "kill \`cat $3\`" >> cleanup
+     on_exit "kill \`cat $3\`"
    ]
 )
 
