@@ -189,12 +189,13 @@ m4_define([OVS_CHECK_CT_ZERO_SNAT],
 #
 # Tries to load specified kernel module and removes it after
 # if it wasn't loaded before this call.
+# Skips the test if the module cannot be loaded.
 #
 m4_define([LOAD_MODULE],
     [if ! lsmod | grep -q $1; then
          on_exit 'modprobe -q -r $1'
      fi
-     AT_CHECK([modprobe $1])
+     AT_SKIP_IF([! modprobe $1])
     ]
 )
 
