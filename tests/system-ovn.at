@@ -14507,7 +14507,7 @@ check ovn-nbctl --wait=hv sync
 wait_row_count ECMP_Nexthop 1
 check_column 'f0:00:00:01:02:05' ECMP_Nexthop mac nexthop='172.16.1.3'
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 icmp,orig=(src=172.16.2.10,dst=192.168.1.2,id=<cleared>,type=8,code=0),reply=(src=192.168.1.2,dst=172.16.2.10,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0xf0000001020500000000
@@ -14545,10 +14545,7 @@ check ovn-nbctl lr-route-del R1 172.16.2.0/24 172.16.1.2
 check ovn-nbctl --wait=hv sync
 wait_row_count ECMP_Nexthop 1
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-])
+OVS_WAIT_UNTIL([test "$(ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | wc -l)" = "0"])
 
 # Remove second ECMP route
 check ovn-nbctl lr-route-del R1
@@ -14596,7 +14593,7 @@ wait_row_count ECMP_Nexthop 2
 wait_column 'f0:00:00:01:02:06' ECMP_Nexthop mac nexthop='172.16.1.2'
 wait_column 'f0:00:00:01:02:05' ECMP_Nexthop mac nexthop='172.16.1.3'
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 icmp,orig=(src=172.16.2.10,dst=192.168.2.2,id=<cleared>,type=8,code=0),reply=(src=192.168.2.2,dst=172.16.2.10,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0xf0000001020600000000
@@ -14606,10 +14603,7 @@ tcp,orig=(src=172.16.2.10,dst=192.168.2.2,sport=<cleared>,dport=<cleared>),reply
 check ovn-nbctl lr-route-del R2
 check ovn-nbctl --wait=hv sync
 wait_row_count ECMP_Nexthop 0
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-])
+OVS_WAIT_UNTIL([test "$(ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | wc -l)" = "0"])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -14763,7 +14757,7 @@ check ovn-nbctl --wait=hv sync
 wait_row_count ECMP_Nexthop 1
 check_column 'f0:00:00:01:02:05' ECMP_Nexthop mac nexthop='"fd12::3"'
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | \
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 icmpv6,orig=(src=fd13::a,dst=fd11::2,id=<cleared>,type=128,code=0),reply=(src=fd11::2,dst=fd13::a,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0xf0000001020500000000
@@ -14801,10 +14795,7 @@ check ovn-nbctl lr-route-del R1 fd13::/64 fd12::2
 check ovn-nbctl --wait=hv sync
 wait_row_count ECMP_Nexthop 1
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-])
+OVS_WAIT_UNTIL([test "$(ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | wc -l)" = "0"])
 
 # Remove second ECMP route
 check ovn-nbctl lr-route-del R1
@@ -14853,7 +14844,7 @@ wait_row_count ECMP_Nexthop 2
 wait_column 'f0:00:00:01:02:06' ECMP_Nexthop mac nexthop='"fd12::2"'
 wait_column 'f0:00:00:01:02:05' ECMP_Nexthop mac nexthop='"fd12::3"'
 
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | \
+OVS_WAIT_FOR_OUTPUT([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 icmpv6,orig=(src=fd13::a,dst=fd14::2,id=<cleared>,type=128,code=0),reply=(src=fd14::2,dst=fd13::a,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0xf0000001020600000000
@@ -14863,10 +14854,7 @@ tcp,orig=(src=fd13::a,dst=fd14::2,sport=<cleared>,dport=<cleared>),reply=(src=fd
 check ovn-nbctl lr-route-del R2
 check ovn-nbctl --wait=hv sync
 wait_row_count ECMP_Nexthop 0
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | FORMAT_CT(172.16.2.10) | \
-sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
-sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-])
+OVS_WAIT_UNTIL([test "$(ovs-appctl dpctl/dump-conntrack | FORMAT_CT(fd13::a) | wc -l)" = "0"])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
