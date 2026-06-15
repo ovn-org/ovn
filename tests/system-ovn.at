@@ -19349,9 +19349,9 @@ IP: 169.0.0.10, port: 4789, vni: $vni
 IP: 169::10, port: 4789, vni: $vni
 ])
 
-OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-binding-list | cut -d',' -f2-], [0], [dnl
- Remote IP: 169::10, vni: $vni, binding_key: 0x80000002, tunnel_ofport: $ofport, dp_key: $dp_key
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-binding-list | cut -d',' -f2- | sort], [0], [dnl
  Remote IP: 169.0.0.10, vni: $vni, binding_key: 0x80000001, tunnel_ofport: $ofport, dp_key: $dp_key
+ Remote IP: 169::10, vni: $vni, binding_key: 0x80000002, tunnel_ofport: $ofport, dp_key: $dp_key
 ])
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-multicast-group-list | grep -q 169.0.0.10])
