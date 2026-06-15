@@ -21617,8 +21617,8 @@ check ovn-nbctl --wait=hv sync
 
 dnl Check mac address of probe requests and replies, they should use the
 dnl global svc_monitor_mac.
-NETNS_START_TCPDUMP([lsp], [-nne -i lsp -Q in 'udp'], [lsp_in])
-NETNS_START_TCPDUMP([lsp], [-nne -i lsp -Q out 'udp || icmp'], [lsp_out])
+NETNS_START_TCPDUMP([lsp], [-nne -i lsp -Q in 'udp port 42'], [lsp_in])
+NETNS_START_TCPDUMP([lsp], [-nne -i lsp -Q out 'udp port 42 || icmp'], [lsp_out])
 
 dnl Start a backend server, the monitor should change status to "online".
 NETNS_DAEMONIZE([lsp], [nc -l -u 42], [nc.pid])
