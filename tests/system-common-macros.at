@@ -130,7 +130,7 @@ m4_define([RETIS_CHECK_AND_RUN],
 #
 m4_define([NETNS_DAEMONIZE],
    [ip netns exec $1 $2 & echo $! > $3
-     echo "kill \`cat $3\`" >> cleanup
+     on_exit "kill \`cat $3\`"
    ]
 )
 
