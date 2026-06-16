@@ -18528,6 +18528,72 @@ ovn-appctl evpn/vtep-arp-list > arp_after
 
 check diff -q arp_before arp_after
 
+AS_BOX([EVPN ARP/ND side table flows])
+dnl Verify that EVPN ARP entries also produce flows in the dedicated
+dnl side table (OFTABLE_EVPN_ARP_LOOKUP) for the switch datapath.
+dnl These flows match on metadata+IP and load the resolved MAC into
+dnl eth.dst while setting the EVPN lookup bit (reg10[25]).
+dnl Verify we have 6 flows: 3 IPv4 + 3 IPv6.
+AT_CHECK([test "$(ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+                  grep -c priority)" = "6"])
+
+dnl Verify each IPv4 EVPN entry has a side table flow.
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+          grep "reg0=0xac100132" | grep "f0:00:0f:16:10:50" | \
+          grep -q "metadata=0x$dp_key"])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+          grep "reg0=0xac10013c" | grep "f0:00:0f:16:10:60" | \
+          grep -q "metadata=0x$dp_key"])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+          grep "reg0=0xac100146" | grep "f0:00:0f:16:10:70" | \
+          grep -q "metadata=0x$dp_key"])
+
+dnl Verify each IPv6 EVPN entry has a side table flow.
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+          grep "reg0=0x1720016" | grep "reg3=0x50" | \
+          grep "f0:00:0f:16:10:50" | grep -q "metadata=0x$dp_key"])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+          grep "reg0=0x1720016" | grep "reg3=0x60" | \
+          grep "f0:00:0f:16:10:60" | grep -q "metadata=0x$dp_key"])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+          grep "reg0=0x1720016" | grep "reg3=0x70" | \
+          grep "f0:00:0f:16:10:70" | grep -q "metadata=0x$dp_key"])
+
+dnl Verify recompute stability for side table flows.
+ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+    grep priority | awk '{print $[7], $[8]}' | sort > evpn_side_before
+
+check ovn-appctl inc-engine/recompute
+check ovn-nbctl --wait=hv sync
+
+ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+    grep priority | awk '{print $[7], $[8]}' | sort > evpn_side_after
+AT_CHECK([diff -q evpn_side_before evpn_side_after])
+
+dnl Verify side table flows are removed when EVPN entries are removed.
+check ip neigh del dev $BR_NAME 172.16.1.50
+check ip neigh del dev $BR_NAME 172.16.1.60
+check ip neigh del dev $BR_NAME 172.16.1.70
+
+check ip -6 neigh del dev $BR_NAME 172:16::50
+check ip -6 neigh del dev $BR_NAME 172:16::60
+check ip -6 neigh del dev $BR_NAME 172:16::70
+
+OVS_WAIT_UNTIL([test "$(ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+                         grep -c priority)" = "0"])
+
+dnl Re-add the EVPN entries for subsequent tests.
+check ip neigh add dev $BR_NAME 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
+check ip neigh add dev $BR_NAME 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
+
+check ip -6 neigh add dev $BR_NAME 172:16::50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
+check ip -6 neigh add dev $BR_NAME 172:16::70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
+
+OVS_WAIT_UNTIL([test "$(ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
+                         grep -c priority)" = "6"])
+
 # Remove remote workload ARP entries and check ovn-controller's state.
 check ip neigh del dev $BR_NAME 172.16.1.50
 check ip neigh del dev $BR_NAME 172.16.1.60

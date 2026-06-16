@@ -3689,6 +3689,8 @@ physical_consider_evpn_fdb(const struct evpn_fdb *fdb,
 static void
 physical_consider_evpn_arp(const struct hmap *local_datapaths,
                            const struct evpn_arp *arp,
+                           struct ofpbuf *ofpacts,
+                           struct match *match,
                            struct ovn_desired_flow_table *flow_table)
 {
     /* Walk connected OVN routers and install neighbor flows for the ARPs
@@ -3706,6 +3708,38 @@ physical_consider_evpn_arp(const struct hmap *local_datapaths,
         consider_neighbor_flow(remote_pb, &arp->flow_uuid, &arp->ip, arp->mac,
                                flow_table, arp->priority, false);
     }
+
+    /* Install EVPN ARP lookup flows in the dedicated side table for the
+     * switch datapath.  These flows are matched by the chk_evpn_arp()
+     * action.  On a hit they load the resolved MAC into eth.dst
+     * and set MLF_EVPN_LOOKUP_BIT. */
+    const struct in6_addr *ip = &arp->ip;
+    struct eth_addr mac = arp->mac;
+    const struct local_datapath *ldp = arp->ldp;
+
+    match_init_catchall(match);
+    match_set_metadata(match, htonll(ldp->datapath->tunnel_key));
+
+    if (IN6_IS_ADDR_V4MAPPED(ip)) {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(ip);
+        match_set_reg(match, 0, ntohl(ip4));
+    } else {
+        ovs_be128 value;
+        memcpy(&value, ip, sizeof(value));
+        match_set_xxreg(match, 0, ntoh128(value));
+    }
+
+    ofpbuf_clear(ofpacts);
+
+    /* Load resolved MAC into eth.dst. */
+    put_load_bytes(mac.ea, sizeof mac.ea,
+                   MFF_ETH_DST, 0, 48, ofpacts);
+    /* Set the EVPN lookup result bit. */
+    put_load(1, MFF_LOG_FLAGS, MLF_EVPN_LOOKUP_BIT, 1, ofpacts);
+
+    ofctrl_add_flow(flow_table, OFTABLE_EVPN_ARP_LOOKUP, arp->priority,
+                    arp->flow_uuid.parts[0], match, ofpacts,
+                    &arp->flow_uuid);
 }
 
 static void
@@ -3753,7 +3787,8 @@ physical_eval_evpn_flows(const struct physical_ctx *ctx,
 
     const struct evpn_arp *arp;
     HMAP_FOR_EACH (arp, hmap_node, ctx->evpn_arps) {
-        physical_consider_evpn_arp(ctx->local_datapaths, arp, flow_table);
+        physical_consider_evpn_arp(ctx->local_datapaths, arp, ofpacts,
+                                   &match, flow_table);
     }
 }
 
@@ -3967,14 +4002,19 @@ physical_handle_evpn_arp_changes(const struct hmap *local_datapaths,
                                  const struct hmapx *updated_arps,
                                  const struct uuidset *removed_arps)
 {
+    struct ofpbuf ofpacts;
+    ofpbuf_init(&ofpacts, 0);
+    struct match match = MATCH_CATCHALL_INITIALIZER;
 
     const struct hmapx_node *node;
     HMAPX_FOR_EACH (node, updated_arps) {
         const struct evpn_arp *arp = node->data;
 
         ofctrl_remove_flows(flow_table, &arp->flow_uuid);
-        physical_consider_evpn_arp(local_datapaths, arp, flow_table);
+        physical_consider_evpn_arp(local_datapaths, arp, &ofpacts,
+                                   &match, flow_table);
     }
+    ofpbuf_uninit(&ofpacts);
 
     const struct uuidset_node *uuidset_node;
     UUIDSET_FOR_EACH (uuidset_node, removed_arps) {
