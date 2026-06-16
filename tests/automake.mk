@@ -289,6 +289,7 @@ tests_ovstest_SOURCES = \
 	tests/test-utils.h \
 	tests/test-ovn.c \
 	tests/test-sparse-array.c \
+	tests/test-spsc-ring.c \
 	tests/test-vector.c \
 	controller/test-lflow-cache.c \
 	controller/test-vif-plug.c \

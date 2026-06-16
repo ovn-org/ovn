@@ -50,6 +50,8 @@ lib_libovn_la_SOURCES = \
 	lib/lb.h \
 	lib/sparse-array.c \
 	lib/sparse-array.h \
+	lib/spsc-ring.c \
+	lib/spsc-ring.h \
 	lib/stopwatch-names.h \
 	lib/vec.c \
 	lib/vec.h \

@@ -2451,6 +2451,15 @@ check ovstest test-sparse-array add
 check ovstest test-sparse-array remove-replace
 AT_CLEANUP
 
+AT_SETUP([SPSC ring buffer])
+check ovstest test-spsc-ring basic
+check ovstest test-spsc-ring fifo
+check ovstest test-spsc-ring full
+check ovstest test-spsc-ring wraparound
+check ovstest test-spsc-ring for-each-pop
+check ovstest test-spsc-ring struct
+AT_CLEANUP
+
 AT_SETUP([Parse MAC])
 AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:xx], [1])
 AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06], [0], [dnl
