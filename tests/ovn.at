@@ -1621,10 +1621,10 @@ nd_na_router { eth.src = 12:34:56:78:9a:bc; nd.tll = 12:34:56:78:9a:bc; outport 
 
 # get_nd
 get_nd(outport, ip6.dst);
-    encodes as push:NXM_NX_XXREG1[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG1[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG1[[]]
+    encodes as push:NXM_NX_XXREG1[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG1[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,OFTABLE_MAC_BINDING),pop:NXM_NX_XXREG1[[]]
     has prereqs eth.type == 0x86dd
 get_nd(inport, xxreg0);
-    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_XXREG0[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,66),pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_XXREG0[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,OFTABLE_MAC_BINDING),pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
 get_nd;
     Syntax error at `;' expecting `('.
 get_nd();
@@ -1711,10 +1711,10 @@ reg0[[0]] = lookup_nd(inport, ip6.src, ip6.dst);
 
 # lookup_nd_ip
 reg2[[0]] = lookup_nd_ip(inport, ip6.dst);
-    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_IPV6_DST[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[32]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_IPV6_DST[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_BINDING),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[32]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
     has prereqs eth.type == 0x86dd
 reg3[[0]] = lookup_nd_ip(inport, nd.target);
-    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_ND_TARGET[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,66),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[0]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_ND_TARGET[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_BINDING),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[0]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
 
 lookup_nd_ip;
@@ -38493,14 +38493,14 @@ dnl Ensure hairpin flows are correct.
 as hv1
 AT_CHECK([ovs-ofctl dump-flows br-int | grep table=OFTABLE_CHK_LB_HAIRPIN | ofctl_strip_all], [0], [dnl
  table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10cd/0xffff,reg4=0x2b2b2b01,nw_src=85.85.85.1,nw_dst=85.85.85.1,tp_dst=8501 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.1,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10ce/0xffff,reg4=0x2b2b2b02,nw_src=85.85.85.21,nw_dst=85.85.85.21,tp_dst=8502 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.2,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10ce/0xffff,reg4=0x2b2b2b02,nw_src=85.85.85.22,nw_dst=85.85.85.22,tp_dst=8502 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.2,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10cf/0xffff,reg4=0x2b2b2b03,nw_src=85.85.85.31,nw_dst=85.85.85.31,tp_dst=8503 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.3,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10cf/0xffff,reg4=0x2b2b2b03,nw_src=85.85.85.32,nw_dst=85.85.85.32,tp_dst=8503 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.3,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.41,nw_dst=85.85.85.41,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.42,nw_dst=85.85.85.42,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.43,nw_dst=85.85.85.43,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
- table=68, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.44,nw_dst=85.85.85.44,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=69,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10ce/0xffff,reg4=0x2b2b2b02,nw_src=85.85.85.21,nw_dst=85.85.85.21,tp_dst=8502 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.2,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10ce/0xffff,reg4=0x2b2b2b02,nw_src=85.85.85.22,nw_dst=85.85.85.22,tp_dst=8502 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.2,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10cf/0xffff,reg4=0x2b2b2b03,nw_src=85.85.85.31,nw_dst=85.85.85.31,tp_dst=8503 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.3,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10cf/0xffff,reg4=0x2b2b2b03,nw_src=85.85.85.32,nw_dst=85.85.85.32,tp_dst=8503 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.3,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.41,nw_dst=85.85.85.41,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.42,nw_dst=85.85.85.42,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.43,nw_dst=85.85.85.43,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
+ table=OFTABLE_CHK_LB_HAIRPIN, priority=100,ct_mark=0x2/0x2,tcp,reg2=0x10d0/0xffff,reg4=0x2b2b2b04,nw_src=85.85.85.44,nw_dst=85.85.85.44,tp_dst=8504 actions=load:0x1->NXM_NX_REG10[[7]],learn(table=OFTABLE_CHK_LB_HAIRPIN_REPLY,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=43.43.43.4,nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[7]])
 ])
 
 dnl Change Chassis_Template_Var mappings
