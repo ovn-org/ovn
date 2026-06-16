@@ -1237,8 +1237,8 @@
         output port field, and since they do not carry a logical output port
         field in the tunnel key, when a packet is received from ramp switch
         VXLAN tunnel by an OVN hypervisor, the packet is resubmitted to table 8
-        to determine the output port(s); when the packet reaches table 42,
-        these packets are resubmitted to table 43 for local delivery by
+        to determine the output port(s); when the packet reaches table 54,
+        these packets are resubmitted to table 56 for local delivery by
         checking a MLF_RCV_FROM_RAMP flag, which is set when the packet
         arrives from a ramp tunnel.
       </p>
@@ -1336,20 +1336,20 @@
         output port is known. These pieces of information are obtained
         from the tunnel encapsulation metadata (see <code>Tunnel
         Encapsulations</code> for encoding details). Then the actions resubmit
-        to table 45 to enter the logical egress pipeline.
+        to table 62 to enter the logical egress pipeline.
       </p>
     </li>
 
     <li>
       <p>
-        OpenFlow tables 8 through 39 execute the logical ingress pipeline from
+        OpenFlow tables 8 through 41 execute the logical ingress pipeline from
         the <code>Logical_Flow</code> table in the OVN Southbound database.
         These tables are expressed entirely in terms of logical concepts like
         logical ports and logical datapaths.  A big part of
         <code>ovn-controller</code>'s job is to translate them into equivalent
         OpenFlow (in particular it translates the table numbers:
-        <code>Logical_Flow</code> tables 0 through 29 become OpenFlow tables 8
-        through 39).
+        <code>Logical_Flow</code> tables 0 through 33 become OpenFlow tables 8
+        through 41).
       </p>
 
       <p>
@@ -1391,9 +1391,9 @@
       <dl>
         <dt><code>output:</code></dt>
         <dd>
-          Implemented by resubmitting the packet to table 40.  If the pipeline
+          Implemented by resubmitting the packet to table 52.  If the pipeline
           executes more than one <code>output</code> action, then each one is
-          separately resubmitted to table 40.  This can be used to send
+          separately resubmitted to table 52.  This can be used to send
           multiple copies of the packet to multiple ports.  (If the packet was
           not modified between the <code>output</code> actions, and some of the
           copies are destined to the same hypervisor, then using a logical
@@ -1405,10 +1405,10 @@
         <dd>
           <p>
             Implemented by storing arguments into OpenFlow fields, then
-            resubmitting to table 66, which <code>ovn-controller</code>
+            resubmitting to table 90, which <code>ovn-controller</code>
             populates with flows generated from the <code>MAC_Binding</code>
             table in the OVN Southbound database.  If there is a match in table
-            66, then its actions store the bound MAC in the Ethernet
+            90, then its actions store the bound MAC in the Ethernet
             destination address field.
           </p>
 
@@ -1440,10 +1440,11 @@
         <dd>
           <p>
             Implemented by storing arguments into OpenFlow fields, then
-            resubmitting to table 67, which <code>ovn-controller</code>
+            resubmitting to table 91, which <code>ovn-controller</code>
             populates with flows generated from the <code>MAC_Binding</code>
             table in the OVN Southbound database.  If there is a match in table
-            67, then its actions set the logical flow flag <code>MLF_LOOKUP_MAC</code>.
+            91, then its actions set the logical flow flag
+            <code>MLF_LOOKUP_MAC</code>.
           </p>
 
           <p>
@@ -1457,13 +1458,13 @@
 
     <li>
       <p>
-        OpenFlow tables 40 through 44 implement the <code>output</code> action
-        in the logical ingress pipeline.  Specifically, table 40 serves as an
-        entry point to egress pipeline. Table 40 detects IP packets that are
-        too big for a corresponding interface. Table 41 produces ICMPv4
+        OpenFlow tables 52 through 57 implement the <code>output</code> action
+        in the logical ingress pipeline.  Specifically, table 52 serves as an
+        entry point to egress pipeline. Table 52 detects IP packets that are
+        too big for a corresponding interface. Table 53 produces ICMPv4
         Fragmentation Needed (or ICMPv6 Too Big) errors and deliver them back
-        to the offending port. table 42 handles packets to remote hypervisors,
-        table 43 handles packets to the local hypervisor, and table 44 checks
+        to the offending port. Table 54 handles packets to remote hypervisors,
+        table 56 handles packets to the local hypervisor, and table 57 checks
         whether packets whose logical ingress and egress port are the same
         should be discarded.
       </p>
@@ -1471,28 +1472,28 @@
       <p>
         Logical patch ports are a special case.  Logical patch ports do not
         have a physical location and effectively reside on every hypervisor.
-        Thus, flow table 43, for output to ports on the local hypervisor,
+        Thus, flow table 56, for output to ports on the local hypervisor,
         naturally implements output to unicast logical patch ports too.
         However, applying the same logic to a logical patch port that is part
         of a logical multicast group yields packet duplication, because each
         hypervisor that contains a logical port in the multicast group will
         also output the packet to the logical patch port.  Thus, multicast
-        groups implement output to logical patch ports in table 42.
+        groups implement output to logical patch ports in table 54.
       </p>
 
       <p>
-        Each flow in table 42 matches on a logical output port for unicast or
+        Each flow in table 54 matches on a logical output port for unicast or
         multicast logical ports that include a logical port on a remote
         hypervisor.  Each flow's actions implement sending a packet to the port
         it matches.  For unicast logical output ports on remote hypervisors,
         the actions set the tunnel key to the correct value, then send the
         packet on the tunnel port to the correct hypervisor.  (When the remote
         hypervisor receives the packet, table 0 there will recognize it as a
-        tunneled packet and pass it along to table 43.)  For multicast logical
+        tunneled packet and pass it along to table 56.)  For multicast logical
         output ports, the actions send one copy of the packet to each remote
         hypervisor, in the same way as for unicast destinations.  If a
         multicast group includes a logical port or ports on the local
-        hypervisor, then its actions also resubmit to table 43.  Table 42 also
+        hypervisor, then its actions also resubmit to table 56.  Table 54 also
         includes:
       </p>
 
@@ -1500,7 +1501,7 @@
         <li>
           A higher-priority rule to match packets received from ramp switch
           tunnels, based on flag MLF_RCV_FROM_RAMP, and resubmit these packets
-          to table 43 for local delivery.  Packets received from ramp switch
+          to table 56 for local delivery.  Packets received from ramp switch
           tunnels reach here because of a lack of logical output port field in
           the tunnel key and thus these packets needed to be submitted to table
           8 to determine the output port.
@@ -1508,7 +1509,7 @@
         <li>
           A higher-priority rule to match packets received from ports of type
           <code>localport</code>, based on the logical input port, and resubmit
-          these packets to table 43 for local delivery.  Ports of type
+          these packets to table 56 for local delivery.  Ports of type
           <code>localport</code> exist on every hypervisor and by definition
           their traffic should never go out through a tunnel.
         </li>
@@ -1523,48 +1524,48 @@
           packets, the packets only need to be delivered to local ports.
         </li>
         <li>
-          A fallback flow that resubmits to table 43 if there is no other
+          A fallback flow that resubmits to table 56 if there is no other
           match.
         </li>
       </ul>
 
       <p>
-        Flows in table 43 resemble those in table 42 but for logical ports that
+        Flows in table 56 resemble those in table 54 but for logical ports that
         reside locally rather than remotely.  For unicast logical output ports
-        on the local hypervisor, the actions just resubmit to table 44.  For
+        on the local hypervisor, the actions just resubmit to table 57.  For
         multicast output ports that include one or more logical ports on the
         local hypervisor, for each such logical port <var>P</var>, the actions
         change the logical output port to <var>P</var>, then resubmit to table
-        44.
+        57.
       </p>
 
       <p>
         A special case is that when a localnet port exists on the datapath,
         remote port is connected by switching to the localnet port. In this
-        case, instead of adding a flow in table 42 to reach the remote port, a
-        flow is added in table 43 to switch the logical outport to the localnet
-        port, and resubmit to table 43 as if it were unicasted to a logical
+        case, instead of adding a flow in table 54 to reach the remote port, a
+        flow is added in table 56 to switch the logical outport to the localnet
+        port, and resubmit to table 56 as if it were unicasted to a logical
         port on the local hypervisor.
       </p>
 
       <p>
-        Table 44 matches and drops packets for which the logical input and
+        Table 57 matches and drops packets for which the logical input and
         output ports are the same and the MLF_ALLOW_LOOPBACK flag is not
         set. It also drops MLF_LOCAL_ONLY packets directed to a localnet port,
         provided they aren't RAs sent from a gateway or distributed router
         which is checked via the presence of the bitflag
-        MLF_OVERRIDE_LOCAL_ONLY. It resubmits other packets to table 46.
+        MLF_OVERRIDE_LOCAL_ONLY. It resubmits other packets to table 62.
       </p>
     </li>
 
     <li>
       <p>
-        OpenFlow tables 45 through 62 execute the logical egress pipeline from
+        OpenFlow tables 62 through 77 execute the logical egress pipeline from
         the <code>Logical_Flow</code> table in the OVN Southbound database.
         The egress pipeline can perform a final stage of validation before
         packet delivery.  Eventually, it may execute an <code>output</code>
         action, which <code>ovn-controller</code> implements by resubmitting to
-        table 64.  A packet for which the pipeline never executes
+        table 88.  A packet for which the pipeline never executes
         <code>output</code> is effectively dropped (although it may have been
         transmitted through a tunnel across a physical network).
       </p>
@@ -1577,21 +1578,21 @@
 
     <li>
      <p>
-       Table 64 bypasses OpenFlow loopback when MLF_ALLOW_LOOPBACK is set.
-       Logical loopback was handled in table 44, but OpenFlow by default also
+       Table 88 bypasses OpenFlow loopback when MLF_ALLOW_LOOPBACK is set.
+       Logical loopback was handled in table 57, but OpenFlow by default also
        prevents loopback to the OpenFlow ingress port.  Thus, when
-       MLF_ALLOW_LOOPBACK is set, OpenFlow table 64 saves the OpenFlow ingress
-       port, sets it to zero, resubmits to table 65 for logical-to-physical
+       MLF_ALLOW_LOOPBACK is set, OpenFlow table 88 saves the OpenFlow ingress
+       port, sets it to zero, resubmits to table 89 for logical-to-physical
        transformation, and then restores the OpenFlow ingress port,
        effectively disabling OpenFlow loopback prevents.  When
-       MLF_ALLOW_LOOPBACK is unset, table 64 flow simply resubmits to table
-       65.
+       MLF_ALLOW_LOOPBACK is unset, table 88 flow simply resubmits to table
+       89.
      </p>
     </li>
 
     <li>
       <p>
-        OpenFlow table 65 performs logical-to-physical translation, the
+        OpenFlow table 89 performs logical-to-physical translation, the
         opposite of table 0.  It matches the packet's logical egress port.  Its
         actions output the packet to the port attached to the OVN integration
         bridge that represents that logical port.  If the logical egress port
@@ -1613,17 +1614,17 @@
   <p>
     Consider a packet sent from one virtual machine or container to another
     VM or container that resides on a different subnet.  The packet will
-    traverse tables 0 to 65 as described in the previous section
+    traverse tables 0 to 89 as described in the previous section
     <code>Architectural Physical Life Cycle of a Packet</code>, using the
     logical datapath representing the logical switch that the sender is
-    attached to.  At table 42, the packet will use the fallback flow that
-    resubmits locally to table 43 on the same hypervisor.  In this case,
-    all of the processing from table 0 to table 65 occurs on the hypervisor
+    attached to.  At table 54, the packet will use the fallback flow that
+    resubmits locally to table 56 on the same hypervisor.  In this case,
+    all of the processing from table 0 to table 89 occurs on the hypervisor
     where the sender resides.
   </p>
 
   <p>
-    When the packet reaches table 65, the logical egress port is a
+    When the packet reaches table 89, the logical egress port is a
     logical patch port.  <code>ovn-controller</code> implements output
     to the logical patch is packet by cloning and resubmitting
     directly to the first OpenFlow flow table in the ingress pipeline,
@@ -1634,22 +1635,22 @@
 
   <p>
     The packet re-enters the ingress pipeline in order to traverse tables
-    8 to 65 again, this time using the logical datapath representing the
+    8 to 89 again, this time using the logical datapath representing the
     logical router.  The processing continues as described in the previous
     section <code>Architectural Physical Life Cycle of a Packet</code>.
-    When the packet reaches table 65, the logical egress port will once
+    When the packet reaches table 89, the logical egress port will once
     again be a logical patch port.  In the same manner as described above,
     this logical patch port will cause the packet to be resubmitted to
-    OpenFlow tables 8 to 65, this time using the logical datapath
+    OpenFlow tables 8 to 89, this time using the logical datapath
     representing the logical switch that the destination VM or container
     is attached to.
   </p>
 
   <p>
-    The packet traverses tables 8 to 65 a third and final time.  If the
+    The packet traverses tables 8 to 89 a third and final time.  If the
     destination VM or container resides on a remote hypervisor, then table
-    39 will send the packet on a tunnel port from the sender's hypervisor
-    to the remote hypervisor.  Finally table 65 will output the packet
+    54 will send the packet on a tunnel port from the sender's hypervisor
+    to the remote hypervisor.  Finally table 89 will output the packet
     directly to the destination VM or container.
   </p>
 
@@ -1675,9 +1676,9 @@
     When a hypervisor processes a packet on a logical datapath
     representing a logical switch, and the logical egress port is a
     <code>l3gateway</code> port representing connectivity to a gateway
-    router, the packet will match a flow in table 42 that sends the
+    router, the packet will match a flow in table 54 that sends the
     packet on a tunnel port to the chassis where the gateway router
-    resides.  This processing in table 42 is done in the same manner as
+    resides.  This processing in table 54 is done in the same manner as
     for VIFs.
   </p>
 
@@ -1770,21 +1771,21 @@
     chassis, one additional mechanism is required.  When a packet
     leaves the ingress pipeline and the logical egress port is the
     distributed gateway port, one of two different sets of actions is
-    required at table 42:
+    required at table 54:
   </p>
 
   <ul>
     <li>
       If the packet can be handled locally on the sender's hypervisor
       (e.g. one-to-one NAT traffic), then the packet should just be
-      resubmitted locally to table 43, in the normal manner for
+      resubmitted locally to table 56, in the normal manner for
       distributed logical patch ports.
     </li>
 
     <li>
       However, if the packet needs to be handled on the chassis
       associated with the distributed gateway port (e.g. one-to-many
-      SNAT traffic or non-NAT traffic), then table 42 must send the
+      SNAT traffic or non-NAT traffic), then table 54 must send the
       packet on a tunnel port to that chassis.
     </li>
   </ul>
@@ -1796,11 +1797,11 @@
     egress port to the type <code>chassisredirect</code> logical port is
     simply a way to indicate that although the packet is destined for
     the distributed gateway port, it needs to be redirected to a
-    different chassis.  At table 42, packets with this logical egress
-    port are sent to a specific chassis, in the same way that table 42
+    different chassis.  At table 54, packets with this logical egress
+    port are sent to a specific chassis, in the same way that table 54
     directs packets whose logical egress port is a VIF or a type
     <code>l3gateway</code> port to different chassis.  Once the packet
-    arrives at that chassis, table 43 resets the logical egress port to
+    arrives at that chassis, table 56 resets the logical egress port to
     the value representing the distributed gateway port.  For each
     distributed gateway port, there is one type
     <code>chassisredirect</code> port, in addition to the distributed

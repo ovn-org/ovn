@@ -43711,8 +43711,6 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([requested-tnl-key-recompute])
 AT_KEYWORDS([requested-tnl-key-recompute])
 
-m4_define([OFTABLE_LOG_TO_PHY], [65])
-
 ovn_start
 net_add n1
 

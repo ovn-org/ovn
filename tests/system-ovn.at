@@ -6401,11 +6401,11 @@ AT_CLEANUP
 ])
 
 # When a lport is released on a chassis, ovn-controller was
-# not clearing some of the flowss in the table 33 leading
+# not clearing some of the flows in the physical tables leading
 # to packet drops if ct() is hit.
 # Make sure that those flows are cleared properly.
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([Test packet drops due to incorrect flows in physical table 33])
+AT_SETUP([Test packet drops due to incorrect flows in physical tables])
 AT_KEYWORDS([lb])
 
 ovn_start
@@ -6643,7 +6643,7 @@ sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
 icmp,orig=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=8,code=0),reply=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000
 tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
-# Check entries in table 76 and 77 expires w/o traffic
+# Check entries in table OFTABLE_ECMP_NH_MAC and OFTABLE_ECMP_NH expires w/o traffic
 OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH_MAC, n_packets') -eq 0
 ])
@@ -6873,7 +6873,7 @@ icmpv6,orig=(src=fd07::1,dst=fd01::2,id=<cleared>,type=128,code=0),reply=(src=fd
 tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 
-# Check entries in table 76 and 77 expires w/o traffic
+# Check entries in table OFTABLE_ECMP_NH_MAC and OFTABLE_ECMP_NH expires w/o traffic
 OVS_WAIT_UNTIL([
 test $(ovs-ofctl dump-flows br-int | grep -c 'table=OFTABLE_ECMP_NH_MAC, n_packets') -eq 0
 ])

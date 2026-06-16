@@ -63,47 +63,54 @@ struct uuid;
  *
  * These are heavily documented in ovn-architecture(7), please update it if
  * you make any changes. */
-#define OFTABLE_PHY_TO_LOG                0
+#define OFTABLE_PHY_TO_LOG                  0
 
 /* Start of LOG_PIPELINE_LEN tables. */
-#define OFTABLE_LOG_INGRESS_PIPELINE      8
-#define OFTABLE_OUTPUT_LARGE_PKT_DETECT  42
-#define OFTABLE_OUTPUT_LARGE_PKT_PROCESS 43
-#define OFTABLE_REMOTE_OUTPUT            44
-#define OFTABLE_REMOTE_VTEP_OUTPUT       45
-#define OFTABLE_LOCAL_OUTPUT             46
-#define OFTABLE_CHECK_LOOPBACK           47
+#define OFTABLE_LOG_INGRESS_PIPELINE        8
+#define OFTABLE_OUTPUT_LARGE_PKT_DETECT    52
+#define OFTABLE_OUTPUT_LARGE_PKT_PROCESS   53
+#define OFTABLE_REMOTE_OUTPUT              54
+#define OFTABLE_REMOTE_VTEP_OUTPUT         55
+#define OFTABLE_LOCAL_OUTPUT               56
+#define OFTABLE_CHECK_LOOPBACK             57
 
 /* Start of the OUTPUT section of the pipeline. */
 #define OFTABLE_OUTPUT_INIT OFTABLE_OUTPUT_LARGE_PKT_DETECT
 
 /* Start of LOG_PIPELINE_LEN tables. */
-#define OFTABLE_LOG_EGRESS_PIPELINE      48
-#define OFTABLE_SAVE_INPORT              64
-#define OFTABLE_LOG_TO_PHY               65
-#define OFTABLE_MAC_BINDING              66
-#define OFTABLE_MAC_LOOKUP               67
-#define OFTABLE_CHK_LB_HAIRPIN           68
-#define OFTABLE_CHK_LB_HAIRPIN_REPLY     69
-#define OFTABLE_CT_SNAT_HAIRPIN          70
-#define OFTABLE_GET_FDB                  71
-#define OFTABLE_LOOKUP_FDB               72
-#define OFTABLE_CHK_IN_PORT_SEC          73
-#define OFTABLE_CHK_IN_PORT_SEC_ND       74
-#define OFTABLE_CHK_OUT_PORT_SEC         75
-#define OFTABLE_ECMP_NH_MAC              76
-#define OFTABLE_ECMP_NH                  77
-#define OFTABLE_CHK_LB_AFFINITY          78
-#define OFTABLE_MAC_CACHE_USE            79
-#define OFTABLE_CT_ZONE_LOOKUP           80
-#define OFTABLE_CT_ORIG_NW_DST_LOAD      81
-#define OFTABLE_CT_ORIG_IP6_DST_LOAD     82
-#define OFTABLE_CT_ORIG_TP_DST_LOAD      83
-#define OFTABLE_FLOOD_REMOTE_CHASSIS     84
-#define OFTABLE_CT_STATE_SAVE            85
-#define OFTABLE_CT_ORIG_PROTO_LOAD       86
-#define OFTABLE_GET_REMOTE_FDB           87
-#define OFTABLE_LEARN_REMOTE_FDB         88
+#define OFTABLE_LOG_EGRESS_PIPELINE        62
+#define OFTABLE_SAVE_INPORT                88
+#define OFTABLE_LOG_TO_PHY                 89
+#define OFTABLE_MAC_BINDING                90
+#define OFTABLE_MAC_LOOKUP                 91
+#define OFTABLE_CHK_LB_HAIRPIN             92
+#define OFTABLE_CHK_LB_HAIRPIN_REPLY       93
+#define OFTABLE_CT_SNAT_HAIRPIN            94
+#define OFTABLE_GET_FDB                    95
+#define OFTABLE_LOOKUP_FDB                 96
+#define OFTABLE_CHK_IN_PORT_SEC            97
+#define OFTABLE_CHK_IN_PORT_SEC_ND         98
+#define OFTABLE_CHK_OUT_PORT_SEC           99
+#define OFTABLE_ECMP_NH_MAC               100
+#define OFTABLE_ECMP_NH                   101
+#define OFTABLE_CHK_LB_AFFINITY           102
+#define OFTABLE_MAC_CACHE_USE             103
+#define OFTABLE_CT_ZONE_LOOKUP            104
+#define OFTABLE_CT_ORIG_NW_DST_LOAD       105
+#define OFTABLE_CT_ORIG_IP6_DST_LOAD      106
+#define OFTABLE_CT_ORIG_TP_DST_LOAD       107
+#define OFTABLE_FLOOD_REMOTE_CHASSIS      108
+#define OFTABLE_CT_STATE_SAVE             109
+#define OFTABLE_CT_ORIG_PROTO_LOAD        110
+#define OFTABLE_GET_REMOTE_FDB            111
+#define OFTABLE_LEARN_REMOTE_FDB          112
+
+/* Verify that table regions do not overlap. */
+BUILD_ASSERT_DECL(OFTABLE_LOG_INGRESS_PIPELINE + LOG_PIPELINE_INGRESS_LEN
+                  <= OFTABLE_OUTPUT_LARGE_PKT_DETECT);
+BUILD_ASSERT_DECL(OFTABLE_CHECK_LOOPBACK < OFTABLE_LOG_EGRESS_PIPELINE);
+BUILD_ASSERT_DECL(OFTABLE_LOG_EGRESS_PIPELINE + LOG_PIPELINE_EGRESS_LEN
+                  <= OFTABLE_SAVE_INPORT);
 
 
 struct lflow_ctx_in {
