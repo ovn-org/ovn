@@ -1,5 +1,6 @@
-OVN v26.03.2 - xx xxx xxxx
+OVN v26.03.2 - 16 Jun 2026
 --------------------------
+  - Bug fixes
   - Dynamic Routing:
     * Allow multiple routers to read the same VRF table.
   - Fixed Load_Balancer health check replies failing silently for
