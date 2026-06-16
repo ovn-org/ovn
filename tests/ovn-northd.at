@@ -1161,7 +1161,7 @@ AT_CHECK([ovn-sbctl list logical_flow | grep "icmp4.inner_ip4.src" -A 2 | \
 AT_CHECK([ovn-sbctl dump-flows R1 | grep "lr_in_dnat" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1")), action=(ip4.dst=50.0.0.11; next;)
-  table=??(lr_in_dnat         ), priority=101  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && icmp4 && icmp4.type == 3), action=(ip4.dst=50.0.0.11; icmp4.inner_ip4.src = 50.0.0.11; next;)
+  table=??(lr_in_dnat         ), priority=101  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && icmp4 && icmp4.type == {3, 11, 12}), action=(ip4.dst=50.0.0.11; icmp4.inner_ip4.src = 50.0.0.11; next;)
 ])
 
 check ovn-nbctl --wait=sb set nat . match="udp"
@@ -1172,7 +1172,7 @@ dnl The stateless_icmp_helper set to true and NAT entry has match set.
 AT_CHECK([ovn-sbctl dump-flows R1 | grep "lr_in_dnat" | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
   table=??(lr_in_dnat         ), priority=300  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && (udp)), action=(ip4.dst=50.0.0.11; next;)
-  table=??(lr_in_dnat         ), priority=301  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && icmp4 && icmp4.type == 3), action=(ip4.dst=50.0.0.11; icmp4.inner_ip4.src = 50.0.0.11; next;)
+  table=??(lr_in_dnat         ), priority=301  , match=(ip && ip4.dst == 172.16.1.1 && inport == "R1-S1" && is_chassis_resident("cr-R1-S1") && icmp4 && icmp4.type == {3, 11, 12}), action=(ip4.dst=50.0.0.11; icmp4.inner_ip4.src = 50.0.0.11; next;)
 ])
 
 OVN_CLEANUP_NORTHD

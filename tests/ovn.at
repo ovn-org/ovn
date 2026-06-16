@@ -22822,6 +22822,29 @@ as hv1 reset_pcap_file hv1-vif1 hv1/vif1
 
 check as hv1 ovs-appctl netdev-dummy/receive hv1-vif2 $packet
 
+# ICMP Time Exceeded error from a transit router to the NAT external IP.
+# The embedded original packet is the VM's outbound probe after stateless
+# SNAT, so its inner source is the external IP and its inner destination is
+# the traceroute target (50.0.0.100).
+packet=$(fmt_pkt "Ether(dst='$rtr_ext_mac', src='$ext1_mac')/ \
+                  IP(src='$ext1_ip', dst='$nat_ext_ip', ttl=64)/ \
+                  ICMP(type=11, code=0)/ \
+                  IP(src='$nat_ext_ip', dst='50.0.0.100', ttl=1, proto=17)/ \
+                  bytes.fromhex('$inner_l4')")
+
+# Expected packet delivered to vm1: outer destination DNATed to 10.0.0.3,
+# outer TTL decremented, L2 rewritten, and (via pinctrl) the inner IPv4
+# source un-NATed to 10.0.0.3.  The inner destination (50.0.0.100) is left
+# unchanged.
+expected=$(fmt_pkt "Ether(dst='$vm1_mac', src='$rtr_int_mac')/ \
+                    IP(src='$ext1_ip', dst='$vm1_ip', ttl=63)/ \
+                    ICMP(type=11, code=0)/ \
+                    IP(src='$vm1_ip', dst='50.0.0.100', ttl=1, proto=17)/ \
+                    bytes.fromhex('$inner_l4')")
+echo $expected >> vif1.expected
+
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif2 $packet
+
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [vif1.expected])
 
 OVN_CLEANUP([hv1])

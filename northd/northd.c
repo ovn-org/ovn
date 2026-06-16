@@ -17744,13 +17744,16 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
      * the inner ip4.src back to the logical IP, that lookup fails and the
      * error is dropped as ct.inv.
      *
-     * Emit a higher-priority flow that matches the same external IP plus any
-     * ICMPv4 Destination Unreachable error (type 3) and rewrites the outer
-     * ip4.dst and the embedded inner ip4.src to the logical IP.  Every type-3
-     * code quotes the original datagram (RFC 792), so the inner-source un-NAT
-     * is correct for all of them; this covers Fragmentation Needed (code 4,
-     * for PMTUD per RFC 1191) as well as host/port unreachable and the rest,
-     * so PMTUD works end-to-end through stateless NAT. */
+     * Emit a higher-priority flow that matches the same external IP plus
+     * any ICMPv4 error that quotes the original datagram - Destination
+     * Unreachable (type 3, which includes code 4 Fragmentation Needed for
+     * PMTUD), Time Exceeded (type 11, used by traceroute) and Parameter
+     * Problem (type 12) - and rewrites the outer ip4.dst and the embedded
+     * inner ip4.src to the logical IP.  The inner-source un-NAT is correct
+     * for every such error, so PMTUD, traceroute and the other ICMP errors
+     * all work end-to-end through stateless NAT.  Redirect (type 5) is
+     * intentionally excluded: it has special NAT semantics and is not an
+     * error that needs flow correlation. */
     if (stateless && !is_v6 &&
         smap_get_bool(&nat_entry->nb->options, "stateless_icmp_helper",
                       true)) {
@@ -17759,7 +17762,8 @@ build_lrouter_in_dnat_flow(struct lflow_table *lflows,
                                                  meter_groups);
         size_t match_len = match->length;
 
-        ds_put_cstr(match, " && icmp4 && icmp4.type == 3");
+        ds_put_cstr(match,
+                    " && icmp4 && icmp4.type == {3, 11, 12}");
 
         struct ds icmp_err_acts = DS_EMPTY_INITIALIZER;
         ds_put_format(&icmp_err_acts,
