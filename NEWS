@@ -4,6 +4,12 @@ Post v26.03.0
      'tsp-del' and 'tsp-set-addr' commands.
    - Added ability to set any "ipsec_*" NB_Global option to configure the
      IPsec backend.
+   - Added nb_cfg_timestamp to SB_Global, written atomically with each
+     nb_cfg update by ovn-northd.  ovn-controller propagates this value
+     to the local OVS bridge external_ids as "ovn-nb-cfg-sb-ts".  In
+     large deployments where options:enable_chassis_nb_cfg_update is
+     false, this enables per-chassis propagation latency tracking without
+     any southbound database writes.
    - Documented missing ovn-nbctl commands: "mirror-rule-add",
      "mirror-rule-del", "lr-nat-update-ext-ip",
      "ha-chassis-group-set-chassis-prio", "lsp-add-router-port",

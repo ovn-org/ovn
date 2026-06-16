@@ -608,6 +608,112 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+# Verify that SB_Global.nb_cfg_timestamp is written by northd and propagated
+# by ovn-controller to br-int external_ids as ovn-nb-cfg-sb-ts.  The SB
+# timestamp must be <= the local completion timestamp (ovn-nb-cfg-ts) because
+# northd writes it before any hypervisor has processed the generation, so the
+# local processing always adds latency on top.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([nb_cfg_timestamp propagation to br-int (writeback enabled)])
+AT_KEYWORDS([ovn nb_cfg_timestamp])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+wait_row_count Chassis 1
+
+# Trigger a northd compile cycle and wait for hv1 to ack it.
+check ovn-nbctl --wait=hv sync
+
+as hv1
+
+# ovn-nb-cfg-sb-ts must be present and non-zero.
+OVS_WAIT_UNTIL([
+    sb_ts=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-sb-ts 2>/dev/null | xargs)
+    test -n "$sb_ts" && test "$sb_ts" != "0" && test "$sb_ts" -gt 0
+])
+
+# Read the two timestamps.
+nb_cfg_ts=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-ts | xargs)
+sb_ts=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-sb-ts | xargs)
+
+# SB_Global timestamp must be <= local completion time: the HV adds latency.
+AT_CHECK([test "$sb_ts" -le "$nb_cfg_ts"])
+
+# SB_Global.nb_cfg_timestamp must also be non-zero in the southbound DB itself.
+sb_global_ts=$(fetch_column sb_global nb_cfg_timestamp)
+AT_CHECK([test "$sb_global_ts" -gt 0])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+# Same as above but with enable_chassis_nb_cfg_update=false.  The br-int
+# external_ids path (ovn-nb-cfg + ovn-nb-cfg-sb-ts) is unconditional and must
+# still advance even when the per-chassis SB write-back is suppressed.
+# chassis_private.nb_cfg must remain stale while the option is false.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([nb_cfg_timestamp propagation to br-int (writeback disabled)])
+AT_KEYWORDS([ovn nb_cfg_timestamp])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+wait_row_count Chassis 1
+
+# Establish a baseline with writeback on.  Capture the acked nb_cfg so we
+# can later assert it hasn't advanced (don't assume any specific value).
+check ovn-nbctl --wait=hv sync
+baseline_nb_cfg=$(fetch_column chassis_priv nb_cfg name=hv1)
+
+# Disable chassis nb_cfg write-back then bump nb_cfg.
+# enable_chassis_nb_cfg_update is propagated NB->SB atomically with nb_cfg
+# by northd, so ovn-controller sees both changes together.
+check ovn-nbctl set nb_global . options:enable_chassis_nb_cfg_update=false
+check ovn-nbctl set NB_Global . nb_cfg=100
+
+as hv1
+
+# br-int must advance to nb_cfg=100 even with writeback disabled.
+OVS_WAIT_UNTIL([
+    ovs_nb_cfg=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg | xargs)
+    test "$ovs_nb_cfg" = "100"
+])
+
+# ovn-nb-cfg-sb-ts must be present and non-zero.
+OVS_WAIT_UNTIL([
+    sb_ts=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-sb-ts 2>/dev/null | xargs)
+    test -n "$sb_ts" && test "$sb_ts" -gt 0
+])
+
+# chassis_private.nb_cfg must NOT have advanced past the baseline
+# (writeback is off so ovn-controller must not write back to SB).
+check_column "$baseline_nb_cfg" chassis_priv nb_cfg name=hv1
+
+# SB_Global.nb_cfg_timestamp must reflect the latest northd cycle.
+sb_global_ts=$(fetch_column sb_global nb_cfg_timestamp)
+AT_CHECK([test "$sb_global_ts" -gt 0])
+
+# The SB timestamp must still be <= the local completion time.
+nb_cfg_ts=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-ts | xargs)
+sb_ts=$(ovs-vsctl get Bridge br-int external_ids:ovn-nb-cfg-sb-ts | xargs)
+AT_CHECK([test "$sb_ts" -le "$nb_cfg_ts"])
+
+# Re-enable writeback so OVN_CLEANUP's --wait=hv sync can complete.
+check ovn-nbctl set nb_global . options:enable_chassis_nb_cfg_update=true
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([features])
 AT_KEYWORDS([features])

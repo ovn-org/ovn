@@ -541,6 +541,7 @@ update_sequence_numbers(int64_t loop_start_time,
      * Also set up to update sb_cfg once our southbound transaction commits. */
     if (nb->nb_cfg != sb->nb_cfg) {
         sbrec_sb_global_set_nb_cfg(sb, nb->nb_cfg);
+        sbrec_sb_global_set_nb_cfg_timestamp(sb, loop_start_time);
         nbrec_nb_global_set_nb_cfg_timestamp(nb, loop_start_time);
     }
     sb_loop->next_cfg = nb->nb_cfg;
@@ -943,6 +944,8 @@ main(int argc, char *argv[])
 
     /* Disable alerting for pure write-only columns. */
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_sb_global_col_nb_cfg);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_sb_global_col_nb_cfg_timestamp);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_address_set_col_name);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_address_set_col_addresses);
     for (size_t i = 0; i < SBREC_LOGICAL_FLOW_N_COLUMNS; i++) {

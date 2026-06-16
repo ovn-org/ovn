@@ -156,6 +156,15 @@
         the southbound database to bring it up to date with these changes, it
         updates this column to the same value.
       </column>
+
+      <column name="nb_cfg_timestamp">
+        The time at which <code>ovn-northd</code> last wrote
+        <ref column="nb_cfg"/> to the southbound database, in milliseconds
+        since the Unix epoch.  Set atomically with each update to
+        <ref column="nb_cfg"/>.  Hypervisors read this value to measure
+        end-to-end propagation latency from northbound commit to local
+        datapath programming completion.
+      </column>
     </group>
 
     <group title="Common Columns">

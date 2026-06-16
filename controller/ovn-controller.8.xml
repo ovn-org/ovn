@@ -659,6 +659,28 @@
       </dd>
 
       <dt>
+        <code>external-ids:ovn-nb-cfg-sb-ts</code> in the <code>Bridge</code>
+        table
+      </dt>
+
+      <dd>
+        <p>
+          This key records the value of
+          <code>OVN_Southbound.SB_Global.nb_cfg_timestamp</code> that
+          corresponded to the <code>ovn-nb-cfg</code> generation for which all
+          flows have been successfully installed in OVS.  It is the wall-clock
+          time (in milliseconds since the Unix epoch) at which
+          <code>ovn-northd</code> wrote that <code>nb_cfg</code> value to the
+          Southbound database.  The difference between this timestamp and
+          <code>ovn-nb-cfg-ts</code> gives the per-chassis end-to-end
+          propagation latency for that configuration generation.  The key is
+          absent when no timestamp is available (e.g. when
+          <code>NB_Global.options:enable_chassis_nb_cfg_update</code> is
+          <code>false</code>).
+        </p>
+      </dd>
+
+      <dt>
         <code>external_ids:ovn-installed</code> and
         <code>external_ids:ovn-installed-ts</code> in the
         <code>Interface</code> table
