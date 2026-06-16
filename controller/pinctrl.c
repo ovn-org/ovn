@@ -65,6 +65,7 @@
 #include "ovn-sb-idl.h"
 #include "ovn-dns.h"
 #include "garp_rarp.h"
+#include "spsc-ring.h"
 
 VLOG_DEFINE_THIS_MODULE(pinctrl);
 
@@ -83,24 +84,32 @@ VLOG_DEFINE_THIS_MODULE(pinctrl);
  * and pinctrl_run().
  *
  *
- *   - put_arp/put_nd - These actions stores the IPv4/IPv6 and MAC addresses
+ *   - put_arp/put_nd - These actions store the IPv4/IPv6 and MAC addresses
  *                      in the 'MAC_Binding' table.
  *                      The function 'pinctrl_handle_put_mac_binding()' (which
- *                      is called with in the pinctrl_handler thread), stores
- *                      the IPv4/IPv6 and MAC addresses in the
- *                      hmap - put_mac_bindings.
+ *                      is called within the pinctrl_handler thread), pushes
+ *                      the IPv4/IPv6 and MAC addresses directly into a
+ *                      lock-free SPSC ring buffer ('mac_bindings_ring').
+ *                      This does not require pinctrl_mutex.  For multicast
+ *                      replies, a special cookie value
+ *                      (MAC_BINDINGS_MC_COOKIE) is set to signal the main
+ *                      thread to apply a random delay.
  *
- *                      pinctrl_run(), reads these mac bindings from the hmap
- *                      'put_mac_bindings' and writes to the 'MAC_Binding'
- *                      table in the Southbound DB.
+ *                      pinctrl_run() drains the ring in
+ *                      run_put_mac_bindings(), inserts entries into the
+ *                      main-thread-only hmap 'put_mac_bindings' (applying
+ *                      a random delay for multicast replies to avoid
+ *                      thundering herd), and writes entries whose delay
+ *                      has elapsed to the 'MAC_Binding' table in the
+ *                      Southbound DB.
  *
  *   - arp/nd_ns      - These actions generate an ARP/IPv6 Neighbor solicit
  *                      requests. The original packets are buffered and
  *                      injected back when put_arp/put_nd resolves
  *                      corresponding ARP/IPv6 Neighbor solicit requests.
- *                      When pinctrl_run(), writes the mac bindings from the
- *                      'put_mac_bindings' hmap to the MAC_Binding table in
- *                      SB DB, run_buffered_binding will add the buffered
+ *                      When pinctrl_run() writes the mac bindings from the
+ *                      ring buffer to the MAC_Binding table in SB DB,
+ *                      run_buffered_binding will add the buffered
  *                      packets to buffered_mac_bindings and notify
  *                      pinctrl_handler.
  *
@@ -197,16 +206,14 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
 
 static void pinctrl_handle_put_mac_binding(const struct flow *md,
                                            const struct flow *headers,
-                                           bool is_arp)
-    OVS_REQUIRES(pinctrl_mutex);
-static void init_put_mac_bindings(void);
-static void destroy_put_mac_bindings(void);
+                                           bool is_arp);
+static void init_mac_bindings(void);
+static void destroy_mac_bindings(void);
 static void run_put_mac_bindings(
     struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
     struct ovsdb_idl_index *sbrec_port_binding_by_key,
-    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
-    OVS_REQUIRES(pinctrl_mutex);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip);
 static void wait_put_mac_bindings(void);
 static void send_mac_binding_buffered_pkts(struct rconn *swconn);
 
@@ -366,23 +373,22 @@ static void run_put_fdb(struct ovsdb_idl_txn *ovnsb_idl_txn,
                         struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
-                        struct fdb *fdb, uint64_t cur_cfg)
-                        OVS_REQUIRES(pinctrl_mutex);
+                        struct fdb *fdb, uint64_t cur_cfg);
 static void run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
             struct ovsdb_idl_index *sbrec_port_binding_by_key,
             struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                         struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
-                        uint64_t cur_cfg)
-                        OVS_REQUIRES(pinctrl_mutex);
+                        uint64_t cur_cfg);
 static void wait_put_fdbs(void);
 static void pinctrl_handle_put_fdb(const struct flow *md,
-                                   const struct flow *headers)
-                                   OVS_REQUIRES(pinctrl_mutex);
+                                   const struct flow *headers);
 
 static void set_from_ctrl_flag_in_pkt_metadata(struct ofputil_packet_in *);
 
 COVERAGE_DEFINE(pinctrl_drop_put_mac_binding);
+COVERAGE_DEFINE(pinctrl_ring_full_put_mac_binding);
 COVERAGE_DEFINE(pinctrl_drop_put_fdb);
+COVERAGE_DEFINE(pinctrl_ring_full_put_fdb);
 COVERAGE_DEFINE(pinctrl_drop_buffered_packets_map);
 COVERAGE_DEFINE(pinctrl_drop_controller_event);
 COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
@@ -556,7 +562,7 @@ out:
 void
 pinctrl_init(void)
 {
-    init_put_mac_bindings();
+    init_mac_bindings();
     init_send_arps_nds();
     init_ipv6_ras();
     init_ipv6_prefixd();
@@ -3776,10 +3782,8 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
 
     case ACTION_OPCODE_PUT_ARP:
-        ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_handle_put_mac_binding(&pin.flow_metadata.flow, &headers,
                                        true);
-        ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
     case ACTION_OPCODE_DHCP_RELAY_REQ_CHK:
@@ -3808,16 +3812,12 @@ process_packet_in(struct rconn *swconn, const struct ofp_header *msg)
         break;
 
     case ACTION_OPCODE_PUT_ND:
-        ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_handle_put_mac_binding(&pin.flow_metadata.flow, &headers,
                                        false);
-        ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
     case ACTION_OPCODE_PUT_FDB:
-        ovs_mutex_lock(&pinctrl_mutex);
         pinctrl_handle_put_fdb(&pin.flow_metadata.flow, &headers);
-        ovs_mutex_unlock(&pinctrl_mutex);
         break;
 
     case ACTION_OPCODE_PUT_DHCPV6_OPTS:
@@ -4205,9 +4205,6 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     main_seq = seq_read(pinctrl_main_seq);
 
-    run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
-                         sbrec_port_binding_by_key,
-                         sbrec_mac_binding_by_lport_ip);
     run_put_vport_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                            sbrec_port_binding_by_key, chassis, cur_cfg);
     send_garp_rarp_prepare(ecmp_nh_table, chassis, ovs_table);
@@ -4225,9 +4222,6 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
                     chassis);
-    run_put_fdbs(ovnsb_idl_txn, sbrec_port_binding_by_key,
-                 sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac,
-                 cur_cfg);
     run_activated_ports(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                         sbrec_port_binding_by_key, chassis);
     ovs_mutex_unlock(&pinctrl_mutex);
@@ -4237,6 +4231,12 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                          sbrec_datapath_binding_by_key,
                          sbrec_port_binding_by_name,
                          sbrec_mac_binding_by_lport_ip);
+    run_put_mac_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
+                         sbrec_port_binding_by_key,
+                         sbrec_mac_binding_by_lport_ip);
+    run_put_fdbs(ovnsb_idl_txn, sbrec_port_binding_by_key,
+                 sbrec_datapath_binding_by_key, sbrec_fdb_by_dp_key_mac,
+                 cur_cfg);
 }
 
 /* Table of ipv6_ra_state structures, keyed on logical port name.
@@ -4724,14 +4724,15 @@ pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
 {
     ovs_mutex_lock(&pinctrl_mutex);
     if (ovnsb_idl_txn) {
-        wait_put_mac_bindings();
         wait_controller_event();
         wait_put_vport_bindings();
-        wait_put_fdbs();
         seq_wait(pinctrl_main_seq, main_seq);
     }
     wait_activated_ports();
     ovs_mutex_unlock(&pinctrl_mutex);
+
+    wait_put_mac_bindings();
+    wait_put_fdbs();
 }
 
 #define PINCTRL_CFG_INTERVAL 100
@@ -4757,7 +4758,7 @@ pinctrl_destroy(void)
     destroy_buffered_packets_map();
     destroy_activated_ports();
     event_table_destroy();
-    destroy_put_mac_bindings();
+    destroy_mac_bindings();
     destroy_put_vport_bindings();
     ip_mcast_snoop_destroy();
     destroy_svc_monitors();
@@ -4782,22 +4783,31 @@ pinctrl_destroy(void)
 
 #define MAX_MAC_BINDING_DELAY_MSEC 50
 #define MAX_FDB_DELAY_MSEC         50
-#define MAX_MAC_BINDINGS           1000
+#define MAX_MAC_BINDINGS           1024
+#define MAC_BINDINGS_MC_COOKIE     0xff
 
-/* Contains "struct mac_binding"s. */
+/* Contains "struct mac_binding"s. This is used by main thread only. */
 static struct hmap put_mac_bindings;
+/* Contains "struct mac_binding_data". This is populated by pinctrl thread
+ * and consumed by main thread. */
+static struct spsc_ring mac_bindings_ring;
 
 static void
-init_put_mac_bindings(void)
+init_mac_bindings(void)
 {
     hmap_init(&put_mac_bindings);
+    /* Make the capacity larger than the hmap to account for some in-flight
+     * duplicates. */
+    spsc_ring_init(&mac_bindings_ring, MAX_MAC_BINDINGS * 4,
+                   sizeof (struct mac_binding_data));
 }
 
 static void
-destroy_put_mac_bindings(void)
+destroy_mac_bindings(void)
 {
     mac_bindings_clear(&put_mac_bindings);
     hmap_destroy(&put_mac_bindings);
+    spsc_ring_destroy(&mac_bindings_ring);
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -4805,14 +4815,11 @@ static void
 pinctrl_handle_put_mac_binding(const struct flow *md,
                                const struct flow *headers,
                                bool is_arp)
-    OVS_REQUIRES(pinctrl_mutex)
 {
-    if (hmap_count(&put_mac_bindings) >= MAX_MAC_BINDINGS) {
-        COVERAGE_INC(pinctrl_drop_put_mac_binding);
-        return;
-    }
-
     struct mac_binding_data mb_data = (struct mac_binding_data) {
+            .cookie = eth_addr_is_multicast(headers->dl_dst)
+                      ? MAC_BINDINGS_MC_COOKIE
+                      : 0,
             .dp_key =  ntohll(md->metadata),
             .port_key =  md->regs[MFF_LOG_INPORT - MFF_REG0],
             .mac = headers->dl_src,
@@ -4825,18 +4832,13 @@ pinctrl_handle_put_mac_binding(const struct flow *md,
         memcpy(&mb_data.ip, &ip6, sizeof mb_data.ip);
     }
 
-    /* If the ARP reply was unicast we should not delay it,
-     * there won't be any race. */
-    uint32_t delay = eth_addr_is_multicast(headers->dl_dst)
-                     ? random_range(MAX_MAC_BINDING_DELAY_MSEC) + 1
-                     : 0;
-    long long timestamp = time_msec() + delay;
-    mac_binding_add(&put_mac_bindings, mb_data, NULL, timestamp);
-
-    /* We can send the buffered packet once the main ovn-controller
-     * thread calls pinctrl_run() and it writes the mac_bindings stored
-     * in 'put_mac_bindings' hmap into the Southbound MAC_Binding table. */
-    notify_pinctrl_main();
+    if (!spsc_ring_push(&mac_bindings_ring, &mb_data)) {
+        /* This shouldn't happen, the main thread drains the ring buffer
+         * every iteration. */
+        COVERAGE_INC(pinctrl_ring_full_put_mac_binding);
+    } else {
+        notify_pinctrl_main();
+    }
 }
 
 /* Called with in the pinctrl_handler thread context. */
@@ -4898,13 +4900,31 @@ run_put_mac_bindings(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
                      struct ovsdb_idl_index *sbrec_port_binding_by_key,
                      struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip)
-    OVS_REQUIRES(pinctrl_mutex)
 {
+    long long now = time_msec();
+
+    struct mac_binding_data mb_data;
+    SPSC_RING_FOR_EACH_POP (&mac_bindings_ring, mb_data) {
+        if (hmap_count(&put_mac_bindings) >= MAX_MAC_BINDINGS) {
+            COVERAGE_INC(pinctrl_drop_put_mac_binding);
+            continue;
+        }
+
+        /* If the ARP reply was unicast we should not delay it,
+         * there won't be any race. */
+        uint32_t delay = mb_data.cookie == MAC_BINDINGS_MC_COOKIE
+                         ? random_range(MAX_MAC_BINDING_DELAY_MSEC) + 1
+                         : 0;
+        /* Clear the cookie, it's needed just to know if it was delayed or
+         * not. */
+        mb_data.cookie = 0;
+
+        mac_binding_add(&put_mac_bindings, mb_data, NULL, now + delay);
+    }
+
     if (!ovnsb_idl_txn) {
         return;
     }
-
-    long long now = time_msec();
 
     struct mac_binding *mb;
     HMAP_FOR_EACH_SAFE (mb, hmap_node, &put_mac_bindings) {
@@ -4986,7 +5006,6 @@ run_buffered_binding(const struct sbrec_mac_binding_table *mac_binding_table,
 
 static void
 wait_put_mac_bindings(void)
-    OVS_REQUIRES(pinctrl_mutex)
 {
     struct mac_binding *mb;
     HMAP_FOR_EACH (mb, hmap_node, &put_mac_bindings) {
@@ -8878,9 +8897,13 @@ pinctrl_split_buf_action_handler(struct rconn *swconn, struct dp_packet *pkt,
     ofpbuf_uninit(&ofpacts);
 }
 
-#define MAX_FDB_ENTRIES             1000
+#define MAX_FDB_ENTRIES             1024
 
+/* Contains "struct fdb"s. This is used by main thread only. */
 static struct hmap put_fdbs;
+/* Contains "struct fdb_data". This is populated by pinctrl thread
+ * and consumed by main thread. */
+static struct spsc_ring fdbs_ring;
 
 /* MAC learning (fdb) related functions.  Runs within the main
  * ovn-controller thread context. */
@@ -8889,6 +8912,9 @@ static void
 init_fdb_entries(void)
 {
     hmap_init(&put_fdbs);
+    /* Make the capacity larger than the hmap to account for some in-flight
+     * duplicates. */
+    spsc_ring_init(&fdbs_ring, MAX_FDB_ENTRIES * 4, sizeof (struct fdb_data));
 }
 
 static void
@@ -8896,6 +8922,7 @@ destroy_fdb_entries(void)
 {
     fdbs_clear(&put_fdbs);
     hmap_destroy(&put_fdbs);
+    spsc_ring_destroy(&fdbs_ring);
 }
 
 static const struct sbrec_fdb *
@@ -8975,13 +9002,24 @@ run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
              struct ovsdb_idl_index *sbrec_port_binding_by_key,
              struct ovsdb_idl_index *sbrec_datapath_binding_by_key,
              struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac, uint64_t cur_cfg)
-             OVS_REQUIRES(pinctrl_mutex)
 {
+    long long now = time_msec();
+
+    struct fdb_data fdb_data;
+    SPSC_RING_FOR_EACH_POP (&fdbs_ring, fdb_data) {
+        if (hmap_count(&put_fdbs) >= MAX_FDB_ENTRIES) {
+            COVERAGE_INC(pinctrl_drop_put_fdb);
+            continue;
+        }
+
+        uint32_t delay = random_range(MAX_FDB_DELAY_MSEC) + 1;
+        fdb_add(&put_fdbs, fdb_data, now + delay);
+    }
+
     if (!ovnsb_idl_txn) {
         return;
     }
 
-    long long now = time_msec();
     struct fdb *fdb;
     HMAP_FOR_EACH_SAFE (fdb, hmap_node, &put_fdbs) {
         if (fdb->cfg >= 0 && pinctrl_is_sb_commited(fdb->cfg, cur_cfg)) {
@@ -8997,7 +9035,6 @@ run_put_fdbs(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
 static void
 wait_put_fdbs(void)
-    OVS_REQUIRES(pinctrl_mutex)
 {
     struct fdb *fdb;
     HMAP_FOR_EACH (fdb, hmap_node, &put_fdbs) {
@@ -9008,23 +9045,20 @@ wait_put_fdbs(void)
 /* Called with in the pinctrl_handler thread context. */
 static void
 pinctrl_handle_put_fdb(const struct flow *md, const struct flow *headers)
-                       OVS_REQUIRES(pinctrl_mutex)
 {
-    if (hmap_count(&put_fdbs) >= MAX_FDB_ENTRIES) {
-        COVERAGE_INC(pinctrl_drop_put_fdb);
-        return;
-    }
-
     struct fdb_data fdb_data = (struct fdb_data) {
             .dp_key =  ntohll(md->metadata),
             .port_key =  md->regs[MFF_LOG_INPORT - MFF_REG0],
             .mac = headers->dl_src,
     };
 
-    uint32_t delay = random_range(MAX_FDB_DELAY_MSEC) + 1;
-    long long timestamp = time_msec() + delay;
-    fdb_add(&put_fdbs, fdb_data, timestamp);
-    notify_pinctrl_main();
+    if (!spsc_ring_push(&fdbs_ring, &fdb_data)) {
+        /* This shouldn't happen, the main thread drains the ring buffer
+         * every iteration. */
+        COVERAGE_INC(pinctrl_ring_full_put_fdb);
+    } else {
+        notify_pinctrl_main();
+    }
 }
 
 /* This function sets the register bit 'MLF_FROM_CTRL_BIT'
