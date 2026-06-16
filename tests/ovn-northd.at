@@ -19503,6 +19503,45 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS EVPN ARP/ND suppression flows])
+AT_KEYWORDS([dynamic-routing evpn])
+ovn_start
+
+AS_BOX([EVPN switch])
+check ovn-nbctl --wait=sb \
+    -- ls-add ls-evpn \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-vni=10
+
+dnl Verify ls_in_arp_nd_pre_lookup flows use chk_evpn_arp.
+AT_CHECK([ovn-sbctl lflow-list ls-evpn | grep ls_in_arp_nd_pre_lookup | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_nd_pre_lookup), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_arp_nd_pre_lookup), priority=5    , match=(from_evpn_vtep == 0 && arp.op == 1 && eth.bcast), action=(reg9[[5]] = chk_evpn_arp(arp.tpa); next;)
+  table=??(ls_in_arp_nd_pre_lookup), priority=5    , match=(from_evpn_vtep == 0 && nd_ns_mcast), action=(reg9[[5]] = chk_evpn_arp(nd.target); next;)
+])
+
+dnl Verify ls_in_arp_rsp EVPN ARP suppression flow at priority 40.
+AT_CHECK([ovn-sbctl lflow-list ls-evpn | grep ls_in_arp_rsp | grep 'priority=40' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=40   , match=(arp.op == 1 && reg9[[5]] == 1), action=(eth.dst <-> eth.src; arp.op = 2; arp.tha = arp.sha; arp.sha = eth.src; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=40   , match=(nd_ns && reg9[[5]] == 1), action=(nd_na { outport = inport; flags.loopback = 1; output; };)
+])
+
+AS_BOX([Non-EVPN switch])
+check ovn-nbctl --wait=sb \
+    -- ls-add ls-plain
+
+dnl Non-EVPN switch should have only default next; in pre_lookup.
+AT_CHECK([ovn-sbctl lflow-list ls-plain | grep ls_in_arp_nd_pre_lookup | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_nd_pre_lookup), priority=0    , match=(1), action=(next;)
+])
+
+dnl Non-EVPN switch should have no EVPN suppression flows (no priority 40 with EVPN regbit).
+AT_CHECK([ovn-sbctl lflow-list ls-plain | grep ls_in_arp_rsp | grep 'priority=40'], [1])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LS EVPN conntrack skip with stateful ACLs and LBs])
 AT_KEYWORDS([dynamic-routing])
 ovn_start

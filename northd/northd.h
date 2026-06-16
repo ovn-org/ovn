@@ -541,14 +541,16 @@ ls_has_localnet_port(const struct ovn_datapath *od)
                    "ls_in_pre_network_function")                          \
     PIPELINE_STAGE(SWITCH, IN,  STATEFUL,      24, "ls_in_stateful")      \
     PIPELINE_STAGE(SWITCH, IN,  NF,            25, "ls_in_network_function") \
-    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    26, "ls_in_arp_rsp")       \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  27, "ls_in_dhcp_options")  \
-    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 28, "ls_in_dhcp_response") \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    29, "ls_in_dns_lookup")    \
-    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  30, "ls_in_dns_response")  \
-    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 31, "ls_in_external_port") \
-    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       32, "ls_in_l2_lkup")       \
-    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    33, "ls_in_l2_unknown")    \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_PRE_LOOKUP, 26,                    \
+                   "ls_in_arp_nd_pre_lookup")                             \
+    PIPELINE_STAGE(SWITCH, IN,  ARP_ND_RSP,    27, "ls_in_arp_rsp")       \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_OPTIONS,  28, "ls_in_dhcp_options")  \
+    PIPELINE_STAGE(SWITCH, IN,  DHCP_RESPONSE, 29, "ls_in_dhcp_response") \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_LOOKUP,    30, "ls_in_dns_lookup")    \
+    PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  31, "ls_in_dns_response")  \
+    PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 32, "ls_in_external_port") \
+    PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       33, "ls_in_l2_lkup")       \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    34, "ls_in_l2_unknown")    \
                                                                           \
     /* Logical switch egress stages. */                                   \
     PIPELINE_STAGE(SWITCH, OUT, LOOKUP_FDB,      0, "ls_out_lookup_fdb")     \

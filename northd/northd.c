@@ -204,6 +204,7 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 #define REGBIT_LOOKUP_NEIGHBOR_RESULT "reg9[2]"
 #define REGBIT_LOOKUP_NEIGHBOR_IP_RESULT "reg9[3]"
 #define REGBIT_DST_NAT_IP_LOCAL "reg9[4]"
+#define REGBIT_EVPN_LOOKUP_MAC "reg9[5]"
 #define REGBIT_KNOWN_LB_SESSION "reg9[6]"
 #define REGBIT_DHCP_RELAY_REQ_CHK "reg9[7]"
 #define REGBIT_DHCP_RELAY_RESP_CHK "reg9[8]"
@@ -10754,6 +10755,73 @@ build_lswitch_arp_nd_responder_default(struct ovn_datapath *od,
                   lflow_ref);
 }
 
+/* Ingress tables:
+ * - ls_in_arp_nd_pre_lookup: EVPN ARP/ND pre-lookup
+ * - ls_in_arp_rsp: EVPN ARP/ND suppression response flows
+ *
+ * For EVPN-enabled switches, calls chk_evpn_arp() to look up the
+ * IP in the EVPN ARP side table.  On a hit, the resolved MAC is
+ * stored in eth.dst and REGBIT_EVPN_LOOKUP_MAC is set.  The
+ * response flow in ls_in_arp_rsp reads the MAC from eth.dst.
+ *
+ * It also adds flows that proxy-reply to ARP/ND when
+ * chk_evpn_arp found a match (REGBIT_EVPN_LOOKUP_MAC == 1).
+ * The resolved MAC is already in eth.dst (loaded by the side table).
+ */
+static void
+build_lswitch_arp_nd_evpn_responder(struct ovn_datapath *od,
+                                    struct lflow_table *lflows,
+                                    const struct shash *meter_groups,
+                                    struct lflow_ref *lflow_ref)
+{
+    ovs_assert(od->nbs);
+
+    /* Default: pass through. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_PRE_LOOKUP, 0, "1",
+                  "next;", lflow_ref);
+
+    if (!od->has_evpn_vni) {
+        return;
+    }
+
+    /* IPv4: broadcast ARP requests only. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_PRE_LOOKUP, 5,
+                  "from_evpn_vtep == 0 && arp.op == 1 && eth.bcast",
+                  REGBIT_EVPN_LOOKUP_MAC " = chk_evpn_arp(arp.tpa); next;",
+                  lflow_ref);
+
+    /* ARP reply (priority 40): ARP request with EVPN hit.
+     * eth.dst holds the resolved MAC (loaded by chk_evpn_arp). */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 40,
+                  "arp.op == 1 && " REGBIT_EVPN_LOOKUP_MAC " == 1",
+                  "eth.dst <-> eth.src; "
+                  "arp.op = 2; "
+                  "arp.tha = arp.sha; "
+                  "arp.sha = eth.src; "
+                  "arp.tpa <-> arp.spa; "
+                  "outport = inport; "
+                  "flags.loopback = 1; "
+                  "output;",
+                  lflow_ref);
+
+    /* IPv6: multicast ND solicitations only. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_PRE_LOOKUP, 5,
+                  "from_evpn_vtep == 0 && nd_ns_mcast",
+                  REGBIT_EVPN_LOOKUP_MAC " = chk_evpn_arp(nd.target); next;",
+                  lflow_ref);
+
+    /* ND NA reply (priority 40): ND NS with EVPN hit.
+     * eth.dst holds the resolved MAC (loaded by chk_evpn_arp);
+     * compose_nd_na() uses ip_flow->dl_dst for eth.src and nd.tll. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_ARP_ND_RSP, 40,
+                  "nd_ns && " REGBIT_EVPN_LOOKUP_MAC " == 1",
+                  "nd_na { outport = inport; flags.loopback = 1; output; };",
+                  lflow_ref,
+                  WITH_CTRL_METER(copp_meter_get(COPP_ND_NA,
+                                                 od->nbs->copp,
+                                                 meter_groups)));
+}
+
 /* Ingress table 24: ARP/ND responder for service monitor source ip.
  * (priority 110)*/
 static void
@@ -19525,6 +19593,8 @@ build_lswitch_and_lrouter_iterate_by_ls(struct ovn_datapath *od,
     build_fwd_group_lflows(od, lsi->lflows, NULL);
     build_lswitch_lflows_admission_control(od, lsi->lflows, NULL);
     build_lswitch_learn_fdb_od(od, lsi->lflows, NULL);
+    build_lswitch_arp_nd_evpn_responder(od, lsi->lflows, lsi->meter_groups,
+                                        NULL);
     build_lswitch_arp_nd_responder_default(od, lsi->lflows, NULL);
     build_lswitch_dns_lookup_and_response(od, lsi->lflows, lsi->meter_groups,
                                           NULL);

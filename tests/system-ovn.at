@@ -18015,6 +18015,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([dynamic-routing - EVPN $1 naming])
 AT_KEYWORDS([dynamic-routing])
 
+AT_SKIP_IF([test $HAVE_SCAPY = no])
 CHECK_VRF()
 CHECK_CONNTRACK()
 CHECK_CONNTRACK_NAT()
@@ -18593,6 +18594,82 @@ check ip -6 neigh add dev $BR_NAME 172:16::70 lladdr f0:00:0f:16:10:70 nud noarp
 
 OVS_WAIT_UNTIL([test "$(ovs-ofctl dump-flows br-int table=OFTABLE_EVPN_ARP_LOOKUP | \
                          grep -c priority)" = "6"])
+
+AS_BOX([EVPN ARP/ND suppression logical flows])
+dnl Verify northd generates chk_evpn_arp flows in ls_in_arp_nd_pre_lookup.
+AT_CHECK([ovn-sbctl lflow-list ls-evpn | grep ls_in_arp_nd_pre_lookup | grep -q 'chk_evpn_arp'])
+
+dnl Verify ls_in_arp_rsp has EVPN suppression response flows (priority 40).
+AT_CHECK([ovn-sbctl lflow-list ls-evpn | grep ls_in_arp_rsp | grep 'priority=40' | \
+          grep -q 'reg9\[[5\]] == 1'])
+
+AS_BOX([EVPN ARP/ND suppression traffic])
+
+dnl Record initial packet counts on both EVPN suppression flows.
+evpn_arp_pkt_before=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+    grep "priority=40.*arp" | sed -n 's/.*n_packets=\([[0-9]]*\).*/\1/p')
+evpn_nd_pkt_before=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+    grep "priority=40.*icmp6" | sed -n 's/.*n_packets=\([[0-9]]*\).*/\1/p')
+
+dnl --- Broadcast ARP: should be suppressed (local proxy reply) ---
+ip netns exec workload1 scapy -H <<-EOF
+p = Ether(src='f0:00:0f:16:01:10', dst='ff:ff:ff:ff:ff:ff') / \
+    ARP(op=1, hwsrc='f0:00:0f:16:01:10', psrc='172.16.1.10',
+        hwdst='00:00:00:00:00:00', pdst='172.16.1.50')
+sendp(p, iface='workload1', verbose=False)
+EOF
+
+dnl Verify the EVPN suppression flow handled the broadcast ARP.
+OVS_WAIT_UNTIL([
+    evpn_arp_pkt_after=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+        grep "priority=40.*arp" | sed -n 's/.*n_packets=\([[0-9]]*\).*/\1/p')
+    test "$evpn_arp_pkt_after" -gt "$evpn_arp_pkt_before"
+])
+
+dnl --- Unicast ARP: must NOT be suppressed ---
+ip netns exec workload1 scapy -H <<-EOF
+p = Ether(src='f0:00:0f:16:01:10', dst='f0:00:0f:16:10:50') / \
+    ARP(op=1, hwsrc='f0:00:0f:16:01:10', psrc='172.16.1.10',
+        hwdst='00:00:00:00:00:00', pdst='172.16.1.50')
+sendp(p, iface='workload1', verbose=False)
+EOF
+
+dnl The unicast ARP must NOT hit the suppression flow.
+evpn_arp_pkt_unicast=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+    grep "priority=40.*arp" | sed -n 's/.*n_packets=\([[0-9]]*\).*/\1/p')
+AT_CHECK([test "$evpn_arp_pkt_unicast" = "$evpn_arp_pkt_after"], [0])
+
+dnl --- Multicast ND NS: should be suppressed (local proxy NA) ---
+NS_CHECK_EXEC([workload1], [ip -6 neigh flush dev workload1], [0], [ignore], [ignore])
+
+ip netns exec workload1 scapy -H <<-EOF
+p = Ether(src='f0:00:0f:16:01:10', dst='33:33:ff:00:00:50') / \
+    IPv6(src='172:16::10', dst='ff02::1:ff00:50') / \
+    ICMPv6ND_NS(tgt='172:16::50') / \
+    ICMPv6NDOptSrcLLAddr(lladdr='f0:00:0f:16:01:10')
+sendp(p, iface='workload1', verbose=False)
+EOF
+
+dnl Verify the EVPN ND suppression flow handled the multicast NS.
+OVS_WAIT_UNTIL([
+    evpn_nd_pkt_after=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+        grep "priority=40.*icmp6" | sed -n 's/.*n_packets=\([[0-9]]*\).*/\1/p')
+    test "$evpn_nd_pkt_after" -gt "$evpn_nd_pkt_before"
+])
+
+dnl --- Unicast ND NS: must NOT be suppressed ---
+ip netns exec workload1 scapy -H <<-EOF
+p = Ether(src='f0:00:0f:16:01:10', dst='f0:00:0f:16:10:50') / \
+    IPv6(src='172:16::10', dst='172:16::50') / \
+    ICMPv6ND_NS(tgt='172:16::50') / \
+    ICMPv6NDOptSrcLLAddr(lladdr='f0:00:0f:16:01:10')
+sendp(p, iface='workload1', verbose=False)
+EOF
+
+dnl The unicast ND NS must NOT hit the suppression flow.
+evpn_nd_pkt_unicast=$(ovs-ofctl dump-flows br-int table=$(ovn-debug lflow-stage-to-oftable ls_in_arp_rsp) | \
+    grep "priority=40.*icmp6" | sed -n 's/.*n_packets=\([[0-9]]*\).*/\1/p')
+AT_CHECK([test "$evpn_nd_pkt_unicast" = "$evpn_nd_pkt_after"], [0])
 
 # Remove remote workload ARP entries and check ovn-controller's state.
 check ip neigh del dev $BR_NAME 172.16.1.50

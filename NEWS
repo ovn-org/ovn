@@ -15,6 +15,12 @@ Post v26.03.0
      * Add ECMP/multi-homing support for EVPN FDB entries. FDB entries
        backed by a kernel nexthop group are load-balanced via OpenFlow
        select groups with weighted buckets.
+     * Add EVPN ARP/ND suppression for logical switches.  When a
+       broadcast ARP request or multicast ND solicitation targets
+       an IP address that was learned via EVPN, ovn-northd now
+       generates proxy-reply flows using a dedicated side table
+       and the new chk_evpn_arp() action, preventing unnecessary
+       flooding to remote VTEPs.
    - Added "override-connected" option to Logical Router Static Routes to mark
      static routes as higher-priority than connected routes, which in turn led
      to changes in administrative distance for specific route types. Please see
