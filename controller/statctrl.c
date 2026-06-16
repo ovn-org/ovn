@@ -64,7 +64,8 @@ struct stats_node {
                                struct ofputil_flow_stats *ofp_stats);
     /* Function to process the parsed stats.
      * This function runs in main thread locked behind mutex. */
-    void (*run)(struct vector *stats, uint64_t *req_delay, void *data);
+    void (*run)(struct vector *stats, uint64_t *req_delay, void *data,
+                long long timewall_now);
     /* Name of the stats node. */
     const char *name;
 };
@@ -194,6 +195,7 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     bool schedule_updated = false;
     long long now = time_msec();
+    long long timewall_now = time_wall_msec();
 
     ovs_mutex_lock(&mutex);
     statctrl_ctx.new_main_seq = seq_read(statctrl_ctx.main_seq);
@@ -202,7 +204,8 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
         uint64_t prev_delay = node->request_delay;
 
         stopwatch_start(node->name, time_msec());
-        node->run(&node->stats, &node->request_delay, node_data[i]);
+        node->run(&node->stats, &node->request_delay, node_data[i],
+                  timewall_now);
         vector_clear(&node->stats);
         if (vector_capacity(&node->stats) >= STATS_VEC_CAPACITY_THRESHOLD) {
             VLOG_DBG("The statistics vector for node '%s' capacity "

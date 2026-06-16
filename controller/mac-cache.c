@@ -399,10 +399,9 @@ mac_binding_update_log(const char *action,
 
 void
 mac_binding_stats_run(struct vector *stats_vec, uint64_t *req_delay,
-                      void *data)
+                      void *data, long long timewall_now)
 {
     struct mac_cache_data *cache_data = data;
-    long long timewall_now = time_wall_msec();
 
     struct mac_cache_stats *stats;
     VECTOR_FOR_EACH_PTR (stats_vec, stats) {
@@ -495,10 +494,10 @@ fdb_update_log(const char *action,
 }
 
 void
-fdb_stats_run(struct vector *stats_vec, uint64_t *req_delay, void *data)
+fdb_stats_run(struct vector *stats_vec, uint64_t *req_delay, void *data,
+              long long timewall_now)
 {
     struct mac_cache_data *cache_data = data;
-    long long timewall_now = time_wall_msec();
 
     struct mac_cache_stats *stats;
     VECTOR_FOR_EACH_PTR (stats_vec, stats) {
@@ -877,9 +876,8 @@ mac_binding_probe_stats_process_flow_stats(
 
 void
 mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
-                            void *data)
+                            void *data, long long timewall_now)
 {
-    long long timewall_now = time_wall_msec();
     struct mac_binding_probe_data *probe_data = data;
     struct mac_cache_data *cache_data = probe_data->cache_data;
 
