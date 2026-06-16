@@ -2217,6 +2217,38 @@ commit_lb_aff(vip = "[[::1]]:8080", backend = "[[::2]]:8080", proto = tcp, timeo
 reg9[[6]] = chk_lb_aff();
     encodes as set_field:0/0x4000->reg10,resubmit(,OFTABLE_CHK_LB_AFFINITY),move:NXM_NX_REG10[[14]]->OXM_OF_PKT_REG4[[6]]
 
+# chk_evpn_arp
+reg0[[0]] = chk_evpn_arp(arp.tpa);
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_NX_REG0[[]],set_field:0/0x2000000->reg10,resubmit(,OFTABLE_EVPN_ARP_LOOKUP),move:NXM_NX_REG10[[25]]->NXM_NX_XXREG0[[96]],pop:NXM_NX_REG0[[]]
+    has prereqs eth.type == 0x806
+
+reg2[[2]] = chk_evpn_arp(arp.tpa);
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_ARP_TPA[[]],pop:NXM_NX_REG0[[]],set_field:0/0x2000000->reg10,resubmit(,OFTABLE_EVPN_ARP_LOOKUP),move:NXM_NX_REG10[[25]]->NXM_NX_XXREG0[[34]],pop:NXM_NX_REG0[[]]
+    has prereqs eth.type == 0x806
+
+reg0[[0]] = chk_evpn_arp(ip6.dst);
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG0[[]],set_field:0/0x2000000->reg10,resubmit(,OFTABLE_EVPN_ARP_LOOKUP),move:NXM_NX_REG10[[25]]->NXM_NX_XXREG0[[96]],pop:NXM_NX_XXREG0[[]]
+    has prereqs eth.type == 0x86dd
+
+reg0[[0]] = chk_evpn_arp(nd.target);
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_NX_ND_TARGET[[]],pop:NXM_NX_XXREG0[[]],set_field:0/0x2000000->reg10,resubmit(,OFTABLE_EVPN_ARP_LOOKUP),move:NXM_NX_REG10[[25]]->NXM_NX_XXREG0[[96]],pop:NXM_NX_XXREG0[[]]
+    has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
+
+reg0 = chk_evpn_arp(arp.tpa);
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
+
+reg0[[0]] = chk_evpn_arp(eth.src);
+    chk_evpn_arp requires a 32-bit or 128-bit IP field
+
+reg0[[0]] = chk_evpn_arp();
+    Syntax error at `)' expecting field name.
+
+reg0[[0]] = chk_evpn_arp(arp.tpa, ip4.src);
+    Syntax error at `,' expecting `)'.
+
+chk_evpn_arp;
+    Syntax error at `chk_evpn_arp' expecting action.
+
 # push/pop
 push(xxreg0);push(xxreg1[[10..20]]);push(eth.src);pop(xxreg0[[0..47]]);pop(xxreg0[[48..57]]);pop(xxreg1);
     formats as push(xxreg0); push(xxreg1[[10..20]]); push(eth.src); pop(xxreg0[[0..47]]); pop(xxreg0[[48..57]]); pop(xxreg1);

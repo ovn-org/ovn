@@ -104,6 +104,7 @@ struct uuid;
 #define OFTABLE_CT_ORIG_PROTO_LOAD        110
 #define OFTABLE_GET_REMOTE_FDB            111
 #define OFTABLE_LEARN_REMOTE_FDB          112
+#define OFTABLE_EVPN_ARP_LOOKUP           113
 
 /* Verify that table regions do not overlap. */
 BUILD_ASSERT_DECL(OFTABLE_LOG_INGRESS_PIPELINE + LOG_PIPELINE_INGRESS_LEN

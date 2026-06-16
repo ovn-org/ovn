@@ -1392,6 +1392,7 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
                 .ct_proto_load_table = OFTABLE_CT_ORIG_PROTO_LOAD,
                 .flood_remote_table = OFTABLE_FLOOD_REMOTE_CHASSIS,
                 .ct_state_save_table = OFTABLE_CT_STATE_SAVE,
+                .evpn_arp_ptable = OFTABLE_EVPN_ARP_LOOKUP,
                 .lflow_uuid.parts =
                     { 0xaaaaaaaa, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd},
                 .dp_key = 0xabcdef,

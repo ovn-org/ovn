@@ -2243,6 +2243,39 @@ execute_lookup_mac_bind_ip(const struct ovnact_lookup_mac_bind_ip *bind,
 }
 
 static void
+execute_chk_evpn_arp(const struct ovnact_chk_evpn_arp *chk,
+                     const struct ovntrace_datapath *dp OVS_UNUSED,
+                     struct flow *uflow,
+                     struct ovs_list *super)
+{
+    /* Get IP address. */
+    struct mf_subfield ip_sf = expr_resolve_field(&chk->ip);
+    ovs_assert(ip_sf.n_bits == 32 || ip_sf.n_bits == 128);
+    union mf_subvalue ip_sv;
+    mf_read_subfield(&ip_sf, uflow, &ip_sv);
+    struct in6_addr ip = (ip_sf.n_bits == 32
+                          ? in6_addr_mapped_ipv4(ip_sv.ipv4)
+                          : ip_sv.ipv6);
+
+    struct ds ip_s = DS_EMPTY_INITIALIZER;
+    ipv6_format_mapped(&ip, &ip_s);
+
+    /* EVPN entries only exist in ovn-controller's OpenFlow tables
+     * (OFTABLE_EVPN_ARP_LOOKUP), not in the SB database, so
+     * ovn-trace cannot resolve them.  Report the miss and set
+     * the result to 0. */
+    ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
+                         "/* EVPN ARP lookup for %s: "
+                         "not available in trace. */", ds_cstr(&ip_s));
+    ds_destroy(&ip_s);
+
+    /* Set the result bit to 0 (miss). */
+    struct mf_subfield dst = expr_resolve_field(&chk->dst);
+    union mf_subvalue sv = { .u8_val = 0 };
+    mf_write_subfield_flow(&dst, &sv, uflow);
+}
+
+static void
 execute_lookup_fdb(const struct ovnact_lookup_fdb *lookup_fdb,
                    const struct ovntrace_datapath *dp,
                    struct flow *uflow,
@@ -3602,6 +3635,10 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             break;
         case OVNACT_CT_STATE_SAVE:
             execute_ct_save_state(ovnact_get_CT_STATE_SAVE(a), uflow, super);
+            break;
+        case OVNACT_CHK_EVPN_ARP:
+            execute_chk_evpn_arp(ovnact_get_CHK_EVPN_ARP(a), dp, uflow,
+                                 super);
             break;
         }
     }

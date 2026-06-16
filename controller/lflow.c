@@ -950,6 +950,7 @@ add_matches_to_flow_table(const struct sbrec_logical_flow *lflow,
         .ct_proto_load_table = OFTABLE_CT_ORIG_PROTO_LOAD,
         .flood_remote_table = OFTABLE_FLOOD_REMOTE_CHASSIS,
         .ct_state_save_table = OFTABLE_CT_STATE_SAVE,
+        .evpn_arp_ptable = OFTABLE_EVPN_ARP_LOOKUP,
         .ctrl_meter_id = ctrl_meter_id,
         .common_nat_ct_zone = get_common_nat_zone(ldp),
     };

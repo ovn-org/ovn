@@ -140,6 +140,7 @@ struct collector_set_ids;
     OVNACT(FLOOD_REMOTE,      ovnact_null)            \
     OVNACT(CT_STATE_SAVE,     ovnact_result)          \
     OVNACT(MIRROR,            ovnact_mirror)          \
+    OVNACT(CHK_EVPN_ARP,      ovnact_chk_evpn_arp)    \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -547,6 +548,13 @@ struct ovnact_commit_lb_aff {
     uint16_t backend_port;
 
     uint16_t timeout;
+};
+
+/* OVNACT_CHK_EVPN_ARP. */
+struct ovnact_chk_evpn_arp {
+    struct ovnact ovnact;
+    struct expr_field dst;      /* 1-bit destination field. */
+    struct expr_field ip;       /* 32-bit or 128-bit IP address. */
 };
 
 /* OVNACT_MIRROR. */
@@ -972,6 +980,8 @@ struct ovnact_encode_params {
                                 * 'get_remote_fdb' to resubmit. */
     uint8_t fdb_lookup_ptable; /* OpenFlow table for
                                 * 'lookup_fdb' to resubmit. */
+    uint8_t evpn_arp_ptable; /* OpenFlow table for
+                              * 'chk_evpn_arp' to resubmit. */
     uint8_t in_port_sec_ptable; /* OpenFlow table for
                                 * 'check_in_port_sec' to resubmit. */
     uint8_t out_port_sec_ptable; /* OpenFlow table for

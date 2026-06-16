@@ -1696,6 +1696,47 @@
           </p>
         </dd>
 
+        <dt>
+          <code><var>R</var> = chk_evpn_arp(<var>A</var>);</code>
+        </dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>: 32-bit or 128-bit IP address field
+            <var>A</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            Looks up <var>A</var> in the EVPN ARP side table for the
+            current logical datapath.  If a matching entry is found,
+            stores <code>1</code> in the 1-bit subfield <var>R</var>
+            and loads the resolved MAC address into
+            <code>eth.dst</code>.  Otherwise, stores
+            <code>0</code> in <var>R</var> and <code>eth.dst</code>
+            is left unchanged.
+          </p>
+
+          <p>
+            This action is used for EVPN ARP/ND suppression on
+            logical switches.  When an ARP request or ND solicitation
+            targets an IP address that was learned via EVPN, the
+            switch can proxy-reply using the MAC from
+            <code>eth.dst</code> instead of flooding the request
+            to remote VTEPs.
+          </p>
+
+          <p>
+            <b>Example:</b>
+            <code>
+              reg9[5] = chk_evpn_arp(arp.tpa);
+            </code>
+          </p>
+        </dd>
+
         <dt><code><var>P</var> = get_fdb(<var>A</var>);</code></dt>
 
         <dd>
