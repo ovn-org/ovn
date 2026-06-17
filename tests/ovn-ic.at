@@ -4844,6 +4844,7 @@ ovn_as az1
 check ovn-ic-nbctl ts-add ts1
 
 wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts1
+cnt1=$(as az1 ovn-appctl -t ic/ovn-ic coverage/read-counter poll_zero_timeout)
 as az1 check ovn-appctl -t ic/ovn-ic pause
 
 ovn_as az2
@@ -4852,6 +4853,10 @@ wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts2
 
 check_row_count ic-sb:Datapath_Binding 2
 check_column "ts1 ts2" ic-sb:Datapath_Binding transit_switch
+
+cnt2=$(as az1 ovn-appctl -t ic/ovn-ic coverage/read-counter poll_zero_timeout)
+echo "$cnt1 poll_zero_timeout before pause; $cnt2 now"
+AT_CHECK([test $((cnt2 - cnt1)) -lt 100])
 
 as az1 check ovn-appctl -t ic/ovn-ic resume
 
