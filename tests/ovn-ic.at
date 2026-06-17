@@ -4871,6 +4871,26 @@ check_column "ts1 ts2 ts3" ic-sb:Datapath_Binding transit_switch
 
 as az2 check ovn-appctl -t ic/ovn-ic resume
 
+# Now do the same on a "slow" ovn-ic-sb
+OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status)" = "xStatus: active"])
+
+AS_BOX([$(date +%H:%M:%S.%03N) Pausing ovn-ic-sb])
+AT_CHECK([kill -STOP $(cat ovn-ic-sb/ovsdb-server.pid)])
+
+as az1 check ovn-appctl -t ic/ovn-ic pause
+OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status)" = "xStatus: paused"])
+
+check ovn-ic-nbctl ts-add ts4
+
+AS_BOX([$(date +%H:%M:%S.%03N) Resuming ovn-ic-sb])
+AT_CHECK([kill -CONT $(cat ovn-ic-sb/ovsdb-server.pid)])
+
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts4
+check_row_count ic-sb:Datapath_Binding 4
+check_column "ts1 ts2 ts3 ts4" ic-sb:Datapath_Binding transit_switch
+
+as az1 check ovn-appctl -t ic/ovn-ic resume
+
 for i in 1 2; do
     az=az$i
     ovn_as $az

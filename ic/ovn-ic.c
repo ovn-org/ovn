@@ -3809,6 +3809,7 @@ main(int argc, char *argv[])
 
     exiting = false;
     state.had_lock = false;
+    state.had_isb_lock = false;
     state.paused = false;
 
     while (!exiting) {
@@ -3844,8 +3845,7 @@ main(int argc, char *argv[])
                  * Ensure that only a single ovn-ic has the permission to
                  * write to IC-SB.
                  */
-                VLOG_INFO("OVN ISB lock acquired. "
-                          "This ovn-ic instance is now active.");
+                VLOG_INFO("Acquiring OVN ISB lock.");
                 ovsdb_idl_set_lock(ovnisb_idl_loop.idl, "ovn_ic_sb");
             }
 
@@ -3969,6 +3969,17 @@ main(int argc, char *argv[])
                 state.had_lock = false;
             }
 
+            if (!state.had_isb_lock && ovsdb_idl_has_lock(ctx.ovnisb_idl)) {
+                VLOG_INFO("OVN ISB lock acquired. "
+                          "This ovn-ic instance is now active.");
+                state.had_isb_lock = true;
+                inc_proc_ic_force_recompute_immediate();
+            } else if (state.had_isb_lock &&
+                       !ovsdb_idl_has_lock(ctx.ovnisb_idl)) {
+                VLOG_INFO("OVN ISB lock lost.");
+                state.had_isb_lock = false;
+            }
+
             if (ovsdb_idl_has_lock(ctx.ovnsb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnnb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnsb_idl) &&
@@ -4055,6 +4066,7 @@ main(int argc, char *argv[])
                 VLOG_INFO("This ovn-ic instance is now paused. "
                           "Removing IC-SB lock.");
                 ovsdb_idl_set_lock(ovnisb_idl_loop.idl, NULL);
+                state.had_isb_lock = false;
             }
 
             if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl) ||

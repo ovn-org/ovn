@@ -53,7 +53,8 @@ struct ic_context {
 };
 
 struct ic_state {
-    bool had_lock;
+    bool had_lock; /* Lock to local AZ SB */
+    bool had_isb_lock; /* Lock to ISB */
     bool paused;
 };
 
