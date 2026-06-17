@@ -3389,6 +3389,25 @@ OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
 192.168.0.0/24 169.254.101.22
 ])
 
+# Do the same but with ovn-ic handling both northd and isb change at the same time.
+echo az1/ic going to sleep
+AT_CHECK([kill -STOP $(cat az1/ic/ovn-ic.pid)])
+on_exit "test -e az1/ic/ovn-ic.pid && kill -CONT $(cat az1/ic/ovn-ic.pid)"
+
+check ovn_as az1 ovn-nbctl --wait=sb set logical_router lr11 enable=false
+echo az1/ic going to wake up
+AT_CHECK([kill -CONT $(cat az1/ic/ovn-ic.pid)])
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+])
+
+check ovn_as az1 ovn-nbctl set logical_router lr11 enable=true
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.0.0/24 169.254.101.22
+])
+
 OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
