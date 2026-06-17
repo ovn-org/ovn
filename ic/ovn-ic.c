@@ -1711,6 +1711,32 @@ advertise_routes(struct ic_context *ctx,
 }
 
 static void
+collect_learned_routes(struct ic_router_info *ic_lr)
+{
+    const struct nbrec_logical_router *lr = ic_lr->lr;
+
+    /* Check static routes of the LR and collect learned routes */
+    for (int i = 0; i < lr->n_static_routes; i++) {
+        const struct nbrec_logical_router_static_route *nb_route
+            = lr->static_routes[i];
+        struct uuid isb_uuid;
+        if (smap_get_uuid(&nb_route->external_ids, "ic-learned-route",
+                          &isb_uuid)) {
+            /* It is a learned route */
+            if (!add_to_routes_learned(&ic_lr->routes_learned, nb_route, lr,
+                                       &isb_uuid)) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl, "Bad format of learned route in NB: "
+                             "%s -> %s. Delete it.", nb_route->ip_prefix,
+                             nb_route->nexthop);
+                nbrec_logical_router_update_static_routes_delvalue(lr,
+                    nb_route);
+            }
+        }
+    }
+}
+
+static void
 build_ts_routes_to_adv(struct ic_context *ctx,
                        struct ic_router_info *ic_lr,
                        struct hmap *routes_ad,
@@ -1778,6 +1804,7 @@ collect_lr_routes(struct ic_context *ctx,
 
     struct hmap *routes_ad;
     const struct icnbrec_transit_switch *t_sw;
+    bool routes_built = false;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
         key = icnbrec_transit_switch_index_init_row(
@@ -1807,9 +1834,16 @@ collect_lr_routes(struct ic_context *ctx,
         }
         lrp_name = get_lrp_name_by_ts_port_name(ctx, isb_pb->logical_port);
         route_table = get_route_table_by_lrp_name(ctx, lrp_name);
+        routes_built = true;
         build_ts_routes_to_adv(ctx, ic_lr, routes_ad, &ts_port_addrs,
                                nb_global, route_table);
         destroy_lport_addresses(&ts_port_addrs);
+    }
+    /* If no port binding had valid addresses (e.g. LR disabled
+     * and PB address cleared simultaneously), collect learned routes so
+     * they can be deleted by sync_learned_routes(). */
+    if (!routes_built) {
+        collect_learned_routes(ic_lr);
     }
 }
 
