@@ -196,7 +196,7 @@ enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
                     struct shash *isb_ts_dps, struct shash *isb_tr_dps)
 {
     const struct icsbrec_datapath_binding *isb_dp;
-    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_unlocked_idl) {
+    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
         ovn_add_tnlid(dp_tnlids, isb_dp->tunnel_key);
 
         enum ic_datapath_type dp_type = ic_dp_get_type(isb_dp);
