@@ -16988,6 +16988,8 @@ build_lrouter_ipv4_default_ttl_expired_flows(
         ds_clear(&ip_ds);
         if (lrp_is_l3dgw(op)) {
             ds_put_cstr(&ip_ds, "ip4.dst <-> ip4.src");
+            ds_put_format(match, "is_chassis_resident(%s) && ",
+                          op->cr_port->json_key);
         } else {
             ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
                           op->lrp_networks.ipv4_addrs[i].addr_s);
@@ -17064,6 +17066,8 @@ build_lrouter_ipv6_default_ttl_expired_flows(
         ds_clear(&ip_ds);
         if (lrp_is_l3dgw(op)) {
             ds_put_cstr(&ip_ds, "ip6.dst <-> ip6.src");
+            ds_put_format(match, "is_chassis_resident(%s) && ",
+                          op->cr_port->json_key);
         } else {
             ds_put_format(&ip_ds, "ip6.dst = ip6.src; ip6.src = %s",
                           op->lrp_networks.ipv6_addrs[i].addr_s);

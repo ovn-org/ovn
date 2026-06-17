@@ -2499,7 +2499,9 @@ traffic, potentially for forwarding:
 - ICMP time exceeded.  For each router port *P*, whose IP address is *A*, a
   priority-31 flow with match ``inport == P && ip.ttl == {0, 1} &&
   !ip.later_frag`` matches packets whose TTL has expired, with the following
-  actions to send an ICMP time exceeded reply for IPv4 and IPv6 respectively::
+  actions to send an ICMP time exceeded reply for IPv4 and IPv6 respectively.
+  If the router port *P* is a distributed gateway router port, then the
+  ``is_chassis_resident(cr-P)`` is also added in the match condition::
 
       icmp4 {
           icmp4.type = 11; /* Time exceeded. */
