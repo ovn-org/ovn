@@ -858,7 +858,13 @@ Status: paused
 AS_BOX([Verify that ovn-northd is paused])
 # Now ovn-northd won't respond by adding a datapath, because it's paused.
 check ovn-nbctl ls-add sw0
+cnt1=$(as northd ovn-appctl -t ovn-northd coverage/read-counter poll_zero_timeout)
 check sleep 5
+cnt2=$(as northd ovn-appctl -t ovn-northd coverage/read-counter poll_zero_timeout)
+delta=$((cnt2 - cnt1))
+echo "$cnt1 poll_zero_timeout before sleep(5), and $cnt2 after"
+AT_CHECK([test $((cnt2 - cnt1)) -lt 100])
+
 check_row_count Datapath_Binding 0
 
 # Do not resume both main and backup right after each other

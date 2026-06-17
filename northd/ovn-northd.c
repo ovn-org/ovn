@@ -1173,7 +1173,7 @@ main(int argc, char *argv[])
             ovsdb_idl_wait(ovnsb_idl_loop.idl);
 
             /* Force a full recompute next time we become active. */
-            inc_proc_northd_force_recompute_immediate();
+            inc_proc_northd_force_recompute();
         }
 
         if (clear_idl_track) {
@@ -1237,6 +1237,7 @@ ovn_northd_pause(struct unixctl_conn *conn, int argc OVS_UNUSED,
     struct northd_state  *state = state_;
     state->paused = true;
 
+    poll_immediate_wake();
     unixctl_command_reply(conn, NULL);
 }
 
