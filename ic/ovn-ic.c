@@ -4062,7 +4062,8 @@ main(int argc, char *argv[])
              *      copy will be out of sync.
              *    - but we don't want to create any txns.
              * */
-            if (ovsdb_idl_has_lock(ovnisb_idl_loop.idl)) {
+            if (ovsdb_idl_has_lock(ovnisb_idl_loop.idl) ||
+                ovsdb_idl_is_lock_contended(ovnisb_idl_loop.idl)) {
                 VLOG_INFO("This ovn-ic instance is now paused. "
                           "Removing IC-SB lock.");
                 ovsdb_idl_set_lock(ovnisb_idl_loop.idl, NULL);

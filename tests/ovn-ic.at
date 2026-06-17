@@ -5061,3 +5061,42 @@ OVN_CLEANUP_IC([az1], [az2])
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic  - pause])
+ovn_init_ic_db
+net_add n1
+
+check ovn-ic-nbctl ts-add ts1
+ovn_start az1
+OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status)" = "xStatus: active"])
+OVS_WAIT_UNTIL([grep -q "OVN ISB lock acquired" az1/ic/ovn-ic.log])
+
+ovn_start az2
+
+AS_BOX([az2 paused])
+check as az2 ovn-appctl -t ic/ovn-ic pause
+OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status)" = "xStatus: paused"])
+n1_lock_notif=$(grep -c 'send notification, method="locked"' ovn-ic-sb/ovsdb-server.log)
+
+AS_BOX([az1 paused])
+check as az1 ovn-appctl -t ic/ovn-ic pause
+OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status)" = "xStatus: paused"])
+n2_lock_notif=$(grep -c 'send notification, method="locked"' ovn-ic-sb/ovsdb-server.log)
+
+# Pausing az1 should not cause az2 to own the lock: az2 is paused.
+echo "$n1_lock_notif before and $n2_lock_notif after pausing az1"
+AT_CHECK([test $n1_lock_notif -eq $n2_lock_notif])
+
+n1_lock_acquired=$(grep -c 'OVN ISB lock acquired' az1/ic/ovn-ic.log)
+AS_BOX([az1 resumed])
+check as az1 ovn-appctl -t ic/ovn-ic resume
+n2_lock_acquired=$(grep -c 'OVN ISB lock acquired' az1/ic/ovn-ic.log)
+echo "$n1_lock_acquired before and $n2_lock_acquired after resuming az1"
+OVS_WAIT_UNTIL([test $n1_lock_acquired -ne $n2_lock_acquired])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
