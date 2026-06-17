@@ -478,8 +478,15 @@ sync_isb_gw_to_sb(struct ic_context *ctx,
                   const struct icsbrec_gateway *gw,
                   const struct sbrec_chassis *chassis)
 {
+    struct smap temp_map;
     sbrec_chassis_set_hostname(chassis, gw->hostname);
-    sbrec_chassis_update_other_config_setkey(chassis, "is-remote", "true");
+    smap_clone(&temp_map, &chassis->other_config);
+    smap_replace(&temp_map, "is-remote", "true");
+    /* Use sbrec_chassis_set_other_config instead of
+     * sbrec_chassis_update_other_config_setkey so the in-memory datum is
+     * updated for reads in the same loop iteration. */
+    sbrec_chassis_set_other_config(chassis, &temp_map);
+    smap_destroy(&temp_map);
 
     /* Sync encaps used by this gateway. */
     ovs_assert(gw->n_encaps);
