@@ -4024,7 +4024,10 @@ nd.tll = <var>external_mac</var>;
           == <var>P</var> &amp;&amp; ip.ttl == {0, 1} &amp;&amp;
           !ip.later_frag</code> matches packets whose TTL has expired, with the
           following actions to send an ICMP time exceeded reply for IPv4 and
-          IPv6 respectively:
+          IPv6 respectively.  If the router port <code>P</code> is a
+          distributed gateway router port, then the
+          <code>is_chassis_resident(cr-P)</code> is also added in the match
+          condition:
         </p>
 
         <pre>
