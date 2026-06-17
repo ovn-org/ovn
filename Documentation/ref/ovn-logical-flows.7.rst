@@ -2416,8 +2416,8 @@ contains the following flows to implement very basic IP host functionality.
 
   - If the corresponding NAT rule cannot be handled in a distributed manner,
     then a priority-92 flow is programmed on the gateway port instance on the
-    gateway chassis.  A priority-91 drop flow is programmed on the other chassis
-    when ARP requests/NS packets are received on the gateway port. This behavior
+    gateway chassis.  A priority-85 drop flow is programmed on all chassis
+    when ARP requests/NS packets are received. This behavior
     avoids generation of multiple ARP responses from different chassis, and
     allows upstream MAC learning to point to the gateway chassis.
 
