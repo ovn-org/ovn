@@ -407,6 +407,40 @@ static const char *reg_ct_state[] = {
     PIPELINE_STAGES
 #undef PIPELINE_STAGE
 
+/* Count how many switch/router pipeline stages we have and check
+ * that LOG_PIPELINE_INGRESS_LEN and LOG_PIPELINE_EGRESS_LEN
+ * reflect reality. */
+#define PIPELINE_STAGE(DP_TYPE, PIPELINE, STAGE, TABLE, NAME) \
+    _COUNTER_##DP_TYPE##_##PIPELINE##_##STAGE,
+
+#define PIPELINE_LEN_COUNTER(DP_TYPE, PIPELINE) \
+    enum {                                      \
+        DP_TYPE##_##PIPELINE##_PIPELINE_STAGES  \
+        DP_TYPE##_##PIPELINE##_N_STAGES         \
+    };
+
+PIPELINE_LEN_COUNTER(SWITCH, IN)
+PIPELINE_LEN_COUNTER(SWITCH, OUT)
+PIPELINE_LEN_COUNTER(ROUTER, IN)
+PIPELINE_LEN_COUNTER(ROUTER, OUT)
+#undef PIPELINE_STAGE
+
+BUILD_ASSERT_DECL(
+    (size_t) SWITCH_IN_N_STAGES > (size_t) ROUTER_IN_N_STAGES
+    ? LOG_PIPELINE_INGRESS_LEN == SWITCH_IN_N_STAGES
+    : LOG_PIPELINE_INGRESS_LEN == ROUTER_IN_N_STAGES
+);
+
+BUILD_ASSERT_DECL(
+    (size_t) SWITCH_OUT_N_STAGES > (size_t) ROUTER_OUT_N_STAGES
+    ? LOG_PIPELINE_EGRESS_LEN == SWITCH_OUT_N_STAGES
+    : LOG_PIPELINE_EGRESS_LEN == ROUTER_OUT_N_STAGES
+);
+
+BUILD_ASSERT_DECL(
+    LOG_PIPELINE_EGRESS_LEN == SWITCH_OUT_N_STAGES ||
+    LOG_PIPELINE_EGRESS_LEN == ROUTER_OUT_N_STAGES);
+
 bool
 ovn_stage_equal(const struct ovn_stage *a, const struct ovn_stage *b)
 {

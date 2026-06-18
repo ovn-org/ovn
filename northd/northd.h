@@ -509,8 +509,14 @@ ls_has_localnet_port(const struct ovn_datapath *od)
 }
 
 /* Pipeline stages. */
-#define PIPELINE_STAGES                                                   \
-    /* Logical switch ingress stages. */                                  \
+#define PIPELINE_STAGES       \
+   SWITCH_IN_PIPELINE_STAGES  \
+   SWITCH_OUT_PIPELINE_STAGES \
+   ROUTER_IN_PIPELINE_STAGES  \
+   ROUTER_OUT_PIPELINE_STAGES
+
+/* Logical switch ingress stages. */
+#define SWITCH_IN_PIPELINE_STAGES                                            \
     PIPELINE_STAGE(SWITCH, IN,  CHECK_PORT_SEC, 0, "ls_in_check_port_sec")   \
     PIPELINE_STAGE(SWITCH, IN,  APPLY_PORT_SEC, 1, "ls_in_apply_port_sec")   \
     PIPELINE_STAGE(SWITCH, IN,  MIRROR,         2, "ls_in_mirror")        \
@@ -550,9 +556,10 @@ ls_has_localnet_port(const struct ovn_datapath *od)
     PIPELINE_STAGE(SWITCH, IN,  DNS_RESPONSE,  31, "ls_in_dns_response")  \
     PIPELINE_STAGE(SWITCH, IN,  EXTERNAL_PORT, 32, "ls_in_external_port") \
     PIPELINE_STAGE(SWITCH, IN,  L2_LKUP,       33, "ls_in_l2_lkup")       \
-    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    34, "ls_in_l2_unknown")    \
-                                                                          \
-    /* Logical switch egress stages. */                                   \
+    PIPELINE_STAGE(SWITCH, IN,  L2_UNKNOWN,    34, "ls_in_l2_unknown")
+
+/* Logical switch egress stages. */
+#define SWITCH_OUT_PIPELINE_STAGES                                           \
     PIPELINE_STAGE(SWITCH, OUT, LOOKUP_FDB,      0, "ls_out_lookup_fdb")     \
     PIPELINE_STAGE(SWITCH, OUT, PUT_FDB,         1, "ls_out_put_fdb")        \
     PIPELINE_STAGE(SWITCH, OUT, PRE_ACL,         2, "ls_out_pre_acl")        \
@@ -570,9 +577,10 @@ ls_has_localnet_port(const struct ovn_datapath *od)
     PIPELINE_STAGE(SWITCH, OUT, NF,             13,                          \
                    "ls_out_network_function")                                \
     PIPELINE_STAGE(SWITCH, OUT, CHECK_PORT_SEC, 14, "ls_out_check_port_sec") \
-    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 15, "ls_out_apply_port_sec") \
-                                                                      \
-    /* Logical router ingress stages. */                              \
+    PIPELINE_STAGE(SWITCH, OUT, APPLY_PORT_SEC, 15, "ls_out_apply_port_sec")
+
+/* Logical router ingress stages. */
+#define ROUTER_IN_PIPELINE_STAGES                                         \
     PIPELINE_STAGE(ROUTER, IN,  ADMISSION,       0, "lr_in_admission")    \
     PIPELINE_STAGE(ROUTER, IN,  LOOKUP_NEIGHBOR, 1, "lr_in_lookup_neighbor") \
     PIPELINE_STAGE(ROUTER, IN,  LEARN_NEIGHBOR,  2, "lr_in_learn_neighbor") \
@@ -604,9 +612,10 @@ ls_has_localnet_port(const struct ovn_datapath *od)
     PIPELINE_STAGE(ROUTER, IN,  NETWORK_ID,      26, "lr_in_network_id")      \
     PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     27, "lr_in_arp_request")     \
     PIPELINE_STAGE(ROUTER, IN,  ECMP_STATEFUL_EGR, 28,                        \
-                                "lr_in_ecmp_stateful_egr")                    \
-                                                                      \
-    /* Logical router egress stages. */                               \
+                                "lr_in_ecmp_stateful_egr")
+
+/* Logical router egress stages. */
+#define ROUTER_OUT_PIPELINE_STAGES                                           \
     PIPELINE_STAGE(ROUTER, OUT, CHECK_DNAT_LOCAL,   0,                       \
                    "lr_out_chk_dnat_local")                                  \
     PIPELINE_STAGE(ROUTER, OUT, UNDNAT,             1, "lr_out_undnat")      \
