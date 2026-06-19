@@ -2354,7 +2354,7 @@ fi
 
 AT_CLEANUP
 
-AT_SETUP([ovn multinode - Transit Router])
+AT_SETUP([ovn multinode - Transit Router + Transit Switch])
 
 # Check that ovn-fake-multinode setup is up and running
 check_fake_multinode_setup
@@ -2424,7 +2424,7 @@ for i in 1 2; do
     check m_as $chassis ovs-vsctl set open . external_ids:ovn-is-interconn=true
 done
 
-# Do the ovn-ic setup.
+# Add TR and TS
 check m_central_as ovn-ic-nbctl tr-add tr
 check m_central_as ovn-ic-nbctl trp-add tr tr-gw1 \
     00:00:00:00:30:02 100.65.0.2/30 100:65::2/126 \
@@ -2432,6 +2432,15 @@ check m_central_as ovn-ic-nbctl trp-add tr tr-gw1 \
 check m_central_as ovn-ic-nbctl trp-add tr tr-gw2 \
     00:00:00:00:30:06 100.65.0.6/30 100:65::6/126 \
     chassis=ovn-chassis-2
+check m_central_as ovn-ic-nbctl ts-add ts
+check m_central_as ovn-ic-nbctl tsp-add ts ts-tr type=router peer=tr-ts
+check m_central_as ovn-ic-nbctl tsp-set-addr ts-tr "00:00:00:00:10:00 10.100.200.1 10:200::1"
+check m_central_as ovn-ic-nbctl tsp-add ts pod10 chassis=ovn-chassis-1
+check m_central_as ovn-ic-nbctl tsp-set-addr pod10 "00:00:00:00:10:10 10.100.200.10 10:200::10"
+check m_central_as ovn-ic-nbctl tsp-add ts pod20 chassis=ovn-chassis-2
+check m_central_as ovn-ic-nbctl tsp-set-addr pod20 "00:00:00:00:10:20 10.100.200.20 10:200::20"
+check m_central_as ovn-ic-nbctl tsp-add ts mgmt
+check m_central_as ovn-ic-nbctl tsp-set-addr mgmt "00:00:00:00:10:11 10.100.200.11 10:200::11"
 check m_central_as ovn-ic-nbctl --wait=sb sync
 
 for i in 1 2; do
@@ -2446,29 +2455,9 @@ for i in 1 2; do
 
     check m_as $chassis ovn-nbctl set logical_router gw options:chassis=$chassis
 
-    # Add TR and set the same tunnel key for both chassis
-    check m_as $chassis ovn-nbctl ls-add ts
-    check m_as $chassis ovn-nbctl set logical_switch ts other_config:requested-tnl-key=10
-
-    check m_as $chassis ovn-nbctl lsp-add-router-port ts ts-tr tr-ts
-
     check m_as $chassis ovn-nbctl lrp-add tr tr-ts 00:00:00:00:10:00 10.100.200.1/24 10:200::1/64
-    check m_as $chassis ovn-nbctl set logical_router tr options:requested-tnl-key=20
     check m_as $chassis ovn-nbctl lrp-set-gateway-chassis tr-ts $chassis
 
-    # Add TS pods, with the same tunnel keys on both sides
-    check m_as $chassis ovn-nbctl lsp-add ts pod10
-    check m_as $chassis ovn-nbctl lsp-set-addresses pod10 "00:00:00:00:10:10 10.100.200.10 10:200::10"
-    check m_as $chassis ovn-nbctl set logical_switch_port pod10 options:requested-tnl-key=10
-
-    check m_as $chassis ovn-nbctl lsp-add ts pod20
-    check m_as $chassis ovn-nbctl lsp-set-addresses pod20 "00:00:00:00:10:20 10.100.200.20 10:200::20"
-    check m_as $chassis ovn-nbctl set logical_switch_port pod20 options:requested-tnl-key=20
-
-    # Add mgmt pod
-    check m_as $chassis ovn-nbctl lsp-add ts mgmt
-    check m_as $chassis ovn-nbctl lsp-set-addresses mgmt "00:00:00:00:10:11 10.100.200.11 10:200::11"
-    check m_as $chassis ovn-nbctl set logical_switch_port mgmt options:requested-tnl-key=11
 done
 
 # Add SNAT for the GW router that corresponds to "gw-tr" LRP IP
@@ -2498,18 +2487,6 @@ check m_as ovn-chassis-1 ovn-nbctl set logical_router tr options:ct-commit-all="
 
 check m_as ovn-chassis-1 ovn-nbctl lsp-add public external
 check m_as ovn-chassis-1 ovn-nbctl lsp-set-addresses external "00:00:00:00:20:10 192.168.100.10 1000::10"
-
-# Configure ports on the transit switch as remotes
-check m_as ovn-chassis-1 ovn-nbctl lsp-set-type pod20 remote
-check m_as ovn-chassis-1 ovn-nbctl lsp-set-options pod10 requested-chassis=ovn-chassis-1
-check m_as ovn-chassis-1 ovn-nbctl lsp-set-options mgmt requested-chassis=ovn-chassis-1
-check m_as ovn-chassis-1 ovn-nbctl lsp-set-options pod20 requested-chassis=ovn-chassis-2
-
-check m_as ovn-chassis-2 ovn-nbctl lsp-set-type pod10 remote
-check m_as ovn-chassis-2 ovn-nbctl lsp-set-type mgmt remote
-check m_as ovn-chassis-2 ovn-nbctl lsp-set-options pod10 requested-chassis=ovn-chassis-1
-check m_as ovn-chassis-2 ovn-nbctl lsp-set-options mgmt requested-chassis=ovn-chassis-1
-check m_as ovn-chassis-2 ovn-nbctl lsp-set-options pod20 requested-chassis=ovn-chassis-2
 
 m_as ovn-chassis-1 /data/create_fake_vm.sh external external 00:00:00:00:20:10 1500 192.168.100.10 24 192.168.100.1 1000::10/64 1000::1
 m_as ovn-chassis-1 /data/create_fake_vm.sh pod10 pod10 00:00:00:00:10:10 1500 10.100.200.10 24 10.100.200.1 10:200::10/64 10:200::1

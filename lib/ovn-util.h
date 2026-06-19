@@ -794,6 +794,10 @@ char *normalize_ipv6_addr_str(const char *orig_addr);
 
 char *normalize_addr_str(const char *orig_addr);
 
+bool port_contains_duplicate_ip(struct lport_addresses *laddrs1,
+                                struct lport_addresses *laddrs2,
+                                const char *port_name, char **error_str);
+
 #define NEIGH_REDISTRIBUTE_MODES    \
     NEIGH_REDISTRIBUTE_MODE(FDB, 0) \
     NEIGH_REDISTRIBUTE_MODE(IP, 1)

@@ -61,6 +61,73 @@ AT_CHECK([ovn-ic-nbctl ts-del ts2], [1], [],
 
 AT_CHECK([ovn-ic-nbctl --if-exists ts-del ts2])
 
+AT_CHECK([ovn-ic-nbctl --may-exist ts-add ts0])
+AT_CHECK([ovn-ic-nbctl ts-list | uuidfilt], [0], [dnl
+<0> (ts0)
+])
+
+AT_CHECK([ovn-ic-nbctl tsp-add], [1], [],
+  [ovn-ic-nbctl: 'tsp-add' command requires at least 2 arguments
+])
+
+AT_CHECK([ovn-ic-nbctl tsp-add ts0], [1], [],
+  [ovn-ic-nbctl: 'tsp-add' command requires at least 2 arguments
+])
+
+AT_CHECK([ovn-ic-nbctl tsp-add ts0 ts0-p0 chassis=chassis])
+AT_CHECK([ovn-ic-nbctl tsp-add ts0 ts0-p0], [1], [],
+    [ovn-ic-nbctl: ts0-p0: a port with this name already exists
+])
+
+AT_CHECK([ovn-ic-nbctl --may-exist tsp-add ts0 ts0-p0 chassis=chassis])
+AT_CHECK([ovn-ic-nbctl tsp-set-addr ts0-p0 "00:11:22:11:22:33 192.168.10.10"])
+AT_CHECK([ovn-ic-nbctl tsp-set-addr ts0-p1 "00:11:22:11:22:34 192.168.10.11"], [1], [],
+    [ovn-ic-nbctl: ts0-p1: switch port name not found
+])
+
+check_column "00:11:22:11:22:33 192.168.10.10" ic-nb:transit_switch_port addresses name=ts0-p0
+check_column "" ic-nb:transit_switch_port peer name=ts0-p0
+check_column "" ic-nb:transit_switch_port type name=ts0-p0
+check_column "chassis" ic-nb:transit_switch_port chassis name=ts0-p0
+
+AT_CHECK([ovn-ic-nbctl tsp-set-addr ts0-p0 "aa:bb:cc:aa:bb:cc 192.168.11.11"])
+check_column "aa:bb:cc:aa:bb:cc 192.168.11.11" ic-nb:transit_switch_port addresses name=ts0-p0
+check_column "" ic-nb:transit_switch_port peer name=ts0-p0
+check_column "" ic-nb:transit_switch_port type name=ts0-p0
+check_column "chassis" ic-nb:transit_switch_port chassis name=ts0-p0
+
+AT_CHECK([ovn-ic-nbctl tsp-set-addr ts0-p0])
+check_column "" ic-nb:transit_switch_port addresses name=ts0-p0
+
+AT_CHECK([ovn-ic-nbctl tsp-del], [1], [],
+  [ovn-ic-nbctl: 'tsp-del' command requires at least 1 arguments
+])
+AT_CHECK([ovn-ic-nbctl tsp-del ts0-p0])
+AT_CHECK([ovn-ic-nbctl tsp-del ts0-p0], [1], [],
+  [ovn-ic-nbctl: ts0-p0: switch port name not found
+])
+AT_CHECK([ovn-ic-nbctl --if-exists trp-del tr0-p0])
+
+dnl tsp-del --if-exists on nonexistent port should succeed silently
+AT_CHECK([ovn-ic-nbctl --if-exists tsp-del nonexistent-port])
+
+dnl tsp-add to nonexistent transit switch should fail
+AT_CHECK([ovn-ic-nbctl tsp-add no-such-ts port1], [1], [],
+  [ovn-ic-nbctl: no-such-ts: switch name not found
+])
+
+dnl tsp-set-addr with invalid address format
+AT_CHECK([ovn-ic-nbctl tsp-add ts0 ts0-p1])
+AT_CHECK([ovn-ic-nbctl tsp-set-addr ts0-p1 "not-a-valid-address"], [1], [],
+  [ovn-ic-nbctl: not-a-valid-address: Invalid address format. See ovn-ic-nb(5). Hint: An Ethernet address must be listed before an IP address, together as a single argument.
+])
+
+dnl tsp-set-addr with multiple address arguments
+AT_CHECK([ovn-ic-nbctl tsp-set-addr ts0-p1 "aa:bb:cc:dd:ee:f1 10.0.0.1" "aa:bb:cc:dd:ee:f2 10.0.0.2"])
+check_column "aa:bb:cc:dd:ee:f1 10.0.0.1 aa:bb:cc:dd:ee:f2 10.0.0.2" ic-nb:transit_switch_port addresses name=ts0-p1
+
+AT_CHECK([ovn-ic-nbctl tsp-del ts0-p1])
+
 OVN_IC_NBCTL_TEST_STOP
 AT_CLEANUP
 

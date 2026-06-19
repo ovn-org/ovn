@@ -50,6 +50,62 @@
       <dd>
         Lists all existing switches on standard output, one per line.
       </dd>
+
+      <dt>[<code>--may-exist</code>] <code>tsp-add</code> <var>switch</var>
+      <var>port</var> [<var>column</var>[<code>:</code><var>key</var>]
+      <code>=</code><var>value</var>]...</dt>
+      <dd>
+        <p>
+          Creates a new transit switch port named <var>port</var>
+          on <var>switch</var>.
+        </p>
+
+        <p>
+          Transit switch port names must be unique. Adding a duplicated name
+          results in an error. With <code>--may-exist</code>, adding a
+          duplicate name succeeds but does not create a new transit switch
+          port.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>tsp-del</code> <var>port</var></dt>
+      <dd>
+        Deletes <var>port</var>.  It is an error if <var>port</var> does
+        not exist, unless <code>--if-exists</code> is specified.
+      </dd>
+
+      <dt><code>tsp-set-addr</code> <var>port</var>
+        [<var>address</var>]...</dt>
+      <dd>
+        <p>
+          Sets the addresses associated with <var>port</var> to
+          <var>address</var>.  Each <var>address</var> should be one of the
+          following:
+        </p>
+
+        <dl>
+          <dt>an Ethernet address, optionally followed by a space and one or
+          more IP addresses</dt>
+          <dd>
+            OVN delivers packets for the Ethernet address to this port.
+          </dd>
+
+          <dt><code>router</code></dt>
+          <dd>
+            Accepted only when the <code>type</code> of the transit switch
+            port is <code>router</code>.  This indicates that the Ethernet,
+            IPv4, and IPv6 addresses for this transit switch port should be
+            obtained from the connected logical router port, as specified by
+            peer <ref column="peer"
+            table="Transit_Switch_Port" db="OVN_IC_Northbound"/> column.
+          </dd>
+        </dl>
+
+        <p>
+          Multiple addresses may be set.  If no <var>address</var> argument is
+          given, <var>port</var> will have no addresses associated with it.
+        </p>
+      </dd>
     </dl>
 
     <h1>Database Commands</h1>

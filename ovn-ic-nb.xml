@@ -112,6 +112,10 @@
       </column>
     </group>
 
+    <column name="ports">
+      The transit switch's <ref table="Transit_Switch_Port"/> ports.
+    </column>
+
     <group title="Common Columns">
       <column name="other_config"/>
       <column name="external_ids">
@@ -187,6 +191,43 @@
 
     <group title="Common Columns">
       <column name="other_config"/>
+    </group>
+  </table>
+
+  <table name="Transit_Switch_Port" title="Transit logical switch port">
+    <p>
+      Each row represents one transit logical switch port for interconnection
+      between different OVN deployments (availability zones).
+    </p>
+
+    <group title="Naming">
+      <column name="name">
+        A name that uniquely identifies the transit logical switch port.
+      </column>
+    </group>
+
+    <column name="type">
+      The type of the port.  Set to <code>router</code> for a port
+      connected to a logical router, or leave empty for a VIF port.
+    </column>
+
+    <column name="chassis">
+      The chassis this switch port should be bound to.  If empty,
+      the port is local to all availability zones.
+    </column>
+
+    <column name="peer">
+      The name of the peer logical router port, used when
+      <ref column="type"/> is <code>router</code>.
+    </column>
+
+    <column name="addresses">
+      The addresses associated with this port.
+    </column>
+
+    <group title="Common Columns">
+      <column name="other_config"/>
+      <column name="external_ids"/>
     </group>
   </table>
 

@@ -1514,50 +1514,6 @@ nbctl_pre_lsp_set_addresses(struct ctl_context *ctx)
                          &nbrec_logical_switch_port_col_dynamic_addresses);
 }
 
-static bool
-lsp_contains_duplicate_ip(struct lport_addresses *laddrs1,
-                          struct lport_addresses *laddrs2,
-                          const struct nbrec_logical_switch_port *lsp_test,
-                          char **error_str)
-{
-    for (size_t i = 0; i < laddrs1->n_ipv4_addrs; i++) {
-        for (size_t j = 0; j < laddrs2->n_ipv4_addrs; j++) {
-            if (laddrs1->ipv4_addrs[i].addr == laddrs2->ipv4_addrs[j].addr) {
-                if (error_str) {
-                    *error_str = xasprintf("duplicate IPv4 address '%s' "
-                                           "found on logical switch "
-                                           "port '%s'",
-                                           laddrs1->ipv4_addrs[i].addr_s,
-                                           lsp_test->name);
-                }
-                return true;
-            }
-        }
-    }
-
-    for (size_t i = 0; i < laddrs1->n_ipv6_addrs; i++) {
-        for (size_t j = 0; j < laddrs2->n_ipv6_addrs; j++) {
-            if (IN6_ARE_ADDR_EQUAL(&laddrs1->ipv6_addrs[i].addr,
-                                   &laddrs2->ipv6_addrs[j].addr)) {
-                if (error_str) {
-                    *error_str = xasprintf("duplicate IPv6 address "
-                                           "'%s' found on logical "
-                                           "switch port '%s'",
-                                           laddrs1->ipv6_addrs[i].addr_s,
-                                           lsp_test->name);
-                }
-                return true;
-            }
-        }
-    }
-
-    if (error_str) {
-        *error_str = NULL;
-    }
-
-    return false;
-}
-
 static char *
 lsp_contains_duplicates(const struct nbrec_logical_switch *ls,
                         const struct nbrec_logical_switch_port *lsp,
@@ -1581,9 +1537,8 @@ lsp_contains_duplicates(const struct nbrec_logical_switch *ls,
                 addr = lsp_test->dynamic_addresses;
             }
             if (extract_lsp_addresses(addr, &laddrs_test)) {
-                bool has_duplicate =
-                    lsp_contains_duplicate_ip(&laddrs, &laddrs_test,
-                                              lsp_test, &sub_error);
+                bool has_duplicate = port_contains_duplicate_ip(
+                    &laddrs, &laddrs_test, lsp_test->name, &sub_error);
                 destroy_lport_addresses(&laddrs_test);
                 if (has_duplicate) {
                     goto err_out;
@@ -8885,8 +8840,8 @@ lsp_health_check_parse_target_address(
             goto cleanup;
         }
 
-        if (lsp_contains_duplicate_ip(&target_address,
-                                      &lsp_address, lsp, NULL)) {
+        if (port_contains_duplicate_ip(&target_address, &lsp_address,
+                                       lsp->name, NULL)) {
             ip_found_on_port = true;
         }
 
