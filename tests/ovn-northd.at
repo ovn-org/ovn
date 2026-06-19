@@ -12,6 +12,7 @@ m4_define([_DUMP_DB_TABLES], [
     ovn-sbctl list meter >> $1
     ovn-sbctl list meter_band >> $1
     ovn-sbctl list port_group >> $1
+    ovn-sbctl list multicast_group >> $1
     ovn-sbctl list bfd >> $1
     ovn-sbctl dump-flows > lflows_$1
 ])
@@ -15851,6 +15852,101 @@ wait_row_count IGMP_Group 0 address=239.0.1.68
 wait_row_count Multicast_Group 0 name=239.0.1.68
 
 OVN_CLEANUP([hv1], [hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Multicast group incremental processing])
+ovn_start
+
+dnl Helper: verify that Multicast_Group 'mc_name' on datapath 'dp_name'
+dnl contains exactly the listed ports.
+dnl Usage: check_mc_group_ports MC_NAME DP_NAME PORT1 [PORT2 ...]
+check_mc_group_ports() {
+    mc_group_name=$1; shift
+    mc_group_dp=$(fetch_column Datapath_Binding _uuid external_ids:name=$1); shift
+    mc_group_expected=""
+    for port_name; do
+        mc_group_expected="$mc_group_expected $(fetch_column Port_Binding _uuid logical_port=$port_name)"
+    done
+    mc_group_expected=$(echo $mc_group_expected | tr ' ' '\n' | sort | xargs)
+
+    OVS_WAIT_UNTIL([
+        mc_group_found=$(fetch_column Multicast_Group ports name=$mc_group_name datapath=$mc_group_dp)
+        test "$mc_group_found" = "$mc_group_expected"
+    ])
+}
+
+check ovn-nbctl --wait=sb ls-add ls0
+check ovn-nbctl --wait=sb lsp-add-localnet-port ls0 ln0 physnet0
+
+dnl Baseline: localnet port only.
+check_mc_group_ports _MC_flood ls0 ln0
+check_mc_group_ports _MC_flood_l2 ls0 ln0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Add an enabled VIF.
+check ovn-nbctl --wait=sb lsp-add ls0 lsp0
+check_mc_group_ports _MC_flood ls0 ln0 lsp0
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Add a disabled VIF; it must NOT appear in multicast groups.
+check ovn-nbctl --wait=sb \
+    lsp-add ls0 lsp1 \
+    -- set logical_switch_port lsp1 enabled=false
+check_mc_group_ports _MC_flood ls0 ln0 lsp0
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Enable the disabled VIF.
+check ovn-nbctl --wait=sb set logical_switch_port lsp1 enabled=true
+check_mc_group_ports _MC_flood ls0 ln0 lsp0 lsp1
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp0 lsp1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Disable an enabled VIF.
+check ovn-nbctl --wait=sb set logical_switch_port lsp0 enabled=false
+check_mc_group_ports _MC_flood ls0 ln0 lsp1
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Re-enable it.
+check ovn-nbctl --wait=sb set logical_switch_port lsp0 enabled=true
+check_mc_group_ports _MC_flood ls0 ln0 lsp0 lsp1
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp0 lsp1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Delete an enabled VIF.
+check ovn-nbctl --wait=sb lsp-del lsp0
+check_mc_group_ports _MC_flood ls0 ln0 lsp1
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Add a router and connect it to ls0.  The router LSP should appear
+dnl in _MC_flood but NOT in _MC_flood_l2 (router ports are excluded
+dnl from _MC_flood_l2).
+check ovn-nbctl --wait=sb \
+    lr-add lr0 \
+    -- lrp-add lr0 lr0-ls0 00:00:00:00:01:00 10.0.0.254/24 \
+    -- lsp-add-router-port ls0 ls0-lr0 lr0-ls0
+check_mc_group_ports _MC_flood ls0 ln0 lsp1 ls0-lr0
+check_mc_group_ports _MC_flood_l2 ls0 ln0 lsp1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Add a second switch connected to the router, with a localnet port
+dnl and a VIF.
+check ovn-nbctl --wait=sb \
+    ls-add ls1 \
+    -- lsp-add-localnet-port ls1 ln1 physnet1 \
+    -- lrp-add lr0 lr0-ls1 00:00:00:00:02:00 10.0.1.254/24 \
+    -- lsp-add-router-port ls1 ls1-lr0 lr0-ls1 \
+    -- lsp-add ls1 lsp2
+check_mc_group_ports _MC_flood ls1 ln1 ls1-lr0 lsp2
+check_mc_group_ports _MC_flood_l2 ls1 ln1 lsp2
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
