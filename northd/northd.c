@@ -20119,29 +20119,12 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         if (!handled) {
             return false;
         }
-
-        /* SB port_binding is not deleted, so don't update SB multicast
-         * groups. */
     }
 
     HMAPX_FOR_EACH (hmapx_node, &trk_lsps->created) {
         op = hmapx_node->data;
         /* Make sure 'op' is an lsp and not lrp. */
         ovs_assert(op->nbsp);
-
-        if (!lsp_can_receive_multicast(op->nbsp)) {
-            continue;
-        }
-
-        const struct sbrec_multicast_group *sbmc_flood =
-            mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
-                               MC_FLOOD, op->od->sdp->sb_dp);
-        const struct sbrec_multicast_group *sbmc_flood_l2 =
-            mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
-                               MC_FLOOD_L2, op->od->sdp->sb_dp);
-        const struct sbrec_multicast_group *sbmc_unknown =
-            mcast_group_lookup(lflow_input->sbrec_mcast_group_by_name_dp,
-                               MC_UNKNOWN, op->od->sdp->sb_dp);
 
         struct ds match = DS_EMPTY_INITIALIZER;
         struct ds actions = DS_EMPTY_INITIALIZER;
@@ -20176,30 +20159,6 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         if (!handled) {
             return false;
-        }
-
-        /* Update SB multicast groups for the new port. */
-        if (!sbmc_flood) {
-            sbmc_flood = create_sb_multicast_group(ovnsb_txn,
-                op->od->sdp->sb_dp, MC_FLOOD, OVN_MCAST_FLOOD_TUNNEL_KEY);
-        }
-        sbrec_multicast_group_update_ports_addvalue(sbmc_flood, op->sb);
-
-        if (!sbmc_flood_l2) {
-            sbmc_flood_l2 = create_sb_multicast_group(ovnsb_txn,
-                op->od->sdp->sb_dp, MC_FLOOD_L2,
-                OVN_MCAST_FLOOD_L2_TUNNEL_KEY);
-        }
-        sbrec_multicast_group_update_ports_addvalue(sbmc_flood_l2, op->sb);
-
-        if (op->has_unknown) {
-            if (!sbmc_unknown) {
-                sbmc_unknown = create_sb_multicast_group(ovnsb_txn,
-                    op->od->sdp->sb_dp, MC_UNKNOWN,
-                    OVN_MCAST_UNKNOWN_TUNNEL_KEY);
-            }
-            sbrec_multicast_group_update_ports_addvalue(sbmc_unknown,
-                                                        op->sb);
         }
     }
 
