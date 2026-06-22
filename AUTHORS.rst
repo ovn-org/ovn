@@ -259,6 +259,7 @@ Lili Huang                         huanglili.huang@huawei.com
 Linda Sun                          lsun@vmware.com
 Lior Neudorfer                     lior@guardicore.com
 Liu Chang                          txfh2007@aliyun.com
+Loke Berne                         loke@tehhobbit.net
 Lorand Jakab                       lojakab@cisco.com
 Lorenzo Bianconi                   lorenzo.bianconi@redhat.com
 Luca Giraudo
