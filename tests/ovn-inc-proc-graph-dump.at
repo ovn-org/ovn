@@ -289,9 +289,6 @@ digraph "Incremental-Processing-Engine" {
 	SB_dns [[style=filled, shape=box, fillcolor=white, label="SB_dns"]];
 	dns_cache [[style=filled, shape=box, fillcolor=white, label="dns_cache"]];
 	SB_dns -> dns_cache [[label="dns_cache_sb_dns_handler"]];
-	SB_sb_global [[style=filled, shape=box, fillcolor=white, label="SB_sb_global"]];
-	northd_options [[style=filled, shape=box, fillcolor=white, label="northd_options"]];
-	SB_sb_global -> northd_options [[label="en_northd_options_sb_sb_global_handler"]];
 	SB_dhcp_options [[style=filled, shape=box, fillcolor=white, label="SB_dhcp_options"]];
 	SB_dhcpv6_options [[style=filled, shape=box, fillcolor=white, label="SB_dhcpv6_options"]];
 	dhcp_options [[style=filled, shape=box, fillcolor=white, label="dhcp_options"]];
@@ -355,7 +352,6 @@ digraph "Incremental-Processing-Engine" {
 	SB_fdb [[style=filled, shape=box, fillcolor=white, label="SB_fdb"]];
 	SB_meter [[style=filled, shape=box, fillcolor=white, label="SB_meter"]];
 	lflow_output [[style=filled, shape=box, fillcolor=white, label="lflow_output"]];
-	northd_options -> lflow_output [[label=""]];
 	dhcp_options -> lflow_output [[label=""]];
 	addr_sets -> lflow_output [[label="lflow_output_addr_sets_handler"]];
 	port_groups -> lflow_output [[label="lflow_output_port_groups_handler"]];
@@ -375,6 +371,9 @@ digraph "Incremental-Processing-Engine" {
 	lb_data -> lflow_output [[label="lflow_output_lb_data_handler"]];
 	SB_fdb -> lflow_output [[label="lflow_output_sb_fdb_handler"]];
 	SB_meter -> lflow_output [[label="lflow_output_sb_meter_handler"]];
+	SB_sb_global [[style=filled, shape=box, fillcolor=white, label="SB_sb_global"]];
+	northd_options [[style=filled, shape=box, fillcolor=white, label="northd_options"]];
+	SB_sb_global -> northd_options [[label="en_northd_options_sb_sb_global_handler"]];
 	ct_zones [[style=filled, shape=box, fillcolor=white, label="ct_zones"]];
 	OVS_open_vswitch -> ct_zones [[label=""]];
 	OVS_bridge -> ct_zones [[label=""]];

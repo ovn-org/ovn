@@ -3739,13 +3739,11 @@ non_vif_data_ovs_iface_handler(struct engine_node *node, void *data OVS_UNUSED)
 }
 
 struct ed_type_northd_options {
-    bool explicit_arp_ns_output;
     bool always_tunnel; /* Indicates if the traffic to the
                          * logical port of a bridged logical
                          * switch (i.e with localnet port) should
                          * be tunnelled or sent via the localnet
                          * port.  Default value is 'false'. */
-    bool register_consolidation;
     bool enable_ch_nb_cfg_update;
 };
 
@@ -3772,23 +3770,11 @@ en_northd_options_run(struct engine_node *node, void *data)
     const struct sbrec_sb_global *sb_global =
         sbrec_sb_global_table_first(sb_global_table);
 
-    n_opts->explicit_arp_ns_output =
-            sb_global
-            ? smap_get_bool(&sb_global->options, "arp_ns_explicit_output",
-                            false)
-            : false;
-
     n_opts->always_tunnel =
             sb_global
             ? smap_get_bool(&sb_global->options, "always_tunnel",
                             false)
             : false;
-
-    n_opts->register_consolidation =
-        sb_global
-        ? smap_get_bool(&sb_global->options, "register_consolidation",
-                        false)
-        : false;
 
     n_opts->enable_ch_nb_cfg_update =
         sb_global
@@ -3809,17 +3795,6 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
         sbrec_sb_global_table_first(sb_global_table);
     enum engine_input_handler_result result = EN_HANDLED_UNCHANGED;
 
-    bool explicit_arp_ns_output =
-            sb_global
-            ? smap_get_bool(&sb_global->options, "arp_ns_explicit_output",
-                            false)
-            : false;
-
-    if (explicit_arp_ns_output != n_opts->explicit_arp_ns_output) {
-        n_opts->explicit_arp_ns_output = explicit_arp_ns_output;
-        result =  EN_HANDLED_UPDATED;
-    }
-
     bool always_tunnel =
             sb_global
             ? smap_get_bool(&sb_global->options, "always_tunnel",
@@ -3828,17 +3803,6 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (always_tunnel != n_opts->always_tunnel) {
         n_opts->always_tunnel = always_tunnel;
-        result = EN_HANDLED_UPDATED;
-    }
-
-    bool register_consolidation =
-        sb_global
-        ? smap_get_bool(&sb_global->options, "register_consolidation",
-                        false)
-        : false;
-
-    if (register_consolidation != n_opts->register_consolidation) {
-        n_opts->register_consolidation = register_consolidation;
         result = EN_HANDLED_UPDATED;
     }
 
@@ -4040,9 +4004,6 @@ init_lflow_ctx(struct engine_node *node,
         engine_get_input_data("port_groups", node);
     struct shash *port_groups = &pg_data->port_groups_cs_local;
 
-    struct ed_type_northd_options *n_opts =
-        engine_get_input_data("northd_options", node);
-
     struct ed_type_dhcp_options *dhcp_opts =
         engine_get_input_data("dhcp_options", node);
 
@@ -4081,8 +4042,6 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->localnet_learn_fdb = rt_data->localnet_learn_fdb;
     l_ctx_in->localnet_learn_fdb_changed = rt_data->localnet_learn_fdb_changed;
     l_ctx_in->chassis_tunnels = &non_vif_data->chassis_tunnels;
-    l_ctx_in->explicit_arp_ns_output = n_opts->explicit_arp_ns_output;
-    l_ctx_in->register_consolidation = n_opts->register_consolidation;
     l_ctx_in->nd_ra_opts = &fo->nd_ra_opts;
     l_ctx_in->dhcp_opts = &dhcp_opts->v4_opts;
     l_ctx_in->dhcpv6_opts = &dhcp_opts->v6_opts;
@@ -7128,7 +7087,6 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_dhcp_options, &en_sb_dhcp_options, NULL);
     engine_add_input(&en_dhcp_options, &en_sb_dhcpv6_options, NULL);
 
-    engine_add_input(&en_lflow_output, &en_northd_options, NULL);
     engine_add_input(&en_lflow_output, &en_dhcp_options, NULL);
 
     /* Keep en_addr_sets before en_runtime_data because

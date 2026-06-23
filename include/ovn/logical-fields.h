@@ -106,16 +106,6 @@ CHECK_REG(CT_SAVED_STATE);
                                           * port (32 bits). */
 CHECK_REG(REMOTE_OUTPORT);
 
-/* Logical registers that are needed for backwards
- * compatibility with older northd versions.
- * XXX: All of them can be removed in 26.09. */
-#define MFF_LOG_LB_ORIG_DIP_IPV4_OLD         MFF_REG1
-CHECK_REG(LB_ORIG_DIP_IPV4_OLD);
-#define MFF_LOG_LB_AFF_MATCH_PORT_OLD        MFF_REG8
-CHECK_REG(LB_AFF_MATCH_PORT_OLD);
-#define MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR_OLD MFF_XXREG0
-CHECK_XXREG(LB_AFF_MATCH_LS_IP6_ADDR_OLD);
-
 /* Maximum number of networks supported by 4-bit flags.network_id. */
 #define OVN_MAX_NETWORK_ID \
     ((1 << (MLF_NETWORK_ID_END_BIT - MLF_NETWORK_ID_START_BIT + 1)) - 1)

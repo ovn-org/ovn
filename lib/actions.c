@@ -2061,9 +2061,6 @@ encode_ARP(const struct ovnact_nest *on,
            struct ofpbuf *ofpacts)
 {
     encode_nested_actions(on, ep, ACTION_OPCODE_ARP, ofpacts);
-    if (!ep->explicit_arp_ns_output) {
-        emit_resubmit(ofpacts, ep->output_ptable);
-    }
 }
 
 static void
@@ -2152,9 +2149,6 @@ encode_ND_NS(const struct ovnact_nest *on,
              struct ofpbuf *ofpacts)
 {
     encode_nested_actions(on, ep, ACTION_OPCODE_ND_NS, ofpacts);
-    if (!ep->explicit_arp_ns_output) {
-        emit_resubmit(ofpacts, ep->output_ptable);
-    }
 }
 
 static void
@@ -5520,10 +5514,7 @@ encode_COMMIT_LB_AFF(const struct ovnact_commit_lb_aff *lb_aff,
         imm_backend_ip = (union mf_value) {
             .ipv6 =  lb_aff->backend,
         };
-        enum mf_field_id id = !ep->register_consolidation && ep->is_switch
-            ? MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR_OLD
-            : MFF_LOG_LB_AFF_MATCH_IP6_ADDR;
-        ol_spec->dst.field = mf_from_id(id);
+        ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_IP6_ADDR);
     } else {
         ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&lb_aff->backend);
         imm_backend_ip = (union mf_value) {
@@ -5551,10 +5542,7 @@ encode_COMMIT_LB_AFF(const struct ovnact_commit_lb_aff *lb_aff,
             .be16 = htons(lb_aff->backend_port),
         };
 
-        enum mf_field_id id = !ep->register_consolidation
-            ? MFF_LOG_LB_AFF_MATCH_PORT_OLD
-            : MFF_LOG_LB_AFF_MATCH_PORT;
-        ol_spec->dst.field = mf_from_id(id);
+        ol_spec->dst.field = mf_from_id(MFF_LOG_LB_AFF_MATCH_PORT);
         ol_spec->dst_type = NX_LEARN_DST_LOAD;
         ol_spec->src_type = NX_LEARN_SRC_IMMEDIATE;
         ol_spec->dst.ofs = 0;
