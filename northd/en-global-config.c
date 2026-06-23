@@ -621,5 +621,21 @@ chassis_features_changed(const struct chassis_features *present,
         return true;
     }
 
+    if (present->ct_commit_nat_v2 != updated->ct_commit_nat_v2) {
+        return true;
+    }
+
+    if (present->ct_commit_to_zone != updated->ct_commit_to_zone) {
+        return true;
+    }
+
+    if (present->ct_next_zone != updated->ct_next_zone) {
+        return true;
+    }
+
+    if (present->ct_state_save != updated->ct_state_save) {
+        return true;
+    }
+
     return false;
 }
