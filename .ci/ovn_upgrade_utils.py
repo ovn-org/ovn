@@ -410,14 +410,28 @@ def ovn_upgrade_save_ovn_debug(binaries_dir):
     return True
 
 
-def update_test(old_start, old_end, shift, test_file):
+def _parse_oftable_defines(lines):
+    """Return {name: int_value} for all OFTABLE_ #defines."""
+    result = {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 3 and parts[0] == '#define' \
+                and parts[1].startswith('OFTABLE_'):
+            try:
+                result[parts[1]] = int(parts[2])
+            except ValueError:
+                pass
+    return result
+
+
+def update_test(table_remap, test_file):
     with open(test_file, encoding='utf-8') as f:
         content = f.read()
 
     def replace_table(match):
         table_num = int(match.group(1))
-        if old_start <= table_num < old_end:
-            return f"table={table_num + shift}"
+        if table_num in table_remap:
+            return f"table={table_remap[table_num]}"
         return match.group(0)
 
     # Replace all table=NUMBER patterns
@@ -430,44 +444,61 @@ def update_test(old_start, old_end, shift, test_file):
 def ovn_upgrade_table_numbers_in_tests_patch(config):
     lflow_h = Path('controller/lflow.h')
 
-    if not config.file.new_egress.exists():
-        log("No LOG_EGRESS")
+    if not config.file.ofctl_defines.exists():
+        log("No ofctl defines file")
         return False
 
     if not lflow_h.exists():
         log("Controller/lflow.h not found")
         return False
 
-    with open(config.file.new_egress, encoding='utf-8') as f:
-        new_log_egress = int(f.read().strip())
+    # Get new OFTABLE values (saved from the current version).
+    with open(config.file.ofctl_defines, encoding='utf-8') as f:
+        new_defines = _parse_oftable_defines(f.readlines())
 
-    # Get old values from base version's lflow.h
+    # Get old OFTABLE values from the base version's lflow.h.
     with open(lflow_h, encoding='utf-8') as f:
-        content = [
-            line.strip() for line in f if line.startswith('#define OFTABLE_')
-        ]
+        old_defines = _parse_oftable_defines(f.readlines())
 
-    old_log_egress, old_save_inport = extract_oftable_values(content)
+    old_log_egress = old_defines.get('OFTABLE_LOG_EGRESS_PIPELINE')
+    old_save_inport = old_defines.get('OFTABLE_SAVE_INPORT')
 
-    if (not old_log_egress or not old_save_inport
-            or old_log_egress == new_log_egress):
-        log(f"No change in test files as old_log_egress={old_log_egress}, "
-            f"old_save_inport={old_save_inport} and "
-            f"new_log_egress={new_log_egress}")
-        # No change needed is success.
+    if not old_log_egress or not old_save_inport:
+        log("Could not extract LOG_EGRESS / SAVE_INPORT from base")
+        return False
+
+    new_log_egress = new_defines.get('OFTABLE_LOG_EGRESS_PIPELINE')
+
+    # Build {old_value: new_value} remap for all changed tables.
+    table_remap = {}
+
+    # Range-based shift for in-pipeline tables [LOG_EGRESS, SAVE_INPORT).
+    # These include hardcoded offsets that are not OFTABLE_ defines.
+    if new_log_egress and new_log_egress != old_log_egress:
+        shift = new_log_egress - old_log_egress
+        for t in range(old_log_egress, old_save_inport):
+            table_remap[t] = t + shift
+
+    # Exact remap for every OFTABLE_ define that changed and is
+    # outside the pipeline range (e.g. CHK_LB_AFFINITY, ECMP_NH).
+    for name, old_val in old_defines.items():
+        if name in new_defines and new_defines[name] != old_val:
+            if old_val not in table_remap:
+                table_remap[old_val] = new_defines[name]
+
+    if not table_remap:
+        log("No table number changes detected")
         return True
 
-    shift = new_log_egress - old_log_egress
-
-    log(f"Updating hardcoded table numbers in tests (shift: +{shift} for "
-        f"tables {old_log_egress}-{old_save_inport - 1})")
+    log(f"Updating hardcoded table numbers in tests "
+        f"({len(table_remap)} table(s) remapped)")
 
     # Update test files
     for test_file in ['tests/system-ovn.at', 'tests/system-ovn-kmod.at',
                       'tests/system-ovn-netlink.at']:
         if Path(test_file).exists():
             log(f"Updating {test_file}")
-            update_test(old_log_egress, old_save_inport, shift, test_file)
+            update_test(table_remap, test_file)
     return True
 
 
