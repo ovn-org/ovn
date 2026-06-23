@@ -51,6 +51,7 @@ Post v26.03.0
      "ovn-ct-lb-related" feature flags. At the same time mark
      "mac-binding-timestamp", "fdb-timestamp" and "ls-dpg-column" feature
      flags as deprecated.
+   - Removed the deprecated "ct_lb" action.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

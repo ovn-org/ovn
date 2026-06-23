@@ -207,6 +207,7 @@ when the feature/action will move from ``Deprecated`` to ``Removed``.
   * ``OVN_FEATURE_PORT_UP_NOTIF`` feature.
   * ``OVN_FEATURE_CT_NO_MASKED_LABEL`` feature.
   * ``OVN_FEATURE_CT_LB_RELATED`` feature.
+  * ``ct_lb`` action.
 
 * 26.09 Deprecated
 

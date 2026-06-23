@@ -1138,7 +1138,7 @@
           </ul>
           <p>
             The <code>ct_dnat</code>, <code>ct_snat</code>, and
-            <code>ct_lb</code> actions initialize the following subfields:
+            <code>ct_lb_mark</code> actions initialize the following subfields:
           </p>
           <ul>
             <li>
@@ -2128,11 +2128,11 @@
           <p><b>Example:</b> <code>set_queue(10);</code></p>
         </dd>
 
-        <dt><code>ct_lb;</code></dt>
-        <dt><code>ct_lb(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...][; ct_flag]);</code></dt>
+        <dt><code>ct_lb_mark;</code></dt>
+        <dt><code>ct_lb_mark(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...][; ct_flag]);</code></dt>
         <dd>
           <p>
-            With arguments, <code>ct_lb</code> commits the packet
+            With arguments, <code>ct_lb_mark</code> commits the packet
             to the connection tracking table and DNATs the packet's destination
             IP address (and port) to the IP address or addresses (and optional
             ports) specified in the <code>backends</code>.  If multiple
@@ -2144,15 +2144,16 @@
             listed are used as the hash fields. The <code>ct_flag</code>
             field represents one of supported flag: <code>skip_snat</code> or
             <code>force_snat</code>, this flag will be stored in
-            <code>ct_label</code> register.
+            <code>ct_mark</code> register.
           </p>
           <p>
-            Without arguments, <code>ct_lb</code> sends the packet to the
+            Without arguments, <code>ct_lb_mark</code> sends the packet to the
             connection tracking table to NAT the packets.  If the packet is
             part of an established connection that was previously committed to
-            the connection tracker via <code>ct_lb(</code>...<code>)</code>, it
-            will automatically get DNATed to the same IP address as the first
-            packet in that connection.
+            the connection tracker via
+            <code>ct_lb_mark(</code>...<code>)</code>, it will automatically
+            get DNATed to the same IP address as the first packet in that
+            connection.
           </p>
           <p>
             Processing automatically moves on to the next table,
@@ -2162,16 +2163,6 @@
             used in a flow for a logical switch, so overlapping
             addresses may be used.  Connection tracking state is scoped by the
             logical topology when the action is used in a flow for a router.
-          </p>
-        </dd>
-
-        <dt><code>ct_lb_mark;</code></dt>
-        <dt><code>ct_lb_mark(backends=<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...][; ct_flag]);</code></dt>
-        <dd>
-          <p>
-              Same as <code>ct_lb</code>, except that it internally uses ct_mark
-              to store the NAT flag, while <code>ct_lb</code> uses ct_label for
-              the same purpose.
           </p>
         </dd>
 

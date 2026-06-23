@@ -2656,7 +2656,7 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
     if (family != AF_UNSPEC) {
         const struct ovnact_ct_lb_dst *dst = NULL;
         if (ct_lb->n_dsts) {
-            /* For ct_lb with addresses, choose one of the addresses. */
+            /* For ct_lb_* with addresses, choose one of the addresses. */
             int n = 0;
             for (int i = 0; i < ct_lb->n_dsts; i++) {
                 const struct ovnact_ct_lb_dst *d = &ct_lb->dsts[i];
@@ -2686,7 +2686,7 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
                                      "(use --lb-dst)");
             }
         } else if (lb_dst.family == family) {
-            /* For ct_lb without addresses, use user-specified address. */
+            /* For ct_lb_* without addresses, use user-specified address. */
             dst = &lb_dst;
         }
 
@@ -2708,10 +2708,9 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
     }
 
     const char *action_type =
-        ct_lb->ovnact.type == OVNACT_CT_LB_MARK ? "ct_lb_mark" :
-        ct_lb->ovnact.type == OVNACT_CT_LB_MARK_LOCAL ? "ct_lb_mark_local" :
-        "ct_lb";
-
+        ct_lb->ovnact.type == OVNACT_CT_LB_MARK
+                              ? "ct_lb_mark"
+                              : "ct_lb_mark_local";
     struct ovntrace_node *node = ovntrace_node_append(
         super, OVNTRACE_NODE_TRANSFORMATION, "%s%s", action_type,
         ds_cstr_ro(&comment));
@@ -3359,10 +3358,6 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_CT_SNAT_IN_CZONE:
             execute_ct_nat(ovnact_get_CT_SNAT_IN_CZONE(a), dp, uflow,
                            pipeline, super);
-            break;
-
-        case OVNACT_CT_LB:
-            execute_ct_lb(ovnact_get_CT_LB(a), dp, uflow, pipeline, super);
             break;
 
         case OVNACT_CT_LB_MARK:

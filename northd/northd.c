@@ -13314,11 +13314,11 @@ build_lrouter_flows_for_lb_stateless(struct lrouter_nat_lb_flows_ctx *ctx,
      * IP action to perform stateless NAT pipeline completely when the
      * outgoing packet is redirected to a chassis that does not have an
      * active conntrack entry. Otherwise, it will not be SNATed by the
-     * ct_lb action because it does not refer to a valid created flow. The
+     * ct_lb_mark action because it does not refer to a valid created flow. The
      * use case for responding to a packet in different chassis is multipath
      * via ECMP. So, the LB lr_out_snat is created with a lower priority than
      * the other router pipeline entries, in this case, if the packet is not
-     * SNATed by ct_lb (conntrack lost), it will be SNATed by the LB
+     * SNATed by ct_lb_mark (conntrack lost), it will be SNATed by the LB
      * stateless NAT rule. Also, SNAT is performed only when the packet
      * matches the configured LB backend IPs, ports and protocols. Otherwise,
      * the packet will be forwarded without being SNATed.

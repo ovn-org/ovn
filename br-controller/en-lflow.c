@@ -51,7 +51,7 @@ struct ed_type_lflow_output_data {
 
     /* Since we use the common action parsing code between ovn-controller
      * and br-controller, ovnacts_encode() expects to pass a
-     * group table and meter table for the actions - ct_lb, select, log and
+     * group table and meter table for the actions - ct_lb_*, select, log and
      * set_meter.  Until we have a separate action parsing definitions
      * for br-controller, we just maintain these tables and pass it in
      * the 'struct ovnact_encode_params' in the ovnact_encode() to make

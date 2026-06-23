@@ -1208,7 +1208,8 @@ parse_ct_lb_action(struct action_context *ctx,
                    enum ovnact_ct_lb_type type)
 {
     if (ctx->pp->cur_ltable >= ctx->pp->n_tables) {
-        lexer_error(ctx->lexer, "\"ct_lb\" action not allowed in last table.");
+        lexer_error(ctx->lexer, "\"ct_lb_*\" action not allowed "
+                    "in last table.");
         return;
     }
 
@@ -1329,9 +1330,6 @@ parse_ct_lb_action(struct action_context *ctx,
 
     struct ovnact_ct_lb *cl;
     switch (type) {
-        case OVNACT_CT_LB_TYPE_LABEL:
-            cl = ovnact_put_CT_LB(ctx->ovnacts);
-            break;
         case OVNACT_CT_LB_TYPE_MARK:
             cl = ovnact_put_CT_LB_MARK(ctx->ovnacts);
             break;
@@ -1354,7 +1352,6 @@ format_ct_lb(const struct ovnact_ct_lb *cl, struct ds *s,
              enum ovnact_ct_lb_type type)
 {
     static const char *const lb_action_strings[] = {
-        [OVNACT_CT_LB_TYPE_LABEL] = "ct_lb",
         [OVNACT_CT_LB_TYPE_MARK] = "ct_lb_mark",
         [OVNACT_CT_LB_LOCAL_TYPE_MARK] = "ct_lb_mark_local",
     };
@@ -1409,12 +1406,6 @@ format_ct_lb(const struct ovnact_ct_lb *cl, struct ds *s,
 }
 
 static void
-format_CT_LB(const struct ovnact_ct_lb *cl, struct ds *s)
-{
-    format_ct_lb(cl, s, OVNACT_CT_LB_TYPE_LABEL);
-}
-
-static void
 format_CT_LB_MARK(const struct ovnact_ct_lb *cl, struct ds *s)
 {
     format_ct_lb(cl, s, OVNACT_CT_LB_TYPE_MARK);
@@ -1434,7 +1425,7 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
 {
     uint8_t recirc_table = cl->ltable + first_ptable(ep, ep->pipeline);
     if (!cl->n_dsts) {
-        /* ct_lb without any destinations means that this is an established
+        /* ct_lb_* without any destinations means that this is an established
          * connection and we just need to do a NAT. */
         const size_t ct_offset = ofpacts->size;
 
@@ -1462,8 +1453,6 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
     struct ofpact_group *og;
     uint32_t zone_reg = ep->is_switch ? MFF_LOG_CT_ZONE - MFF_REG0
                             : MFF_LOG_DNAT_ZONE - MFF_REG0;
-    const char *flag_reg = (type == OVNACT_CT_LB_TYPE_LABEL)
-                            ? "ct_label" : "ct_mark";
 
     const char *ct_flag_value;
     switch (cl->ct_flag) {
@@ -1522,10 +1511,10 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
         ds_put_format(&ds, "),commit,table=%d,zone=NXM_NX_REG%d[0..15],"
                       "exec(set_field:"
                         OVN_CT_MASKED_STR(OVN_CT_NATTED)
-                      "->%s",
-                      recirc_table, zone_reg, flag_reg);
+                      "->ct_mark",
+                      recirc_table, zone_reg);
         if (ct_flag_value) {
-            ds_put_format(&ds, ",set_field:%s->%s", ct_flag_value, flag_reg);
+            ds_put_format(&ds, ",set_field:%s->ct_mark", ct_flag_value);
         }
 
         ds_put_cstr(&ds, "))");
@@ -1547,14 +1536,6 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
     /* Create an action to set the group. */
     og = ofpact_put_GROUP(ofpacts);
     og->group_id = table_id;
-}
-
-static void
-encode_CT_LB(const struct ovnact_ct_lb *cl,
-             const struct ovnact_encode_params *ep,
-             struct ofpbuf *ofpacts)
-{
-    encode_ct_lb(cl, ep, ofpacts, OVNACT_CT_LB_TYPE_LABEL);
 }
 
 static void
@@ -6042,7 +6023,6 @@ parse_action(struct action_context *ctx)
         return false;
     }
 
-    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
     enum lex_type lookahead = lexer_lookahead(ctx->lexer);
     if (lookahead == LEX_T_EQUALS || lookahead == LEX_T_EXCHANGE
         || lookahead == LEX_T_LSQUARE) {
@@ -6071,10 +6051,6 @@ parse_action(struct action_context *ctx)
         parse_CT_DNAT_IN_CZONE(ctx);
     } else if (lexer_match_id(ctx->lexer, "ct_snat_in_czone")) {
         parse_CT_SNAT_IN_CZONE(ctx);
-    } else if (lexer_match_id(ctx->lexer, "ct_lb")) {
-        VLOG_WARN_RL(&rl, "The \"ct_lb\" action is deprecated please "
-                          "consider using a different action.");
-        parse_ct_lb_action(ctx, OVNACT_CT_LB_TYPE_LABEL);
     } else if (lexer_match_id(ctx->lexer, "ct_lb_mark")) {
         parse_ct_lb_action(ctx, OVNACT_CT_LB_TYPE_MARK);
     } else if (lexer_match_id(ctx->lexer, "ct_lb_mark_local")) {

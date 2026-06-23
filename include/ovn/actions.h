@@ -73,7 +73,6 @@ struct collector_set_ids;
     OVNACT(CT_SNAT,           ovnact_ct_nat)          \
     OVNACT(CT_DNAT_IN_CZONE,  ovnact_ct_nat)          \
     OVNACT(CT_SNAT_IN_CZONE,  ovnact_ct_nat)          \
-    OVNACT(CT_LB,             ovnact_ct_lb)           \
     OVNACT(CT_LB_MARK,        ovnact_ct_lb)           \
     OVNACT(CT_LB_MARK_LOCAL,  ovnact_ct_lb)           \
     OVNACT(SELECT,            ovnact_select)          \
@@ -314,7 +313,6 @@ struct ovnact_ct_commit_to_zone {
 };
 
 enum ovnact_ct_lb_type {
-    OVNACT_CT_LB_TYPE_LABEL,
     OVNACT_CT_LB_TYPE_MARK,
     OVNACT_CT_LB_LOCAL_TYPE_MARK,
 };
@@ -335,7 +333,7 @@ struct ovnact_ct_lb_dst {
     char *port_name;
 };
 
-/* OVNACT_CT_LB/OVNACT_CT_LB_MARK. */
+/* OVNACT_CT_LB_MARK. */
 struct ovnact_ct_lb {
     struct ovnact ovnact;
     struct ovnact_ct_lb_dst *dsts;

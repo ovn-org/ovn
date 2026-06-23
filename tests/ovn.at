@@ -1011,104 +1011,79 @@ pkt.mark = "foo";
     Integer field pkt.mark is not compatible with string constant.
 
 # load balancing.
-ct_lb;
+ct_lb_mark;
     encodes as ct(table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
-ct_lb();
-    formats as ct_lb;
+ct_lb_mark();
+    formats as ct_lb_mark;
     encodes as ct(table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],nat)
     has prereqs ip
-ct_clear; ct_lb; reg8[[7]] = 1;
+ct_clear; ct_lb_mark; reg8[[7]] = 1;
     encodes as ct_clear,ct(table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],nat),set_field:0x8000000000/0x8000000000->xreg4
     has prereqs ip
-ct_lb(192.168.1.2:80, 192.168.1.3:80);
+ct_lb_mark(192.168.1.2:80, 192.168.1.3:80);
     Syntax error at `192.168.1.2' expecting backends.
-ct_lb(backends=192.168.1.2:80,192.168.1.3:80);
-    encodes as group:1
-    uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=192.168.1.2:80,192.168.1.3:80; skip_snat);
-    encodes as group:2
-    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
-    has prereqs ip
-ct_lb(backends=192.168.1.2:80,192.168.1.3:80; force_snat);
-    encodes as group:3
-    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
-    has prereqs ip
-ct_lb(backends=192.168.1.2, 192.168.1.3, );
-    formats as ct_lb(backends=192.168.1.2,192.168.1.3);
-    encodes as group:4
-    uses group: id(4), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2, fd0f::3, );
-    formats as ct_lb(backends=fd0f::2,fd0f::3);
-    encodes as group:5
-    uses group: id(5), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-
-ct_lb(backends=192.168.1.2:);
-    Syntax error at `)' expecting port number.
-ct_lb(backends=192.168.1.2:123456);
-    Syntax error at `123456' expecting port number.
-ct_lb(backends=foo);
-    Syntax error at `foo' expecting IP address.
-ct_lb(backends=[[192.168.1.2]]);
-    Syntax error at `192.168.1.2' expecting IPv6 address.
-
-ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields=eth_src,eth_dst,ip_src);
-    Syntax error at `eth_src' invalid hash_fields.
-ct_lb(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src");
-    encodes as group:6
-    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst");
-    encodes as group:7
-    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst");
-    encodes as group:8
-    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst");
-    encodes as group:9
-    uses group: id(9), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
-    encodes as group:10
-    uses group: id(10), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
-    encodes as group:11
-    uses group: id(11), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:4/4->ct_label)))
-    has prereqs ip
-ct_lb(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
-    encodes as group:12
-    uses group: id(12), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_label,set_field:8/8->ct_label)))
-    has prereqs ip
-
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80);
-    encodes as group:13
-    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    encodes as group:1
+    uses group: id(1), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; skip_snat);
-    encodes as group:14
-    uses group: id(14), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+    encodes as group:2
+    uses group: id(2), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
     has prereqs ip
 ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; force_snat);
-    encodes as group:15
-    uses group: id(15), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
+    encodes as group:3
+    uses group: id(3), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
     has prereqs ip
-ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
-    encodes as group:16
-    uses group: id(16), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+ct_lb_mark(backends=192.168.1.2, 192.168.1.3, );
+    formats as ct_lb_mark(backends=192.168.1.2,192.168.1.3);
+    encodes as group:4
+    uses group: id(4), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
-ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
-    encodes as group:17
-    uses group: id(17), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+ct_lb_mark(backends=fd0f::2, fd0f::3, );
+    formats as ct_lb_mark(backends=fd0f::2,fd0f::3);
+    encodes as group:5
+    uses group: id(5), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
-ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
-    encodes as group:18
-    uses group: id(18), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
+
+ct_lb_mark(backends=192.168.1.2:);
+    Syntax error at `)' expecting port number.
+ct_lb_mark(backends=192.168.1.2:123456);
+    Syntax error at `123456' expecting port number.
+ct_lb_mark(backends=foo);
+    Syntax error at `foo' expecting IP address.
+ct_lb_mark(backends=[[192.168.1.2]]);
+    Syntax error at `192.168.1.2' expecting IPv6 address.
+
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields=eth_src,eth_dst,ip_src);
+    Syntax error at `eth_src' invalid hash_fields.
+ct_lb_mark(backends=192.168.1.2:80,192.168.1.3:80; hash_fields="eth_src,eth_dst,ip_src");
+    encodes as group:6
+    uses group: id(6), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.1.2:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=192.168.1.3:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst");
+    encodes as group:7
+    uses group: id(7), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tp_src,tp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst");
+    encodes as group:8
+    uses group: id(8), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,tcp_src,tcp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst");
+    encodes as group:9
+    uses group: id(9), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,udp_src,udp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
+    encodes as group:10
+    uses group: id(10), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; skip_snat);
+    encodes as group:11
+    uses group: id(11), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:4/4->ct_mark)))
+    has prereqs ip
+ct_lb_mark(backends=fd0f::2,fd0f::3; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst"; force_snat);
+    encodes as group:12
+    uses group: id(12), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)),bucket=bucket_id=1,weight:100,actions=ct(nat(dst=fd0f::3),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark,set_field:8/8->ct_mark)))
     has prereqs ip
 
 # ct_next
@@ -1975,23 +1950,23 @@ handle_svc_check(reg0);
 # select
 reg9[[16..31]] = select(1=50, 2=100, 3, );
     formats as reg9[[16..31]] = select(1=50, 2=100, 3=100);
-    encodes as group:19
-    uses group: id(19), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[[16..31]],resubmit(,oflow_in_table))
+    encodes as group:13
+    uses group: id(13), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:50,actions=load:1->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[[16..31]],resubmit(,oflow_in_table))
 
 reg0 = select(1, 2);
     formats as reg0 = select(1=100, 2=100);
-    encodes as group:20
-    uses group: id(20), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,oflow_in_table))
+    encodes as group:14
+    uses group: id(14), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,oflow_in_table))
 
 reg9[[16..31]] = select(values=(1=50, 2=100, 3); hash_fields="ip_src,ip_dst");
     formats as reg9[[16..31]] = select(values=(1=50, 2=100, 3=100); hash_fields="ip_src,ip_dst");
-    encodes as group:21
-    uses group: id(21), name(type=select,selection_method=hash,fields(ip_src,ip_dst),bucket=bucket_id=0,weight:50,actions=load:1->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[[16..31]],resubmit(,oflow_in_table))
+    encodes as group:15
+    uses group: id(15), name(type=select,selection_method=hash,fields(ip_src,ip_dst),bucket=bucket_id=0,weight:50,actions=load:1->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xreg4[[16..31]],resubmit(,oflow_in_table),bucket=bucket_id=2,weight:100,actions=load:3->xreg4[[16..31]],resubmit(,oflow_in_table))
 
 reg0 = select(values=(1, 2); hash_fields="ip_dst,ip_src");
     formats as reg0 = select(values=(1=100, 2=100); hash_fields="ip_dst,ip_src");
-    encodes as group:22
-    uses group: id(22), name(type=select,selection_method=hash,fields(ip_dst,ip_src),bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,oflow_in_table))
+    encodes as group:16
+    uses group: id(16), name(type=select,selection_method=hash,fields(ip_dst,ip_src),bucket=bucket_id=0,weight:100,actions=load:1->xxreg0[[96..127]],resubmit(,oflow_in_table),bucket=bucket_id=1,weight:100,actions=load:2->xxreg0[[96..127]],resubmit(,oflow_in_table))
 
 reg0 = select(1=, 2);
     Syntax error at `,' expecting weight.
@@ -2016,12 +1991,12 @@ reg0[[0..14]] = select(1, 2, 3);
 
 fwd_group(liveness=true, childports="eth0", "lsp1");
     formats as fwd_group(liveness="true", childports="eth0", "lsp1");
-    encodes as group:23
-    uses group: id(23), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=watch_port:17,load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
+    encodes as group:17
+    uses group: id(17), name(type=select,selection_method=dp_hash,bucket=watch_port:5,load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=watch_port:17,load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:24
-    uses group: id(24), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
+    encodes as group:18
+    uses group: id(18), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
 
 fwd_group(childports=eth0);
     Syntax error at `eth0' expecting logical switch port.
@@ -2030,8 +2005,8 @@ fwd_group();
     Syntax error at `)' expecting `;'.
 
 fwd_group(childports="eth0", "lsp1");
-    encodes as group:24
-    uses group: id(24), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
+    encodes as group:18
+    uses group: id(18), name(type=select,selection_method=dp_hash,bucket=load=0x5->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT),bucket=load=0x17->NXM_NX_REG15[[0..15]],resubmit(,OFTABLE_SAVE_INPORT))
 
 fwd_group(liveness=xyzzy, childports="eth0", "lsp1");
     Syntax error at `xyzzy' expecting true or false.
@@ -2416,18 +2391,18 @@ mirror(lsp1);
     Syntax error at `lsp1' expecting port name string.
 
 ct_lb_mark_local(backends="lsp1":192.168.0.101);
-    encodes as group:25
-    uses group: id(25), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    encodes as group:19
+    uses group: id(19), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 
 ct_lb_mark_local(backends="lsp1":192.168.0.101:10880);
-    encodes as group:26
-    uses group: id(26), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101:10880),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    encodes as group:20
+    uses group: id(20), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101:10880),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 
 ct_lb_mark_local(backends="lsp1":192.168.0.101:10880; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
-    encodes as group:27
-    uses group: id(27), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101:10880),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    encodes as group:21
+    uses group: id(21), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101:10880),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 
 ct_lb_mark_local(backends=192.168.0.101:80);
@@ -2438,13 +2413,13 @@ ct_lb_mark_local(backends=lsp1:192.168.0.101:10880);
 
 # add hash fields parsing
 ct_lb_mark_local(backends="lsp1":fd0f::2);
-    encodes as group:28
-    uses group: id(28), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    encodes as group:22
+    uses group: id(22), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 
 ct_lb_mark_local(backends="lsp1":[[fd0f::2]]:80);
-    encodes as group:29
-    uses group: id(29), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=[[fd0f::2]]:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    encodes as group:23
+    uses group: id(23), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=[[fd0f::2]]:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
     has prereqs ip
 
 # Miscellaneous negative tests.
