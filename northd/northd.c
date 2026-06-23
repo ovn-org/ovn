@@ -3278,6 +3278,12 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
     sbrec_service_monitor_set_remote(sbrec_mon, remote_backend);
     sbrec_service_monitor_set_ic_learned(sbrec_mon, false);
 
+    /* A freshly created monitor has not been probed yet.  Start it as
+     * "offline" so that traffic is not forwarded to a backend whose health
+     * is still unknown.  ovn-controller updates the status to "online" once
+     * the first health check probe succeeds. */
+    sbrec_service_monitor_set_status(sbrec_mon, "offline");
+
     mon_info = xzalloc(sizeof *mon_info);
     mon_info->sbrec_mon = sbrec_mon;
     mon_info->required = true;

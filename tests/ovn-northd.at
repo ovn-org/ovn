@@ -1518,6 +1518,11 @@ wait_row_count Service_Monitor 2
 
 check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
 
+# Service monitors are created in the "offline" state, so set them online to
+# verify that both backends are programmed.
+check ovn-sbctl set service_monitor sw0-p1 status=online
+check ovn-sbctl set service_monitor sw1-p1 status=online
+
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
@@ -1535,6 +1540,10 @@ OVS_WAIT_FOR_OUTPUT(
 wait_row_count Service_Monitor 1
 
 check ovn-nbctl lsp-set-enabled sw0-p1 enabled
+wait_row_count Service_Monitor 2
+
+# The re-created service monitor for sw0-p1 starts "offline"; set it online.
+check ovn-sbctl set service_monitor sw0-p1 status=online
 
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
@@ -1558,16 +1567,20 @@ check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
 Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
 health_check @hc
 wait_row_count Service_Monitor 2
+
+AS_BOX([Get the uuid of both the service_monitor])
+sm_sw0_p1=$(fetch_column Service_Monitor _uuid logical_port=sw0-p1)
+sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
+
+# The re-created service monitors start "offline"; set them online.
+check ovn-sbctl set service_monitor $sm_sw0_p1 status=online
+check ovn-sbctl set service_monitor $sm_sw1_p1 status=online
 check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 | grep backends | grep priority=120 > lflows.txt
 AT_CHECK([cat lflows.txt | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,20.0.0.3:80);)
 ])
-
-AS_BOX([Get the uuid of both the service_monitor])
-sm_sw0_p1=$(fetch_column Service_Monitor _uuid logical_port=sw0-p1)
-sm_sw1_p1=$(fetch_column Service_Monitor _uuid logical_port=sw1-p1)
 
 AT_CAPTURE_FILE([sbflows3])
 OVS_WAIT_FOR_OUTPUT(
@@ -1644,6 +1657,12 @@ AT_CHECK(
 wait_row_count Service_Monitor 3
 wait_row_count Service_Monitor 2 logical_port=sw0-p1
 wait_row_count Service_Monitor 1 port=1000
+
+# The new service monitor for the 10.0.0.40 vip backend (10.0.0.3:1000)
+# starts "offline"; set it online.
+sm_sw0_p1_1000=$(fetch_column Service_Monitor _uuid logical_port=sw0-p1 port=1000)
+check ovn-sbctl set service_monitor $sm_sw0_p1_1000 status=online
+check ovn-nbctl --wait=sb sync
 
 AT_CAPTURE_FILE([sbflows9])
 OVS_WAIT_FOR_OUTPUT(
@@ -1732,6 +1751,54 @@ AT_CAPTURE_FILE([sbflows12])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows sw0 | tee sbflows12 | grep "ip4.dst == 10.0.0.10.*reg1.*== 6.*reg1.*== 80" | grep priority=120 | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg0 = 0; reject { outport <-> inport; next(pipeline=egress,table=??);};)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer health check unprobed backends fail closed])
+ovn_start
+
+check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,20.0.0.3:80
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:20.0.0.3=sw1-p1:20.0.0.2
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 \
+"00:00:00:00:00:03 10.0.0.3"
+check ovn-nbctl ls-add sw1
+check ovn-nbctl --wait=sb lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 \
+"02:00:00:00:00:03 20.0.0.3"
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl lsp-bind sw0-p1 hv1
+check ovn-sbctl lsp-bind sw1-p1 hv1
+wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 'up=true'
+wait_row_count nb:Logical_Switch_Port 1 name=sw1-p1 'up=true'
+
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
+health_check @hc
+wait_row_count Service_Monitor 2
+
+AS_BOX([Newly created monitors start offline, so the VIP drops by default.])
+wait_row_count Service_Monitor 2 status=offline
+AT_CAPTURE_FILE([sbflows_initial])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows_initial | grep "ip4.dst == 10.0.0.10.*reg1.*== 6.*reg1.*== 80" | grep priority=120 | grep ls_in_lb | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(drop;)
+])
+
+AS_BOX([Once a backend is probed online, it is added to the VIP.])
+check ovn-sbctl set service_monitor sw0-p1 status=online
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=online
+AT_CAPTURE_FILE([sbflows_online])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows_online | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80);)
 ])
 
 OVN_CLEANUP_NORTHD
@@ -19403,9 +19470,13 @@ AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows
 ])
 
 check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:[[2001::2]]\"
+
+# The service monitor is created in the "offline" state and the backend's port
+# is not up in this no-hv test, so the backend is not used (fail closed) until
+# a health check probe succeeds.
 ovn-sbctl lflow-list lr1 > lr1_lflow
 AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
-  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":[[2001::3]]:80);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(drop;)
 ])
 
 check ovn-nbctl lb-del lb_distubuted

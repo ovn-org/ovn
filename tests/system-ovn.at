@@ -4586,8 +4586,11 @@ udp_data 5
 
 # Stop UDP service in sw0-p1.
 # Due to the way UDP nc with "-k" forks, we need to kill all
-# children processes and then then the parent.
-NS_CHECK_EXEC([sw0-p1], [pkill -P $udp1_pid && kill $udp1_pid])
+# children processes and then the parent.  The parent is killed
+# unconditionally (";" rather than "&&") because there might not be any child
+# process at that point, but the parent still holds the listening socket open
+# and must always be stopped so the backend becomes unreachable.
+NS_CHECK_EXEC([sw0-p1], [pkill -P $udp1_pid; kill $udp1_pid])
 
 wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
 wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online
@@ -4778,8 +4781,11 @@ udp_data 5
 
 # Stop UDP service in sw0-p1.
 # Due to the way UDP nc with "-k" forks, we need to kill all
-# children processes and then then the parent.
-NS_CHECK_EXEC([sw0-p1], [pkill -P $udp1_pid && kill $udp1_pid])
+# children processes and then the parent.  The parent is killed
+# unconditionally (";" rather than "&&") because there might not be any child
+# process at that point, but the parent still holds the listening socket open
+# and must always be stopped so the backend becomes unreachable.
+NS_CHECK_EXEC([sw0-p1], [pkill -P $udp1_pid; kill $udp1_pid])
 
 wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
 wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online

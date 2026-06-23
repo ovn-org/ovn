@@ -612,6 +612,9 @@ Ingress Table 15: LB
   addresses of *args* is the same as the address family of *VIP*. If health
   check is enabled, then *args* will only contain those endpoints whose service
   monitor status entry in ``OVN_Southbound`` db is either ``online`` or empty.
+  Newly created service monitors are initialized to the ``offline`` state by
+  ovn-northd, so a backend is not used until its first health check probe
+  succeeds.
   For IPv4 traffic the flow also loads the original destination IP and transport
   port in registers ``reg1`` and ``reg2``.  For IPv6 traffic the flow also loads
   the original destination IP and transport port in registers ``xxreg1`` and
@@ -2764,7 +2767,9 @@ flows do not get programmed for load balancers with IPv6 *VIPs*.
   will be replaced by ``flags.skip_snat_for_lb = 1; ct_lb_mark(args;
   skip_snat);``. If health check is enabled, then *args* will only contain those
   endpoints whose service monitor status entry in ``OVN_Southbound`` db is
-  either ``online`` or empty.
+  either ``online`` or empty.  Newly created service monitors are initialized
+  to the ``offline`` state by ovn-northd, so a backend is not used until its
+  first health check probe succeeds.
 
 - For all the configured load balancing rules for a router in ``OVN_Northbound``
   database that includes just an IP address *VIP* to match on, a priority-110

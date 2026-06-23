@@ -4366,7 +4366,23 @@ AT_CHECK([ovn-sbctl lflow-list az3_ls1 | grep 'ls_in_arp_rsp' | ovn_strip_lflows
 #      az2_lb2 20.20.20.2:80 2.2.2.1:10880,5.5.5.1:10880,6.6.6.1:10880
 # (5.5.5.1 - does not have a service monitor)
 
-# Check that if the service monitors are not initialized, balancing is performed on all but the 4th
+# Service monitors are created in the "offline" state by default, so local
+# backends are not used until their first health check succeeds.  This is a
+# mock test, so bring the local backends' ports up and mark their monitors
+# online to emulate a successful health check before validating load balancing.
+ovn_as az1
+check ovn-sbctl set Port_Binding lport1_az1 up=true
+sm_lport1=$(fetch_column Service_Monitor _uuid logical_port="lport1_az1")
+check ovn-sbctl set Service_Monitor $sm_lport1 status=online
+check ovn-nbctl --wait=sb sync
+
+ovn_as az2
+check ovn-sbctl set Port_Binding lport3_az2 up=true
+sm_lport3=$(fetch_column Service_Monitor _uuid logical_port="lport3_az2")
+check ovn-sbctl set Service_Monitor $sm_lport3 status=online
+check ovn-nbctl --wait=sb sync
+
+# Check that with the local backends initialized, balancing is performed on all but the 4th
 ovn_as az1
 AT_CHECK([ovn-sbctl lflow-list az1_ls1 | grep ls_in_lb | grep backends | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.10.10.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.10.10.1; reg2[[0..15]] = 80; ct_lb_mark(backends=1.1.1.1:10880,5.5.5.1:10880,3.3.3.1:10880);)

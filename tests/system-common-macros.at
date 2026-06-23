@@ -200,14 +200,17 @@ m4_define([NETNS_START_DHCPD],
 # killing only the parent leaves those children running and hangs the whole
 # test cleanup (especially on failures). This macro therefore installs a
 # cleanup hook that kills the child processes (pkill -P) before the parent.
+# The parent is killed unconditionally (";" rather than "&&") because there
+# might not be any child process at that point, but the parent still holds the
+# listening socket open and must always be stopped.
 #
 # The parent PID is recorded in the 'pidfile' and the user can employ the same
-# (pkill -P && kill) technique to cleanly stop the server at will during the
+# (pkill -P; kill) technique to cleanly stop the server at will during the
 # test.
 #
 m4_define([NETNS_START_UDP_ECHO],
    [ip netns exec $1 nc -$2 -k -l -u -p $3 -d 0.1 -c '/bin/cat' & echo $! > $4
-     echo "pkill -P \`cat $4\` && kill \`cat $4\`" >> cleanup
+     echo "pkill -P \`cat $4\`; kill \`cat $4\`" >> cleanup
    ]
 )
 

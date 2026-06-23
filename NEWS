@@ -1,5 +1,10 @@
 Post v26.03.0
 -------------
+   - Load balancer health checks now "fail closed" for newly added backends:
+     ovn-northd initializes a newly created Service_Monitor row to the
+     "offline" state, so traffic is not forwarded to a backend until its first
+     health check probe succeeds.  Previously, such backends were treated as
+     available until the first probe completed.
    - Added Transit Switch port support with new ovn-ic-nbctl 'tsp-add',
      'tsp-del' and 'tsp-set-addr' commands.
    - Added ability to set any "ipsec_*" NB_Global option to configure the

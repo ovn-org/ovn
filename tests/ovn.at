@@ -27228,6 +27228,11 @@ check ovn-nbctl --wait=hv sync
 
 wait_row_count Service_Monitor 2
 
+# Service monitors are created in the "offline" state.  Mark both backends
+# online to verify the load balancer forwards to healthy backends.
+check ovn-sbctl set service_monitor sw0-p1 status=online
+check ovn-sbctl set service_monitor sw1-p1 status=online
+
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows > sbflows
@@ -27307,7 +27312,9 @@ wait_row_count Service_Monitor 0
 check ovn-nbctl lsp-add sw0 sw0-p1
 
 wait_row_count Service_Monitor 1
-wait_row_count Service_Monitor 0 status=offline
+# The monitor for the freshly re-added port has not been probed yet, so it
+# starts in the "offline" state (fail closed).
+wait_row_count Service_Monitor 1 status=offline
 wait_row_count Service_Monitor 0 status=online
 
 # lr0_public is on hv1. Hence lr0 & public should not be local datapaths on hv2, and ln_public not a related port for hv2.
@@ -27422,6 +27429,11 @@ check ovn-nbctl --wait=hv sync
 
 wait_row_count Service_Monitor 2
 
+# Service monitors are created in the "offline" state.  Mark both backends
+# online to verify the load balancer forwards to healthy backends.
+check ovn-sbctl set service_monitor sw0-p1 status=online
+check ovn-sbctl set service_monitor sw1-p1 status=online
+
 AT_CAPTURE_FILE([sbflows])
 OVS_WAIT_FOR_OUTPUT(
   [ovn-sbctl dump-flows > sbflows
@@ -27500,7 +27512,9 @@ wait_row_count Service_Monitor 0
 check ovn-nbctl lsp-add sw0 sw0-p1
 
 wait_row_count Service_Monitor 1
-wait_row_count Service_Monitor 0 status=offline
+# The monitor for the freshly re-added port has not been probed yet, so it
+# starts in the "offline" state (fail closed).
+wait_row_count Service_Monitor 1 status=offline
 wait_row_count Service_Monitor 0 status=online
 
 # lr0_public is on hv1. Hence lr0 & public should not be local datapaths on hv2, and ln_public not a related port for hv2.
