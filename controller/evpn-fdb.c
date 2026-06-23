@@ -235,21 +235,27 @@ evpn_fdb_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
     const struct evpn_fdb *fdb;
     HMAP_FOR_EACH (fdb, hmap_node, fdbs) {
         ds_put_format(&ds, "UUID: "UUID_FMT", MAC: "ETH_ADDR_FMT", "
-                      "vni: %"PRIu32", dp_key: %"PRIu32
-                      ", paths: [",
-                      UUID_ARGS(&fdb->flow_uuid), ETH_ADDR_ARGS(fdb->mac),
-                      fdb->vni, fdb->dp_key);
+                      "vni: %"PRIu32", ", UUID_ARGS(&fdb->flow_uuid),
+                      ETH_ADDR_ARGS(fdb->mac), fdb->vni);
 
-        for (size_t i = 0; i < vector_len(&fdb->paths); i++) {
-            if (i) {
-                ds_put_cstr(&ds, ", ");
-            }
+        if (vector_len(&fdb->paths) == 1) {
             struct evpn_fdb_path path =
-                vector_get(&fdb->paths, i, struct evpn_fdb_path);
-            ds_put_format(&ds, "{key=%#"PRIx32", weight=%"PRIu16"}",
-                          path.binding_key, path.weight);
+                vector_get(&fdb->paths, 0, struct evpn_fdb_path);
+            ds_put_format(&ds, "binding_key: %#"PRIx32", dp_key: %"PRIu32"\n",
+                          path.binding_key, fdb->dp_key);
+        } else {
+            ds_put_format(&ds, "dp_key: %"PRIu32", paths: [", fdb->dp_key);
+            for (size_t i = 0; i < vector_len(&fdb->paths); i++) {
+                if (i) {
+                    ds_put_cstr(&ds, ", ");
+                }
+                struct evpn_fdb_path path =
+                    vector_get(&fdb->paths, i, struct evpn_fdb_path);
+                ds_put_format(&ds, "{key=%#"PRIx32", weight=%"PRIu16"}",
+                              path.binding_key, path.weight);
+            }
+            ds_put_cstr(&ds, "]\n");
         }
-        ds_put_cstr(&ds, "]\n");
     }
 
     unixctl_command_reply(conn, ds_cstr_ro(&ds));
