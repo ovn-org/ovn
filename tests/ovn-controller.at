@@ -726,9 +726,6 @@ ovn_attach n1 br-phys 192.168.0.1
 
 # Wait for ovn-controller to register in the SB.
 wait_row_count Chassis 1 name=hv1 other_config:mac-binding-timestamp="true"
-check_row_count Chassis 1 name=hv1 other_config:port-up-notif="true"
-check_row_count Chassis 1 name=hv1 other_config:ct-no-masked-label="true"
-check_row_count Chassis 1 name=hv1 other_config:ovn-ct-lb-related="true"
 check_row_count Chassis 1 name=hv1 other_config:ls-dpg-column="true"
 check_row_count Chassis 1 name=hv1 other_config:ct-commit-nat-v2="true"
 check_row_count Chassis 1 name=hv1 other_config:ct-commit-to-zone="true"
@@ -743,9 +740,6 @@ ct_commit_nat_v2: true
 ct_commit_to_zone: true
 ct_next_zone: true
 ct_state_save: true
-fdb_timestamp: true
-ls_dpg_column: true
-mac_binding_timestamp: true
 ])
 
 OVN_CLEANUP([hv1])

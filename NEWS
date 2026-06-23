@@ -47,6 +47,10 @@ Post v26.03.0
      The DHCP and unbound-router ARP/ND drop lflows for external
      ports were updated to key on the external LSP's inport
      accordingly.
+   - Removed deprecated "port-up-notif", "ct-no-masked-label" and
+     "ovn-ct-lb-related" feature flags. At the same time mark
+     "mac-binding-timestamp", "fdb-timestamp" and "ls-dpg-column" feature
+     flags as deprecated.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

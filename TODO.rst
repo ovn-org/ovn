@@ -202,6 +202,18 @@ but it will still be parsed and processed. There should be also clearly stated
 when the feature/action will move from ``Deprecated`` to ``Removed``.
 ``Removed`` will print a warning and won't be processed further.
 
+* 26.09 Removed
+
+  * ``OVN_FEATURE_PORT_UP_NOTIF`` feature.
+  * ``OVN_FEATURE_CT_NO_MASKED_LABEL`` feature.
+  * ``OVN_FEATURE_CT_LB_RELATED`` feature.
+
+* 26.09 Deprecated
+
+  * ``OVN_FEATURE_MAC_BINDING_TIMESTAMP`` feature, should be removed in 28.09.
+  * ``OVN_FEATURE_FDB_TIMESTAMP`` feature, should be removed in 28.09.
+  * ``OVN_FEATURE_LS_DPG_COLUMN`` feature, should be removed in 28.09.
+
 * 26.03 Deprecated
 
   * ``ct_lb`` action, should be removed in 26.09.

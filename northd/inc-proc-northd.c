@@ -441,8 +441,6 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      * table too (because of the explicit dependency in the schema). */
     engine_add_input(&en_port_group, &en_northd, engine_noop_handler);
 
-    engine_add_input(&en_sync_to_sb_lb, &en_global_config,
-                     node_global_config_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_datapath_sync,
                      engine_noop_handler);
     engine_add_input(&en_sync_to_sb_lb, &en_northd,
@@ -671,12 +669,6 @@ chassis_features_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
     struct chassis_features *features = features_;
     struct ds ds = DS_EMPTY_INITIALIZER;
 
-    ds_put_format(&ds, "mac_binding_timestamp: %s\n",
-                  features->mac_binding_timestamp ? "true" : "false");
-    ds_put_format(&ds, "fdb_timestamp: %s\n",
-                  features->fdb_timestamp ? "true" : "false");
-    ds_put_format(&ds, "ls_dpg_column: %s\n",
-                  features->ls_dpg_column ? "true" : "false");
     ds_put_format(&ds, "ct_commit_nat_v2: %s\n",
                   features->ct_commit_nat_v2 ? "true" : "false");
     ds_put_format(&ds, "ct_commit_to_zone: %s\n",

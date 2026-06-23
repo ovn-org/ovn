@@ -514,9 +514,6 @@ static void
 northd_enable_all_features(struct ed_type_global_config *data)
 {
     data->features = (struct chassis_features) {
-        .mac_binding_timestamp = true,
-        .fdb_timestamp = true,
-        .ls_dpg_column = true,
         .ct_commit_nat_v2 = true,
         .ct_commit_to_zone = true,
         .sample_with_reg = true,
@@ -538,33 +535,6 @@ build_chassis_features(const struct sbrec_chassis_table *sbrec_chassis_table,
          */
         if (smap_get_bool(&chassis->other_config, "is-remote", false)) {
             continue;
-        }
-
-        bool mac_binding_timestamp =
-            smap_get_bool(&chassis->other_config,
-                          OVN_FEATURE_MAC_BINDING_TIMESTAMP,
-                          false);
-        if (!mac_binding_timestamp &&
-            chassis_features->mac_binding_timestamp) {
-            chassis_features->mac_binding_timestamp = false;
-        }
-
-        bool fdb_timestamp =
-            smap_get_bool(&chassis->other_config,
-                          OVN_FEATURE_FDB_TIMESTAMP,
-                          false);
-        if (!fdb_timestamp &&
-            chassis_features->fdb_timestamp) {
-            chassis_features->fdb_timestamp = false;
-        }
-
-        bool ls_dpg_column =
-            smap_get_bool(&chassis->other_config,
-                          OVN_FEATURE_LS_DPG_COLUMN,
-                          false);
-        if (!ls_dpg_column &&
-            chassis_features->ls_dpg_column) {
-            chassis_features->ls_dpg_column = false;
         }
 
         bool ct_commit_nat_v2 =
@@ -761,18 +731,6 @@ static bool
 chassis_features_changed(const struct chassis_features *present,
                          const struct chassis_features *updated)
 {
-    if (present->mac_binding_timestamp != updated->mac_binding_timestamp) {
-        return true;
-    }
-
-    if (present->fdb_timestamp != updated->fdb_timestamp) {
-        return true;
-    }
-
-    if (present->ls_dpg_column != updated->ls_dpg_column) {
-        return true;
-    }
-
     if (present->ct_commit_nat_v2 != updated->ct_commit_nat_v2) {
         return true;
     }

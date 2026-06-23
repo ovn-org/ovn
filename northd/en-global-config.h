@@ -14,9 +14,6 @@ struct nbrec_nb_global;
 struct sbrec_sb_global;
 
 struct chassis_features {
-    bool mac_binding_timestamp;
-    bool fdb_timestamp;
-    bool ls_dpg_column;
     bool ct_commit_nat_v2;
     bool ct_commit_to_zone;
     bool sample_with_reg;

@@ -21,9 +21,6 @@
 #include "smap.h"
 
 /* ovn-controller supported feature names. */
-#define OVN_FEATURE_MAC_BINDING_TIMESTAMP "mac-binding-timestamp"
-#define OVN_FEATURE_FDB_TIMESTAMP "fdb-timestamp"
-#define OVN_FEATURE_LS_DPG_COLUMN "ls-dpg-column"
 #define OVN_FEATURE_CT_COMMIT_NAT_V2 "ct-commit-nat-v2"
 #define OVN_FEATURE_CT_COMMIT_TO_ZONE "ct-commit-to-zone"
 #define OVN_FEATURE_SAMPLE_WITH_REGISTERS "ovn-sample-with-registers"
@@ -31,11 +28,11 @@
 #define OVN_FEATURE_CT_LABEL_FLUSH "ct-label-flush"
 #define OVN_FEATURE_CT_STATE_SAVE "ct-state-save"
 
-/* DEPRACATED: The following features can be removed
+/* DEPRECATED: The following features can be removed
  * after the next LTS version release. */
-#define OVN_FEATURE_PORT_UP_NOTIF      "port-up-notif"
-#define OVN_FEATURE_CT_NO_MASKED_LABEL "ct-no-masked-label"
-#define OVN_FEATURE_CT_LB_RELATED "ovn-ct-lb-related"
+#define OVN_FEATURE_MAC_BINDING_TIMESTAMP "mac-binding-timestamp"
+#define OVN_FEATURE_FDB_TIMESTAMP "fdb-timestamp"
+#define OVN_FEATURE_LS_DPG_COLUMN "ls-dpg-column"
 
 /* OVS datapath supported features.  Based on availability OVN might generate
  * different types of openflows.
