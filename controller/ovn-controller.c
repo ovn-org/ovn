@@ -936,7 +936,7 @@ store_nb_cfg(struct ovsdb_idl_txn *sb_txn, struct ovsdb_idl_txn *ovs_txn,
                                                      OVS_NB_CFG_SB_TS_NAME,
                                                      sb_ts_str);
             free(sb_ts_str);
-        } else {
+        } else if (smap_get(&br_int->external_ids, OVS_NB_CFG_SB_TS_NAME)) {
             ovsrec_bridge_update_external_ids_delkey(br_int,
                                                      OVS_NB_CFG_SB_TS_NAME);
         }
