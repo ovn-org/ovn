@@ -7815,7 +7815,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn -- CoPP])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
+CHECK_SCAPY
 AT_KEYWORDS([ovn-copp])
 
 ovn_start
@@ -18015,7 +18015,7 @@ OVN_FOR_EACH_NORTHD([
 AT_SETUP([dynamic-routing - EVPN $1 naming])
 AT_KEYWORDS([dynamic-routing])
 
-AT_SKIP_IF([test $HAVE_SCAPY = no])
+CHECK_SCAPY
 CHECK_VRF()
 CHECK_CONNTRACK()
 CHECK_CONNTRACK_NAT()
@@ -21788,7 +21788,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL - ICMP unreachable heap overread])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
+CHECK_SCAPY
 
 ovn_start
 
@@ -21871,7 +21871,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([DHCPv6 - Options heap overread])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
+CHECK_SCAPY
 
 ovn_start
 

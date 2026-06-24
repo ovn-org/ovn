@@ -3306,7 +3306,7 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([spine-leaf: 3 AZs, 3 HVs, 3 LSs, connected via transit spine switch])
 AT_KEYWORDS([spine leaf])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
+CHECK_SCAPY
 
 ovn_init_ic_db
 
