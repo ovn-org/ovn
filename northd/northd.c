@@ -12002,11 +12002,11 @@ parsed_route_lookup(struct hmap *routes, size_t hash,
             continue;
         }
 
-        if (pr->nexthop && ipv6_addr_equals(pr->nexthop, new_pr->nexthop)) {
+        if (pr->nexthop && !ipv6_addr_equals(pr->nexthop, new_pr->nexthop)) {
             continue;
         }
 
-        if (memcmp(&pr->prefix, &new_pr->prefix, sizeof(struct in6_addr))) {
+        if (!ipv6_addr_equals(&pr->prefix, &new_pr->prefix)) {
             continue;
         }
 
@@ -12040,6 +12040,15 @@ parsed_route_lookup(struct hmap *routes, size_t hash,
         }
 
         if (pr->od != new_pr->od) {
+            continue;
+        }
+
+        if (!sset_equals(&pr->ecmp_selection_fields,
+                         &new_pr->ecmp_selection_fields)) {
+            continue;
+        }
+
+        if (pr->tracked_port != new_pr->tracked_port) {
             continue;
         }
 
@@ -15087,6 +15096,14 @@ route_policies_lookup(struct hmap *route_policies, size_t hash,
     struct route_policy *rp;
     HMAP_FOR_EACH_WITH_HASH (rp, key_node, hash, route_policies) {
         if (rp->rule != new_rp->rule) {
+            continue;
+        }
+
+        if (rp->chain_id != new_rp->chain_id) {
+            continue;
+        }
+
+        if (rp->jump_chain_id != new_rp->jump_chain_id) {
             continue;
         }
 
