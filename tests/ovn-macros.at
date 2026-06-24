@@ -527,6 +527,11 @@ m4_define([OVN_CLEANUP_IC],[
     fi
 ])
 
+m4_define([CHECK_SCAPY],[
+    AT_SKIP_IF([test $HAVE_SCAPY = no])
+    start_scapy_server
+])
+
 m4_divert_push([PREPARE_TESTS])
 
 # ovn_init_db DATABASE [AZ]
@@ -1278,7 +1283,6 @@ hex_to_mac() {
 }
 
 send_garp() {
-    AT_SKIP_IF([test $HAVE_SCAPY = no])
     local hv=$1 inport=$2 op=$3 eth_src=$4 eth_dst=$5 spa=$6 tpa=$7
 
     local packet=$(fmt_pkt "Ether(dst='${eth_dst}', src='${eth_src}')/ \
@@ -1364,10 +1368,6 @@ ovn_trace_client() {
 #
 fmt_pkt() {
     ctlfile=$ovs_base/scapy.ctl
-    if [[ ! -S $ctlfile ]]; then
-        start_scapy_server
-    fi
-    while [[ ! -S $ctlfile ]]; do sleep 0.1; done
     ovs-appctl -t $ctlfile payload "$1"
 }
 
@@ -1380,6 +1380,7 @@ start_scapy_server() {
     flock -n $lockfile "$top_srcdir"/tests/scapy-server.py \
         --pidfile=$pidfile --unixctl=$ctlfile --log-file=$logfile --detach \
     && on_exit "test -e \"$pidfile\" && ovs-appctl -t $ctlfile exit"
+    OVS_WAIT_UNTIL([test -S "$ctlfile" && ovs-appctl -t "$ctlfile" version])
 }
 
 sleep_northd() {
@@ -1544,7 +1545,6 @@ m4_define([TAG_TEST_NOT_UPGRADABLE], [
 
 m4_define([OVN_CHECK_SCAPY_EDNS_CLIENT_SUBNET_SUPPORT],
 [
-    AT_SKIP_IF([test $HAVE_SCAPY = no])
     AT_SKIP_IF([! echo "from scapy.layers.dns import EDNS0ClientSubnet" | python 2>&1 > /dev/null])
 ])
 
