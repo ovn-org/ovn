@@ -161,23 +161,32 @@ m4_define([NETNS_START_TCPDUMP],
     ]
 )
 
-# NETNS_START_DHCPD([namespace], [iface], [dhcpd.conf])
+# NETNS_START_DHCPD([namespace], [iface], [dhcpd.conf], [extra_dhcp_args],
+#                   [extra_tcpdump_args])
 #
-# Helper to properly start dhcpd
+# Helper to properly start dhcpd. extra_dhcp_args is optional ("-6" if not set)
+# extra_tcpdump_args is also optional.
 m4_define([NETNS_START_DHCPD],
     [
-        DHCP_TEST_DIR="$ovs_base/dhcp-test"
-        mkdir -p $DHCP_TEST_DIR
+        DHCP_MACRO_TEST_DIR="$ovs_base/dhcp-test"
+        dhcp_macro_arg="$4"
+        if test "x$dhcp_macro_arg" = "x"; then
+            EXTRA_DHCP_MACRO_ARGS="-6"
+        else
+            EXTRA_DHCP_MACRO_ARGS="$dhcp_macro_arg"
+        fi
+        mkdir -p $DHCP_MACRO_TEST_DIR
 
-        mv $3 $DHCP_TEST_DIR/dhcpd.conf
+        mv $3 $DHCP_MACRO_TEST_DIR/dhcpd.conf
 
-        touch $DHCP_TEST_DIR/dhcpd.leases
-        chown root:dhcpd $DHCP_TEST_DIR $DHCP_TEST_DIR/dhcpd.leases
-        chmod 775 $DHCP_TEST_DIR
-        chmod 664 $DHCP_TEST_DIR/dhcpd.leases
+        touch $DHCP_MACRO_TEST_DIR/dhcpd.leases
+        chown root:dhcpd $DHCP_MACRO_TEST_DIR $DHCP_MACRO_TEST_DIR/dhcpd.leases
+        chmod 775 $DHCP_MACRO_TEST_DIR
+        chmod 664 $DHCP_MACRO_TEST_DIR/dhcpd.leases
 
-        NETNS_START_TCPDUMP([$1], [-nni $2], [$1])
-        NETNS_DAEMONIZE([$1], [dhcpd -6 -f -lf $DHCP_TEST_DIR/dhcpd.leases -cf $DHCP_TEST_DIR/dhcpd.conf $2 > dhcpd.log 2>&1], [dhcpd.pid])
+        NETNS_START_TCPDUMP([$1], [-nni $2 $5], [$1])
+        NETNS_DAEMONIZE([$1], [dhcpd $EXTRA_DHCP_MACRO_ARGS -d -f -lf $DHCP_MACRO_TEST_DIR/dhcpd.leases -cf $DHCP_MACRO_TEST_DIR/dhcpd.conf $2 > dhcpd.log 2>&1], [dhcpd.pid])
+        OVS_WAIT_UNTIL([grep -q "Server starting service" dhcpd.log])
     ]
 )
 
