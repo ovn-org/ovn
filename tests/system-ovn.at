@@ -12320,6 +12320,7 @@ check ovn-nbctl --wait=hv sync
 
 DHCP_TEST_DIR="/tmp/dhcp-test"
 rm -rf $DHCP_TEST_DIR
+on_exit "rm -rf $DHCP_TEST_DIR"
 mkdir $DHCP_TEST_DIR
 cat > $DHCP_TEST_DIR/dhcpd.conf <<EOF
 subnet 172.16.1.0 netmask 255.255.255.0 {
@@ -12339,32 +12340,22 @@ subnet 192.168.2.0 netmask 255.255.255.0 {
   max-lease-time 120;
 }
 EOF
-cat > $DHCP_TEST_DIR/dhclien.conf <<EOF
+cat > $DHCP_TEST_DIR/dhclient.conf <<EOF
 timeout 2
 EOF
 
-touch $DHCP_TEST_DIR/dhcpd.leases
-chown root:dhcpd $DHCP_TEST_DIR $DHCP_TEST_DIR/dhcpd.leases
-chmod 775 $DHCP_TEST_DIR
-chmod 664 $DHCP_TEST_DIR/dhcpd.leases
+NETNS_START_DHCPD([server], [s1], [$DHCP_TEST_DIR/dhcpd.conf], [-4], [-nvv])
 
-
-NETNS_DAEMONIZE([server], [dhcpd -4 -f -cf $DHCP_TEST_DIR/dhcpd.conf s1 > dhcpd.log 2>&1], [dhcpd.pid])
-
-NS_CHECK_EXEC([server], [tcpdump -l -nvv -i s1  udp > pkt.pcap 2>tcpdump_err &])
-OVS_WAIT_UNTIL([grep "listening" tcpdump_err])
-on_exit 'kill $(pidof tcpdump)'
-
-NS_CHECK_EXEC([sw01], [dhclient -1 -q -lf $DHCP_TEST_DIR/dhclient-sw01.lease -pf $DHCP_TEST_DIR/dhclient-sw01.pid -cf $DHCP_TEST_DIR/dhclien.conf sw01])
-NS_CHECK_EXEC([sw11], [dhclient -1 -q -lf $DHCP_TEST_DIR/dhclient-sw11.lease -pf $DHCP_TEST_DIR/dhclient-sw11.pid -cf $DHCP_TEST_DIR/dhclien.conf sw11])
+NS_CHECK_EXEC([sw01], [dhclient -1 -q -lf $DHCP_TEST_DIR/dhclient-sw01.lease -pf $DHCP_TEST_DIR/dhclient-sw01.pid -cf $DHCP_TEST_DIR/dhclient.conf sw01])
+NS_CHECK_EXEC([sw11], [dhclient -1 -q -lf $DHCP_TEST_DIR/dhclient-sw11.lease -pf $DHCP_TEST_DIR/dhclient-sw11.pid -cf $DHCP_TEST_DIR/dhclient.conf sw11])
 
 OVS_WAIT_UNTIL([
-    total_pkts=$(cat pkt.pcap | wc -l)
+    total_pkts=$(grep "BOOTP/DHCP" server.tcpdump | wc -l)
     test ${total_pkts} -ge 8
 ])
 
-on_exit 'kill `cat $DHCP_TEST_DIR/dhclient-sw01.pid` &&
-kill `cat $DHCP_TEST_DIR/dhclient-sw11.pid` && rm -rf $DHCP_TEST_DIR'
+on_exit "test -e $DHCP_TEST_DIR/dhclient-sw01.pid && kill \`cat $DHCP_TEST_DIR/dhclient-sw01.pid\` 2>/dev/null
+test -e $DHCP_TEST_DIR/dhclient-sw11.pid && kill \`cat $DHCP_TEST_DIR/dhclient-sw11.pid\` 2>/dev/null"
 
 NS_CHECK_EXEC([sw01], [ip addr show sw01 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'], [0], [dnl
 192.168.1.10
@@ -18711,7 +18702,8 @@ check ovn-nbctl --wait=hv set NB_Global . options:acl_ct_translation=true
 check ovn-nbctl --wait=hv sync
 
 # Setup DHCP server configuration.
-DHCP_TEST_DIR="$ovs_base/dhcp-test"
+DHCP_TEST_DIR="/tmp/dhcp-test"
+on_exit "rm -rf $DHCP_TEST_DIR"
 mkdir -p $DHCP_TEST_DIR
 
 cat > $DHCP_TEST_DIR/dhcpd.conf <<EOF
@@ -18724,21 +18716,13 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 }
 EOF
 
-touch $DHCP_TEST_DIR/dhcpd.leases
-chown root:dhcpd $DHCP_TEST_DIR $DHCP_TEST_DIR/dhcpd.leases
-chmod 775 $DHCP_TEST_DIR
-chmod 664 $DHCP_TEST_DIR/dhcpd.leases
-
 # Start dhcpd as DHCP server in the server namespace.
-NETNS_DAEMONIZE([server], [dhcpd -4 -f -cf $DHCP_TEST_DIR/dhcpd.conf server > $DHCP_TEST_DIR/dhcpd.log 2>&1], [dhcpd.pid])
-
-# Give dhcpd time to start.
-sleep 1
+NETNS_START_DHCPD([server], [server], [$DHCP_TEST_DIR/dhcpd.conf], [-4], [udp])
 
 # Request IP via DHCP using dhclient.
-NS_CHECK_EXEC([client], [dhclient -1 -v -lf $DHCP_TEST_DIR/dhclient.lease -pf $DHCP_TEST_DIR/dhclient.pid client], [0], [ignore], [ignore])
+NS_CHECK_EXEC([client], [dhclient -1 -lf $DHCP_TEST_DIR/dhclient.lease -pf $DHCP_TEST_DIR/dhclient.pid client])
 # Register cleanup handler to kill dhclient when test exits.
-on_exit 'kill $(cat $DHCP_TEST_DIR/dhclient.pid) 2>/dev/null || true'
+on_exit "test -e $DHCP_TEST_DIR/dhclient.pid && kill \$(cat $DHCP_TEST_DIR/dhclient.pid) 2>/dev/null || true"
 
 # Verify client got an IP address from DHCP.
 NS_CHECK_EXEC([client], [ip addr show client | grep -q "192.168.1.100"], [0])
