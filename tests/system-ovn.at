@@ -17733,7 +17733,7 @@ NETNS_START_TCPDUMP([foo1], [-neei foo1 src 20.0.0.2 and tcp], [foo1])
 NETNS_START_TCPDUMP([bar1], [-neei bar1 src 20.0.0.2 and tcp], [bar1])
 
 check ovs-appctl dpctl/flush-conntrack
-for i in $(seq 10); do
+for i in $(seq 20); do
     NS_CHECK_EXEC([alice1], [wget 172.16.1.1:8000 -t 5 -T 1 --retry-connrefused -v -o wget$i.log])
 done
 
