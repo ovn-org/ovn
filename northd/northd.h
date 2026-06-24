@@ -209,8 +209,6 @@ struct route_policy {
     const struct nbrec_logical_router_policy *rule;
     size_t n_valid_nexthops;
     char **valid_nexthops;
-    const struct nbrec_logical_router *nbr;
-    bool stale;
     uint32_t chain_id;
     uint32_t jump_chain_id;
 };
