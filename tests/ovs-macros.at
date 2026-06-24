@@ -388,7 +388,7 @@ on_exit () {
       (echo "test -e ovn-nb/ovn-nb.sock && $1"; cat cleanup;) > cleanup.tmp
     elif [ echo "$1" | grep -qe '^ovn-sbctl' ]; then
       (echo "test -e ovn-sb/ovn-sb.sock && $1"; cat cleanup) > cleanup.tmp
-    elif [ echo "$1" | grep -qe '^ovs-ofctl' -qe '^ovs-dpctl' ]; then
+    elif [ echo "$1" | grep -qe '^ovs-ofctl' ]; then
       (echo "test -e $OVS_RUNDIR/ovs-vswitchd.pid && $1"; cat cleanup) > cleanup.tmp
     else
       (echo "$1"; cat cleanup) > cleanup.tmp
