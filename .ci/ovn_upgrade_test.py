@@ -19,7 +19,7 @@ from ovn_upgrade_utils import (
     UpgradeConfig
 )
 
-DEFAULT_BASE_BRANCH = 'branch-24.03'
+DEFAULT_BASE_BRANCH = 'branch-26.03'
 
 
 def run_tests(config):

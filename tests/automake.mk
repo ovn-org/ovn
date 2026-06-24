@@ -382,8 +382,8 @@ clean-pki:
 endif
 
 # Upgrade test support
-# Run via: make check-upgrade BASE_VERSION=branch-24.03 TESTSUITEFLAGS="1-100"
-BASE_VERSION ?= branch-24.03
+# Run via: make check-upgrade BASE_VERSION=branch-26.03 TESTSUITEFLAGS="1-100"
+BASE_VERSION ?= branch-26.03
 
 check-upgrade: all
 	@mkdir -p upgrade-testsuite.dir
