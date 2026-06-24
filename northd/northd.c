@@ -11374,7 +11374,6 @@ parsed_route_add(const struct ovn_datapath *od,
         hmap_insert(routes, &new_pr->key_node, hash);
         return new_pr;
     } else {
-        pr->stale = false;
         parsed_route_free(new_pr);
         return pr;
     }
@@ -11542,13 +11541,6 @@ build_parsed_routes(const struct ovn_datapath *od, const struct hmap *lr_ports,
                     struct simap *route_tables,
                     struct hmap *bfd_active_connections)
 {
-    struct parsed_route *pr;
-    HMAP_FOR_EACH (pr, key_node, routes) {
-        if (pr->od == od) {
-            pr->stale = true;
-        }
-    }
-
     for (size_t i = 0; i < od->nbr->n_static_routes; i++) {
         parsed_routes_add_static(od, lr_ports, od->nbr->static_routes[i],
                                  bfd_connections, routes, route_tables,
@@ -11558,15 +11550,6 @@ build_parsed_routes(const struct ovn_datapath *od, const struct hmap *lr_ports,
     const struct ovn_port *op;
     HMAP_FOR_EACH (op, dp_node, &od->ports) {
         parsed_routes_add_connected(od, op, routes);
-    }
-
-    HMAP_FOR_EACH_SAFE (pr, key_node, routes) {
-        if (!pr->stale) {
-            continue;
-        }
-
-        hmap_remove(routes, &pr->key_node);
-        parsed_route_free(pr);
     }
 }
 
