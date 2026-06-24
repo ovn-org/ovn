@@ -15425,12 +15425,6 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
 {
     struct route_policy *rp;
 
-    HMAP_FOR_EACH (rp, key_node, route_policies) {
-        if (rp->nbr == od->nbr) {
-            rp->stale = true;
-        }
-    }
-
     /* Create chain numeric ids for policies with chain name set */
     for (int i = 0; i < od->nbr->n_policies; i++) {
         const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
@@ -15537,7 +15531,6 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
         new_rp->rule = rule;
         new_rp->n_valid_nexthops = n_valid_nexthops;
         new_rp->valid_nexthops = valid_nexthops;
-        new_rp->nbr = od->nbr;
         new_rp->chain_id = chain_id;
         new_rp->jump_chain_id = jump_chain_id;
 
@@ -15546,20 +15539,9 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
         if (!rp) {
             hmap_insert(route_policies, &new_rp->key_node, hash);
         } else {
-            rp->stale = false;
             free(valid_nexthops);
             free(new_rp);
         }
-    }
-
-    HMAP_FOR_EACH_SAFE (rp, key_node, route_policies) {
-        if (!rp->stale) {
-            continue;
-        }
-
-        hmap_remove(route_policies, &rp->key_node);
-        free(rp->valid_nexthops);
-        free(rp);
     }
 }
 
