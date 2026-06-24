@@ -860,7 +860,6 @@ struct parsed_route {
     bool ecmp_symmetric_reply;
     bool override_connected;
     bool is_discard_route;
-    bool stale;
     const struct ovn_datapath *od;
     struct sset ecmp_selection_fields;
     enum route_source source;
