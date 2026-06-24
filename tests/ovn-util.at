@@ -1,5 +1,4 @@
 AT_SETUP([ovn-detrace - simple scenario])
-AT_SKIP_IF([test $HAVE_SCAPY = no])
 ovn_start
 net_add n1
 
