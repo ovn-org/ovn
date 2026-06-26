@@ -44960,6 +44960,212 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Unicast ARP for router port not flooded to multicast group])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 10.0.0.1/16
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr1 lr1-ls1
+
+dnl Create 220 VIF ports in batch to make sure we don't trigger the 4096
+dnl resubmit limit due to incorrect forwarding to multicast flood groups.
+nbctl_cmd=""
+for i in $(seq 1 220); do
+    idx=$(printf "%04d" $i)
+    hex_hi=$(printf "%02x" $(($i / 256)))
+    hex_lo=$(printf "%02x" $(($i % 256)))
+    mac="f0:00:00:00:${hex_hi}:${hex_lo}"
+    nbctl_cmd="$nbctl_cmd -- lsp-add ls1 vif-$idx"
+    nbctl_cmd="$nbctl_cmd -- lsp-set-addresses vif-$idx \"$mac\""
+done
+eval check ovn-nbctl $nbctl_cmd
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+vsctl_cmd=""
+for i in $(seq 1 220); do
+    idx=$(printf "%04d" $i)
+    vsctl_cmd="$vsctl_cmd -- add-port br-int vif-$idx "
+    vsctl_cmd="$vsctl_cmd -- set Interface vif-$idx external-ids:iface-id=vif-$idx"
+done
+eval check ovs-vsctl $vsctl_cmd
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Check that unicast GARP requests incorrectly spoofing the router port IP
+dnl don't cause the 4096 resubmit limit to be hit.
+ofport=$(as hv1 ovs-vsctl get Interface vif-0001 ofport)
+AT_CHECK([as hv1 ovs-appctl ofproto/trace br-int \
+    "in_port=$ofport,dl_src=f0:00:00:00:00:01,dl_dst=00:00:00:00:00:01,\
+     arp,arp_op=1,arp_spa=10.0.0.1,arp_tpa=10.0.0.1,\
+     arp_sha=f0:00:00:00:00:01,arp_tha=00:00:00:00:00:01"], [0], [stdout])
+AT_CHECK([grep "Translation failed" stdout], [1])
+AT_CHECK([grep "packet is dropped" stdout], [1])
+
+dnl Also check valid unicast ARP requests for the router port don't cause
+dnl the 4096 resubmit limit to be hit.
+AT_CHECK([as hv1 ovs-appctl ofproto/trace br-int \
+    "in_port=$ofport,dl_src=f0:00:00:00:00:01,dl_dst=00:00:00:00:00:01,\
+     arp,arp_op=1,arp_spa=10.0.0.2,arp_tpa=10.0.0.1,\
+     arp_sha=f0:00:00:00:00:01,arp_tha=00:00:00:00:00:01"], [0], [stdout])
+AT_CHECK([grep "Translation failed" stdout], [1])
+AT_CHECK([grep "packet is dropped" stdout], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Unicast ARP for router IP with proxy ARP - resubmit overflow])
+ovn_start
+
+dnl Create a logical switch and router, connected via a router port.
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr1 lr1-ls1
+
+dnl Configure proxy ARP on the router port with a range that includes the
+dnl router IP (10.0.0.1 is within 10.0.0.0/24).
+check ovn-nbctl set logical_switch_port ls1-lr1 \
+    options:arp_proxy="10.0.0.0/24"
+
+dnl Add a VIF port that will send the unicast ARP.
+check ovn-nbctl lsp-add ls1 vm1 -- \
+      lsp-set-addresses vm1 "00:00:00:00:00:02 10.0.0.2"
+
+dnl Add 220 additional VIF ports to make MC_FLOOD_L2 large enough
+dnl that flooding to it would exceed the OVS 4096 resubmit limit.
+nbctl_cmd=""
+for i in $(seq 1 220); do
+    idx=$(printf "%04d" $i)
+    hex_hi=$(printf "%02x" $(($i / 256)))
+    hex_lo=$(printf "%02x" $(($i % 256)))
+    mac="f0:00:00:00:${hex_hi}:${hex_lo}"
+    nbctl_cmd="$nbctl_cmd -- lsp-add ls1 vif-$idx"
+    nbctl_cmd="$nbctl_cmd -- lsp-set-addresses vif-$idx \"$mac\""
+done
+eval check ovn-nbctl $nbctl_cmd
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+dnl Bind the sender VIF port.
+ovs-vsctl add-port br-int vif-vm1 -- \
+    set Interface vif-vm1 external-ids:iface-id=vm1 \
+    options:tx_pcap=hv1/vif-vm1-tx.pcap \
+    options:rxq_pcap=hv1/vif-vm1-rx.pcap
+
+dnl Bind all 220 additional VIF ports so they join MC_FLOOD_L2.
+vsctl_cmd=""
+for i in $(seq 1 220); do
+    idx=$(printf "%04d" $i)
+    vsctl_cmd="$vsctl_cmd -- add-port br-int vif-$idx"
+    vsctl_cmd="$vsctl_cmd -- set Interface vif-$idx external-ids:iface-id=vif-$idx"
+done
+eval check ovs-vsctl $vsctl_cmd
+
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Trace a unicast ARP request from vm1 for the router IP,
+dnl eth.dst is the router MAC (unicast).
+dnl
+dnl The router port should answer with an ARP reply, since
+dnl the packet is unicast.  The proxy ARP is bypassed.
+dnl
+dnl Verify via ofproto/trace that the packet is not dropped.
+packet=""
+AT_CHECK([as hv1 ovs-appctl ofproto/trace br-int \
+            "in_port=vif-vm1,dl_src=00:00:00:00:00:02,dl_dst=00:00:00:00:00:01, \
+            arp,arp_spa=10.0.0.2,arp_tpa=10.0.0.1,arp_op=1, \
+            arp_sha=00:00:00:00:00:02,arp_tha=00:00:00:00:00:01"], [0], [stdout])
+AT_CHECK([grep "Translation failed" stdout], [1])
+AT_CHECK([grep "packet is dropped" stdout], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Unicast ND_NS for router IPv6 with proxy ARP - resubmit overflow])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 10.0.0.1/24 aef0::1/64
+check ovn-nbctl lsp-add-router-port ls1 ls1-lr1 lr1-ls1
+
+dnl Configure proxy ARP/ND on the router port with ranges that include
+dnl the router IPs (10.0.0.1 is within 10.0.0.0/24, aef0::1 is within
+dnl aef0::/64).
+check ovn-nbctl set logical_switch_port ls1-lr1 \
+    options:arp_proxy="10.0.0.0/24 aef0::/64"
+
+check ovn-nbctl lsp-add ls1 vm1 -- \
+      lsp-set-addresses vm1 "00:00:00:00:00:02 10.0.0.2 aef0::2"
+
+dnl Add 220 additional VIF ports to make MC_FLOOD_L2/MC_UNKNOWN large enough
+dnl that flooding to it would exceed the OVS 4096 resubmit limit.
+nbctl_cmd=""
+for i in $(seq 1 220); do
+    idx=$(printf "%04d" $i)
+    nbctl_cmd="$nbctl_cmd -- lsp-add ls1 vif-$idx"
+    nbctl_cmd="$nbctl_cmd -- lsp-set-addresses vif-$idx unknown"
+done
+eval check ovn-nbctl $nbctl_cmd
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+ovs-vsctl add-port br-int vif-vm1 -- \
+    set Interface vif-vm1 external-ids:iface-id=vm1 \
+    options:tx_pcap=hv1/vif-vm1-tx.pcap \
+    options:rxq_pcap=hv1/vif-vm1-rx.pcap
+
+vsctl_cmd=""
+for i in $(seq 1 220); do
+    idx=$(printf "%04d" $i)
+    vsctl_cmd="$vsctl_cmd -- add-port br-int vif-$idx"
+    vsctl_cmd="$vsctl_cmd -- set Interface vif-$idx external-ids:iface-id=vif-$idx"
+done
+eval check ovs-vsctl $vsctl_cmd
+
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Trace a unicast ND_NS from vm1 for the router IPv6 address.
+dnl eth.dst is the router MAC (unicast, NOT solicited-node multicast).
+AT_CHECK([as hv1 ovs-appctl ofproto/trace br-int \
+    "in_port=vif-vm1,dl_src=00:00:00:00:00:02,dl_dst=00:00:00:00:00:01, \
+    icmp6,ipv6_src=aef0::2,ipv6_dst=aef0::1,nw_ttl=255, \
+    icmpv6_type=135,icmpv6_code=0, \
+    nd_target=aef0::1,nd_sll=00:00:00:00:00:02"], [0], [stdout])
+AT_CHECK([grep "Translation failed" stdout], [1])
+AT_CHECK([grep "packet is dropped" stdout], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Port security - VRRPv3 ARP/ND])
 CHECK_SCAPY
 ovn_start

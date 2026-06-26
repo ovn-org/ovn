@@ -9571,9 +9571,12 @@ arp_nd_ns_match(const char *ips, int addr_family, struct ds *match)
     ds_put_cstr(match, FLAGBIT_NOT_VXLAN " && ");
 
     if (addr_family == AF_INET) {
-        ds_put_format(match, "arp.op == 1 && arp.tpa == %s", ips);
+        ds_put_format(match,
+                      "eth.dst == ff:ff:ff:ff:ff:ff && "
+                      "arp.op == 1 && arp.tpa == %s", ips);
     } else {
-        ds_put_format(match, "nd_ns && nd.target == %s", ips);
+        ds_put_format(match,
+                      "eth.mcast && nd_ns && nd.target == %s", ips);
     }
 }
 
