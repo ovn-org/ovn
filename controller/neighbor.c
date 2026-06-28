@@ -46,8 +46,9 @@ neighbor_interface_monitor_alloc(enum neighbor_family family,
 static void neighbor_collect_mac_to_advertise(
     const struct neighbor_ctx_in *, struct hmap *neighbors,
     struct sset *advertised_pbs, const struct sbrec_datapath_binding *);
-static void neighbor_collect_ip_mac_to_advertise(
-    const struct neighbor_ctx_in *,
+static void neighbor_collect_advertised_mac_bindings(
+    const struct neighbor_ctx_in *, enum neigh_redistribute_mode mode,
+    struct hmap *fdb_neighbors,
     struct hmap *neighbors_v4, struct hmap *neighbors_v6,
     struct sset *advertised_pbs, const struct sbrec_datapath_binding *);
 static const struct sbrec_port_binding *neighbor_get_relevant_port_binding(
@@ -176,14 +177,15 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
                                               n_ctx_out->advertised_pbs,
                                               ld->datapath);
         }
-        if (nrm_mode_IP_is_set(mode) && br_v4 && br_v6) {
-            neighbor_collect_ip_mac_to_advertise(n_ctx_in,
-                                                 &br_v4->announced_neighbors,
-                                                 &br_v6->announced_neighbors,
-                                                 n_ctx_out->advertised_pbs,
-                                                 ld->datapath);
-        }
-
+        /* Advertise every SB Advertised_MAC_Binding row of the datapath as an
+         * EVPN Type-2 MAC+IP neighbor; ovn-northd only populates rows that are
+         * meant to be advertised.  With 'fdb' set, also program them as FDB
+         * entries. */
+        neighbor_collect_advertised_mac_bindings(
+            n_ctx_in, mode, lo ? &lo->announced_neighbors : NULL,
+            br_v4 ? &br_v4->announced_neighbors : NULL,
+            br_v6 ? &br_v6->announced_neighbors : NULL,
+            n_ctx_out->advertised_pbs, ld->datapath);
     }
 }
 
@@ -303,9 +305,18 @@ neighbor_collect_mac_to_advertise(const struct neighbor_ctx_in *n_ctx_in,
     sbrec_port_binding_index_destroy_row(target);
 }
 
+/* Walks the SB Advertised_MAC_Binding rows of 'dp' and advertises each as an
+ * EVPN Type-2 MAC+IP neighbor (into 'neighbors_v4'/'neighbors_v6').
+ * ovn-northd only populates a row when the datapath opted into advertising it
+ * (via the 'ip'/'nat' redistribute tokens), so every present row is advertised
+ * here.  With 'fdb' set in 'mode' the MAC is additionally programmed into the
+ * FDB ('fdb_neighbors').  Any of the target hmaps may be NULL when the
+ * corresponding monitored interface does not exist. */
 static void
-neighbor_collect_ip_mac_to_advertise(
+neighbor_collect_advertised_mac_bindings(
         const struct neighbor_ctx_in *n_ctx_in,
+        enum neigh_redistribute_mode mode,
+        struct hmap *fdb_neighbors,
         struct hmap *neighbors_v4,
         struct hmap *neighbors_v6,
         struct sset *advertised_pbs,
@@ -345,12 +356,26 @@ neighbor_collect_ip_mac_to_advertise(
             continue;
         }
 
+        bool advertised = false;
         struct hmap *neighbors = IN6_IS_ADDR_V4MAPPED(&ip)
                                  ? neighbors_v4 : neighbors_v6;
-        if (!advertise_neigh_find(neighbors, ea, &ip)) {
-            advertise_neigh_add(neighbors, ea, ip);
+        if (neighbors) {
+            if (!advertise_neigh_find(neighbors, ea, &ip)) {
+                advertise_neigh_add(neighbors, ea, ip);
+            }
+            advertised = true;
         }
-        sset_add(advertised_pbs, pb->logical_port);
+
+        if (nrm_mode_FDB_is_set(mode) && fdb_neighbors) {
+            if (!advertise_neigh_find(fdb_neighbors, ea, &in6addr_any)) {
+                advertise_neigh_add(fdb_neighbors, ea, in6addr_any);
+            }
+            advertised = true;
+        }
+
+        if (advertised) {
+            sset_add(advertised_pbs, pb->logical_port);
+        }
     }
 
     sbrec_advertised_mac_binding_index_destroy_row(target);
