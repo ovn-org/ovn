@@ -8,6 +8,7 @@ m4_define([_DUMP_DB_TABLES], [
     echo ======= >> $1
     ovn-sbctl list logical_flow >> $1
     ovn-sbctl list port_binding >> $1
+    ovn-sbctl list advertised_mac_binding >> $1
     ovn-sbctl list address_set >> $1
     ovn-sbctl list meter >> $1
     ovn-sbctl list meter_band >> $1
@@ -20593,6 +20594,159 @@ check_row_count Advertised_MAC_Binding 1
 
 check ovn-nbctl --wait=sb clear logical_switch ls-evpn other_config
 check_row_count Advertised_MAC_Binding 0
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LR EVPN Advertised_MAC_Binding sync for distributed NAT])
+ovn_start
+
+check ovn-sbctl chassis-add ch geneve 127.0.0.1
+
+AS_BOX([Build topology: tenant LS, LR with DGP, EVPN-enabled provider LS])
+check ovn-nbctl ls-add ls-tenant                                            \
+    -- lsp-add ls-tenant vm1                                                \
+    -- lsp-set-addresses vm1 "00:00:00:00:02:00 10.0.0.10"
+check ovn-nbctl ls-add ls-evpn                                              \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-vni=10       \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip
+dnl A provider logical switch has a localnet port; without it the DGP's
+dnl peer gets a chassisredirect port and the NAT is not considered
+dnl distributed (so floating IPs would never be advertised).
+check ovn-nbctl lsp-add ls-evpn ln-evpn                                     \
+    -- lsp-set-type ln-evpn localnet                                        \
+    -- lsp-set-addresses ln-evpn unknown                                    \
+    -- lsp-set-options ln-evpn network_name=phys
+check ovn-nbctl lr-add lr                                                   \
+    -- lrp-add lr lrp-int 00:00:00:00:01:01 10.0.0.1/24                     \
+    -- lrp-add lr lrp-ext 00:00:00:00:01:02 172.16.0.1/24                   \
+    -- lrp-set-gateway-chassis lrp-ext ch                                   \
+    -- lsp-add ls-tenant ls-tenant-lrp                                      \
+    -- lsp-set-type ls-tenant-lrp router                                    \
+    -- lsp-set-addresses ls-tenant-lrp 00:00:00:00:01:01                    \
+    -- lsp-set-options ls-tenant-lrp router-port=lrp-int                    \
+    -- lsp-add ls-evpn ls-evpn-lrp                                          \
+    -- lsp-set-type ls-evpn-lrp router                                      \
+    -- lsp-set-addresses ls-evpn-lrp 00:00:00:00:01:02                      \
+    -- lsp-set-options ls-evpn-lrp router-port=lrp-ext
+check ovn-nbctl --wait=sb sync
+
+ls_evpn_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=ls-evpn)
+
+AS_BOX([Baseline: LRP MAC/IP advertised, no NAT yet])
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.1 datapath=$ls_evpn_uuid mac='00\:00\:00\:00\:01\:02'
+check_row_count Advertised_MAC_Binding 1
+
+AS_BOX([Non-distributed NATs are not advertised])
+check ovn-nbctl --wait=sb lr-nat-add lr snat 172.16.0.50 10.0.0.10
+check ovn-nbctl --wait=sb lr-nat-add lr dnat 172.16.0.51 10.0.0.10
+check_row_count Advertised_MAC_Binding 1
+check ovn-nbctl --wait=sb lr-nat-del lr snat 172.16.0.50
+check ovn-nbctl --wait=sb lr-nat-del lr dnat 172.16.0.51
+
+AS_BOX([dnat_and_snat without external_mac is not advertised])
+check ovn-nbctl --wait=sb lr-nat-add lr dnat_and_snat 172.16.0.52 10.0.0.10
+check_row_count Advertised_MAC_Binding 1
+check ovn-nbctl --wait=sb lr-nat-del lr dnat_and_snat 172.16.0.52
+
+AS_BOX([Distributed FIP is not advertised with 'ip' alone (needs 'nat')])
+check ovn-nbctl --wait=sb lr-nat-add lr dnat_and_snat 172.16.0.100 10.0.0.10 vm1 00:11:22:33:44:55
+check_row_count Advertised_MAC_Binding 0 ip=172.16.0.100
+check_row_count Advertised_MAC_Binding 1
+
+AS_BOX([Adding the 'nat' token advertises the FIP])
+check ovn-nbctl --wait=sb set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip,nat
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.100 datapath=$ls_evpn_uuid mac='00\:11\:22\:33\:44\:55'
+check_row_count Advertised_MAC_Binding 2
+
+AS_BOX([Adding a second FIP yields a second advertised entry])
+check ovn-nbctl --wait=sb lsp-add ls-tenant vm2                             \
+    -- lsp-set-addresses vm2 "00:00:00:00:02:01 10.0.0.11"
+check ovn-nbctl --wait=sb lr-nat-add lr dnat_and_snat 172.16.0.101 10.0.0.11 vm2 00:11:22:33:44:66
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.101 datapath=$ls_evpn_uuid mac='00\:11\:22\:33\:44\:66'
+check_row_count Advertised_MAC_Binding 3
+
+AS_BOX([Deleting a NAT removes its advertised entry])
+check ovn-nbctl --wait=sb lr-nat-del lr dnat_and_snat 172.16.0.100
+check_row_count Advertised_MAC_Binding 0 ip=172.16.0.100
+check_row_count Advertised_MAC_Binding 2
+
+AS_BOX(['nat' and 'ip' are independent: dropping 'nat' keeps the LRP entry])
+check ovn-nbctl --wait=sb set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip
+check_row_count Advertised_MAC_Binding 0 ip=172.16.0.101
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.1 datapath=$ls_evpn_uuid mac='00\:00\:00\:00\:01\:02'
+check_row_count Advertised_MAC_Binding 1
+
+AS_BOX([Disabling EVPN on the provider LS removes all advertisements])
+check ovn-nbctl --wait=sb remove logical_switch ls-evpn other_config dynamic-routing-redistribute
+check_row_count Advertised_MAC_Binding 0
+
+AS_BOX([Re-enabling redistribute=ip,nat restores both LRP and FIP])
+check ovn-nbctl --wait=sb set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip,nat
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.101 datapath=$ls_evpn_uuid mac='00\:11\:22\:33\:44\:66'
+check_row_count Advertised_MAC_Binding 2
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LR EVPN Advertised_MAC_Binding sync - incremental NAT changes])
+ovn_start
+
+check ovn-sbctl chassis-add ch geneve 127.0.0.1
+
+dnl Same topology as the distributed NAT test: a tenant LS, a LR with a
+dnl distributed gateway port, and an EVPN-enabled provider LS (with the 'nat'
+dnl token) so that distributed floating IPs are advertised.
+check ovn-nbctl ls-add ls-tenant                                            \
+    -- lsp-add ls-tenant vm1                                                \
+    -- lsp-set-addresses vm1 "00:00:00:00:02:00 10.0.0.10"
+check ovn-nbctl ls-add ls-evpn                                              \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-vni=10       \
+    -- set logical_switch ls-evpn other_config:dynamic-routing-redistribute=ip,nat
+check ovn-nbctl lsp-add ls-evpn ln-evpn                                     \
+    -- lsp-set-type ln-evpn localnet                                        \
+    -- lsp-set-addresses ln-evpn unknown                                    \
+    -- lsp-set-options ln-evpn network_name=phys
+check ovn-nbctl lr-add lr                                                   \
+    -- lrp-add lr lrp-int 00:00:00:00:01:01 10.0.0.1/24                     \
+    -- lrp-add lr lrp-ext 00:00:00:00:01:02 172.16.0.1/24                   \
+    -- lrp-set-gateway-chassis lrp-ext ch                                   \
+    -- lsp-add ls-tenant ls-tenant-lrp                                      \
+    -- lsp-set-type ls-tenant-lrp router                                    \
+    -- lsp-set-addresses ls-tenant-lrp 00:00:00:00:01:01                    \
+    -- lsp-set-options ls-tenant-lrp router-port=lrp-int                    \
+    -- lsp-add ls-evpn ls-evpn-lrp                                          \
+    -- lsp-set-type ls-evpn-lrp router                                      \
+    -- lsp-set-addresses ls-evpn-lrp 00:00:00:00:01:02                      \
+    -- lsp-set-options ls-evpn-lrp router-port=lrp-ext
+check ovn-nbctl --wait=sb sync
+
+ls_evpn_uuid=$(fetch_column Datapath_Binding _uuid external_ids:name=ls-evpn)
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.1 datapath=$ls_evpn_uuid
+
+AS_BOX([Adding a distributed floating IP is processed incrementally])
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-add lr dnat_and_snat 172.16.0.100 10.0.0.10 vm1 00:11:22:33:44:55
+check_row_count Advertised_MAC_Binding 1 ip=172.16.0.100 datapath=$ls_evpn_uuid mac='00\:11\:22\:33\:44\:55'
+check_row_count Advertised_MAC_Binding 2
+dnl The NAT lives on the router while the advertisement is attached to the
+dnl peer provider switch.  The router's tracked NAT change must drive a
+dnl recompute of the advertised MAC bindings, otherwise the floating IP would
+dnl never reach the SB.
+check_engine_compute advertised_mac_binding_sync recompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Deleting a distributed floating IP is processed incrementally])
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-nat-del lr dnat_and_snat 172.16.0.100
+check_row_count Advertised_MAC_Binding 0 ip=172.16.0.100
+check_row_count Advertised_MAC_Binding 1
+check_engine_compute advertised_mac_binding_sync recompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP

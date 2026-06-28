@@ -1754,6 +1754,9 @@ parse_neigh_dynamic_redistribute(const struct smap *options)
         if (!strcmp(token, "ip")) {
             mode |= NRM_IP;
         }
+        if (!strcmp(token, "nat")) {
+            mode |= NRM_NAT;
+        }
     }
     free(tokstr);
 

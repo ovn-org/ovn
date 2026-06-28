@@ -230,7 +230,8 @@ digraph "Incremental-Processing-Engine" {
 	advertised_mac_binding_sync [[style=filled, shape=box, fillcolor=white, label="advertised_mac_binding_sync"]];
 	SB_port_binding -> advertised_mac_binding_sync [[label=""]];
 	SB_advertised_mac_binding -> advertised_mac_binding_sync [[label=""]];
-	northd -> advertised_mac_binding_sync [[label="engine_noop_handler"]];
+	northd -> advertised_mac_binding_sync [[label="advertised_mac_binding_sync_northd_change_handler"]];
+	lr_nat -> advertised_mac_binding_sync [[label="engine_noop_handler"]];
 	northd_output [[style=filled, shape=box, fillcolor=white, label="northd_output"]];
 	acl_id -> northd_output [[label="northd_output_acl_id_handler"]];
 	sync_from_sb -> northd_output [[label=""]];

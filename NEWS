@@ -36,6 +36,12 @@ Post v26.03.0
        flooding to remote VTEPs.
      * Allow learning routes from the main (254) and default (253) routing
        tables.
+     * EVPN: distributed dnat_and_snat NAT entries (e.g. floating IPs)
+       are now populated in the SB Advertised_MAC_Binding table on the
+       provider logical switch that carries the distributed gateway
+       port, so that they can be advertised as EVPN Type-2 routes.  This
+       is gated on a new "nat" token of the Logical_Switch
+       "dynamic-routing-redistribute" option, independent of "ip".
    - Added "override-connected" option to Logical Router Static Routes to mark
      static routes as higher-priority than connected routes, which in turn led
      to changes in administrative distance for specific route types. Please see

@@ -52,4 +52,7 @@ en_advertised_mac_binding_sync_run(struct engine_node *, void *data);
 enum engine_input_handler_result
 northd_output_advertised_mac_binding_sync_handler(struct engine_node *,
                                                   void *data);
+enum engine_input_handler_result
+advertised_mac_binding_sync_northd_change_handler(struct engine_node *node,
+                                                  void *data);
 #endif /* EN_ADVERTISED_ROUTE_SYNC_H */

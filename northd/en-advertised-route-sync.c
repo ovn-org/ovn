@@ -833,6 +833,18 @@ evpn_ip_redistribution_enabled(const struct ovn_datapath *od)
     return nrm_mode_IP_is_set(mode);
 }
 
+static bool
+evpn_nat_redistribution_enabled(const struct ovn_datapath *od)
+{
+    if (!od->has_evpn_vni) {
+        return false;
+    }
+
+    enum neigh_redistribute_mode mode =
+        parse_neigh_dynamic_redistribute(&od->nbs->other_config);
+    return nrm_mode_NAT_is_set(mode);
+}
+
 static uint32_t
 advertised_mac_binding_get_hash(const struct sbrec_datapath_binding *dp,
                                 const struct sbrec_port_binding *sb,
@@ -890,22 +902,23 @@ advertised_mac_binding_entry_destroy(struct advertised_mac_binding *e)
 }
 
 static void
-advertised_mac_binding_add(struct hmap *map,
-                           const struct sbrec_datapath_binding *dp,
-                           const struct sbrec_port_binding *sb,
-                           struct lport_addresses *addr)
+advertised_mac_binding_add_with_mac(struct hmap *map,
+                                    const struct sbrec_datapath_binding *dp,
+                                    const struct sbrec_port_binding *sb,
+                                    const struct lport_addresses *addr,
+                                    const char *mac)
 {
-    if (!addr) {
+    if (!addr || !mac) {
         return;
     }
 
     for (size_t i = 0; i < addr->n_ipv4_addrs; i++) {
         if (!advertised_mac_binding_entry_find(map, dp, sb,
                                                addr->ipv4_addrs[i].addr_s,
-                                               addr->ea_s)) {
+                                               mac)) {
             advertised_mac_binding_entry_add(map, dp, sb,
                                              addr->ipv4_addrs[i].addr_s,
-                                             addr->ea_s);
+                                             mac);
         }
     }
 
@@ -916,12 +929,25 @@ advertised_mac_binding_add(struct hmap *map,
 
         if (!advertised_mac_binding_entry_find(map, dp, sb,
                                                addr->ipv6_addrs[i].addr_s,
-                                               addr->ea_s)) {
+                                               mac)) {
             advertised_mac_binding_entry_add(map, dp, sb,
                                              addr->ipv6_addrs[i].addr_s,
-                                             addr->ea_s);
+                                             mac);
         }
     }
+}
+
+static void
+advertised_mac_binding_add(struct hmap *map,
+                           const struct sbrec_datapath_binding *dp,
+                           const struct sbrec_port_binding *sb,
+                           struct lport_addresses *addr)
+{
+    if (!addr) {
+        return;
+    }
+
+    advertised_mac_binding_add_with_mac(map, dp, sb, addr, addr->ea_s);
 }
 
 static void
@@ -956,6 +982,57 @@ build_advertised_mac_binding(const struct ovn_datapath *od, struct hmap *map)
     }
 }
 
+/* Advertise distributed dnat_and_snat NAT entries (e.g. floating IPs) over
+ * EVPN.  The advertisement is attached to the provider Logical Switch that
+ * carries the NAT's distributed gateway port, provided that LS has NAT
+ * redistribution enabled via 'dynamic-routing-redistribute=nat'. */
+static void
+build_advertised_mac_binding_lr(const struct ovn_datapath *od,
+                                const struct lr_nat_table *lr_nats,
+                                struct hmap *map)
+{
+    ovs_assert(od->nbr);
+
+    const struct lr_nat_record *lrnat_rec =
+        lr_nat_table_find_by_uuid(lr_nats, od->nbr->header_.uuid);
+    if (!lrnat_rec) {
+        return;
+    }
+
+    for (size_t i = 0; i < lrnat_rec->n_nat_entries; i++) {
+        const struct ovn_nat *nat_entry = &lrnat_rec->nat_entries[i];
+        const struct nbrec_nat *nat = nat_entry->nb;
+
+        if (!nat_entry->is_valid || !nat_entry->is_distributed ||
+            nat_entry->type != DNAT_AND_SNAT) {
+            continue;
+        }
+
+        if (!nat->external_mac) {
+            continue;
+        }
+
+        if (!smap_get_bool(&nat->options, "dynamic-routing-advertise", true)) {
+            continue;
+        }
+
+        const struct ovn_port *dgp = nat_entry->l3dgw_port;
+        if (!dgp || !dgp->peer || !dgp->peer->sb || !dgp->peer->od) {
+            continue;
+        }
+
+        const struct ovn_datapath *peer_od = dgp->peer->od;
+        if (!peer_od->nbs || !evpn_nat_redistribution_enabled(peer_od)) {
+            continue;
+        }
+
+        advertised_mac_binding_add_with_mac(map, peer_od->sdp->sb_dp,
+                                            dgp->peer->sb,
+                                            &nat_entry->ext_addrs,
+                                            nat->external_mac);
+    }
+}
+
 void *
 en_advertised_mac_binding_sync_init(struct engine_node *node OVS_UNUSED,
                                     struct engine_arg *arg OVS_UNUSED)
@@ -970,6 +1047,8 @@ en_advertised_mac_binding_sync_run(struct engine_node *node,
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     const struct sbrec_advertised_mac_binding_table *sbrec_adv_mb_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_mac_binding", node));
+    struct ed_type_lr_nat_data *lr_nat_data =
+        engine_get_input_data("lr_nat", node);
     const struct engine_context *eng_ctx = engine_get_context();
 
     struct hmap advertised_mac_binding_map =
@@ -978,6 +1057,11 @@ en_advertised_mac_binding_sync_run(struct engine_node *node,
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &northd_data->ls_datapaths.datapaths) {
         build_advertised_mac_binding(od, &advertised_mac_binding_map);
+    }
+
+    HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
+        build_advertised_mac_binding_lr(od, &lr_nat_data->lr_nats,
+                                        &advertised_mac_binding_map);
     }
 
     struct advertised_mac_binding *e;
@@ -1021,4 +1105,35 @@ northd_output_advertised_mac_binding_sync_handler(
     struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
 {
     return EN_HANDLED_UPDATED;
+}
+
+enum engine_input_handler_result
+advertised_mac_binding_sync_northd_change_handler(struct engine_node *node,
+                                                  void *data OVS_UNUSED)
+{
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct northd_tracked_data *trk_data = &northd_data->trk_data;
+
+    /* Without tracked data northd did a full recompute (for example a
+     * Logical_Switch 'other_config' change that toggles the EVPN settings),
+     * so the advertised set must be re-evaluated. */
+    if (!northd_has_tracked_data(trk_data)) {
+        return EN_UNHANDLED;
+    }
+
+    /* A created or deleted Logical_Switch may have EVPN redistribution
+     * enabled and contribute advertised MAC bindings. */
+    if (!hmapx_is_empty(&trk_data->trk_switches.crupdated) ||
+        !hmapx_is_empty(&trk_data->trk_switches.deleted)) {
+        return EN_UNHANDLED;
+    }
+
+    /* The distributed dnat_and_snat NAT entries (floating IPs) of a Logical
+     * Router are advertised on its peer provider Logical Switch, so a change
+     * to a router's NATs must re-evaluate the advertised MAC bindings. */
+    if (!hmapx_is_empty(&trk_data->trk_nat_lrs)) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
 }

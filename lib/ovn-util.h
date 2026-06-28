@@ -800,7 +800,8 @@ bool port_contains_duplicate_ip(struct lport_addresses *laddrs1,
 
 #define NEIGH_REDISTRIBUTE_MODES    \
     NEIGH_REDISTRIBUTE_MODE(FDB, 0) \
-    NEIGH_REDISTRIBUTE_MODE(IP, 1)
+    NEIGH_REDISTRIBUTE_MODE(IP, 1)  \
+    NEIGH_REDISTRIBUTE_MODE(NAT, 2)
 
 enum neigh_redistribute_mode_bits {
 #define NEIGH_REDISTRIBUTE_MODE(PROTOCOL, BIT) NRM_##PROTOCOL##_BIT = BIT,

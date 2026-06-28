@@ -367,10 +367,11 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                      NULL);
     engine_add_input(&en_advertised_mac_binding_sync,
                      &en_sb_advertised_mac_binding, NULL);
-    /* No need for an explicit handler for northd changes.
-     * We do need to access en_northd (input) data, i.e., to
-     * lookup OVN ports. */
     engine_add_input(&en_advertised_mac_binding_sync, &en_northd,
+                     advertised_mac_binding_sync_northd_change_handler);
+    /* The lr_nat data is only read in run(); the recompute is triggered via
+     * the northd tracked NAT data (see the handler above). */
+    engine_add_input(&en_advertised_mac_binding_sync, &en_lr_nat,
                      engine_noop_handler);
 
     engine_add_input(&en_learned_route_sync, &en_sb_learned_route,

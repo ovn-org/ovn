@@ -1032,6 +1032,20 @@
           all IPs/MACs bindings that are local to the chassis. This applies to
           VIFs and router ports.
         </p>
+
+        <p>
+          If <code>nat</code> is specified then the external IP/MAC of any
+          distributed <code>dnat_and_snat</code> NAT entry (for example a
+          floating IP) whose distributed gateway port is attached to this
+          logical switch is advertised as an EVPN Type-2 route, using the
+          NAT's <ref column="external_mac" table="NAT"/>.  This is independent
+          of <code>ip</code>: enabling <code>ip</code> alone does not advertise
+          floating IPs, and enabling <code>nat</code> alone does not advertise
+          VIF or router-port addresses.  This mirrors the <code>nat</code>
+          token of <ref column="options" key="dynamic-routing-redistribute"
+          table="Logical_Router"/>, which advertises the same NAT entries as
+          EVPN Type-5 routes.
+        </p>
       </column>
     </group>
 
@@ -5514,6 +5528,19 @@ or
       used by the CMS to enable/disable the advertisement of the current NAT
       external IP via the <ref table="Advertised_Route" db="OVN_Southbound"/>
       table. Default: <code>true</code>.
+
+      <p>
+        For a distributed <code>dnat_and_snat</code> entry (a floating IP,
+        with both <ref column="external_mac"/> and <ref column="logical_port"/>
+        set) this also controls the EVPN Type-2 advertisement: when the
+        provider <ref table="Logical_Switch"/> that carries the NAT's
+        distributed gateway port has <code>nat</code> set in its
+        <ref column="other_config" key="dynamic-routing-redistribute"
+        table="Logical_Switch"/>, the external IP/MAC are published in the
+        <ref table="Advertised_MAC_Binding" db="OVN_Southbound"/> table.
+        Setting this option to <code>false</code> opts the individual floating
+        IP out of that advertisement as well.
+      </p>
     </column>
 
     <group title="Common Columns">
