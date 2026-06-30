@@ -159,6 +159,8 @@ cd -
         --with-ovs-source=$PWD/openvswitch-%{ovsver} \
 %if %{with libcapng}
         --enable-libcapng \
+        --with-log-user=openvswitch \
+        --with-log-group=openvswitch \
 %else
         --disable-libcapng \
 %endif
@@ -531,6 +533,7 @@ fi
 %{_mandir}/man8/ovn-debug.8*
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
+%{_tmpfilesdir}/ovn-tmpfiles.conf
 %{_unitdir}/ovn-db@.service
 
 %files docker
