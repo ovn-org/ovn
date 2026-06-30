@@ -340,7 +340,8 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         .learned_routes = learned_routes,
         .stale_routes = &stale_routes,
     };
-    route_table_dump_one_table(table_id, handle_route_msg, &data);
+    route_table_dump_one_table(table_id, AF_INET, handle_route_msg, &data);
+    route_table_dump_one_table(table_id, AF_INET6, handle_route_msg, &data);
 
     int ret = re_nl_delete_stale_routes(table_id, &stale_routes);
 
@@ -385,7 +386,8 @@ re_nl_cleanup_routes(uint32_t table_id)
         .learned_routes = NULL,
         .stale_routes = &stale_routes,
     };
-    route_table_dump_one_table(table_id, handle_route_msg, &data);
+    route_table_dump_one_table(table_id, AF_INET, handle_route_msg, &data);
+    route_table_dump_one_table(table_id, AF_INET6, handle_route_msg, &data);
 
     int ret = re_nl_delete_stale_routes(table_id, &stale_routes);
     vector_destroy(&stale_routes);

@@ -10401,11 +10401,7 @@ check ovn-nbctl --wait=hv set Logical_Switch_Port ln1 \
     options:localnet_learn_fdb=true
 test_arp_nd_localnet
 
-OVN_CLEANUP([hv1
-/left allocated/d
-], [hv2
-/left allocated/d
-])
+OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
 
@@ -25639,11 +25635,7 @@ OVS_WAIT_UNTIL(
                  'hv2/br-phys-1_n1-tx.pcap expected_empty' ],
   [$at_diff -F'^---' exp rcv])
 
-OVN_CLEANUP([hv1
-/left allocated/d
-], [hv2
-/left allocated/d
-])
+OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
 
