@@ -216,17 +216,6 @@ static char *get_file_system_id(void)
     free(filename);
     return ret;
 }
-/* Only set monitor conditions on tables that are available in the
- * server schema.
- */
-#define sb_table_set_opt_mon_condition(idl, table, cond) \
-    (sbrec_server_has_##table##_table(idl)               \
-     ? sbrec_##table##_set_condition(idl, cond)          \
-     : 0)
-
-/* Assume the table exists in the server schema and set its condition. */
-#define sb_table_set_req_mon_condition(idl, table, cond) \
-    sbrec_##table##_set_condition(idl, cond)
 
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
@@ -424,23 +413,22 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
 
 out:;
     unsigned int cond_seqnos[] = {
-        sb_table_set_req_mon_condition(ovnsb_idl, port_binding, &pb),
-        sb_table_set_req_mon_condition(ovnsb_idl, logical_flow, &lf),
-        sb_table_set_req_mon_condition(ovnsb_idl, logical_dp_group, &ldpg),
-        sb_table_set_req_mon_condition(ovnsb_idl, mac_binding, &mb),
-        sb_table_set_req_mon_condition(ovnsb_idl, fdb, &fdb),
-        sb_table_set_req_mon_condition(ovnsb_idl, multicast_group, &mg),
-        sb_table_set_req_mon_condition(ovnsb_idl, dns, &dns),
-        sb_table_set_req_mon_condition(ovnsb_idl, controller_event, &ce),
-        sb_table_set_req_mon_condition(ovnsb_idl, ip_multicast, &ip_mcast),
-        sb_table_set_req_mon_condition(ovnsb_idl, igmp_group, &igmp),
-        sb_table_set_req_mon_condition(ovnsb_idl, chassis_private, &chprv),
-        sb_table_set_opt_mon_condition(ovnsb_idl, chassis_template_var, &tv),
-        sb_table_set_opt_mon_condition(ovnsb_idl, ecmp_nexthop, &nh),
-        sb_table_set_opt_mon_condition(ovnsb_idl, advertised_route, &ar),
-        sb_table_set_opt_mon_condition(ovnsb_idl, learned_route, &lr),
-        sb_table_set_opt_mon_condition(ovnsb_idl, advertised_mac_binding,
-                                       &amb),
+        sbrec_port_binding_set_condition(ovnsb_idl, &pb),
+        sbrec_logical_flow_set_condition(ovnsb_idl, &lf),
+        sbrec_logical_dp_group_set_condition(ovnsb_idl, &ldpg),
+        sbrec_mac_binding_set_condition(ovnsb_idl, &mb),
+        sbrec_fdb_set_condition(ovnsb_idl, &fdb),
+        sbrec_multicast_group_set_condition(ovnsb_idl, &mg),
+        sbrec_dns_set_condition(ovnsb_idl, &dns),
+        sbrec_controller_event_set_condition(ovnsb_idl, &ce),
+        sbrec_ip_multicast_set_condition(ovnsb_idl, &ip_mcast),
+        sbrec_igmp_group_set_condition(ovnsb_idl, &igmp),
+        sbrec_chassis_private_set_condition(ovnsb_idl, &chprv),
+        sbrec_chassis_template_var_set_condition(ovnsb_idl, &tv),
+        sbrec_ecmp_nexthop_set_condition(ovnsb_idl, &nh),
+        sbrec_advertised_route_set_condition(ovnsb_idl, &ar),
+        sbrec_learned_route_set_condition(ovnsb_idl, &lr),
+        sbrec_advertised_mac_binding_set_condition(ovnsb_idl, &amb),
     };
 
     unsigned int expected_cond_seqno = 0;
