@@ -1830,12 +1830,32 @@ add_to_routes_learned(struct hmap *routes_learned,
     return true;
 }
 
+/* Returns true if IPv4 prefixes of 'nb_lr' should be advertised with the
+ * interconnect port's IPv6 address as next hop ("IPv4 over IPv6").
+ * The option is read from the Logical_Router and may be overridden on the
+ * transit Logical_Router_Port.
+ */
 static bool
-get_nexthop_from_lport_addresses(bool is_v4,
+route_ipv4_next_hop_ipv6(const struct nbrec_logical_router *nb_lr,
+                         const struct nbrec_logical_router_port *ts_lrp)
+{
+    const char *opt_name = "ic-route-ipv4-next-hop-ipv6";
+    bool lr_opt = smap_get_bool(&nb_lr->options, opt_name, false);
+
+    return ts_lrp ? smap_get_bool(&ts_lrp->options, opt_name, lr_opt) : lr_opt;
+}
+
+static bool
+get_nexthop_from_lport_addresses(bool is_v4_prefix,
                                  const struct lport_addresses *laddr,
+                                 bool ipv4_next_hop_ipv6,
                                  struct in6_addr *nexthop)
 {
-    if (is_v4) {
+    /* For an IPv4 prefix, pick an IPv4 next hop by default.  When
+     * 'ipv4_next_hop_ipv6' is enabled and the interconnect port has an IPv6
+     * address, advertise the IPv4 prefix with that IPv6 address as next hop
+     * instead ("IPv4 over IPv6"). */
+    if (is_v4_prefix && !(ipv4_next_hop_ipv6 && laddr->n_ipv6_addrs)) {
         if (!laddr->n_ipv4_addrs) {
             return false;
         }
@@ -2057,6 +2077,8 @@ add_static_to_routes_ad(
 
     if (!get_nexthop_from_lport_addresses(IN6_IS_ADDR_V4MAPPED(&prefix),
                                           nexthop_addresses,
+                                          route_ipv4_next_hop_ipv6(nb_lr,
+                                                                   ts_lrp),
                                           &nexthop)) {
         return;
     }
@@ -2121,6 +2143,8 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
 
     if (!get_nexthop_from_lport_addresses(IN6_IS_ADDR_V4MAPPED(&prefix),
                                           nexthop_addresses,
+                                          route_ipv4_next_hop_ipv6(nb_lr,
+                                                                   ts_lrp),
                                           &nexthop)) {
         return;
     }
@@ -2198,6 +2222,8 @@ add_lb_vip_to_routes_ad(struct hmap *routes_ad, const char *vip_key,
     }
     if (!get_nexthop_from_lport_addresses(IN6_IS_ADDR_V4MAPPED(&vip_ip),
                                           nexthop_addresses,
+                                          route_ipv4_next_hop_ipv6(nb_lr,
+                                                                   ts_lrp),
                                           &nexthop)) {
         VLOG_WARN_RL(&rl, "Route ad: failed to get nexthop for lb vip");
         goto out;
@@ -2750,17 +2776,24 @@ advertise_routes(struct ic_context *ctx,
         icsbrec_route_set_transit_switch(isb_route, ts_name);
         icsbrec_route_set_availability_zone(isb_route, az);
 
+        /* The prefix and the next hop are formatted independently: an IPv4
+         * prefix may be advertised with an IPv6 next hop ("IPv4 over IPv6").
+         */
         char *prefix_s, *nexthop_s;
         if (IN6_IS_ADDR_V4MAPPED(&route_adv->prefix)) {
             ovs_be32 ipv4 = in6_addr_get_mapped_ipv4(&route_adv->prefix);
-            ovs_be32 nh = in6_addr_get_mapped_ipv4(&route_adv->nexthop);
             prefix_s = xasprintf(IP_FMT "/%d", IP_ARGS(ipv4), route_adv->plen);
-            nexthop_s = xasprintf(IP_FMT, IP_ARGS(nh));
         } else {
             char network_s[INET6_ADDRSTRLEN];
             inet_ntop(AF_INET6, &route_adv->prefix, network_s,
                       INET6_ADDRSTRLEN);
             prefix_s = xasprintf("%s/%d", network_s, route_adv->plen);
+        }
+        if (IN6_IS_ADDR_V4MAPPED(&route_adv->nexthop)) {
+            ovs_be32 nh = in6_addr_get_mapped_ipv4(&route_adv->nexthop);
+            nexthop_s = xasprintf(IP_FMT, IP_ARGS(nh));
+        } else {
+            char network_s[INET6_ADDRSTRLEN];
             inet_ntop(AF_INET6, &route_adv->nexthop, network_s,
                       INET6_ADDRSTRLEN);
             nexthop_s = xstrdup(network_s);

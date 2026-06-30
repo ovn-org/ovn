@@ -1662,6 +1662,182 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- IPv4 next hop over IPv6])
+AT_KEYWORDS([ic-route-ipv4-next-hop-ipv6])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    # Enable route learning and advertising at AZ level.
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create a dual-stack interconnect port and connect it to the TS.
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i \
+        169.254.100.$i/24 2001:db8:1::$i/64
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
+done
+
+# Advertise an IPv4 route from az1.
+check ovn_as az1 ovn-nbctl --wait=sb lr-route-add lr1 10.11.1.0/24 169.254.0.1
+check ovn-ic-nbctl --wait=sb sync
+
+# By default the IPv4 route is advertised with an IPv4 next hop.
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned \
+                | grep 10.11.1.0])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24             169.254.100.1 dst-ip (learned)
+])
+
+# Enable "IPv4 over IPv6" on the advertising LR: the IPv4 route is now
+# advertised with the interconnect port's IPv6 address as next hop.
+check ovn_as az1 ovn-nbctl set logical_router lr1 \
+    options:ic-route-ipv4-next-hop-ipv6=true
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep 10.11.1.0 \
+                | grep 2001:db8:1::1])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24             2001:db8:1::1 dst-ip (learned)
+])
+
+# The next hop stored in IC-SB is the IPv6 address.
+AT_CHECK([ovn-ic-sbctl list route | grep 'ip_prefix.*10.11.1' -A 1], [0], [dnl
+ip_prefix           : "10.11.1.0/24"
+nexthop             : "2001:db8:1::1"
+])
+
+# A per-port "false" override on the transit LRP wins over the LR option,
+# reverting to an IPv4 next hop.
+check ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-ipv4-next-hop-ipv6=false
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep 10.11.1.0 \
+                | grep 169.254.100.1])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24             169.254.100.1 dst-ip (learned)
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- IPv4 next hop over IPv6 -- mixed config])
+AT_KEYWORDS([ic-route-ipv4-next-hop-ipv6])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    # Enable route learning and advertising at AZ level.
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create a dual-stack interconnect port and connect it to the TS.
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i \
+        169.254.100.$i/24 2001:db8:1::$i/64
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
+
+    # Each AZ advertises one IPv4 route.
+    check ovn-nbctl --wait=sb lr-route-add lr$i 10.11.$i.0/24 discard
+done
+
+# Only az1 opts in to "IPv4 over IPv6".  az2 keeps the default behavior.
+check ovn_as az1 ovn-nbctl set logical_router lr1 \
+    options:ic-route-ipv4-next-hop-ipv6=true
+check ovn-ic-nbctl --wait=sb sync
+
+# az2 (no config) still learns az1's route with the advertised IPv6 next hop:
+# the option only affects the advertising router.
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep 10.11.1.0 \
+                | grep 2001:db8:1::1])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24             2001:db8:1::1 dst-ip (learned)
+             10.11.2.0/24                   discard dst-ip
+])
+
+# az1 learns az2's route with an IPv4 next hop, since lr2 has no config: the
+# two directions are independent.
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 10.11.2.0 \
+                | grep 169.254.100.2])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24                   discard dst-ip
+             10.11.2.0/24             169.254.100.2 dst-ip (learned)
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route sync -- IPv4 next hop over IPv6 -- no IPv6 on LRP])
+AT_KEYWORDS([ic-route-ipv4-next-hop-ipv6])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    # Enable route learning and advertising at AZ level.
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+
+    # Create an IPv4-only interconnect port and connect it to the TS.
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i \
+        169.254.100.$i/24
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
+done
+
+# Enable "IPv4 over IPv6" on lr1, whose interconnect port has no IPv6 address.
+check ovn_as az1 ovn-nbctl set logical_router lr1 \
+    options:ic-route-ipv4-next-hop-ipv6=true
+check ovn_as az1 ovn-nbctl --wait=sb lr-route-add lr1 10.11.1.0/24 169.254.0.1
+check ovn-ic-nbctl --wait=sb sync
+
+# Without an IPv6 address on the interconnect port, the IPv4 next hop is used
+# as usual: the option has no effect.
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned \
+                | grep 10.11.1.0])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24             169.254.100.1 dst-ip (learned)
+])
+
+# The next hop stored in IC-SB is the IPv4 address.
+AT_CHECK([ovn-ic-sbctl list route | grep 'ip_prefix.*10.11.1' -A 1], [0], [dnl
+ip_prefix           : "10.11.1.0/24"
+nexthop             : "169.254.100.1"
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- route sync -- IPv6 route tables])
 AT_KEYWORDS([IPv6-route-sync])
 

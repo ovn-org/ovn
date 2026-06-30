@@ -3790,6 +3790,25 @@ or
         </p>
       </column>
 
+      <column name="options" key="ic-route-ipv4-next-hop-ipv6"
+              type='{"type": "boolean"}'>
+        <p>
+          A boolean value that, when <code>true</code>, advertises this Logical
+          Router's IPv4 routes into the global <ref db="OVN_IC_Southbound"/>
+          database using the IPv6 address of the interconnect
+          <ref table="Logical_Router_Port"/> as next hop instead of its IPv4
+          address ("IPv4 over IPv6").  This requires the interconnect port to
+          have an IPv6 address; otherwise the IPv4 next hop is used as usual.
+          The default value is <code>false</code>.
+        </p>
+
+        <p>
+          This option can be overridden per transit
+          <ref table="Logical_Router_Port"/> by setting the option of the same
+          name on that port.
+        </p>
+      </column>
+
       <column name="options" key="disable_garp_rarp"
               type='{"type": "boolean"}'>
         <p>
@@ -4870,6 +4889,18 @@ or
 
           This allows to filter CIDR prefixes in the process of learning
           routes in <code>ovn-ic</code> daemon.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-ipv4-next-hop-ipv6"
+              type='{"type": "boolean"}'>
+        <p>
+          Overrides the <code>ic-route-ipv4-next-hop-ipv6</code> option of the
+          <ref table="Logical_Router"/> for routes advertised through this
+          transit port.  When <code>true</code>, IPv4 routes are advertised
+          using this port's IPv6 address as next hop ("IPv4 over IPv6"); when
+          <code>false</code>, the IPv4 next hop is used.  If unset, the
+          Logical Router option applies.
         </p>
       </column>
 
