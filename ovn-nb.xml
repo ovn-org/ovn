@@ -1157,6 +1157,31 @@
         forwarded to all routers and therefor the mac bindings of the routers
         are no longer updated.
       </column>
+
+      <column name="other_config" key="dns_server_ip">
+        <p>
+          IPv4 address of OVN's virtual DNS server for this logical switch.
+          When set, <code>ovn-northd</code> generates DNS interception flows
+          that match only packets whose destination IP equals this address.
+          This prevents OVN from sending a packet-in to
+          <code>ovn-controller</code> for DNS queries directed at external
+          resolvers (e.g. <code>8.8.8.8</code>), reducing unnecessary CPU
+          overhead.
+        </p>
+
+        <p>
+          The value must be a valid IPv4 address.  VMs must be configured
+          (e.g. via the <ref column="options" key="dns_server"
+          table="DHCP_Options"/> DHCP option) to use this address as their
+          DNS resolver so that OVN can intercept and answer their queries.
+        </p>
+
+        <p>
+          When this option is not set, OVN falls back to the default behavior
+          of intercepting all UDP port-53 traffic on the logical switch.
+        </p>
+      </column>
+
     </group>
 
     <group title="Common Columns">
