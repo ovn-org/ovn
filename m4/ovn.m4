@@ -127,6 +127,75 @@ AC_DEFUN([OVN_CHECK_LOGDIR],
      [LOGDIR='${localstatedir}/log/${PACKAGE}'])
    AC_SUBST([LOGDIR])])
 
+dnl Checks for the user that should own log files.
+AC_DEFUN([OVN_CHECK_LOGUSER],
+  [AC_ARG_WITH(
+     [log-user],
+     AS_HELP_STRING([--with-log-user=USER],
+                    [user used for log files [[root]]]),
+     [LOGUSER=$withval],
+     [LOGUSER=root])
+   AC_SUBST([LOGUSER])])
+
+dnl Checks for the group that should own log files.
+AC_DEFUN([OVN_CHECK_LOGGROUP],
+  [AC_ARG_WITH(
+     [log-group],
+     AS_HELP_STRING([--with-log-group=GROUP],
+                    [group used for log files [[root]]]),
+     [LOGGROUP=$withval],
+     [LOGGROUP=root])
+   AC_SUBST([LOGGROUP])])
+
+dnl Checks whether tmpfiles.d manages log ownership.
+AC_DEFUN([OVN_CHECK_TMPFILES_LOG_OWNERSHIP],
+  [AC_ARG_ENABLE(
+     [tmpfiles-log-ownership],
+     [AS_HELP_STRING([--enable-tmpfiles-log-ownership],
+                     [manage log ownership with tmpfiles.d])],
+     [case "${enableval}" in
+        (yes) tmpfiles_log_ownership=true ;;
+        (no)  tmpfiles_log_ownership=false ;;
+        (*) AC_MSG_ERROR([bad value ${enableval} for --enable-tmpfiles-log-ownership]) ;;
+      esac],
+     [tmpfiles_log_ownership=false])
+   AM_CONDITIONAL([TMPFILES_LOG_OWNERSHIP],
+                  [test x$tmpfiles_log_ownership = xtrue])
+   AS_IF([test x$tmpfiles_log_ownership = xtrue],
+     [OVN_CHOWN_LOGDIR=no],
+     [OVN_CHOWN_LOGDIR=yes])
+   AC_SUBST([OVN_CHOWN_LOGDIR])])
+
+dnl Checks for the directory in which to install tmpfiles.d configuration.
+AC_DEFUN([OVN_CHECK_TMPFILESDIR],
+  [AC_ARG_WITH(
+     [tmpfilesdir],
+     AS_HELP_STRING([--with-tmpfilesdir=DIR],
+                    [directory used for tmpfiles.d configuration
+                    [[PREFIX/lib/tmpfiles.d]]]),
+     [TMPFILESDIR=$withval],
+     [TMPFILESDIR='${prefix}/lib/tmpfiles.d'])
+   AC_SUBST([TMPFILESDIR])])
+
+dnl Checks for the directory in which to install sysusers.d configuration.
+AC_DEFUN([OVN_CHECK_SYSUSERSDIR],
+  [AC_ARG_WITH(
+     [sysusersdir],
+     AS_HELP_STRING([--with-sysusersdir=DIR],
+                    [directory used for sysusers.d configuration
+                    [[PREFIX/lib/sysusers.d]]]),
+     [SYSUSERSDIR=$withval],
+     [SYSUSERSDIR='${prefix}/lib/sysusers.d'])
+   AS_IF([test "x$LOGGROUP" = xroot],
+     [SYSUSERS_GROUP_LINE=],
+     [SYSUSERS_GROUP_LINE="g $LOGGROUP -"])
+   AS_IF([test "x$LOGUSER" = xroot],
+     [SYSUSERS_USER_LINE=],
+     [SYSUSERS_USER_LINE="u $LOGUSER -:$LOGGROUP \"OVN log user\" -"])
+   AC_SUBST([SYSUSERSDIR])
+   AC_SUBST([SYSUSERS_GROUP_LINE])
+   AC_SUBST([SYSUSERS_USER_LINE])])
+
 dnl Checks for the directory in which to store the OVN database.
 AC_DEFUN([OVN_CHECK_DBDIR],
   [AC_ARG_WITH(
