@@ -14361,7 +14361,7 @@ test
 acl_uuid=$(fetch_column nb:ACL _uuid priority=1000)
 
 # Update the ACL so that it no longer matches our client-server traffic
-check ovn-nbctl set ACL $acl_uuid match="\"ip4.dst == 192.168.1.3\""
+check ovn-nbctl --wait=hv set ACL $acl_uuid match="\"ip4.dst == 192.168.1.3\""
 
 # Send another packet from the client to the server.
 AT_CHECK([printf "test\n" > /tmp/myfifo], [0], [dnl
