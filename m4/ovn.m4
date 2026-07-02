@@ -127,6 +127,37 @@ AC_DEFUN([OVN_CHECK_LOGDIR],
      [LOGDIR='${localstatedir}/log/${PACKAGE}'])
    AC_SUBST([LOGDIR])])
 
+dnl Checks for the user that should own log files.
+AC_DEFUN([OVN_CHECK_LOGUSER],
+  [AC_ARG_WITH(
+     [log-user],
+     AS_HELP_STRING([--with-log-user=USER],
+                    [user used for log files [[root]]]),
+     [LOGUSER=$withval],
+     [LOGUSER=root])
+   AC_SUBST([LOGUSER])])
+
+dnl Checks for the group that should own log files.
+AC_DEFUN([OVN_CHECK_LOGGROUP],
+  [AC_ARG_WITH(
+     [log-group],
+     AS_HELP_STRING([--with-log-group=GROUP],
+                    [group used for log files [[root]]]),
+     [LOGGROUP=$withval],
+     [LOGGROUP=root])
+   AC_SUBST([LOGGROUP])])
+
+dnl Checks for the directory in which to install tmpfiles.d configuration.
+AC_DEFUN([OVN_CHECK_TMPFILESDIR],
+  [AC_ARG_WITH(
+     [tmpfilesdir],
+     AS_HELP_STRING([--with-tmpfilesdir=DIR],
+                    [directory used for tmpfiles.d configuration
+                    [[PREFIX/lib/tmpfiles.d]]]),
+     [TMPFILESDIR=$withval],
+     [TMPFILESDIR='${prefix}/lib/tmpfiles.d'])
+   AC_SUBST([TMPFILESDIR])])
+
 dnl Checks for the directory in which to store the OVN database.
 AC_DEFUN([OVN_CHECK_DBDIR],
   [AC_ARG_WITH(

@@ -12,4 +12,5 @@ usr/share/ovn/scripts/ovn-lib
 usr/share/ovn/scripts/ovn-bugtool-nbctl-show
 usr/share/ovn/scripts/ovn-bugtool-sbctl-lflow-list
 usr/share/ovn/scripts/ovn-bugtool-sbctl-show
+usr/lib/tmpfiles.d/ovn-tmpfiles.conf
 usr/lib/*/libovn*.so.*
