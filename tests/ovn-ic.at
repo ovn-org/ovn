@@ -748,6 +748,9 @@ for i in 1 2; do
        az$i/ic/ovn-ic.log
 done
 
+# Make sure last az2 changes got handled by ic in az1
+check ovn-ic-nbctl --wait=sb sync
+
 for i in 1 2; do
     az=az$i
     ovn_as $az
@@ -4260,8 +4263,12 @@ check ovn-nbctl set load_balancer az2_lb1 ip_port_mappings:3.3.3.1=lport3_az2:3.
 check ovn-nbctl --wait=sb set load_balancer az2_lb1 ip_port_mappings:1.1.1.1=lport1_az1:1.1.1.9:az1
 
 check_row_count sb:Service_Monitor 2
+# Sync IC DB (AZ2->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_row_count ic-sb:Service_Monitor 3
 
+# Sync IC DB (ISB->AZ1)
+check ovn-ic-nbctl --wait=sb sync
 ovn_as az1
 check_row_count sb:Service_Monitor 3
 
@@ -4297,6 +4304,7 @@ check ovn-nbctl lsp-add az3_ls1 lport6_az3
 check ovn-nbctl --wait=sb lsp-add az3_ls1 lport7_az3
 
 # Check there is one Service Monitor learned from az1.
+check ovn-ic-nbctl --wait=sb sync
 check_row_count sb:Service_Monitor 1
 
 check_column "5.5.5.1" sb:Service_Monitor ip logical_port=lport5_az3
@@ -4326,6 +4334,10 @@ AT_CHECK([ovn-nbctl --wait=sb \
 # We will leave one backend without a service monitor since it is not expected to participate in load balancing.
 check ovn-nbctl set load_balancer az2_lb2 ip_port_mappings:2.2.2.1=lport2_az1:2.2.2.9:az1
 check ovn-nbctl --wait=sb set load_balancer az2_lb2 ip_port_mappings:6.6.6.1=lport6_az3:6.6.6.9:az3
+
+# Sync IC DB (twice: one for AZ2->ISB and one for ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
 
 ovn_as az1
 check_row_count sb:Service_Monitor 4
@@ -4382,8 +4394,12 @@ AT_CHECK([ovn-sbctl lflow-list az1_ls1 | grep ls_in_lb | grep backends | ovn_str
 ])
 
 # Check the status in the interconet db.
+# Sync IC DB (AZ1->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline ic-sb:Service_Monitor status logical_port=lport1_az1
 
+# Sync IC DB (ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
 ovn_as az2
 check_column offline sb:Service_Monitor status logical_port=lport1_az1
 AT_CHECK([ovn-sbctl lflow-list az2_ls1 | grep ls_in_lb | grep backends | ovn_strip_lflows], [0], [dnl
@@ -4395,9 +4411,13 @@ AT_CHECK([ovn-sbctl lflow-list az2_ls1 | grep ls_in_lb | grep backends | ovn_str
 ovn_as az3
 svc_lport6_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport6_az3)
 check ovn-sbctl set Service_Monitor $svc_lport6_uuid status="offline"
+# Sync IC DB (AZ3->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline ic-sb:Service_Monitor status logical_port=lport6_az3
 
 ovn_as az2
+# Sync IC DB (ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline sb:Service_Monitor status logical_port=lport6_az3
 
 ovn_as az2
@@ -4406,6 +4426,8 @@ ovn-sbctl list service_m
 svc_lport3_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport3_az2)
 check ovn-sbctl set Service_Monitor $svc_lport3_uuid status="offline"
 check_column offline sb:Service_Monitor status logical_port=lport3_az2
+# Sync IC DB (AZ2->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline ic-sb:Service_Monitor status logical_port=lport3_az2
 
 ovn_as az2
@@ -4415,6 +4437,8 @@ ovn_as az1
 svc_lport2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport2_az1)
 check ovn-sbctl set Service_Monitor $svc_lport2_uuid status="offline"
 check_column offline sb:Service_Monitor status logical_port=lport2_az1
+# Sync IC DB (AZ1->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline ic-sb:Service_Monitor status logical_port=lport2_az1
 
 ovn_as az3
@@ -4422,9 +4446,13 @@ svc_lport5_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_M
 check ovn-sbctl set Service_Monitor $svc_lport5_uuid status="offline"
 
 check_column offline sb:Service_Monitor status logical_port=lport5_az3
+# Sync IC DB (AZ3->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline ic-sb:Service_Monitor status logical_port=lport5_az3
 
 ovn_as az1
+# Sync IC DB (ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
 check_column offline sb:Service_Monitor status logical_port=lport5_az3
 
 ovn_as az1
@@ -4443,8 +4471,12 @@ check ovn-nbctl --wait=sb set load_balancer az1_lb1 ip_port_mappings:2.2.2.1=lpo
 check_row_count sb:Service_Monitor 0 logical_port=lport3_az2
 
 # Check deletion from ICSB.
+# Sync IC DB (AZ1->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_row_count ic-sb:Service_Monitor 0 logical_port=lport3_az2
 
+# Sync IC DB (ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
 ovn_as az3
 svc_lport6_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport6_az3)
 check ovn-sbctl set Service_Monitor $svc_lport6_uuid status="online"
@@ -4468,20 +4500,28 @@ svc_lport1_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_M
 lport1_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Port_Binding logical_port=lport1_az1)
 check ovn-sbctl set Port_Binding $lport1_uuid up=true
 check ovn-sbctl set Service_Monitor $svc_lport1_uuid status="online"
+# Sync IC DB (AZ1->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column online ic-sb:Service_Monitor status logical_port=lport1_az1
 
 svc_lport2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport2_az1)
 lport2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Port_Binding logical_port=lport2_az1)
 check ovn-sbctl set Port_Binding $lport2_uuid up=true
 check ovn-sbctl set Service_Monitor $svc_lport2_uuid status="online"
+# Sync IC DB (AZ1->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_column online ic-sb:Service_Monitor status logical_port=lport2_az1
 
 ovn_as az1
+check ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list az1_ls1 | grep ls_in_lb | grep backends | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.10.10.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.10.10.1; reg2[[0..15]] = 80; ct_lb_mark(backends=1.1.1.1:10880,2.2.2.1:10880);)
 ])
 
 ovn_as az2
+# Sync IC DB (ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
+check ovn-nbctl --wait=sb sync
 AT_CHECK([ovn-sbctl lflow-list az2_ls1 | grep ls_in_lb | grep backends | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 20.20.20.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 20.20.20.1; reg2[[0..15]] = 80; ct_lb_mark(backends=1.1.1.1:10880);)
   table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 20.20.20.2 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 20.20.20.2; reg2[[0..15]] = 80; ct_lb_mark(backends=2.2.2.1:10880,6.6.6.1:10880);)
@@ -4500,6 +4540,8 @@ check ovn-nbctl --wait=sb lb-del az1_lb1
 check_row_count sb:Service_Monitor 2
 check_row_count sb:Service_Monitor 1 logical_port=lport1_az1
 check_row_count sb:Service_Monitor 1 logical_port=lport2_az1
+# Sync IC DB (AZ1->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_row_count ic-sb:Service_Monitor 3
 
 ovn_as az2
@@ -4508,6 +4550,10 @@ ovn_as az2
 # and in az2 there will be two service monitor for 3.3.3.1 and 1.1.1.1
 check ovn-nbctl --wait=sb lb-del az2_lb2
 
+# Sync IC DB (AZ2->ISB)
+check ovn-ic-nbctl --wait=sb sync
+# Sync IC DB (ISB->AZx)
+check ovn-ic-nbctl --wait=sb sync
 ovn_as az1
 # Check that the ic_learned records have been deleted
 check_row_count sb:Service_Monitor 1
@@ -4522,6 +4568,8 @@ check_row_count sb:Service_Monitor 0
 ovn_as az2
 check ovn-nbctl --wait=sb lb-del az2_lb1
 check_row_count sb:Service_Monitor 0
+# Sync IC DB (AZ2->ISB)
+check ovn-ic-nbctl --wait=sb sync
 check_row_count ic-sb:Service_Monitor 0
 
 # We expect something around 20 Service_Monitor updates.
@@ -4585,7 +4633,8 @@ AT_CHECK([ovn-ic-sbctl find Route nexthop="169.254.100.2" | grep external_ids], 
 external_ids        : {}
 ])
 
-AT_CHECK([ovn-nbctl lr-route-list lr1], [0], [dnl
+# We cannot run "ovn-ic-nbctl --wait=sb sync" due to fake az.
+OVS_WAIT_FOR_OUTPUT([ovn-nbctl lr-route-list lr1], [0], [dnl
 IPv4 Routes
 Route Table <main>:
             172.31.0.0/24             169.254.100.2 dst-ip (learned)
@@ -5483,6 +5532,10 @@ check ovn_as az2 ovn-nbctl lrp-add rt1 rtb-2 "00:01:60:15:b8:20" "169.254.100.34
 check ovn_as az2 ovn-nbctl --route-table=table1 --override-connected lr-route-add rt1 "172.31.0.0/24" "172.31.2.4"
 check ovn_as az2 ovn-nbctl --route-table=table1 --override-connected lr-route-add rt1 "172.31.1.0/24" "172.31.3.4"
 
+# Purposely use twice ovn-ic-nbctl --wait=sb sync.
+# First one guarantees ovn-ic-sb being updated; second one guarantees
+# updates to all azs.
+check ovn-ic-nbctl --wait=sb sync
 check ovn-ic-nbctl --wait=sb sync
 
 AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list rt1], [0], [dnl
