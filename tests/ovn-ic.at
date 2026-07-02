@@ -453,7 +453,7 @@ check ovn-ic-nbctl --wait=sb sync
 
 ovn_as az1
 
-check_row_count ic-sb:Route 3 ip_prefix=192.168.0.0/16
+wait_row_count ic-sb:Route 3 ip_prefix=192.168.0.0/16
 
 # remove transit switch 1 (from az1) and check if its route is deleted
 # same route from another AZ and ts should remain, as
