@@ -4770,11 +4770,11 @@ ovn_init_ic_db
 ovn_start az1
 ovn_start az2
 
-check ovn-ic-nbctl --wait=sb sync
-AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
 ])
+check ovn-ic-nbctl --wait=sb sync
 
 ovn_as az1
 check ovn-ic-nbctl tr-add tr0
@@ -4803,13 +4803,11 @@ net_add n2
 ovn_start az1
 ovn_start az2
 
-OVS_WAIT_UNTIL([test 2 = `ovn-ic-sbctl show | wc -l`])
-
-check ovn-ic-nbctl --wait=sb sync
-AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
 ])
+check ovn-ic-nbctl --wait=sb sync
 
 sim_add hv1
 as hv1
@@ -4861,9 +4859,7 @@ net_add n2
 ovn_start az1
 ovn_start az2
 
-OVS_WAIT_UNTIL([test 2 = `ovn-ic-sbctl show | wc -l`])
-
-AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
 ])
@@ -4911,11 +4907,11 @@ net_add n2
 ovn_start az1
 ovn_start az2
 
-check ovn-ic-nbctl --wait=sb sync
-AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
 ])
+check ovn-ic-nbctl --wait=sb sync
 
 sim_add hv1
 as hv1
@@ -4963,11 +4959,11 @@ net_add n2
 ovn_start az1
 ovn_start az2
 
-check ovn-ic-nbctl --wait=sb sync
-AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
 ])
+check ovn-ic-nbctl --wait=sb sync
 
 sim_add hv1
 as hv1
@@ -5020,13 +5016,11 @@ net_add n2
 ovn_start az1
 ovn_start az2
 
-OVS_WAIT_UNTIL([test 2 = `ovn-ic-sbctl show | wc -l`])
-
-check ovn-ic-nbctl --wait=sb sync
-AT_CHECK([ovn-ic-sbctl show], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
 availability-zone az1
 availability-zone az2
 ])
+check ovn-ic-nbctl --wait=sb sync
 
 sim_add hv1
 as hv1
