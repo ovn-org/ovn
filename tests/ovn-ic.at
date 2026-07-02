@@ -4407,11 +4407,20 @@ check ovn-ic-nbctl --wait=sb sync
 ovn_as az1
 check ovn-ic-nbctl tr-add tr0
 wait_row_count Datapath_Binding 1
+
+# Make sure that ISB PB data are written in IC SB.
+check ovn-ic-nbctl --wait=sb sync
+# Then ensure ovn-northd did run.
+check ovn-nbctl --wait=sb sync
 az1_tunnel_key=$(ovn_as az1 ovn-sbctl --bare --columns=tunnel_key find Datapath_Binding)
 check_row_count nb:Logical_Router 1 options:requested-tnl-key="${az1_tunnel_key}"
 
 ovn_as az2
 wait_row_count Datapath_Binding 1
+# Make sure that ISB PB data are written in IC SB.
+check ovn-ic-nbctl --wait=sb sync
+# Then ensure ovn-northd did run.
+check ovn-nbctl --wait=sb sync
 az2_tunnel_key=$(ovn_as az2 ovn-sbctl --bare --columns=tunnel_key find Datapath_Binding)
 check_row_count nb:Logical_Router 1 options:requested-tnl-key="${az2_tunnel_key}"
 check test "${az1_tunnel_key}"=="${az2_tunnel_key}"
