@@ -347,9 +347,7 @@ for i in 1 2; do
     check ovn-nbctl --wait=sb lsp-add-router-port ts1 lsp$i lrp$i
     check ovn-ic-nbctl --wait=sb sync
 
-    check \
-       grep -q "connected route advertisement was suppressed! NB lrp" \
-       az$i/ic/ovn-ic.log
+    OVS_WAIT_UNTIL([grep -q "connected route advertisement was suppressed! NB lrp" az$i/ic/ovn-ic.log])
 done
 
 # Make sure last az2 changes got handled by ic in az1
