@@ -2873,6 +2873,14 @@ ovn_as az1 check ovn-nbctl ls-add ls1
 ovn_as az2 check ovn-nbctl ls-add ls2
 ovn_as az3 check ovn-nbctl ls-add ls3
 
+# Wait for all azs to be registered and sync ts changes.
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+availability-zone az3
+])
+check ovn-ic-nbctl --wait=sb sync
+
 # Connect ls1 to spine.
 ovn_as az1
 check ovn-nbctl lsp-add spine spine-to-ls1
@@ -3428,6 +3436,13 @@ done
 
 # Create new transit switches and LRs. Test topology is next:
 # logical router (lr11) - transit switch (ts1) - logical router (lr12)
+
+# Wait for all azs to be registered and sync ts changes.
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+check ovn-ic-nbctl --wait=sb sync
 
 # Create lr11, lr12 and connect them to ts1.
 for i in 1 2; do
@@ -4081,6 +4096,18 @@ check ovn-nbctl set nb_global . options:ic-route-learn=true
 # Enable route advertising at AZ level
 check ovn-nbctl set nb_global . options:ic-route-adv=true
 
+# Add ts before creating fake az, so we can use "ovn-ic-nbctl --wait=sb sync"
+# to ensure ts are properly added. Fake az does not run hence does not handle
+# ovn-ic-nbctl --wait=sb sync.
+check ovn-ic-nbctl ts-add ts1
+check ovn-ic-nbctl ts-add ts2
+
+# Wait for ts to be added in az1.
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show | grep az1], [0], [dnl
+availability-zone az1
+])
+check ovn-ic-nbctl --wait=sb sync
+
 # Create a fake availability zone to announce a route from.
 # This route will not have an lr-id in its external_ids, simulating
 # the behavior of the legacy code. The system is expected to
@@ -4089,9 +4116,6 @@ check_uuid ovn-ic-sbctl create Availability_Zone name=fake_az
 fake_az_uuid=$(fetch_column ic-sb:availability-zone _uuid name="fake_az")
 check_uuid ovn-ic-sbctl create Gateway name=fake_az_gw availability_zone=$fake_az_uuid \
     encap=@encap -- --id=@encap create encap type=geneve ip="192.168.0.2"
-
-check ovn-ic-nbctl ts-add ts1
-check ovn-ic-nbctl ts-add ts2
 
 check ovn-nbctl lr-add lr1
 check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:02 169.254.100.1/24
@@ -4129,6 +4153,13 @@ for i in 1 2; do
     check ovn-nbctl set nb_global . options:ic-route-learn=true
     check ovn-nbctl set nb_global . options:ic-route-adv=true
 done
+
+# Wait for all azs to be registered and sync ts changes.
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+check ovn-ic-nbctl --wait=sb sync
 
 # Create routers and connect to transit switch
 for i in 1 2; do
@@ -4576,6 +4607,13 @@ for i in 1 2; do
     check ovn-nbctl set nb_global . options:ic-route-adv=true
 done
 
+# Wait for all azs to be registered and sync ts changes.
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+check ovn-ic-nbctl --wait=sb sync
+
 # Create new transit switches and LRs. Test topology is next:
 #
 # logical router (lr11) - transit switch (ts11) - logical router (lr12)
@@ -4626,6 +4664,13 @@ for i in 1 2; do
     # Enable route advertising at AZ level
     check ovn-nbctl set nb_global . options:ic-route-adv=true
 done
+
+# Wait for all azs to be registered and sync ts changes.
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+check ovn-ic-nbctl --wait=sb sync
 
 for i in 1 2; do
     ovn_as az$i
