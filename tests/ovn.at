@@ -14970,7 +14970,11 @@ grep "dl_dst=00:00:02:01:02:04" | wc -l], [0], [[0
 # check that the chassis redirect port has been reclaimed by the gw1 chassis
 wait_row_count Port_Binding 1 logical_port=cr-outside chassis=$gw1_chassis
 
-OVN_CLEANUP([gw1],[gw2],[hv1],[hv2])
+OVN_CLEANUP([gw1
+/Incorrect your_disc/d
+],[gw2
+/Incorrect your_disc/d
+],[hv1],[hv2])
 
 AT_CLEANUP
 ])
