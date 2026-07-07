@@ -34662,7 +34662,7 @@ ls2_ro_ip4=192.168.2.1
 ls2_ro_ip6=fd12::1
 check ovn-nbctl lrp-add lr1 ls2 $ls2_ro_mac $ls2_ro_ip4/24 $ls2_ro_ip6/64
 check ovn-nbctl lsp-add ls2 rp-ls2 -- set Logical_Switch_Port rp-ls2 \
-    type=router options:router-port=ls1 addresses=\"router\"
+    type=router options:router-port=ls2 addresses=\"router\"
 
 # Create logical port ls2-lp1 in ls2
 ls2_p1_mac=00:00:00:01:02:04
@@ -34776,7 +34776,7 @@ AT_CHECK([ovn-sbctl dump-flows |
           grep "${arp_proxy_ls2[[0]]}" |
           ovn_strip_lflows], [0], [dnl
   table=??(ls_in_l2_lkup      ), priority=50   , dnl
-match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f1 }), dnl
+match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f2 }), dnl
 action=(outport = "rp-ls2"; output;)
 ])
 
@@ -34786,8 +34786,8 @@ AT_CHECK([ovn-sbctl dump-flows |
           grep "${arp_proxy_ls2[[0]]}" |
           ovn_strip_lflows], [0], [dnl
   table=??(lr_in_admission    ), priority=50   , dnl
-match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f1 } && dnl
-inport == "ls1"), action=(xreg0[[0..47]] = 00:00:00:01:02:f1; next;)
+match=(eth.dst == { 00:00:00:02:02:f1, 00:00:00:01:02:f2 } && dnl
+inport == "ls2"), action=(xreg0[[0..47]] = 00:00:00:01:02:f2; next;)
 ])
 
 
