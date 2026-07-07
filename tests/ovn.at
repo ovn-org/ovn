@@ -5720,6 +5720,9 @@ spa6="fd00::abcd:1"
 test_na 11 $sha $spa6
 wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
 
+# Wait for mac binding related flows to be installed.
+check ovn-nbctl --wait=hv sync
+
 sha="f0:00:00:00:00:12"
 lla6="fe80::abcd:1"
 
