@@ -4110,6 +4110,12 @@ check ovn-appctl vlog/set dbg
 check ovs-vsctl add-port br-int vif1 -- \
     set Interface vif1 external-ids:iface-id=lsp1
 
+# Make sure ofport got created before sleeping sb as otherwise,
+# in conditional monitoring, the new condition (i.e. monitor_cond
+# logical_port == lsp1) will only be received after sb wakes up.
+AT_CHECK([ovs-vsctl wait-until interface vif1 'ofport>0'])
+ofport=$(ovs-vsctl get interface vif1 ofport)
+
 check ovn-nbctl ls-add ls1
 sleep_controller hv1
 check ovn-nbctl --wait=sb lsp-add ls1 lsp1 -- \
@@ -4120,9 +4126,7 @@ wake_up_controller hv1
 
 # Wait for pflow for lsp1
 OVS_WAIT_UNTIL([
-    ofport=$(as hv1 ovs-vsctl --bare --columns ofport find Interface name=vif1)
-    echo "vif1 port=$ofport"
-    test -n "$ofport" && test 1 -le $(as hv1 ovs-ofctl dump-flows br-int | grep -c in_port=$ofport)
+    test 1 -le $(as hv1 ovs-ofctl dump-flows br-int | grep -c in_port=$ofport)
 ])
 
 # If ovn-installed in ovs, all flows should be installed.
