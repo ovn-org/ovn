@@ -39585,7 +39585,10 @@ wake_up_controller hv-1
 # Make sure ovn-controller is still OK
 check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([test $(as hv-1 ovs-vsctl list qos | grep -c linux-htb) -eq 1])
-OVN_CLEANUP([hv-1],[hv-2])
+OVN_CLEANUP([hv-1
+public1
+ignored_dp=ls1
+],[hv-2])
 AT_CLEANUP
 ])
 
