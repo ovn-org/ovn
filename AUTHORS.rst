@@ -288,6 +288,7 @@ Martin Xu                          martinxu9.ovs@gmail.com
 Martino Fornasa                    mf@fornasa.it
 Maryam Tahhan                      maryam.tahhan@intel.com
 Matteo Croce                       mcroce@redhat.com
+Matteo Perin                       matteo.perin@canonical.com
 Matthias May                       matthias.may@neratec.com
 Mauricio Vásquez                   mauricio.vasquezbernal@studenti.polito.it
 Max Lamprecht                      max.lamprecht@digits.schwarz
