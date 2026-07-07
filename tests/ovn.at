@@ -8397,6 +8397,13 @@ check as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
 wait_row_count FDB 3
 check ovn-nbctl --wait=hv sync
 
+# No modifications expected.
+AT_CHECK([echo $packet > expected])
+
+# Check that it is delivered where needed.
+OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
+OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected])
+
 # It's a little problematic to trace the other side, but we can check datapath
 # actions.  Note: 'actions:br-phys' is a stray tunnel packet destined for the
 # other node, but OVS from the 'main' namespace didn't learn addresses yet,
@@ -8414,17 +8421,12 @@ actions:tnl_pop(genev_sys_6081)
 actions:vif5
 ])
 
-# No modifications expected.
-AT_CHECK([echo $packet > expected])
-
 AT_CHECK([touch empty])
 
-# Check that it is delivered where needed and not delivered where not.
+# Check that the packet is not delivered where it should not be.
 OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [empty])
 OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [empty])
-OVN_CHECK_PACKETS([hv2/vif3-tx.pcap], [expected])
 OVN_CHECK_PACKETS([hv2/vif4-tx.pcap], [empty])
-OVN_CHECK_PACKETS([hv3/vif5-tx.pcap], [expected])
 
 # Trace a reply packet.
 reply=$(fmt_pkt "Ether(dst='${src_mac}', src='${dst_mac}')/ \
