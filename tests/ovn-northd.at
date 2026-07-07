@@ -13516,7 +13516,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check ovn-nbctl lb-add lb1 172.168.0.140 10.0.0.20
 check ovn-nbctl lb-add lb2 172.168.0.150:80 10.0.0.40:8080
 check ovn-nbctl lr-lb-add lr0 lb1
-check ovn-nbctl lr-lb-add lr0 lb2
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb2
 
 # lflow engine should recompute since the nat ip 172.168.0.140
 # is a lb vip.
