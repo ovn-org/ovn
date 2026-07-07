@@ -3791,6 +3791,9 @@ check_uuid ovn-sbctl --id=@encap create Encap type=geneve ip=192.168.0.13 \
     -- add Chassis hv2 encaps @encap
 check ovn-sbctl set chassis hv2 other_config:is-remote=true
 
+AT_CHECK([as hv1 ovs-vsctl wait-until interface ovn-hv2-0 'ofport>0'])
+AT_CHECK([as hv1 ovs-vsctl wait-until interface ovn-hv2-1 'ofport>0'])
+
 check ovn-nbctl --wait=hv sync
 
 # Wait for both tunnels to be created by checking ovn-chassis-id external_ids.
