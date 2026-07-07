@@ -4734,6 +4734,10 @@ check as hv1 ovs-vsctl remove interface vif1 external_ids iface-id
 hv_uuid=$(fetch_column Chassis _uuid name=hv1)
 wait_row_count Port_Binding 0 chassis="$hv_uuid" type="''"
 
+# Ensure ovn-controller handled the change, or next garp might be received
+# while flows are still installed, and extra packet will be received.
+check ovn-nbctl --wait=hv sync
+
 # Cleanup MAC_Bindings after previous checks.
 check ovn-sbctl --all destroy MAC_Binding
 
