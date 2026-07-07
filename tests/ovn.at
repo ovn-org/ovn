@@ -32123,10 +32123,17 @@ check_packet_tunnel() {
     as $hv
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
     if test x$flow_based_tunnel == xtrue; then
-        tunnel_ofport=$(ovs-vsctl --bare --column=ofport list interface ovn-geneve)
+        AT_CHECK([ovs-vsctl wait-until interface ovn-geneve 'ofport>0'])
+        tunnel_ofport=$(ovs-vsctl get interface ovn-geneve ofport)
     else
-        tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+        OVS_WAIT_UNTIL([
+            tunnel_ofport=$(ovs-vsctl --bare --columns ofport find Interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+            echo "ofport=$tunnel_ofport" >&2
+            test -n "$tunnel_ofport" && test "$tunnel_ofport" -ge 0])
     fi
+    # Once ofport is in ovs db, ensure ovn-controller handles it.
+    check ovn-nbctl --wait=hv sync
+
     AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
     if test x$flow_based_tunnel == xtrue; then
         trace_output=$(ovs-appctl ofproto/trace br-int in_port=vif$src $packet)
@@ -32229,10 +32236,16 @@ check_packet_tunnel() {
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
 
     if test x$flow_based_tunnel == xtrue; then
-        tunnel_ofport=$(ovs-vsctl --bare --column=ofport list interface ovn-geneve)
+        AT_CHECK([ovs-vsctl wait-until interface ovn-geneve 'ofport>0'])
+        tunnel_ofport=$(ovs-vsctl get interface ovn-geneve ofport)
     else
-        tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+        OVS_WAIT_UNTIL([
+            tunnel_ofport=$(ovs-vsctl --bare --columns ofport find Interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+            echo "ofport=$tunnel_ofport" >&2
+            test -n "$tunnel_ofport" && test "$tunnel_ofport" -ge 0])
     fi
+    check ovn-nbctl --wait=hv sync
+
     AT_CHECK([test $(ovs-appctl ofproto/trace br-int in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
     if test x$flow_based_tunnel == xtrue; then
         trace_output=$(ovs-appctl ofproto/trace br-int in_port=vif$src $packet)
@@ -32379,11 +32392,16 @@ check_packet_tunnel() {
     as $hv
     echo "vif$src -> vif$dst should go through tunnel $local_encap_ip -> $remote_encap_ip"
     if test x$flow_based_tunnel == xtrue; then
-        tunnel_ofport=$(ovs-vsctl --bare --column=ofport list interface ovn-geneve)
+        AT_CHECK([ovs-vsctl wait-until interface ovn-geneve 'ofport>0'])
+        tunnel_ofport=$(ovs-vsctl get interface ovn-geneve ofport)
     else
-        tunnel_ofport=$(ovs-vsctl --bare --column=ofport find interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+        OVS_WAIT_UNTIL([
+            tunnel_ofport=$(ovs-vsctl --bare --columns ofport find Interface options:local_ip=$local_encap_ip options:remote_ip=$remote_encap_ip)
+            echo "ofport=$tunnel_ofport" >&2
+            test -n "$tunnel_ofport" && test "$tunnel_ofport" -ge 0])
     fi
-    ovs-appctl ofproto/trace br-ext in_port=vif$src $packet
+    check ovn-nbctl --wait=hv sync
+
     AT_CHECK([test $(ovs-appctl ofproto/trace br-ext in_port=vif$src $packet | grep "output:" | awk -F ':' '{ print $2 }') == $tunnel_ofport])
     if test x$flow_based_tunnel == xtrue; then
         trace_output=$(ovs-appctl ofproto/trace br-ext in_port=vif$src $packet)
