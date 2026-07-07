@@ -758,6 +758,7 @@ check as northd ovn-appctl -t ovn-northd resume
 # Since northd is restarted, port type is back to localport, so ls is not local datapath anymore.
 OVN_CLEANUP([hv1
 /No distributed-port option set for chassisredirect port lsp1/d
+/No port binding record for distributed port/d
 ignored_dp=ls1
 ])
 AT_CLEANUP
