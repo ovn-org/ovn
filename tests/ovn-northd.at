@@ -15487,6 +15487,7 @@ AT_CLEANUP
 AT_SETUP([RBAC -- Recover builtin role and permissions])
 ovn_start
 
+wait_row_count RBAC_Role 1 name=ovn-controller
 RBR_BUILTIN_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]>*//g' | tr -d '=,{}')
 
 declare -A RBR_BUILTIN_PERM
