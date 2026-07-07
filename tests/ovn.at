@@ -12913,6 +12913,13 @@ test_ip_packet()
         send_na ext1 ext1-vif1 "00:00:00:00:30:$i" "33:33:00:00:00:01" "fd10::$i" "ff02::1"
     done
 
+    # On slow systems, processing all those PACKET_IN2 might be slow, and
+    # heavily delay further PACKET_IN2.
+    # So, wait for all (v6) PACKET_IN2 to be handled before going on.
+    for i in $(seq 11 $((n_external_ip + 10))); do
+        wait_row_count MAC_Binding 1 ip="fd10\:\:$i"
+    done
+
     # Send ip packet between foo1 and outside1
     src_mac="f00000010203" # foo1 mac
     dst_mac="000001010203" # foo-R0 mac (internal router leg)
@@ -12937,7 +12944,7 @@ test_ip_packet()
     check as ext1 ovs-appctl netdev-dummy/receive ext1-vif1 $arp_reply
 
     OVS_WAIT_UNTIL([
-        test `as $active_gw ovs-ofctl dump-flows br-int | grep table=OFTABLE_MAC_BINDING | \
+        test `as $active_gw ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
 grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
     ])
 
