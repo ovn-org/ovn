@@ -2644,7 +2644,7 @@ for i in 1 2 3; do
     ovn_attach n1 br-phys 192.168.0.$i
 
     for j in 1 2 3; do
-        check ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
+        check ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap
         check ovn-nbctl lsp-add lsw0 lp$i$j
         if test $j = 1; then
             check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
@@ -2915,7 +2915,7 @@ for i in 1 2; do
     ovn_attach n1 br-phys 192.168.0.$i
 
     for j in 1 2; do
-        ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
+        ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap
         check ovn-nbctl lsp-add lsw0 lp$i$j
         ip_addrs="192.168.0.$i$j"
         check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j $ip_addrs"
@@ -3362,8 +3362,7 @@ for i in 1 2; do
         ovs-vsctl add-port br-int vif$i$j -- \
             set Interface vif$i$j external-ids:iface-id=lp$i$j \
                                   options:tx_pcap=hv$i/vif$i$j-tx.pcap \
-                                  options:rxq_pcap=hv$i/vif$i$j-rx.pcap \
-                                  ofport-request=$i$j
+                                  options:rxq_pcap=hv$i/vif$i$j-rx.pcap
 
         lsp_name=lp$i$j
         ls_name=$(lsp_to_ls $lsp_name)
@@ -3531,8 +3530,7 @@ for hv in 1 2; do
         ovs-vsctl add-port br-int vif-$hv-$ls -- \
             set Interface vif-$hv-$ls external-ids:iface-id=$lsp_name \
                                   options:tx_pcap=hv-$hv/vif-$hv-$ls-tx.pcap \
-                                  options:rxq_pcap=hv-$hv/vif-$hv-$ls-rx.pcap \
-                                  ofport-request=$hv$ls
+                                  options:rxq_pcap=hv-$hv/vif-$hv-$ls-rx.pcap
 
         check ovn-nbctl lsp-add ls-${ls}0 $lsp_name
         check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:00:${hv}${ls}
@@ -3673,8 +3671,7 @@ for hv in 1 2; do
             ovs-vsctl add-port br-int vif-$hv-$ls-$peer -- \
                 set Interface vif-$hv-$ls-$peer external-ids:iface-id=$lsp_name \
                                       options:tx_pcap=hv-$hv/vif-$hv-$ls-$peer-tx.pcap \
-                                      options:rxq_pcap=hv-$hv/vif-$hv-$ls-$peer-rx.pcap \
-                                      ofport-request=$hv$ls$peer
+                                      options:rxq_pcap=hv-$hv/vif-$hv-$ls-$peer-rx.pcap
 
             check ovn-nbctl lsp-add ls-${ls}0 $lsp_name
             check ovn-nbctl lsp-set-addresses $lsp_name f0:00:00:00:0${peer}:${hv}${ls}
@@ -3826,8 +3823,7 @@ for i in 1 2; do
     ovs-vsctl add-port br-int vif-$i -- \
         set Interface vif-$i external-ids:iface-id=lp-$i \
                               options:tx_pcap=hv-$i/vif-$i-tx.pcap \
-                              options:rxq_pcap=hv-$i/vif-$i-rx.pcap \
-                              ofport-request=$i
+                              options:rxq_pcap=hv-$i/vif-$i-rx.pcap
 
     lsp_name=lp-$i
     check ovn-nbctl lsp-add ls-$i $lsp_name
@@ -3937,8 +3933,7 @@ for i in 1 2; do
     as hv-$i
     check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
 done
 
 wait_for_ports_up
@@ -4011,8 +4006,7 @@ done
 for i in 1 2; do
     check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
 done
 
 wait_for_ports_up
@@ -4084,8 +4078,7 @@ for i in 1 2; do
     as hv-$i
     ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
 
     # Patch port might be created after ports are reported up
@@ -4153,8 +4146,7 @@ for i in 1 2; do
     as hv-$i
     check ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
     wait_for_ports_up lsp$i
 
     # Patch port might be created after ports are reported up
@@ -4236,8 +4228,7 @@ for i in 1 2; do
     as hv-$i
     ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
 
     # Patch port might be created after ports are reported up
@@ -4295,8 +4286,7 @@ ovn_attach physnet br-phys 192.168.0.1
 for i in 1 2; do
     ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
 done
 
@@ -4344,8 +4334,7 @@ ovn_attach physnet br-phys 192.168.0.1
 for i in 1 2; do
     ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
                                   options:tx_pcap=vif$i-tx.pcap \
-                                  options:rxq_pcap=vif$i-rx.pcap \
-                                  ofport-request=$i
+                                  options:rxq_pcap=vif$i-rx.pcap
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
 
     : > $i.expected
@@ -4458,8 +4447,7 @@ for tag in 10 20; do
         ovs-vsctl add-port br-int vif-$tag-$i -- \
             set Interface vif-$tag-$i external-ids:iface-id=lp-$tag-$i \
                                   options:tx_pcap=hv-$tag-$i/vif-$tag-$i-tx.pcap \
-                                  options:rxq_pcap=hv-$tag-$i/vif-$tag-$i-rx.pcap \
-                                  ofport-request=$tag$i
+                                  options:rxq_pcap=hv-$tag-$i/vif-$tag-$i-rx.pcap
 
         lsp_name=lp-$tag-$i
         check ovn-nbctl lsp-add ls1 $lsp_name
@@ -4585,14 +4573,14 @@ sim_add hv1
 as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap ofport-request=1
+ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
 
 # Create hypervisor hv2 connected to n1
 sim_add hv2
 as hv2
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
-ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap ofport-request=1
+ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap
 
 
 # Start the vtep emulator with a leg in both networks
@@ -4629,7 +4617,7 @@ sim_add hv3
 as hv3
 ovs-vsctl add-br br-phys
 net_attach n2 br-phys
-ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap ofport-request=1
+ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap
 
 # vtep is quite slow setting up all flows
 # We need to wait for flow flooding to br-vtep_n2, vx1 and vx2
@@ -4907,14 +4895,14 @@ sim_add hv1
 as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap ofport-request=1
+ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
 
 # Create hypervisor hv2 connected to n1
 sim_add hv2
 as hv2
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
-ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap ofport-request=1
+ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap
 
 # Create hypervisor hv_gw connected to n1 and n2
 # connect br-phys bridge to n1; connect hv-gw bridge to n2
@@ -4931,7 +4919,7 @@ sim_add hv3
 as hv3
 ovs-vsctl add-br br-phys
 net_attach n2 br-phys
-ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap ofport-request=1
+ovs-vsctl add-port br-phys vif3 -- set Interface vif3 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -5137,8 +5125,7 @@ for i in 1 2 3; do
                 -- set Interface vif$i$j$k \
                     external-ids:iface-id=lp$i$j$k \
                     options:tx_pcap=hv$hv/vif$i$j$k-tx.pcap \
-                    options:rxq_pcap=hv$hv/vif$i$j$k-rx.pcap \
-                    ofport-request=$i$j$k
+                    options:rxq_pcap=hv$hv/vif$i$j$k-rx.pcap
         done
     done
 done
@@ -5560,8 +5547,7 @@ for i in 1 2; do
                 -- set Interface vif$i$j \
                     external-ids:iface-id=lp$i$j \
                     options:tx_pcap=hv$hv/vif$i$j-tx.pcap \
-                    options:rxq_pcap=hv$hv/vif$i$j-rx.pcap \
-                    ofport-request=$i$j
+                    options:rxq_pcap=hv$hv/vif$i$j-rx.pcap
     done
 done
 
@@ -5768,7 +5754,7 @@ for i in 1 2 3; do
     ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
     for j in 1 2 3; do
-        ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap ofport-request=$i$j
+        ovs-vsctl add-port br-int vif$i$j -- set Interface vif$i$j external-ids:iface-id=lp$i$j options:tx_pcap=hv$i/vif$i$j-tx.pcap options:rxq_pcap=hv$i/vif$i$j-rx.pcap
         check ovn-nbctl lsp-add lsw0 lp$i$j
         if test $j = 1; then
             check ovn-nbctl lsp-set-addresses lp$i$j "f0:00:00:00:00:$i$j 192.168.0.$i$j" unknown
@@ -6219,8 +6205,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -6229,8 +6214,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -6342,14 +6326,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 
 wait_for_ports_up
@@ -6458,14 +6440,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -6571,14 +6551,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=alice1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -6587,8 +6565,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=bob1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -6789,14 +6766,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=alice1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -6805,8 +6780,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=bob1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -6937,26 +6911,22 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 check ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 check ovs-vsctl -- add-port br-int hv1-vif4 -- \
     set interface hv1-vif4 external-ids:iface-id=ls2-lp2 \
     options:tx_pcap=hv1/vif4-tx.pcap \
-    options:rxq_pcap=hv1/vif4-rx.pcap \
-    ofport-request=4
+    options:rxq_pcap=hv1/vif4-rx.pcap
 
 as hv1 ovs-appctl vlog/set dbg
 
@@ -7653,32 +7623,27 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif4 -- \
     set interface hv1-vif4 external-ids:iface-id=ls2-lp2 \
     options:tx_pcap=hv1/vif4-tx.pcap \
-    options:rxq_pcap=hv1/vif4-rx.pcap \
-    ofport-request=4
+    options:rxq_pcap=hv1/vif4-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif5 -- \
     set interface hv1-vif5 external-ids:iface-id=ls1-lp3 \
     options:tx_pcap=hv1/vif5-tx.pcap \
-    options:rxq_pcap=hv1/vif5-rx.pcap \
-    ofport-request=5
+    options:rxq_pcap=hv1/vif5-rx.pcap
 
 OVN_POPULATE_ARP
 
@@ -7964,8 +7929,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 
 sim_add hv2
@@ -7975,8 +7939,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=alice1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
@@ -8188,30 +8151,25 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int vif3 -- \
     set interface vif3 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 ovs-vsctl -- add-port br-int vif4 -- \
     set interface vif4 external-ids:iface-id=ls2-lp2 \
     options:tx_pcap=hv1/vif4-tx.pcap \
-    options:rxq_pcap=hv1/vif4-rx.pcap \
-    ofport-request=4
+    options:rxq_pcap=hv1/vif4-rx.pcap
 
 ovs-vsctl -- add-port br-int vif5 -- \
     set interface vif5 external-ids:iface-id=ls3-lp1 \
     options:tx_pcap=hv1/vif5-tx.pcap \
-    options:rxq_pcap=hv1/vif5-rx.pcap \
-    ofport-request=5
+    options:rxq_pcap=hv1/vif5-rx.pcap
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -8385,13 +8343,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -8400,13 +8356,11 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int vif3 -- \
     set interface vif3 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif3-tx.pcap \
-    options:rxq_pcap=hv2/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv2/vif3-rx.pcap
 ovs-vsctl -- add-port br-int vif4 -- \
     set interface vif4 external-ids:iface-id=ls2-lp2 \
     options:tx_pcap=hv2/vif4-tx.pcap \
-    options:rxq_pcap=hv2/vif4-rx.pcap \
-    ofport-request=4
+    options:rxq_pcap=hv2/vif4-rx.pcap
 
 sim_add hv3
 as hv3
@@ -8415,8 +8369,7 @@ ovn_attach n1 br-phys 192.168.0.3
 ovs-vsctl -- add-port br-int vif5 -- \
     set interface vif5 external-ids:iface-id=ls3-lp1 \
     options:tx_pcap=hv3/vif5-tx.pcap \
-    options:rxq_pcap=hv3/vif5-rx.pcap \
-    ofport-request=5
+    options:rxq_pcap=hv3/vif5-rx.pcap
 
 OVN_POPULATE_ARP
 
@@ -8609,14 +8562,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
@@ -8750,20 +8701,17 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=pbr-hv/vif1-tx.pcap \
-    options:rxq_pcap=pbr-hv/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=pbr-hv/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=pbr-hv/vif2-tx.pcap \
-    options:rxq_pcap=pbr-hv/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=pbr-hv/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int vif3 -- \
     set interface vif3 external-ids:iface-id=ls3-lp1 \
     options:tx_pcap=pbr-hv/vif3-tx.pcap \
-    options:rxq_pcap=pbr-hv/vif3-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=pbr-hv/vif3-rx.pcap
 
 ls1_ro_mac=00:00:00:01:02:f1
 ls1_ro_ip=192.168.1.1
@@ -9016,20 +8964,17 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=pbr-hv/vif1-tx.pcap \
-    options:rxq_pcap=pbr-hv/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=pbr-hv/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=pbr-hv/vif2-tx.pcap \
-    options:rxq_pcap=pbr-hv/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=pbr-hv/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int vif3 -- \
     set interface vif3 external-ids:iface-id=ls3-lp1 \
     options:tx_pcap=pbr-hv/vif3-tx.pcap \
-    options:rxq_pcap=pbr-hv/vif3-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=pbr-hv/vif3-rx.pcap
 
 ls1_ro_mac=00:00:00:01:02:f1
 ls1_ro_ip=2001::1
@@ -9253,13 +9198,13 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
 
 # Add vif1 to hv1 and lsw0, turn on l2 port security on vif1.
-ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap ofport-request=1
+ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
 check ovn-nbctl lsp-add lsw0 lp1
 check ovn-nbctl lsp-set-addresses lp1 "fa:16:3e:94:05:98 192.168.0.3 fd81:ce49:a948:0:f816:3eff:fe94:598"
 check ovn-nbctl lsp-set-port-security lp1 "fa:16:3e:94:05:98 192.168.0.3 fd81:ce49:a948:0:f816:3eff:fe94:598"
 
 # Add vif2 to hv1 and lsw0, turn on l2 port security on vif2.
-ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=hv1/vif2-tx.pcap options:rxq_pcap=hv1/vif2-rx.pcap ofport-request=2
+ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=hv1/vif2-tx.pcap options:rxq_pcap=hv1/vif2-rx.pcap
 check ovn-nbctl lsp-add lsw0 lp2
 check ovn-nbctl lsp-set-addresses lp2 "fa:16:3e:a1:f9:ae 192.168.0.4 fd81:ce49:a948:0:f816:3eff:fea1:f9ae"
 check ovn-nbctl lsp-set-port-security lp2 "fa:16:3e:a1:f9:ae 192.168.0.4 fd81:ce49:a948:0:f816:3eff:fea1:f9ae"
@@ -9691,20 +9636,17 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=foo2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=alice1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
@@ -9791,8 +9733,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 OVN_POPULATE_ARP
 sleep 2
@@ -9912,13 +9853,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-ls1lp2 -- \
     set interface hv1-ls1lp2 external-ids:iface-id=ls1lp2 \
     options:tx_pcap=hv1/ls1lp2-tx.pcap \
-    options:rxq_pcap=hv1/ls1lp2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/ls1lp2-rx.pcap
 ovs-vsctl -- add-port br-int hv1-ls2lp2 -- \
     set interface hv1-ls2lp2 external-ids:iface-id=ls2lp2 \
     options:tx_pcap=hv1/ls2lp2-tx.pcap \
-    options:rxq_pcap=hv1/ls2lp2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ls2lp2-rx.pcap
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
@@ -11111,8 +11050,8 @@ sim_add hv
 as hv
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=vif1-tx.pcap options:rxq_pcap=vif1-rx.pcap ofport-request=1
-check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=vif2-tx.pcap options:rxq_pcap=vif2-rx.pcap ofport-request=2
+check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lp1 options:tx_pcap=vif1-tx.pcap options:rxq_pcap=vif1-rx.pcap
+check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lp2 options:tx_pcap=vif2-tx.pcap options:rxq_pcap=vif2-rx.pcap
 wait_for_ports_up lp1 lp2
 
 # Extracts nw_tos from the final flow from ofproto/trace output and prints
@@ -11487,14 +11426,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vm1 -- \
     set interface vm1 external-ids:iface-id=vm1 \
     options:tx_pcap=hv1/vm1-tx.pcap \
-    options:rxq_pcap=hv1/vm1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vm1-rx.pcap
 
 ovs-vsctl -- add-port br-int bar3 -- \
     set interface bar3 external-ids:iface-id=bar3 \
     options:tx_pcap=hv1/bar3-tx.pcap \
-    options:rxq_pcap=hv1/bar3-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/bar3-rx.pcap
 
 sim_add hv2
 as hv2
@@ -11503,8 +11440,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int vm2 -- \
     set interface vm2 external-ids:iface-id=vm2 \
     options:tx_pcap=hv2/vm2-tx.pcap \
-    options:rxq_pcap=hv2/vm2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vm2-rx.pcap
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
@@ -11737,14 +11673,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=bar1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -11753,8 +11687,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=alice1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 sim_add hv3
 as hv3
@@ -11763,8 +11696,7 @@ ovn_attach n1 br-phys 192.168.0.3
 ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=bob1 \
     options:tx_pcap=hv3/vif1-tx.pcap \
-    options:rxq_pcap=hv3/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv3/vif1-rx.pcap
 
 
 check_uuid ovn-nbctl create Logical_Router name=R1
@@ -11943,14 +11875,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 OVN_POPULATE_ARP
 wait_for_ports_up
@@ -12621,8 +12551,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add gw1
 as gw1
@@ -12641,8 +12570,7 @@ ovn_attach n1 br-phys 192.168.0.3
 check ovs-vsctl -- add-port br-int ext1-vif1 -- \
     set interface ext1-vif1 external-ids:iface-id=outside1 \
     options:tx_pcap=ext1/vif1-tx.pcap \
-    options:rxq_pcap=ext1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=ext1/vif1-rx.pcap
 
 check ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=15
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -12855,8 +12783,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add gw1
 as gw1
@@ -12883,8 +12810,7 @@ ovn_attach n1 br-phys 192.168.0.3
 check ovs-vsctl -- add-port br-int ext1-vif1 -- \
     set interface ext1-vif1 external-ids:iface-id=outside1 \
     options:tx_pcap=ext1/vif1-tx.pcap \
-    options:rxq_pcap=ext1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=ext1/vif1-rx.pcap
 
 check ovn-nbctl --wait=hv set NB_Global . options:"bfd-mult"=15
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -13139,8 +13065,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -13154,8 +13079,7 @@ ovn_attach n1 br-phys 192.168.0.3
 check ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=outside1 \
     options:tx_pcap=hv3/vif1-tx.pcap \
-    options:rxq_pcap=hv3/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv3/vif1-rx.pcap
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
@@ -13379,8 +13303,7 @@ AT_CHECK_UNQUOTED([ovn_trace --minimal foo 'inport == "foo1" && eth.src == f0:00
 as hv1 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=alice1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 check ovn-nbctl lsp-add alice alice1 \
 -- lsp-set-addresses alice1 "f0:00:00:01:02:05 172.16.1.4"
@@ -13389,8 +13312,7 @@ check ovn-nbctl lsp-add alice alice1 \
 as hv2 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=foo2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl lsp-add foo foo2 \
 -- lsp-set-addresses foo2 "f0:00:00:01:02:06 192.168.1.3"
@@ -13518,11 +13440,9 @@ as hv1 reset_pcap_file snoopvif hv1/snoopvif
 
 # Add OVS ports for foo1 and foo2 on hv3
 ovs-vsctl -- add-port br-int hv3-vif1 -- \
-    set interface hv3-vif1 external-ids:iface-id=foo1 \
-    ofport-request=1
+    set interface hv3-vif1 external-ids:iface-id=foo1
 ovs-vsctl -- add-port br-int hv3-vif2 -- \
-    set interface hv3-vif2 external-ids:iface-id=foo2 \
-    ofport-request=2
+    set interface hv3-vif2 external-ids:iface-id=foo2
 
 # Add bridge-mapping on hv3
 AT_CHECK([as hv3 ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
@@ -13593,8 +13513,7 @@ start_daemon ovn-controller
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -13609,8 +13528,7 @@ ovn_attach n1 br-phys 192.168.0.3
 check ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=outside1 \
     options:tx_pcap=hv3/vif1-tx.pcap \
-    options:rxq_pcap=hv3/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv3/vif1-rx.pcap
 ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings="phys:br-phys"
 
 sim_add hv4
@@ -13907,20 +13825,17 @@ check ovn-nbctl acl-add lsw0 to-lport 1002 'outport == "lp3" && ip6 && icmp6'  a
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=lp3 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
@@ -14160,8 +14075,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=foo1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -14170,8 +14084,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=alice1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -14235,13 +14148,13 @@ for i in 1 2; do
         set Interface vif01 external-ids:iface-id=lp01 \
                               options:tx_pcap=hv${i}/vif${i}0-tx.pcap \
                               options:rxq_pcap=hv${i}/vif${i}0-rx.pcap \
-                              ofport-request=${i}0
+                              ofport-request=10${i}0
 
     ovs-vsctl add-port br-int vif${i}1 -- \
         set Interface vif${i}1 external-ids:iface-id=lp${i}1 \
                               options:tx_pcap=hv${i}/vif${i}1-tx.pcap \
                               options:rxq_pcap=hv${i}/vif${i}1-rx.pcap \
-                              ofport-request=${i}1
+                              ofport-request=10${i}1
 
     check ovn-nbctl lsp-add ls1 lp${i}1
     check ovn-nbctl lsp-set-addresses lp${i}1 f0:00:00:00:00:${i}1
@@ -14338,8 +14251,8 @@ for i in 1 2; do
 done
 
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=OFTABLE_LOG_TO_PHY/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
-10
-11
+1010
+1011
 ])
 
 # remove the localport from br-int and re-create it
@@ -14347,16 +14260,16 @@ as hv1
 check ovs-vsctl del-port vif01
 check ovn-nbctl --wait=hv sync
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=OFTABLE_LOG_TO_PHY/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
-11
+1011
 ])
 
 as hv1
 check ovs-vsctl add-port br-int vif01 \
-    -- set Interface vif01 external-ids:iface-id=lp01
+    -- set Interface vif01 external-ids:iface-id=lp01 ofport-request=1012
 check ovn-nbctl --wait=hv sync
-AT_CHECK([as hv1 ovs-ofctl dump-flows br-int |awk '/table=OFTABLE_LOG_TO_PHY/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
-2
-11
+AT_CHECK_UNQUOTED([as hv1 ovs-ofctl dump-flows br-int |awk '/table=OFTABLE_LOG_TO_PHY/ && !/actions=drop/{print substr($8, 16, length($8))}' |sort -n], [0], [dnl
+1011
+1012
 ])
 
 OVN_CLEANUP([hv1],[hv2])
@@ -14613,8 +14526,7 @@ for i in 1 2; do
     ovs-vsctl -- add-port br-int hv$i-vif1 -- \
         set interface hv$i-vif1 external-ids:iface-id=inside$i \
         options:tx_pcap=hv$i/vif1-tx.pcap \
-        options:rxq_pcap=hv$i/vif1-rx.pcap \
-        ofport-request=1
+        options:rxq_pcap=hv$i/vif1-rx.pcap
 
         check ovn-nbctl lsp-add inside inside$i \
             -- lsp-set-addresses inside$i "f0:00:00:01:22:$i 192.168.1.10$i"
@@ -14954,8 +14866,7 @@ for i in 1 2; do
     ovs-vsctl -- add-port br-int hv$i-vif1 -- \
         set interface hv$i-vif1 external-ids:iface-id=inside$i \
         options:tx_pcap=hv$i/vif1-tx.pcap \
-        options:rxq_pcap=hv$i/vif1-rx.pcap \
-        ofport-request=1
+        options:rxq_pcap=hv$i/vif1-rx.pcap
 done
 
 # Re-add gw2
@@ -15244,8 +15155,7 @@ ovn_attach n1 br-phys 192.168.0.11
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=inside1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovn-nbctl lsp-add inside inside1 \
         -- lsp-set-addresses inside1 "f0:00:00:01:22:01 192.168.1.101"
@@ -15511,8 +15421,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0_ip6-port1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 sim_add hv2
@@ -15523,8 +15432,7 @@ ovn_attach n1 br-phys 192.168.0.3
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1_ip6-port1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 check ovn-nbctl --wait=sb sync
@@ -16700,13 +16608,11 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
    as hv1 check ovs-vsctl -- add-port br-int first -- \
        set Interface first external-ids:iface-id=first \
        options:tx_pcap=hv1/first-tx.pcap \
-       options:rxq_pcap=hv1/first-rx.pcap \
-       ofport-request=1
+       options:rxq_pcap=hv1/first-rx.pcap
    as hv2 check ovs-vsctl -- add-port br-int second -- \
        set Interface second external-ids:iface-id=second \
        options:tx_pcap=hv2/second-tx.pcap \
-       options:rxq_pcap=hv2/second-rx.pcap \
-       ofport-request=2
+       options:rxq_pcap=hv2/second-rx.pcap
 
    # Create interfaces for multichassis ports on both hv1 and hv2
    for hv in hv1 hv2; do
@@ -16714,8 +16620,7 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
            as $hv check ovs-vsctl -- add-port br-int multi${i} -- \
                set Interface multi${i} external-ids:iface-id=multi${i} \
                options:tx_pcap=$hv/multi${i}-tx.pcap \
-               options:rxq_pcap=$hv/multi${i}-rx.pcap \
-               ofport-request=${i}00
+               options:rxq_pcap=$hv/multi${i}-rx.pcap
        done
    done
 
@@ -17677,7 +17582,7 @@ as hv1
 ovs-vsctl set Open_vSwitch . external-ids:hostname=hv1-hostname
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.11
-ovs-vsctl -- add-port br-int hv1-vif0 -- set Interface hv1-vif0 ofport-request=1
+ovs-vsctl -- add-port br-int hv1-vif0
 
 wait_row_count Chassis 1 name=hv1
 hv1_hostname=$(fetch_column Chassis hostname name=hv1)
@@ -17756,8 +17661,7 @@ for i in 1 2 ; do
     ovs-vsctl -- add-port br-int hv$i-vif1 -- \
         set interface hv$i-vif1 external-ids:iface-id=sw-p$i \
         options:tx_pcap=hv$i/vif1-tx.pcap \
-        options:rxq_pcap=hv$i/vif1-rx.pcap \
-        ofport-request=1
+        options:rxq_pcap=hv$i/vif1-rx.pcap
 done
 
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up sw-p1` = xup])
@@ -18009,8 +17913,7 @@ for i in 1 2 ; do
     check ovs-vsctl -- add-port br-int hv$i-vif1 -- \
         set interface hv$i-vif1 external-ids:iface-id=sw-p$i \
         options:tx_pcap=hv$i/vif1-tx.pcap \
-        options:rxq_pcap=hv$i/vif1-rx.pcap \
-        ofport-request=1
+        options:rxq_pcap=hv$i/vif1-rx.pcap
 done
 
 wait_for_ports_up
@@ -18160,8 +18063,7 @@ for i in 1 2 ; do
     check ovs-vsctl -- add-port br-int hv$i-vif1 -- \
         set interface hv$i-vif1 external-ids:iface-id=sw-p$i \
         options:tx_pcap=hv$i/vif1-tx.pcap \
-        options:rxq_pcap=hv$i/vif1-rx.pcap \
-        ofport-request=1
+        options:rxq_pcap=hv$i/vif1-rx.pcap
 done
 
 wait_for_ports_up
@@ -18358,8 +18260,7 @@ for i in 1 2 3; do
                 set interface vif$i$j \
                 external-ids:iface-id=sw0-p$i$j \
                 options:tx_pcap=hv$i/vif$i$j-tx.pcap \
-                options:rxq_pcap=hv$i/vif$i$j-rx.pcap \
-                ofport-request=$i$j
+                options:rxq_pcap=hv$i/vif$i$j-rx.pcap
     done
 done
 
@@ -18435,8 +18336,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -18445,8 +18345,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -18555,14 +18454,12 @@ ovn_attach n1 br-phys 192.168.1.11
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-phys
 
@@ -18788,25 +18685,21 @@ ovn-appctl -t ovn-controller vlog/set file:dbg
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # Add two ports as mirroring target
 ovs-vsctl -- add-port br-int mirror1 -- \
     set interface mirror1 external-ids:mirror-id=sink1 \
     options:tx_pcap=hv1/mirror1-tx.pcap \
-    options:rxq_pcap=hv1/mirror1-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/mirror1-rx.pcap
 ovs-vsctl -- add-port br-int mirror2 -- \
     set interface mirror2 external-ids:mirror-id=sink2 \
     options:tx_pcap=hv1/mirror2-tx.pcap \
-    options:rxq_pcap=hv1/mirror2-rx.pcap \
-    ofport-request=4
+    options:rxq_pcap=hv1/mirror2-rx.pcap
 
 # Create a NB mirror use DB 'create' command.
 uuid1=$(ovn-nbctl create mirror name=mirror-from-lp1 type=local sink=sink1 filter=from-lport)
@@ -19233,8 +19126,7 @@ ovn_attach n1 br-phys 192.168.0.5
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -19243,8 +19135,7 @@ ovn_attach n1 br-phys 192.168.0.6
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 sim_add hv3
 as hv3
@@ -19253,8 +19144,7 @@ ovn_attach n1 br-phys 192.168.0.7
 ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=ls2-lp2 \
     options:tx_pcap=hv3/vif1-tx.pcap \
-    options:rxq_pcap=hv3/vif1-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv3/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables.
@@ -19591,8 +19481,7 @@ for i in 1 2 3; do
                 -- set Interface vif$i$j$k \
                     external-ids:iface-id=lp$i$j$k \
                     options:tx_pcap=hv$hv/vif$i$j$k-tx.pcap \
-                    options:rxq_pcap=hv$hv/vif$i$j$k-rx.pcap \
-                    ofport-request=$i$j$k
+                    options:rxq_pcap=hv$hv/vif$i$j$k-rx.pcap
         done
     done
 done
@@ -19811,8 +19700,7 @@ for i in 1 2 3; do
                 -- set Interface vif$i$j$k \
                     external-ids:iface-id=lp$i$j$k \
                     options:tx_pcap=hv$hv/vif$i$j$k-tx.pcap \
-                    options:rxq_pcap=hv$hv/vif$i$j$k-rx.pcap \
-                    ofport-request=$i$j$k
+                    options:rxq_pcap=hv$hv/vif$i$j$k-rx.pcap
         done
     done
 done
@@ -20104,14 +19992,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 check_uuid ovn-nbctl create Address_Set name=set1 \
 addresses=\"10.0.0.4\",\"10.0.0.5\",\"10.0.0.6\"
@@ -20404,14 +20290,12 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # test_ip INPORT SRC_MAC DST_MAC SRC_IP DST_IP OUTPORT...
 #
@@ -20677,14 +20561,12 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ls1-lp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 check_uuid ovn-nbctl create address_set name=as1 addresses="10.0.0.1"
 check_uuid ovn-nbctl create address_set name=as2 addresses="10.0.0.11,10.0.0.12"
@@ -20748,7 +20630,7 @@ for i in 1 2 3; do
     ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
 
-    ovs-vsctl add-port br-int vif${i}1 -- set Interface vif${i}1 external-ids:iface-id=lp${i}1 options:tx_pcap=hv$i/vif${i}1-tx.pcap options:rxq_pcap=hv$i/vif${i}1-rx.pcap ofport-request=${i}1
+    ovs-vsctl add-port br-int vif${i}1 -- set Interface vif${i}1 external-ids:iface-id=lp${i}1 options:tx_pcap=hv$i/vif${i}1-tx.pcap options:rxq_pcap=hv$i/vif${i}1-rx.pcap
     check ovn-nbctl lsp-add lsw0 lp${i}1
     check ovn-nbctl lsp-set-addresses lp${i}1 "f0:00:00:00:00:${i}1 192.168.0.${i}1" unknown
 done
@@ -21008,8 +20890,7 @@ for i in 1 2; do
         set interface vif$i \
         external-ids:iface-id=sw$i-p${i}0 \
             options:tx_pcap=hv$i/vif$i-tx.pcap \
-            options:rxq_pcap=hv$i/vif$i-rx.pcap \
-            ofport-request=$i
+            options:rxq_pcap=hv$i/vif$i-rx.pcap
 
     ovn-appctl -t ovn-controller vlog/set file:dbg:pinctrl
 done
@@ -21241,8 +21122,7 @@ for i in 1 2; do
         set interface vif$i \
         external-ids:iface-id=sw$i-p${i}0 \
             options:tx_pcap=hv$i/vif$i-tx.pcap \
-            options:rxq_pcap=hv$i/vif$i-rx.pcap \
-            ofport-request=$i
+            options:rxq_pcap=hv$i/vif$i-rx.pcap
 done
 
 check ovn-nbctl lr-add lr0
@@ -21320,8 +21200,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -21330,8 +21209,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw2-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 OVN_POPULATE_ARP
 
@@ -21437,8 +21315,7 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-phys hv1-ext1 -- \
     set interface hv1-ext1 options:tx_pcap=hv1/ext1-tx.pcap \
-    options:rxq_pcap=hv1/ext1-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ext1-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 as hv2
@@ -21446,8 +21323,7 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-phys hv2-ext2 -- \
     set interface hv2-ext2 options:tx_pcap=hv2/ext2-tx.pcap \
-    options:rxq_pcap=hv2/ext2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/ext2-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 as hv3
@@ -21455,8 +21331,7 @@ ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.3
 ovs-vsctl -- add-port br-phys hv3-ext3 -- \
     set interface hv3-ext3 options:tx_pcap=hv3/ext3-tx.pcap \
-    options:rxq_pcap=hv3/ext3-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv3/ext3-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 # No DHCPv4/v6 flows for the external port - ls1-lp_ext1 - 10.0.0.6 in hv1 and
@@ -22199,8 +22074,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -22209,8 +22083,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw2-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 OVN_POPULATE_ARP
 
@@ -22347,13 +22220,11 @@ ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-port2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # IPv4 outgoing traffic generated inside the cluster
 test_ip_packet_larger() {
@@ -22781,13 +22652,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-vm1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=ext1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -22914,8 +22783,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p0 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -22924,13 +22792,11 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p0 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv2/vif2-rx.pcap
 
 check_uuid ovn-nbctl create Logical_Router name=lr0
 check ovn-nbctl ls-add sw0
@@ -23487,8 +23353,7 @@ for i in 1 2; do
     ovs-vsctl add-port br-int vif$i$i -- \
         set Interface vif$i$i external-ids:iface-id=lp$i$i \
                               options:tx_pcap=hv$i/vif$i$i-tx.pcap \
-                              options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
-                              ofport-request=$i$i
+                              options:rxq_pcap=hv$i/vif$i$i-rx.pcap
 
     lsp_name=lp$i$i
     ls_name=$(lsp_to_ls $lsp_name)
@@ -23625,18 +23490,15 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p3 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 ovn-appctl -t ovn-controller vlog/set dbg
 
@@ -23647,13 +23509,11 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif2-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -24208,8 +24068,7 @@ for i in 1 2; do
                 set interface vif$i$j \
                 external-ids:iface-id=sw0-p$i$j \
                 options:tx_pcap=hv$i/vif$i$j-tx.pcap \
-                options:rxq_pcap=hv$i/vif$i$j-rx.pcap \
-                ofport-request=$i$j
+                options:rxq_pcap=hv$i/vif$i$j-rx.pcap
     done
 done
 
@@ -24220,8 +24079,7 @@ ovs-vsctl -- add-port br-int vif33 -- \
         set interface vif33 \
         external-ids:iface-id=sw1-p0 \
         options:tx_pcap=hv$i/vif33-tx.pcap \
-        options:rxq_pcap=hv$i/vif33-rx.pcap \
-        ofport-request=33
+        options:rxq_pcap=hv$i/vif33-rx.pcap
 
 check ovn-nbctl --event lb-add lb0 192.168.1.100:80 ""
 check ovn-nbctl ls-lb-add sw0 lb0
@@ -24371,23 +24229,19 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw1-p11 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw1-p12 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=sw2-p1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif3-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif4 -- \
     set interface hv1-vif4 external-ids:iface-id=sw3-p1 \
     options:tx_pcap=hv1/vif4-tx.pcap \
-    options:rxq_pcap=hv1/vif4-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif4-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 sim_add hv2
@@ -24397,23 +24251,19 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p21 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw1-p22 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif2-rx.pcap
 check ovs-vsctl -- add-port br-int hv2-vif3 -- \
     set interface hv2-vif3 external-ids:iface-id=sw2-p2 \
     options:tx_pcap=hv2/vif3-tx.pcap \
-    options:rxq_pcap=hv2/vif3-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif3-rx.pcap
 check ovs-vsctl -- add-port br-int hv2-vif4 -- \
     set interface hv2-vif4 external-ids:iface-id=sw3-p2 \
     options:tx_pcap=hv2/vif4-tx.pcap \
-    options:rxq_pcap=hv2/vif4-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif4-rx.pcap
 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 AT_CAPTURE_FILE([exp])
@@ -25094,23 +24944,19 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw1-p11 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw1-p12 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=sw2-p1 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif3-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif4 -- \
     set interface hv1-vif4 external-ids:iface-id=sw3-p1 \
     options:tx_pcap=hv1/vif4-tx.pcap \
-    options:rxq_pcap=hv1/vif4-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif4-rx.pcap
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 sim_add hv2
@@ -25120,23 +24966,19 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p21 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw1-p22 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif2-rx.pcap
 check ovs-vsctl -- add-port br-int hv2-vif3 -- \
     set interface hv2-vif3 external-ids:iface-id=sw2-p2 \
     options:tx_pcap=hv2/vif3-tx.pcap \
-    options:rxq_pcap=hv2/vif3-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif3-rx.pcap
 check ovs-vsctl -- add-port br-int hv2-vif4 -- \
     set interface hv2-vif4 external-ids:iface-id=sw3-p2 \
     options:tx_pcap=hv2/vif4-tx.pcap \
-    options:rxq_pcap=hv2/vif4-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif4-rx.pcap
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 wait_for_ports_up
@@ -25866,8 +25708,7 @@ m4_define([DVR_N_S_ARP_HANDLING],
        ovs-vsctl add-port br-int vif$i$i -- \
            set Interface vif$i$i external-ids:iface-id=lp$i$i \
                                  options:tx_pcap=hv$i/vif$i$i-tx.pcap \
-                                 options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
-                                 ofport-request=$i$i
+                                 options:rxq_pcap=hv$i/vif$i$i-rx.pcap
 
        lsp_name=lp$i$i
        ls_name=$(lsp_to_ls $lsp_name)
@@ -25910,8 +25751,7 @@ m4_define([DVR_N_S_ARP_HANDLING],
    as hv4 ovs-vsctl add-port br-int vif-north -- \
            set Interface vif-north external-ids:iface-id=lp-north \
                                  options:tx_pcap=hv4/vif-north-tx.pcap \
-                                 options:rxq_pcap=hv4/vif-north-rx.pcap \
-                                 ofport-request=44
+                                 options:rxq_pcap=hv4/vif-north-rx.pcap
 
    check ovn-nbctl lr-add router
    check ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
@@ -26143,8 +25983,7 @@ m4_define([DVR_N_S_PING],
        ovs-vsctl add-port br-int vif$i$i -- \
            set Interface vif$i$i external-ids:iface-id=lp$i$i \
                                  options:tx_pcap=hv$i/vif$i$i-tx.pcap \
-                                 options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
-                                 ofport-request=$i$i
+                                 options:rxq_pcap=hv$i/vif$i$i-rx.pcap
 
        lsp_name=lp$i$i
        ls_name=$(lsp_to_ls $lsp_name)
@@ -26187,8 +26026,7 @@ m4_define([DVR_N_S_PING],
    as hv4 ovs-vsctl add-port br-int vif-north -- \
            set Interface vif-north external-ids:iface-id=lp-north \
                                  options:tx_pcap=hv4/vif-north-tx.pcap \
-                                 options:rxq_pcap=hv4/vif-north-rx.pcap \
-                                 ofport-request=44
+                                 options:rxq_pcap=hv4/vif-north-rx.pcap
 
    check ovn-nbctl lr-add router
    check ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
@@ -26397,13 +26235,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p3 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -26412,8 +26248,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -26623,8 +26458,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl add-port br-int vif11 -- \
     set Interface vif11 external-ids:iface-id=lp11 \
                           options:tx_pcap=hv1/vif11-tx.pcap \
-                          options:rxq_pcap=hv1/vif11-rx.pcap \
-                          ofport-request=11
+                          options:rxq_pcap=hv1/vif11-rx.pcap
 
 lsp_name=lp11
 
@@ -26886,8 +26720,7 @@ for i in 1 2; do
     ovs-vsctl add-port br-int vif$i$i -- \
         set Interface vif$i$i external-ids:iface-id=lp$i$i \
                               options:tx_pcap=hv$i/vif$i$i-tx.pcap \
-                              options:rxq_pcap=hv$i/vif$i$i-rx.pcap \
-                              ofport-request=$i$i
+                              options:rxq_pcap=hv$i/vif$i$i-rx.pcap
 
     lsp_name=lp$i$i
     ls_name=$(lsp_to_ls $lsp_name)
@@ -26930,8 +26763,7 @@ as hv4 ovn_attach n1 br-phys 192.168.0.4
 as hv4 ovs-vsctl add-port br-int vif-north -- \
         set Interface vif-north external-ids:iface-id=lp-north \
                               options:tx_pcap=hv4/vif-north-tx.pcap \
-                              options:rxq_pcap=hv4/vif-north-rx.pcap \
-                              ofport-request=44
+                              options:rxq_pcap=hv4/vif-north-rx.pcap
 
 check ovn-nbctl lr-add router
 check ovn-nbctl lrp-add router router-to-ls1 00:00:01:01:02:03 192.168.1.3/24
@@ -27141,13 +26973,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -27156,8 +26986,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -27342,13 +27171,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -27357,8 +27184,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -27540,13 +27366,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -27555,8 +27379,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-p1
@@ -27693,13 +27516,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -27708,8 +27529,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-p1
@@ -27857,13 +27677,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -27872,8 +27690,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -28038,24 +27855,21 @@ as hv1
 check ovs-vsctl -- add-port br-int hv1-vif0 -- \
     set interface hv1-vif0 external-ids:iface-id=sw-agg-ext \
     options:tx_pcap=hv1/vif0-tx.pcap \
-    options:rxq_pcap=hv1/vif0-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif0-rx.pcap
 
 # Bind a "VM" connected to sw1 on hv1.
 as hv1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 # Bind a "VM" connected to sw1 on hv2.
 as hv2
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw1-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 OVN_POPULATE_ARP
 wait_for_ports_up
@@ -28411,7 +28225,7 @@ as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl add-port br-int vif1 -- \
-    set interface vif1 external-ids:iface-id=lp1 ofport-request=1
+    set interface vif1 external-ids:iface-id=lp1
 
 check ovn-nbctl ls-add lsw0
 check ovn-nbctl lsp-add lsw0 lp1
@@ -28487,20 +28301,17 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp11 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lsp21 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=lsp22 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 # wait for earlier changes to take effect
 check ovn-nbctl --wait=hv sync
@@ -28608,20 +28419,17 @@ as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp11 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lsp21 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=lsp22 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 # wait for earlier changes to take effect
 check ovn-nbctl --wait=hv sync
@@ -28691,20 +28499,17 @@ as hv2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=lsp11 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=lsp21 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv2-vif3 -- \
     set interface hv2-vif3 external-ids:iface-id=lsp22 \
     options:tx_pcap=hv2/vif3-tx.pcap \
-    options:rxq_pcap=hv2/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv2/vif3-rx.pcap
 
 # wait for earlier changes to take effect
 check ovn-nbctl --wait=hv sync
@@ -28836,20 +28641,17 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp11 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lsp21 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=lsp22 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 # wait for earlier changes to take effect
 check ovn-nbctl --wait=hv sync
@@ -28997,14 +28799,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp11 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lsp21 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # wait for earlier changes to take effect
 check ovn-nbctl --wait=hv sync
@@ -29134,8 +28934,7 @@ for i in $(seq 1 4); do
     ovs-vsctl -- add-port br-int hv1-vif${i} -- \
         set interface hv1-vif${i} external-ids:iface-id=lsp${i}1 \
         options:tx_pcap=hv1/vif${i}-tx.pcap \
-        options:rxq_pcap=hv1/vif${i}-rx.pcap \
-        ofport-request=${i}
+        options:rxq_pcap=hv1/vif${i}-rx.pcap
 done
 
 # wait for earlier changes to take effect
@@ -29246,8 +29045,7 @@ for i in $(seq 1 4); do
     ovs-vsctl -- add-port br-int hv1-vif${i} -- \
         set interface hv1-vif${i} external-ids:iface-id=lsp${i}1 \
         options:tx_pcap=hv1/vif${i}-tx.pcap \
-        options:rxq_pcap=hv1/vif${i}-rx.pcap \
-        ofport-request=${i}
+        options:rxq_pcap=hv1/vif${i}-rx.pcap
 done
 
 wait_for_ports_up
@@ -29333,21 +29131,21 @@ sim_add hv1
 as hv1
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lsp11 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap ofport-request=1
+check ovs-vsctl add-port br-int vif1 -- set Interface vif1 external-ids:iface-id=lsp11 options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
 
 # Create hypervisor hv2 connected to n1
 sim_add hv2
 as hv2
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.2
-check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lsp21 options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap ofport-request=1
+check ovs-vsctl add-port br-int vif2 -- set Interface vif2 external-ids:iface-id=lsp21 options:tx_pcap=hv2/vif2-tx.pcap options:rxq_pcap=hv2/vif2-rx.pcap
 
 # Create hypervisor hv3 connected to n1
 sim_add hv3
 as hv3
 check ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.3
-check ovs-vsctl add-port br-int vif3 -- set Interface vif3 external-ids:iface-id=lsp22 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap ofport-request=1
+check ovs-vsctl add-port br-int vif3 -- set Interface vif3 external-ids:iface-id=lsp22 options:tx_pcap=hv3/vif3-tx.pcap options:rxq_pcap=hv3/vif3-rx.pcap
 
 # Add a forwarding group on ls2 with lsp21 and lsp22 as child ports
 # virtual IP - 172.16.1.11, virtual MAC - 00:11:de:ad:be:ef
@@ -29498,8 +29296,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 # One logical switch with IPv4 and IPv6 load balancers that hairpin the
 # traffic.
@@ -29890,8 +29687,8 @@ sim_add hv1
 as hv1
 ovs-vsctl add-br br-int
 ovs-vsctl add-port br-int p1 \
-    -- set Interface p1 external-ids:iface-id=lsp1 \
-    -- set Interface p1 ofport-request=1
+    -- set Interface p1 external-ids:iface-id=lsp1
+
 OVS_WAIT_UNTIL([ovs-vsctl list Interface p1])
 
 ovn_start
@@ -29960,13 +29757,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-port2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 as hv1 check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=public:br-phys
 
@@ -30300,13 +30095,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 sim_add hv2
 as hv2
@@ -30315,8 +30108,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 
@@ -30470,8 +30262,7 @@ as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 wait_for_ports_up sw0-p1
 
@@ -30490,8 +30281,7 @@ as hv2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 wait_for_ports_up sw0-p2
 
@@ -30534,8 +30324,7 @@ as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 wait_for_ports_up sw0-p1
 
@@ -30554,8 +30343,7 @@ as hv2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 wait_for_ports_up sw0-p2
 
@@ -30595,8 +30383,7 @@ as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-p1
@@ -30677,15 +30464,13 @@ as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 as hv1
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p1) = xup])
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up sw0-p2) = xup])
@@ -31082,8 +30867,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -31092,8 +30876,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -31271,12 +31054,10 @@ check ovn-nbctl lsp-add sw lsp2
 as hv1
 ovs-vsctl \
     -- add-port br-int vif1 \
-    -- set Interface vif1 external_ids:iface-id=lsp1 \
-    ofport-request=1
+    -- set Interface vif1 external_ids:iface-id=lsp1
 ovs-vsctl \
     -- add-port br-int vif2 \
-    -- set Interface vif2 external_ids:iface-id=lsp2 \
-    ofport-request=2
+    -- set Interface vif2 external_ids:iface-id=lsp2
 
 # Wait for ports to be bound.
 wait_row_count Chassis 1 name=hv1
@@ -31306,10 +31087,10 @@ as hv1
 ovs-vsctl \
     -- add-port br-int vif1 \
     -- set Interface vif1 external_ids:iface-id=lsp1 \
-    ofport-request=3 \
+    ofport-request=1003 \
     -- add-port br-int vif2 \
     -- set Interface vif2 external_ids:iface-id=lsp2 \
-    ofport-request=4
+    ofport-request=1004
 
 as hv1 ovn-appctl -t ovn-controller debug/resume
 check ovn-nbctl --wait=hv sync
@@ -31317,10 +31098,10 @@ check ovn-nbctl --wait=hv sync
 AS_BOX([check output flows for new interfaces])
 as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY > offlows_table65_2.txt
 AT_CAPTURE_FILE([offlows_table65_2.txt])
-AT_CHECK_UNQUOTED([grep -c "output:3" offlows_table65_2.txt], [0], [dnl
+AT_CHECK_UNQUOTED([grep -c "output:1003" offlows_table65_2.txt], [0], [dnl
 1
 ])
-AT_CHECK_UNQUOTED([grep -c "output:4" offlows_table65_2.txt], [0], [dnl
+AT_CHECK_UNQUOTED([grep -c "output:1004" offlows_table65_2.txt], [0], [dnl
 1
 ])
 
@@ -31339,8 +31120,7 @@ ovn_attach n1 br-phys 192.168.0.10
 as hv1
 ovs-vsctl \
     -- add-port br-int vif1 \
-    -- set Interface vif1 external_ids:iface-id=lsp1 \
-    ofport-request=1
+    -- set Interface vif1 external_ids:iface-id=lsp1
 
 check ovn-nbctl ls-add ls1 \
     -- ls-add ls2 \
@@ -31368,8 +31148,7 @@ AS_BOX([readd OVS VIF])
 as hv1
 ovs-vsctl \
     -- add-port br-int vif1 \
-    -- set Interface vif1 external_ids:iface-id=lsp1 \
-    ofport-request=1
+    -- set Interface vif1 external_ids:iface-id=lsp1
 wait_row_count Port_Binding 1 logical_port=lsp1 chassis=$ch
 
 AS_BOX([readd OVN container port])
@@ -31441,14 +31220,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
 # packets for ARP resolution (native tunneling doesn't queue packets
@@ -31669,13 +31446,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw3-port1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
 
@@ -31686,8 +31461,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-port2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
 
@@ -31698,8 +31472,7 @@ ovn_attach n1 br-phys 192.168.0.3
 ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=sw1-port1 \
     options:tx_pcap=hv3/vif1-tx.pcap \
-    options:rxq_pcap=hv3/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv3/vif1-rx.pcap
 AT_CHECK([ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
 ovs-vsctl set open . external_ids:ovn-enable-lflow-cache=false
 
@@ -31783,8 +31556,7 @@ check ovn-nbctl --wait=hv sync
 as hv2
 ovs-vsctl -- add-port br-phys hv2-phys1 -- \
     set interface hv2-phys1 options:tx_pcap=hv2/phys1-tx.pcap \
-    options:rxq_pcap=hv2/phys1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/phys1-rx.pcap
 
 send_arp_request() {
     local eth_src=$1 spa=$2 tpa=$3
@@ -31930,14 +31702,12 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lsp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # Default drop
 check ovn-nbctl acl-add ls1 to-lport 1000 \
@@ -32038,14 +31808,12 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=lsp2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 # Default drop
 check ovn-nbctl acl-add ls1 to-lport 1000 \
@@ -32128,8 +31896,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=lsp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
@@ -32666,13 +32433,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 ovs-vsctl set open . external_ids:ovn-check-ct-label-for-lb-hairpin=false
 
 sim_add hv2
@@ -32682,13 +32447,11 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw1-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 check ovn-nbctl --wait=hv ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 00:00:00:00:00:01
@@ -33202,12 +32965,10 @@ check ovn-nbctl lsp-add sw0 sw0-p2
 as hv1
 ovs-vsctl \
     -- add-port br-int vif1 \
-    -- set Interface vif1 external_ids:iface-id=sw0-p1 \
-    ofport-request=1
+    -- set Interface vif1 external_ids:iface-id=sw0-p1
 ovs-vsctl \
     -- add-port br-int vif2 \
-    -- set Interface vif2 external_ids:iface-id=sw0-p2 \
-    ofport-request=2
+    -- set Interface vif2 external_ids:iface-id=sw0-p2
 
 # Wait for port to be bound.
 wait_row_count Chassis 1 name=hv1
@@ -33429,8 +33190,7 @@ ovn_attach n1 br-phys 192.168.0.10
 as hv1
 ovs-vsctl \
     -- add-port br-int vif1 \
-    -- set Interface vif1 external_ids:iface-id=sw0-port1 \
-    ofport-request=1
+    -- set Interface vif1 external_ids:iface-id=sw0-port1
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-port1
@@ -33512,8 +33272,7 @@ as hv1
 for i in 1 2; do
     ovs-vsctl \
         -- add-port br-int vif$i \
-        -- set Interface vif$i external_ids:iface-id=sw0-p$i \
-        ofport-request=$i
+        -- set Interface vif$i external_ids:iface-id=sw0-p$i
 done
 
 check as hv1
@@ -33648,18 +33407,15 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif2 -- \
     set interface hv1-vif2 external-ids:iface-id=sw1-p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 external-ids:iface-id=sw0-p3 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 sim_add hv2
 as hv2
@@ -33668,13 +33424,11 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw0-p2 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw1-p1 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif2-rx.pcap
 
 sim_add hv3
 as hv3
@@ -33683,13 +33437,11 @@ ovn_attach n1 br-phys 192.168.0.3
 ovs-vsctl -- add-port br-int hv3-vif1 -- \
     set interface hv3-vif1 external-ids:iface-id=sw0-p4 \
     options:tx_pcap=hv3/vif1-tx.pcap \
-    options:rxq_pcap=hv3/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv3/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv3-vif2 -- \
     set interface hv3-vif2 external-ids:iface-id=sw1-p3 \
     options:tx_pcap=hv3/vif2-tx.pcap \
-    options:rxq_pcap=hv3/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv3/vif2-rx.pcap
 
 OVN_POPULATE_ARP
 
@@ -34242,8 +33994,8 @@ sim_add hv1
 as hv1
 ovs-vsctl add-br br-phys
 ovn_attach n1 br-phys 192.168.0.1
-ovs-vsctl -- add-port br-int vm1 -- set interface vm1 ofport-request=1
-ovs-vsctl -- add-port br-int vm2 -- set interface vm1 ofport-request=2
+ovs-vsctl -- add-port br-int vm1
+ovs-vsctl -- add-port br-int vm2
 
 check ovn-nbctl ls-add ls
 check ovn-nbctl lsp-add ls vm1
@@ -34937,8 +34689,7 @@ check ovn-nbctl lsp-add sw1 sw1-lp1 \
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 # Install static routes to drop traffic
 check ovn-nbctl lr-route-add lr1 20.0.0.0/24 discard
@@ -35053,14 +34804,12 @@ ovn_attach n1 br-phys 192.16.0.1
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 
 # Two proxy arp/ndp configurations with and wihout mac both dual stack
@@ -35394,27 +35143,23 @@ done
 as hv1 ovs-vsctl add-port br-int vif11 -- \
     set Interface vif11 external-ids:iface-id=lp11 \
                               options:tx_pcap=hv1/vif11-tx.pcap \
-                              options:rxq_pcap=hv1/vif11-rx.pcap \
-                              ofport-request=11
+                              options:rxq_pcap=hv1/vif11-rx.pcap
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lp11` = xup])
 
 as hv5 ovs-vsctl add-port br-int vif-north1 -- \
         set Interface vif-north1 external-ids:iface-id=lp-north1 \
                               options:tx_pcap=hv5/vif-north1-tx.pcap \
-                              options:rxq_pcap=hv5/vif-north1-rx.pcap \
-                              ofport-request=44
+                              options:rxq_pcap=hv5/vif-north1-rx.pcap
 
 as hv5 ovs-vsctl add-port br-int vif-north2 -- \
         set Interface vif-north2 external-ids:iface-id=lp-north2 \
                               options:tx_pcap=hv5/vif-north2-tx.pcap \
-                              options:rxq_pcap=hv5/vif-north2-rx.pcap \
-                              ofport-request=45
+                              options:rxq_pcap=hv5/vif-north2-rx.pcap
 
 as hv5 ovs-vsctl add-port br-int vif-north3 -- \
         set Interface vif-north3 external-ids:iface-id=lp-north3 \
                               options:tx_pcap=hv5/vif-north3-tx.pcap \
-                              options:rxq_pcap=hv5/vif-north3-rx.pcap \
-                              ofport-request=46
+                              options:rxq_pcap=hv5/vif-north3-rx.pcap
 
 check ovn-nbctl lrp-set-gateway-chassis DR-S1 hv2
 check ovn-nbctl lrp-set-gateway-chassis DR-S2 hv3
@@ -35857,10 +35602,10 @@ grep sw0-port1 -c], [0], [1
 ])
 
 check as hv1 ovs-vsctl add-port br-int vif13 \
-    -- set interface vif13 external_ids:iface-id=sw0-port2 ofport-request=13
+    -- set interface vif13 external_ids:iface-id=sw0-port2 ofport-request=1013
 
 check ovn-nbctl --wait=hv sync
-OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep "in_port=13" | wc -l` -eq 1])
+OVS_WAIT_UNTIL([test `ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep "in_port=1013" | wc -l` -eq 1])
 
 # There should be ct zone for sw0-port2 (localport).
 AT_CHECK([as hv1 ovn-appctl -t ovn-controller ct-zone-list | \
@@ -35929,7 +35674,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl add-port br-int localport \
     -- set interface localport \
        external_ids:iface-id=sw0-localport \
-       ofport-request=13
+       ofport-request=1013
 ovs-vsctl add-port br-int vm1 \
     -- set interface vm1 external_ids:iface-id=sw0-vm1
 
@@ -35940,7 +35685,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl add-port br-int localport \
     -- set interface localport \
        external_ids:iface-id=sw0-localport \
-       ofport-request=13
+       ofport-request=1013
 ovs-vsctl add-port br-int vm2 \
     -- set interface vm2 external_ids:iface-id=sw0-vm2
 
@@ -35952,13 +35697,13 @@ OVS_WAIT_UNTIL([
     as hv1 \
     ovs-ofctl -O OpenFlow15 dump-flows br-int table=OFTABLE_PHY_TO_LOG \
     | tee 1-hv1-br-int-table-0.txt \
-    && grep -q in_port=13 1-hv1-br-int-table-0.txt
+    && grep -q in_port=1013 1-hv1-br-int-table-0.txt
 ])
 OVS_WAIT_UNTIL([
     as hv2 \
     ovs-ofctl -O OpenFlow15 dump-flows br-int table=OFTABLE_PHY_TO_LOG \
     | tee 1-hv2-br-int-table-0.txt \
-    && grep in_port=13 1-hv2-br-int-table-0.txt
+    && grep in_port=1013 1-hv2-br-int-table-0.txt
 ])
 
 # Confirm that the controllers did not attempt to claim the localport
@@ -36260,8 +36005,7 @@ check ovn-nbctl lsp-set-addresses lp11 "00:00:11:11:44:44 20.0.0.10"
 ovs-vsctl add-port br-int vif11 -- \
     set Interface vif11 external-ids:iface-id=lp11 \
                               options:tx_pcap=hv1/vif11-tx.pcap \
-                              options:rxq_pcap=hv1/vif11-rx.pcap \
-                              ofport-request=11
+                              options:rxq_pcap=hv1/vif11-rx.pcap
 OVS_WAIT_UNTIL([test x$(ovn-nbctl lsp-get-up lp11) = xup])
 
 check ovn-nbctl lrp-set-gateway-chassis lr0-ext-ls0 hv1
@@ -36410,7 +36154,7 @@ check ovn-nbctl lsp-add sw0 sw0p2 -- lsp-set-addresses sw0p2 "00:00:00:00:00:04 
 
 as hv1
 ovs-vsctl -- add-port br-int hv1-vif0 -- \
-set Interface hv1-vif0 external-ids:iface-id=sw0p1 ofport-request=1
+set Interface hv1-vif0 external-ids:iface-id=sw0p1
 
 wait_for_ports_up sw0p1
 
@@ -36542,7 +36286,7 @@ check_port_sec_offlows hv2 OFTABLE_CHK_OUT_PORT_SEC
 
 as hv2
 ovs-vsctl -- add-port br-int hv2-vif0 -- \
-set Interface hv2-vif0 external-ids:iface-id=sw0p2 ofport-request=1
+set Interface hv2-vif0 external-ids:iface-id=sw0p2
 
 wait_for_ports_up
 # There should be no changes in hv1
@@ -36790,13 +36534,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif0 -- \
     set interface vif0 external-ids:iface-id=vif0 \
     options:tx_pcap=hv1/vif0-tx.pcap \
-    options:rxq_pcap=hv1/vif0-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif0-rx.pcap
 ovs-vsctl -- add-port br-phys ext0 -- \
     set interface ext0 \
     options:tx_pcap=hv1/ext0-tx.pcap \
-    options:rxq_pcap=hv1/ext0-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ext0-rx.pcap
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 
 send_packet() {
@@ -36875,13 +36617,11 @@ ovs-vsctl add-br br-phys
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=vif1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-phys ext1 -- \
     set interface ext1 \
     options:tx_pcap=hv1/ext1-tx.pcap \
-    options:rxq_pcap=hv1/ext1-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ext1-rx.pcap
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
@@ -36893,13 +36633,11 @@ ovs-vsctl add-br br-phys
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=vif2 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif2-rx.pcap
 ovs-vsctl -- add-port br-phys ext2 -- \
     set interface ext2 \
     options:tx_pcap=hv2/ext2-tx.pcap \
-    options:rxq_pcap=hv2/ext2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/ext2-rx.pcap
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
@@ -37761,8 +37499,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lr-add ro0
@@ -38395,8 +38132,7 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -38405,8 +38141,7 @@ ovn_attach n1 br-phys 192.168.0.2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Allow some time for ovn-northd and ovn-controller to catch up.
@@ -39486,8 +39221,7 @@ done
 
 for i in 1 2; do
     as hv-$i
-    ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i \
-                                  ofport-request=$i
+    ovs-vsctl add-port br-int vif$i -- set Interface vif$i external-ids:iface-id=lsp$i
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp$i` = xup])
 
     # Patch port might be created after ports are reported up
@@ -39521,16 +39255,14 @@ check ovn-nbctl lsp-add ls0 lsp3
 check ovn-nbctl lsp-set-addresses lsp3 f0:00:00:00:00:03
 as hv-1
 ovs-vsctl add-port br-int vif3 -- \
-    set Interface vif3 external-ids:iface-id=lsp3 \
-    ofport-request=3
+    set Interface vif3 external-ids:iface-id=lsp3
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp3` = xup])
 
 check ovn-nbctl lsp-add ls0 lsp4
 check ovn-nbctl lsp-set-addresses lsp4 f0:00:00:00:00:04
 as hv-1
 ovs-vsctl add-port br-int vif4 -- \
-    set Interface vif4 external-ids:iface-id=lsp4 \
-    ofport-request=4
+    set Interface vif4 external-ids:iface-id=lsp4
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp4` = xup])
 
 check ovn-nbctl set Logical_Switch_Port lsp3 options:qos_min_rate=700000
@@ -39606,8 +39338,7 @@ check ovn-nbctl lsp-add ls1 lsp5
 check ovn-nbctl lsp-set-addresses lsp5 f0:00:00:00:00:05
 as hv-1
 ovs-vsctl add-port br-int vif5 -- \
-    set Interface vif5 external-ids:iface-id=lsp5 \
-    ofport-request=5
+    set Interface vif5 external-ids:iface-id=lsp5
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp5` = xup])
 
 # Delete and add back public1
@@ -39674,13 +39405,11 @@ ovs-vsctl add-br br-phys
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=vif1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-phys ext0 -- \
     set interface ext0 \
     options:tx_pcap=hv1/ext0-tx.pcap \
-    options:rxq_pcap=hv1/ext0-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ext0-rx.pcap
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
@@ -39752,13 +39481,11 @@ ovs-vsctl add-br br-phys
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=vif1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-phys ext0 -- \
     set interface ext0 \
     options:tx_pcap=hv1/ext0-tx.pcap \
-    options:rxq_pcap=hv1/ext0-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ext0-rx.pcap
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
 
@@ -39938,8 +39665,7 @@ check ovn-nbctl lsp-add ls1 lsp1
 check ovn-nbctl lsp-set-addresses lsp1 f0:00:00:00:00:03
 as hv-1
 ovs-vsctl add-port br-int vif1 -- \
-    set Interface vif1 external-ids:iface-id=lsp1 \
-    ofport-request=3
+    set Interface vif1 external-ids:iface-id=lsp1
 
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp1` = xup])
 
@@ -39952,8 +39678,7 @@ check ovn-nbctl lsp-add ls2 lsp2
 check ovn-nbctl lsp-set-addresses lsp2 f0:00:00:00:00:05
 as hv-1
 ovs-vsctl add-port br-int vif2 -- \
-    set Interface vif2 external-ids:iface-id=lsp2 \
-    ofport-request=5
+    set Interface vif2 external-ids:iface-id=lsp2
 OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up lsp2` = xup])
 
 # Sleep ovs to postpone ofport notification to ovn
@@ -40255,13 +39980,11 @@ ovn-appctl vlog/set dbg
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int hv1-vif3 -- \
     set interface hv1-vif3 \
     options:tx_pcap=hv1/vif3-tx.pcap \
-    options:rxq_pcap=hv1/vif3-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv1/vif3-rx.pcap
 
 ovn-appctl -t ovn-controller vlog/set dbg
 
@@ -40353,14 +40076,12 @@ for hv in 1 2; do
         ovs-vsctl -- add-port br-int vif${hv}${i} -- \
             set interface vif${hv}${i} external-ids:iface-id=vif${hv}${i} \
             options:tx_pcap=hv${hv}/vif${hv}${i}-tx.pcap \
-            options:rxq_pcap=hv${hv}/vif${hv}${i}-rx.pcap \
-            ofport-request=$i
+            options:rxq_pcap=hv${hv}/vif${hv}${i}-rx.pcap
     done
     ovs-vsctl -- add-port br-phys ext0 -- \
         set interface ext0 \
         options:tx_pcap=hv${hv}/ext0-tx.pcap \
-        options:rxq_pcap=hv${hv}/ext0-rx.pcap \
-        ofport-request=6
+        options:rxq_pcap=hv${hv}/ext0-rx.pcap
     ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 done
 
@@ -41190,18 +40911,15 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl add-port br-int vif0 -- \
     set Interface vif0 external-ids:iface-id=lp0 \
     options:tx_pcap=hv/vif0-tx.pcap \
-    options:rxq_pcap=hv/vif0-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv/vif0-rx.pcap
 check ovs-vsctl add-port br-int vif1 -- \
     set Interface vif1 external-ids:iface-id=lp1 \
     options:tx_pcap=hv/vif1-tx.pcap \
-    options:rxq_pcap=hv/vif1-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv/vif1-rx.pcap
 check ovs-vsctl add-port br-int vif2 -- \
     set Interface vif2 external-ids:iface-id=lp2 \
     options:tx_pcap=hv/vif2-tx.pcap \
-    options:rxq_pcap=hv/vif2-rx.pcap \
-    ofport-request=3
+    options:rxq_pcap=hv/vif2-rx.pcap
 
 # Create QoS rules for packet marking.
 check ovn-nbctl qos-add ls0 from-lport 100 "inport==\"lp0\" && udp" mark=48
@@ -41246,7 +40964,7 @@ for i in 1 2; do
     ovs-vsctl add-br br-phys
     ovn_attach n1 br-phys 192.168.0.$i
     check ovs-vsctl -- add-port br-int vif1 -- \
-        set Interface vif1 ofport-request=8
+        set Interface vif1 ofport-request=1008
 done
 
 check ovn-nbctl ls-add lsw0
@@ -41267,11 +40985,11 @@ wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp1
 wait_column "$hv1_uuid" Port_Binding chassis logical_port=sw0-port1.1
 
 # check that flows is installed
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [0],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=1008], [0],[dnl
 1
 ])
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [1],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=1008], [1],[dnl
 0
 ])
 
@@ -41288,10 +41006,10 @@ wait_for_ports_up lsp1
 wait_for_ports_up sw0-port1.1
 wait_column "$hv2_uuid" Port_Binding chassis logical_port=lsp1
 
-OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [0],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv2 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=1008], [0],[dnl
 1
 ])
-OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=8], [0],[dnl
+OVS_WAIT_FOR_OUTPUT([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG |grep priority=150|grep dl_vlan=7| grep -c in_port=1008], [0],[dnl
 1
 ])
 
@@ -41381,13 +41099,11 @@ ovn_attach n1 br-phys 192.168.0.1
 ovs-vsctl -- add-port br-int vif0 -- \
     set interface vif0 external-ids:iface-id=vif0 \
     options:tx_pcap=hv1/vif0-tx.pcap \
-    options:rxq_pcap=hv1/vif0-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif0-rx.pcap
 ovs-vsctl -- add-port br-phys ext0 -- \
     set interface ext0 \
     options:tx_pcap=hv1/ext0-tx.pcap \
-    options:rxq_pcap=hv1/ext0-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/ext0-rx.pcap
 
 ovs-vsctl set open . external_ids:ovn-bridge-mappings=physnet1:br-phys
 
@@ -41707,25 +41423,21 @@ as hv1
 ovs-vsctl add-port br-int vif11 -- \
     set Interface vif11 external-ids:iface-id=sw0-p1 \
                               options:tx_pcap=hv1/vif11-tx.pcap \
-                              options:rxq_pcap=hv1/vif11-rx.pcap \
-                              ofport-request=11
+                              options:rxq_pcap=hv1/vif11-rx.pcap
 ovs-vsctl add-port br-int vif12 -- \
     set Interface vif12 external-ids:iface-id=sw1-p1 \
                               options:tx_pcap=hv1/vif12-tx.pcap \
-                              options:rxq_pcap=hv1/vif12-rx.pcap \
-                              ofport-request=12
+                              options:rxq_pcap=hv1/vif12-rx.pcap
 
 as hv2
 ovs-vsctl add-port br-int vif21 -- \
     set Interface vif21 external-ids:iface-id=sw0-p2 \
                               options:tx_pcap=hv1/vif21-tx.pcap \
-                              options:rxq_pcap=hv1/vif21-rx.pcap \
-                              ofport-request=21
+                              options:rxq_pcap=hv1/vif21-rx.pcap
 ovs-vsctl add-port br-int vif22 -- \
     set Interface vif22 external-ids:iface-id=sw1-p2 \
                               options:tx_pcap=hv1/vif22-tx.pcap \
-                              options:rxq_pcap=hv1/vif22-rx.pcap \
-                              ofport-request=22
+                              options:rxq_pcap=hv1/vif22-rx.pcap
 
 check ovn-nbctl --wait=hv sync
 wait_for_ports_up
@@ -41941,13 +41653,11 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl add-port br-int vif1 -- \
     set Interface vif1 external-ids:iface-id=vm0 \
     options:tx_pcap=hv/vif1-tx.pcap \
-    options:rxq_pcap=hv/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv/vif1-rx.pcap
 check ovs-vsctl add-port br-int vif2 -- \
     set Interface vif2  external-ids:iface-id=vm1 \
     options:tx_pcap=hv/vif2-tx.pcap \
-    options:rxq_pcap=hv/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv/vif2-rx.pcap
 
 check ovn-nbctl --wait=sb sync
 wait_for_ports_up
@@ -42117,8 +41827,7 @@ check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 check ovs-vsctl add-port br-int vif1 -- \
     set Interface vif1 external-ids:iface-id=vm0 \
     options:tx_pcap=hv/vif1-tx.pcap \
-    options:rxq_pcap=hv/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv/vif1-rx.pcap
 
 check ovn-nbctl --wait=sb sync
 wait_for_ports_up
@@ -42724,8 +42433,7 @@ ovn-appctl vlog/set dbg
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-p1
@@ -42846,8 +42554,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -42856,8 +42563,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -42974,8 +42680,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -42984,8 +42689,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -43108,8 +42812,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -43118,8 +42821,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -43238,8 +42940,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -43248,8 +42949,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -43368,8 +43068,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -43378,8 +43077,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -43511,8 +43209,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -43521,8 +43218,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -43631,8 +43327,7 @@ ovn_attach n1 br-phys 192.168.0.1
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=ls1-lp1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 sim_add hv2
 as hv2
@@ -43641,8 +43336,7 @@ ovn_attach n1 br-phys 192.168.0.2
 check ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=ls2-lp1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 
 # Pre-populate the hypervisors' ARP tables so that we don't lose any
@@ -43703,13 +43397,11 @@ ovn_attach n1 br-phys 192.168.0.11
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=sw0p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 ovs-vsctl -- add-port br-int vif2 -- \
     set interface vif2 external-ids:iface-id=sw0p2 \
     options:tx_pcap=hv1/vif2-tx.pcap \
-    options:rxq_pcap=hv1/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv1/vif2-rx.pcap
 
 check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0p1 -- \
@@ -44072,8 +43764,7 @@ as hv1
 ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-port1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 wait_for_ports_up sw0-port1
 
@@ -44142,8 +43833,7 @@ as hv2
 ovs-vsctl -- add-port br-int hv2-vif1 -- \
     set interface hv2-vif1 external-ids:iface-id=sw1-port1 \
     options:tx_pcap=hv2/vif1-tx.pcap \
-    options:rxq_pcap=hv2/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv2/vif1-rx.pcap
 
 wait_for_ports_up sw1-port1
 
@@ -44174,8 +43864,7 @@ as hv2
 ovs-vsctl -- add-port br-int hv2-vif2 -- \
     set interface hv2-vif2 external-ids:iface-id=sw0-port2 \
     options:tx_pcap=hv2/vif2-tx.pcap \
-    options:rxq_pcap=hv2/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif2-rx.pcap
 
 wait_for_ports_up sw0-port2
 
@@ -44250,8 +43939,7 @@ as gw2
 ovs-vsctl -- add-port br-int gw2-vif2 -- \
     set interface gw2-vif2 external-ids:iface-id=sw1-port1 \
     options:tx_pcap=gw2/vif2-tx.pcap \
-    options:rxq_pcap=gw2/vif2-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=gw2/vif2-rx.pcap
 
 wait_for_ports_up sw1-port1
 trigger_recompute
@@ -44281,8 +43969,7 @@ as hv2
 ovs-vsctl -- add-port br-int hv2-vif3 -- \
     set interface hv2-vif3 external-ids:iface-id=public-p1 \
     options:tx_pcap=hv2/vif3-tx.pcap \
-    options:rxq_pcap=hv2/vif3-rx.pcap \
-    ofport-request=2
+    options:rxq_pcap=hv2/vif3-rx.pcap
 
 wait_for_ports_up public-p1
 trigger_recompute
@@ -44569,8 +44256,7 @@ check ovn-appctl vlog/set dbg
 check ovs-vsctl -- add-port br-int hv1-vif1 -- \
     set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
     options:tx_pcap=hv1/vif1-tx.pcap \
-    options:rxq_pcap=hv1/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv1/vif1-rx.pcap
 
 check ovs-appctl -t ovn-controller vlog/set dbg
 
@@ -46555,8 +46241,7 @@ check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.3
 ovs-vsctl -- add-port br-int vif1 -- \
     set interface vif1 external-ids:iface-id=sw0-port1 \
     options:tx_pcap=hv/vif1-tx.pcap \
-    options:rxq_pcap=hv/vif1-rx.pcap \
-    ofport-request=1
+    options:rxq_pcap=hv/vif1-rx.pcap
 
 wait_for_ports_up
 
