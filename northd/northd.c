@@ -9875,6 +9875,10 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
             continue;
         }
 
+        if (nat->gateway_port && nat->gateway_port != op->nbrp) {
+            continue;
+        }
+
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests/NS for the DNAT external_ip.
          */
@@ -9914,6 +9918,10 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
         }
 
         const struct nbrec_nat *nat = nat_entry->nb;
+
+        if (nat->gateway_port && nat->gateway_port != op->nbrp) {
+            continue;
+        }
 
         /* Check if the ovn port has a network configured on which we could
          * expect ARP requests/NS for the SNAT external_ip.
