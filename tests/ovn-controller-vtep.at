@@ -426,7 +426,7 @@ AT_CHECK([ovn-nbctl lsp-set-addresses vif2 f0:ab:cd:ef:02:02])
 AT_CHECK([ovn-nbctl --wait=sb sync])
 AT_CHECK([ovn-sbctl chassis-add ch2 vxlan 1.2.3.7])
 AT_CHECK([ovn-sbctl lsp-bind vif2 ch2])
-AT_CHECK([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -d ' ' | sort], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([vtep-ctl --columns=MAC list Ucast_Macs_Remote | cut -d ':' -f2- | tr -d ' ' | sort], [0], [dnl
 
 "f0:ab:cd:ef:01:03"
 "f0:ab:cd:ef:02:02"
