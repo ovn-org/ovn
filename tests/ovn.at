@@ -45895,3 +45895,66 @@ OVN_CLEANUP([hv])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([IPv6 static route ND NS resolution])
+CHECK_SCAPY
+ovn_start
+
+net_add n1
+sim_add hv
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1
+check ovn-nbctl lsp-set-addresses sw0-port1 "50:54:00:00:00:01 2001:db8::3"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 2001:db8::1/64
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 2001:db8:1::1/64
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
+
+# localnet port
+check ovn-nbctl lsp-add-localnet-port public ln-public phys
+
+check ovn-nbctl lrp-set-gateway-chassis lr0-public hv 20
+
+# Add an IPv6 static route with an IPv6 nexthop whose MAC is unknown.
+check ovn-nbctl --wait=hv lr-route-add lr0 2001:db8:2::/64 2001:db8:1::cafe
+
+ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=sw0-port1 \
+    options:tx_pcap=hv/vif1-tx.pcap \
+    options:rxq_pcap=hv/vif1-rx.pcap
+
+wait_for_ports_up
+
+# Send an IPv6 packet from sw0-port1 destined for an address behind the
+# static route.  The nexthop 2001:db8:1::cafe has no MAC binding, so the
+# router must emit an ND NS to resolve it.
+packet=$(fmt_pkt "Ether(dst='00:00:00:00:ff:01', src='50:54:00:00:00:01')/ \
+                  IPv6(src='2001:db8::3', dst='2001:db8:2::42', hlim=64)/ \
+                  ICMPv6EchoRequest()")
+check as hv ovs-appctl netdev-dummy/receive vif1 $packet
+
+# Verify the ND NS has correct solicited-node multicast addresses derived
+# from the nexthop 2001:db8:1::cafe:
+#   eth.dst   = 33:33:ff:00:ca:fe  (multicast MAC from solicited-node)
+#   ip6.dst   = ff02::1:ff00:cafe  (solicited-node multicast)
+#   nd.target = 2001:db8:1::cafe   (the actual nexthop)
+nd_ns=$(fmt_pkt "Ether(dst='33:33:ff:00:ca:fe', src='00:00:20:20:12:13')/ \
+                 IPv6(src='fe80::200:20ff:fe20:1213', \
+                      dst='ff02::1:ff00:cafe')/ \
+                 ICMPv6ND_NS(tgt='2001:db8:1::cafe')/ \
+                 ICMPv6NDOptSrcLLAddr(lladdr='00:00:20:20:12:13')")
+
+echo $nd_ns > expected_nd_ns
+OVN_CHECK_PACKETS_CONTAIN([hv/br-phys_n1-tx.pcap], [expected_nd_ns])
+
+OVN_CLEANUP([hv])
+AT_CLEANUP
+])
