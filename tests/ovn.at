@@ -12984,7 +12984,7 @@ grep actions=mod_dl_dst:f0:00:00:01:02:04 | wc -l` -eq 1
 }
 
 # Wait for BFD to be up, then for ovn-controller to handle that change
-ovn_wait_for_bfd_up hv1 gw1 gw2
+ovn_wait_for_bfd_up hv1 gw1 gw2 gw3
 check ovn-nbctl --wait=hv sync
 test_ip_packet gw1 gw2
 
