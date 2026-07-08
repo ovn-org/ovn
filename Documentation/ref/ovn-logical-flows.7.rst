@@ -3585,21 +3585,6 @@ or IPv6 Neighbor Solicitation request.  It holds the following flows:
           output;
       };
 
-  Unknown MAC address.  For each IPv6 static route associated with the router
-  with the nexthop IP: *G*, a priority-200 flow for IPv6 packets with match
-  ``eth.dst == 00:00:00:00:00:00 && xxreg0 == G`` with the following actions is
-  added::
-
-      nd_ns {
-          eth.dst = E;
-          ip6.dst = I
-          nd.target = G;
-          output;
-      };
-
-  Where *E* is the multicast mac derived from the Gateway IP, *I* is the
-  solicited-node multicast address corresponding to the target address *G*.
-
   Unknown MAC address.  A priority-100 flow for IPv6 packets with match
   ``eth.dst == 00:00:00:00:00:00`` has the following actions::
 

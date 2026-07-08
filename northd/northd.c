@@ -16458,53 +16458,10 @@ build_lr_gateway_redirect_flows_for_nats(
 static void
 build_arp_request_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
-        struct ds *match, struct ds *actions,
         const struct shash *meter_groups,
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
-    for (int i = 0; i < od->nbr->n_static_routes; i++) {
-        const struct nbrec_logical_router_static_route *route;
-
-        route = od->nbr->static_routes[i];
-        struct in6_addr gw_ip6;
-        unsigned int plen;
-        char *error = ipv6_parse_cidr(route->nexthop, &gw_ip6, &plen);
-        if (error || plen != 128) {
-            free(error);
-            continue;
-        }
-
-        ds_clear(match);
-        ds_put_format(match, "eth.dst == 00:00:00:00:00:00 && "
-                      REGBIT_NEXTHOP_IS_IPV4" == 0 && "
-                      REG_NEXT_HOP_IPV6 " == %s",
-                      route->nexthop);
-        struct in6_addr sn_addr;
-        struct eth_addr eth_dst;
-        in6_addr_solicited_node(&sn_addr, &gw_ip6);
-        ipv6_multicast_to_ethernet(&eth_dst, &sn_addr);
-
-        char sn_addr_s[INET6_ADDRSTRLEN + 1];
-        ipv6_string_mapped(sn_addr_s, &sn_addr);
-
-        ds_clear(actions);
-        ds_put_format(actions,
-                      "nd_ns { "
-                      "eth.dst = "ETH_ADDR_FMT"; "
-                      "ip6.dst = %s; "
-                      "nd.target = %s; "
-                      "output; "
-                      "}; next;", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
-                      route->nexthop);
-
-        ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
-                      ds_cstr(match), ds_cstr(actions), lflow_ref,
-                      WITH_CTRL_METER(copp_meter_get(COPP_ND_NS_RESOLVE,
-                                                     od->nbr->copp,
-                                                     meter_groups)),
-                      WITH_HINT(&route->header_));
-    }
 
     ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 100,
                   "eth.dst == 00:00:00:00:00:00 && "
@@ -19716,9 +19673,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
     build_gateway_redirect_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                              &lsi->actions,
                                              od->datapath_lflows);
-    build_arp_request_flows_for_lrouter(od, lsi->lflows, &lsi->match,
-                                        &lsi->actions,
-                                        lsi->meter_groups,
+    build_arp_request_flows_for_lrouter(od, lsi->lflows, lsi->meter_groups,
                                         od->datapath_lflows);
     build_ecmp_stateful_egr_flows_for_lrouter(od, lsi->lflows,
                                               od->datapath_lflows);
