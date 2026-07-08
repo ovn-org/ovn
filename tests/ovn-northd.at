@@ -5850,6 +5850,34 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
+AT_SETUP([ovn -- ARP flows for distributed gw ports with NAT])
+ovn_start
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-nbctl ls-add sw
+check ovn-nbctl lr-add ro1
+
+check ovn-nbctl lrp-add ro1 ro1-lrp1 00:00:00:00:00:01 10.0.10.1/24
+check ovn-nbctl lsp-add-router-port sw sw-ro1 ro1-lrp1
+check ovn-nbctl lrp-set-gateway-chassis ro1-lrp1 gw1
+
+check ovn-nbctl lrp-add ro1 ro1-lrp2 00:00:00:00:00:02 10.0.20.1/24
+check ovn-nbctl lsp-add-router-port sw sw-ro2 ro1-lrp2
+check ovn-nbctl lrp-set-gateway-chassis ro1-lrp2 gw1
+
+check ovn-nbctl --gateway-port=ro1-lrp2 lr-nat-add ro1 dnat_and_snat 10.0.10.100 10.0.20.2
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl lflow-list sw > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep 10.0.10.100 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 10.0.10.100), action=(outport = "sw-ro2"; output;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ovn -- ARP flows for unreachable addresses - NAT and LB])
 ovn_start
 
