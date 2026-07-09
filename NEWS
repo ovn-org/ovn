@@ -34,6 +34,8 @@ Post v26.03.0
        generates proxy-reply flows using a dedicated side table
        and the new chk_evpn_arp() action, preventing unnecessary
        flooding to remote VTEPs.
+     * Allow learning routes from the main (254) and default (253) routing
+       tables.
    - Added "override-connected" option to Logical Router Static Routes to mark
      static routes as higher-priority than connected routes, which in turn led
      to changes in administrative distance for specific route types. Please see

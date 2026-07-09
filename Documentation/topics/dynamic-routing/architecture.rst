@@ -398,8 +398,9 @@ of precedence:
 
 1. The ``dynamic-routing-vrf-id`` option on the logical router, if set to
    a valid integer in the range (1-4294967294), excluding the reserved
-   table IDs 252 (``RT_TABLE_COMPAT``), 253 (``RT_TABLE_DEFAULT``),
-   254 (``RT_TABLE_MAIN``), and 255 (``RT_TABLE_LOCAL``).
+   table IDs 252 (``RT_TABLE_COMPAT``) and 255 (``RT_TABLE_LOCAL``).
+   Table IDs 253 (``RT_TABLE_DEFAULT``) and 254 (``RT_TABLE_MAIN``) are
+   allowed for learning routes from the main/default VRF.
 
 2. The tunnel key of the logical router datapath, used as a fallback
    when ``dynamic-routing-vrf-id`` is not configured.
