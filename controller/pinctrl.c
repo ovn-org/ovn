@@ -4704,7 +4704,8 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
         ra->metadata  = peer->datapath->tunnel_key;
         ra->preserved = (!strcmp(pb->type,"l2gateway") ||
                         !strcmp(pb->type,"l3gateway") ||
-                        !strcmp(pb->type,"chassisredirect"));
+                        !strcmp(pb->type,"chassisredirect") ||
+                        smap_get(&pb->options, "chassis-redirect-port"));
         ra->delete_me = false;
 
         /* pinctrl_handler thread will send the IPv6 RAs. */
