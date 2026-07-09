@@ -18030,16 +18030,25 @@ CHECK_SCAPY
 ovn_start
 
 net_add n1
+# Separate localnet networks per chassis.
+net_add n-phys1
+net_add n-phys2
+
 sim_add hv1
-sim_add hv2
 as hv1
 check ovs-vsctl add-br br-phys
-check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl add-br br-ln
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys1:br-ln
+net_attach n-phys1 br-ln
+
+sim_add hv2
 as hv2
 check ovs-vsctl add-br br-phys
-check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach n1 br-phys 192.168.0.3
+check ovs-vsctl add-br br-ln
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys2:br-ln
+net_attach n-phys2 br-ln
 
 check ovn-nbctl lr-add ro
 check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01
@@ -18051,7 +18060,9 @@ check ovn-nbctl lrp-set-gateway-chassis ro-sw hv1
 ])
 
 check ovn-nbctl ls-add sw
-check ovn-nbctl lsp-add-localnet-port sw ln phys
+# Two localnet ports, each mapped to a different physical network.
+check ovn-nbctl lsp-add-localnet-port sw ln1 phys1
+check ovn-nbctl lsp-add-localnet-port sw ln2 phys2
 
 check ovn-nbctl lsp-add-router-port sw sw-ro ro-sw
 check ovn-nbctl lsp-add sw sw-p1
@@ -18125,11 +18136,9 @@ ra_test() {
     rm -f expected
 }
 
-# Check that RAs are sent to vifs.
+# Check that RAs are sent to VIFs and localnet ports.
 ra_test vif1
-
-# Check that RAs are received on br-phys.
-ra_test br-phys
+ra_test br-ln
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
