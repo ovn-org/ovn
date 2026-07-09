@@ -150,16 +150,18 @@ digraph "Incremental-Processing-Engine" {
 	bfd [[style=filled, shape=box, fillcolor=white, label="bfd"]];
 	NB_bfd -> bfd [[label=""]];
 	SB_bfd -> bfd [[label=""]];
+	NB_logical_router_static_route [[style=filled, shape=box, fillcolor=white, label="NB_logical_router_static_route"]];
 	routes [[style=filled, shape=box, fillcolor=white, label="routes"]];
 	bfd -> routes [[label=""]];
 	northd -> routes [[label="routes_northd_change_handler"]];
+	NB_logical_router_static_route -> routes [[label="routes_static_route_change_handler"]];
 	route_policies [[style=filled, shape=box, fillcolor=white, label="route_policies"]];
 	bfd -> route_policies [[label=""]];
 	northd -> route_policies [[label="route_policies_northd_change_handler"]];
 	bfd_sync [[style=filled, shape=box, fillcolor=white, label="bfd_sync"]];
 	bfd -> bfd_sync [[label=""]];
 	NB_bfd -> bfd_sync [[label=""]];
-	routes -> bfd_sync [[label=""]];
+	routes -> bfd_sync [[label="bfd_sync_routes_change_handler"]];
 	route_policies -> bfd_sync [[label=""]];
 	northd -> bfd_sync [[label="bfd_sync_northd_change_handler"]];
 	SB_learned_route [[style=filled, shape=box, fillcolor=white, label="SB_learned_route"]];
@@ -167,7 +169,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_learned_route -> learned_route_sync [[label="learned_route_sync_sb_learned_route_change_handler"]];
 	northd -> learned_route_sync [[label="learned_route_sync_northd_change_handler"]];
 	group_ecmp_route [[style=filled, shape=box, fillcolor=white, label="group_ecmp_route"]];
-	routes -> group_ecmp_route [[label=""]];
+	routes -> group_ecmp_route [[label="group_ecmp_route_routes_change_handler"]];
 	learned_route_sync -> group_ecmp_route [[label="group_ecmp_route_learned_route_change_handler"]];
 	ls_stateful [[style=filled, shape=box, fillcolor=white, label="ls_stateful"]];
 	northd -> ls_stateful [[label="ls_stateful_northd_handler"]];
@@ -185,7 +187,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_logical_dp_group -> lflow [[label=""]];
 	bfd_sync -> lflow [[label=""]];
 	route_policies -> lflow [[label=""]];
-	routes -> lflow [[label=""]];
+	routes -> lflow [[label="engine_noop_handler"]];
 	group_ecmp_route -> lflow [[label="lflow_group_ecmp_route_change_handler"]];
 	global_config -> lflow [[label="node_global_config_handler"]];
 	sampling_app -> lflow [[label=""]];

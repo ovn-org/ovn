@@ -207,7 +207,8 @@ northd_nb_logical_router_handler(struct engine_node *node,
     }
 
     if (northd_has_lr_nats_in_tracked_data(&nd->trk_data) ||
-        northd_has_lrouters_in_tracked_data(&nd->trk_data)) {
+        northd_has_lrouters_in_tracked_data(&nd->trk_data) ||
+        northd_has_lr_route_in_tracked_data(&nd->trk_data)) {
         return EN_HANDLED_UPDATED;
     }
 
@@ -329,7 +330,7 @@ en_route_policies_run(struct engine_node *node, void *data)
 
 enum engine_input_handler_result
 routes_northd_change_handler(struct engine_node *node,
-                                    void *data OVS_UNUSED)
+                             void *data OVS_UNUSED)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     if (!northd_has_tracked_data(&northd_data->trk_data)) {
@@ -347,12 +348,143 @@ routes_northd_change_handler(struct engine_node *node,
      *      Note: When we add I-P to the created/deleted logical routers or
      *      logical router ports, we need to revisit this handler.
      *
-     *      This node also accesses the static routes of the logical router.
-     *      When these static routes gets updated, en_northd engine recomputes
-     *      and so does this node.
-     *      Note: When we add I-P to handle static routes changes, we need
-     *      to revisit this handler.
      */
+    return EN_HANDLED_UNCHANGED;
+}
+
+static bool
+static_route_is_relevant_updated(
+    const struct nbrec_logical_router_static_route *sr)
+{
+    return nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_ROUTE_TABLE)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_IP_PREFIX)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_POLICY)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_NEXTHOP)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_OUTPUT_PORT)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_BFD)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_OPTIONS)
+        || nbrec_logical_router_static_route_is_updated(sr,
+                NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_SELECTION_FIELDS);
+}
+
+static struct parsed_route *
+static_route_lookup_parsed(struct routes_data *routes_data,
+                           const struct nbrec_logical_router_static_route *sr)
+{
+    struct hmap *routes = &routes_data->parsed_routes;
+    struct parsed_route *pr = parsed_route_lookup_by_source(
+        ROUTE_SOURCE_STATIC, &sr->header_, routes);
+    if (!pr) {
+        pr = parsed_route_lookup_by_source(
+            ROUTE_SOURCE_IC_DYNAMIC, &sr->header_, routes);
+    }
+    return pr;
+}
+
+enum engine_input_handler_result
+routes_static_route_change_handler(struct engine_node *node,
+                                   void *data)
+{
+    struct routes_data *routes_data = data;
+    const struct nbrec_logical_router_static_route_table *
+        nb_lr_static_route_table =
+        EN_OVSDB_GET(engine_get_input("NB_logical_router_static_route", node));
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct bfd_data *bfd_data = engine_get_input_data("bfd", node);
+    struct parsed_route *pr;
+
+    routes_data->tracked = true;
+
+    /* Logical routers reference their static routes, so a route change also
+     * marks the router as updated.  Iterate the updated routers and their
+     * routes to handle created and updated routes, avoiding a reverse lookup
+     * from route to router. */
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node, &northd_data->trk_data.trk_lrs_routes) {
+        struct ovn_datapath *od = hmapx_node->data;
+        for (size_t i = 0; i < od->nbr->n_static_routes; i++) {
+            const struct nbrec_logical_router_static_route *sr =
+                od->nbr->static_routes[i];
+
+            if (nbrec_logical_router_static_route_is_new(sr)) {
+                pr = parsed_routes_add_static(od, &northd_data->lr_ports, sr,
+                        &bfd_data->bfd_connections,
+                        &routes_data->parsed_routes,
+                        &routes_data->route_tables,
+                        &routes_data->bfd_active_connections);
+                if (!pr) {
+                    return EN_UNHANDLED;
+                }
+                hmapx_add(&routes_data->trk_data.trk_crupdated_parsed_route,
+                          pr);
+                continue;
+            }
+
+            /* A BFD column change requires a full recompute. */
+            if (nbrec_logical_router_static_route_is_updated(sr,
+                    NBREC_LOGICAL_ROUTER_STATIC_ROUTE_COL_BFD)) {
+                return EN_UNHANDLED;
+            }
+
+            if (!static_route_is_relevant_updated(sr)) {
+                continue;
+            }
+
+            pr = static_route_lookup_parsed(routes_data, sr);
+            if (!pr || !pr->od) {
+                return EN_UNHANDLED;
+            }
+            hmapx_add(&routes_data->trk_data.trk_deleted_parsed_route, pr);
+            hmap_remove(&routes_data->parsed_routes, &pr->key_node);
+            pr = parsed_routes_add_static(od, &northd_data->lr_ports, sr,
+                    &bfd_data->bfd_connections,
+                    &routes_data->parsed_routes,
+                    &routes_data->route_tables,
+                    &routes_data->bfd_active_connections);
+            if (!pr) {
+                /* engine_recompute() will clear the tracked data and free the
+                 * route we just moved to trk_deleted_parsed_route. */
+                return EN_UNHANDLED;
+            }
+            hmapx_add(&routes_data->trk_data.trk_crupdated_parsed_route, pr);
+        }
+    }
+
+    /* Deleted routes are no longer referenced by any router, so handle them
+     * by iterating the tracked static route table. */
+    const struct nbrec_logical_router_static_route *changed_static_route;
+    NBREC_LOGICAL_ROUTER_STATIC_ROUTE_TABLE_FOR_EACH_TRACKED (
+                            changed_static_route, nb_lr_static_route_table) {
+        if (!nbrec_logical_router_static_route_is_deleted(
+                changed_static_route)) {
+            continue;
+        }
+        /* A route created and deleted within the same transaction never got a
+         * parsed route. */
+        if (nbrec_logical_router_static_route_is_new(changed_static_route)) {
+            continue;
+        }
+
+        pr = static_route_lookup_parsed(routes_data, changed_static_route);
+        if (!pr) {
+            return EN_UNHANDLED;
+        }
+        hmapx_add(&routes_data->trk_data.trk_deleted_parsed_route, pr);
+        hmap_remove(&routes_data->parsed_routes, &pr->key_node);
+    }
+
+    if (!hmapx_is_empty(&routes_data->trk_data.trk_crupdated_parsed_route) ||
+        !hmapx_is_empty(&routes_data->trk_data.trk_deleted_parsed_route)) {
+        return EN_HANDLED_UPDATED;
+    }
+
     return EN_HANDLED_UNCHANGED;
 }
 
@@ -418,6 +550,18 @@ bfd_sync_northd_change_handler(struct engine_node *node, void *data OVS_UNUSED)
      *      Note: When we add I-P to the created/deleted logical router ports,
      *      we need to revisit this handler.
      */
+    return EN_HANDLED_UNCHANGED;
+}
+
+enum engine_input_handler_result
+bfd_sync_routes_change_handler(struct engine_node *node,
+                               void *data OVS_UNUSED)
+{
+    struct routes_data *routes_data
+        = engine_get_input_data("routes", node);
+    if (!routes_data->tracked) {
+        return EN_UNHANDLED;
+    }
     return EN_HANDLED_UNCHANGED;
 }
 
@@ -588,6 +732,12 @@ void
 en_routes_cleanup(void *data)
 {
     routes_destroy(data);
+}
+
+void
+en_routes_clear_tracked_data(void *data)
+{
+    routes_clear_tracked(data);
 }
 
 void

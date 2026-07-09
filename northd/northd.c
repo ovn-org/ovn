@@ -4563,6 +4563,7 @@ destroy_northd_data_tracked_changes(struct northd_data *nd)
     destroy_tracked_ovn_ports(&trk_changes->trk_lsps);
     destroy_tracked_lbs(&trk_changes->trk_lbs);
     hmapx_clear(&trk_changes->trk_nat_lrs);
+    hmapx_clear(&trk_changes->trk_lrs_routes);
     hmapx_clear(&trk_changes->ls_with_changed_lbs);
     hmapx_clear(&trk_changes->ls_with_changed_acls);
     hmapx_clear(&trk_changes->ls_with_changed_ipam);
@@ -4586,6 +4587,7 @@ init_northd_tracked_data(struct northd_data *nd)
     hmapx_init(&trk_data->trk_lbs.crupdated);
     hmapx_init(&trk_data->trk_lbs.deleted);
     hmapx_init(&trk_data->trk_nat_lrs);
+    hmapx_init(&trk_data->trk_lrs_routes);
     hmapx_init(&trk_data->ls_with_changed_lbs);
     hmapx_init(&trk_data->ls_with_changed_acls);
     hmapx_init(&trk_data->ls_with_changed_ipam);
@@ -4604,6 +4606,7 @@ destroy_northd_tracked_data(struct northd_data *nd)
     hmapx_destroy(&trk_data->trk_lbs.crupdated);
     hmapx_destroy(&trk_data->trk_lbs.deleted);
     hmapx_destroy(&trk_data->trk_nat_lrs);
+    hmapx_destroy(&trk_data->trk_lrs_routes);
     hmapx_destroy(&trk_data->ls_with_changed_lbs);
     hmapx_destroy(&trk_data->ls_with_changed_acls);
     hmapx_destroy(&trk_data->ls_with_changed_ipam);
@@ -5428,7 +5431,8 @@ lr_changes_can_be_handled(const struct nbrec_logical_router *lr)
         if (nbrec_logical_router_is_updated(lr, col)) {
             if (col == NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER
                 || col == NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER_GROUP
-                || col == NBREC_LOGICAL_ROUTER_COL_NAT) {
+                || col == NBREC_LOGICAL_ROUTER_COL_NAT
+                || col == NBREC_LOGICAL_ROUTER_COL_STATIC_ROUTES) {
                 continue;
             }
             return false;
@@ -5453,12 +5457,7 @@ lr_changes_can_be_handled(const struct nbrec_logical_router *lr)
             return false;
         }
     }
-    for (size_t i = 0; i < lr->n_static_routes; i++) {
-        if (nbrec_logical_router_static_route_row_get_seqno(
-            lr->static_routes[i], OVSDB_IDL_CHANGE_MODIFY) > 0) {
-            return false;
-        }
-    }
+
     return true;
 }
 
@@ -5482,6 +5481,27 @@ is_lr_nats_changed(const struct nbrec_logical_router *nbr) {
             || nbrec_logical_router_is_updated(
                 nbr, NBREC_LOGICAL_ROUTER_COL_OPTIONS)
             || is_lr_nats_seqno_changed(nbr));
+}
+
+static bool
+is_lr_static_routes_seqno_changed(const struct nbrec_logical_router *nbr)
+{
+    for (size_t i = 0; i < nbr->n_static_routes; i++) {
+        if (nbrec_logical_router_static_route_row_get_seqno(
+                        nbr->static_routes[i], OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool
+is_lr_static_routes_changed(const struct nbrec_logical_router *nbr)
+{
+    return nbrec_logical_router_is_updated(nbr,
+                                   NBREC_LOGICAL_ROUTER_COL_STATIC_ROUTES)
+           || is_lr_static_routes_seqno_changed(nbr);
 }
 
 /* Return true if changes are handled incrementally, false otherwise.
@@ -5555,6 +5575,22 @@ northd_handle_lr_changes(const struct northd_input *ni,
 
             hmapx_add(&nd->trk_data.trk_nat_lrs, od);
         }
+
+        /* Static Route was added or deleted. */
+        if (is_lr_static_routes_changed(changed_lr)) {
+            struct ovn_datapath *od = ovn_datapath_find_(
+                                    &nd->lr_datapaths.datapaths,
+                                    &changed_lr->header_.uuid);
+
+            if (!od) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Internal error: a tracked updated LR "
+                            "doesn't exist in lr_datapaths: "UUID_FMT,
+                            UUID_ARGS(&changed_lr->header_.uuid));
+                goto fail;
+            }
+            hmapx_add(&nd->trk_data.trk_lrs_routes, od);
+        }
     }
 
     HMAPX_FOR_EACH (node, &ni->synced_lrs->deleted) {
@@ -5594,6 +5630,9 @@ northd_handle_lr_changes(const struct northd_input *ni,
 
     if (!hmapx_is_empty(&nd->trk_data.trk_nat_lrs)) {
         nd->trk_data.type |= NORTHD_TRACKED_LR_NATS;
+    }
+    if (!hmapx_is_empty(&nd->trk_data.trk_lrs_routes)) {
+        nd->trk_data.type |= NORTHD_TRACKED_LR_ROUTES;
     }
     if (!hmapx_is_empty(&nd->trk_data.trk_routers.crupdated) ||
         !hmapx_is_empty(&nd->trk_data.trk_routers.deleted)) {
@@ -12461,7 +12500,7 @@ parsed_route_add(const struct ovn_datapath *od,
     }
 }
 
-static void
+struct parsed_route *
 parsed_routes_add_static(const struct ovn_datapath *od,
                          const struct hmap *lr_ports,
                          const struct nbrec_logical_router_static_route *route,
@@ -12482,8 +12521,9 @@ parsed_routes_add_static(const struct ovn_datapath *od,
                          UUID_FMT, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
             free(nexthop);
-            return;
+            return NULL;
         }
+
         if ((IN6_IS_ADDR_V4MAPPED(nexthop) && plen != 32) ||
             (!IN6_IS_ADDR_V4MAPPED(nexthop) && plen != 128)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -12491,7 +12531,7 @@ parsed_routes_add_static(const struct ovn_datapath *od,
                          UUID_FMT, route->nexthop,
                          UUID_ARGS(&route->header_.uuid));
             free(nexthop);
-            return;
+            return NULL;
         }
     }
 
@@ -12503,7 +12543,7 @@ parsed_routes_add_static(const struct ovn_datapath *od,
                      UUID_FMT, route->ip_prefix,
                      UUID_ARGS(&route->header_.uuid));
         free(nexthop);
-        return;
+        return NULL;
     }
 
     /* Verify that ip_prefix and nexthop are on the same network. */
@@ -12515,7 +12555,7 @@ parsed_routes_add_static(const struct ovn_datapath *od,
                                    : IN6_IS_ADDR_V4MAPPED(&prefix),
                                    &lrp_addr_s, &out_port)) {
         free(nexthop);
-        return;
+        return NULL;
     }
 
     const struct nbrec_bfd *nb_bt = route->bfd;
@@ -12525,7 +12565,7 @@ parsed_routes_add_static(const struct ovn_datapath *od,
                                                   nb_bt->dst_ip);
         if (!bfd_e) {
             free(nexthop);
-            return;
+            return NULL;
         }
 
         /* This static route is linked to an active bfd session. */
@@ -12542,10 +12582,9 @@ parsed_routes_add_static(const struct ovn_datapath *od,
             bfd_set_status(bfd_sr, "down");
         }
 
-
         if (!strcmp(bfd_sr->status, "down")) {
             free(nexthop);
-            return;
+            return NULL;
         }
     }
 
@@ -12589,12 +12628,17 @@ parsed_routes_add_static(const struct ovn_datapath *od,
     bool dynamic_routing_advertise = smap_get_bool(&route->options,
                                                    "dynamic-routing-advertise",
                                                    true);
-    parsed_route_add(od, nexthop, &prefix, plen, is_discard_route, lrp_addr_s,
-                     out_port, route_table_id, is_src_route,
-                     ecmp_symmetric_reply, override_connected,
-                     &ecmp_selection_fields, source, dynamic_routing_advertise,
-                     &route->header_, NULL, routes);
+    struct parsed_route *pr = parsed_route_add(od, nexthop, &prefix, plen,
+                                               is_discard_route, lrp_addr_s,
+                                               out_port, route_table_id,
+                                               is_src_route,
+                                               ecmp_symmetric_reply,
+                                               override_connected,
+                                               &ecmp_selection_fields, source,
+                                               dynamic_routing_advertise,
+                                               &route->header_, NULL, routes);
     sset_destroy(&ecmp_selection_fields);
+    return pr;
 }
 
 static void
@@ -21128,6 +21172,9 @@ routes_init(struct routes_data *data)
     hmap_init(&data->parsed_routes);
     simap_init(&data->route_tables);
     hmap_init(&data->bfd_active_connections);
+    hmapx_init(&data->trk_data.trk_deleted_parsed_route);
+    hmapx_init(&data->trk_data.trk_crupdated_parsed_route);
+    data->tracked = false;
 }
 
 void
@@ -21258,6 +21305,21 @@ routes_destroy(struct routes_data *data)
 
     simap_destroy(&data->route_tables);
     __bfd_destroy(&data->bfd_active_connections);
+    hmapx_destroy(&data->trk_data.trk_crupdated_parsed_route);
+    hmapx_destroy(&data->trk_data.trk_deleted_parsed_route);
+}
+
+void
+routes_clear_tracked(struct routes_data *data)
+{
+    data->tracked = false;
+    hmapx_clear(&data->trk_data.trk_crupdated_parsed_route);
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH_SAFE (hmapx_node,
+                         &data->trk_data.trk_deleted_parsed_route) {
+        parsed_route_free(hmapx_node->data);
+        hmapx_delete(&data->trk_data.trk_deleted_parsed_route, hmapx_node);
+    }
 }
 
 void

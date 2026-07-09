@@ -4485,7 +4485,7 @@ check ovn-nbctl --bfd=$uuid lr-route-add r0 100.0.0.0/8 192.168.1.2
 wait_column down bfd status logical_port=r0-sw1
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd], [0], [], [ignore])
 
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats bfd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
@@ -4501,7 +4501,7 @@ check ovn-nbctl --bfd lr-route-add r0 240.0.0.0/8 192.168.5.2 r0-sw5
 wait_column down bfd status logical_port=r0-sw5
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd], [0], [], [ignore])
 
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats bfd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
@@ -4513,7 +4513,7 @@ check ovn-nbctl --bfd --policy=src-ip lr-route-add r0 192.168.6.1/32 192.168.10.
 wait_column down bfd status logical_port=r0-sw6
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.6.1 | grep -q bfd], [0], [], [ignore])
 
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats bfd recompute nocompute
 check_engine_stats route_policies recompute nocompute
 check_engine_stats lflow recompute nocompute
@@ -4548,7 +4548,7 @@ wait_column down bfd status logical_port=r0-sw8
 bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw8)
 AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid])
 
-check_engine_stats northd recompute nocompute
+check_engine_stats northd recompute incremental
 check_engine_stats bfd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
@@ -17014,12 +17014,12 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb lr-route-add lr0 192.168.0.0/24 10.0.0.10
-check_engine_compute northd recompute
-check_engine_compute routes recompute
+check_engine_compute northd incremental
+check_engine_compute routes incremental
 check_engine_compute advertised_route_sync recompute
-check_engine_compute learned_route_sync recompute
-check_engine_compute group_ecmp_route recompute
-check_engine_compute lflow recompute
+check_engine_compute learned_route_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -21197,6 +21197,120 @@ AS_BOX([LB0 on switch, LB1 on switch, remove])
 check ovn-nbctl --wait=sb lr-lb-del lr lb0
 check_column "$global_svc_mon_mac" sb:Service_Monitor src_mac port=1
 check_column "$global_svc_mon_mac" sb:Service_Monitor src_mac port=2
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Static Route incremental processing])
+ovn_start
+
+check ovn-nbctl lr-add r0
+
+check ovn-nbctl --wait=sb lrp-add r0 r0-lrp1 00:00:00:00:00:01 192.168.1.1/24 fe80::1/64
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-route-add r0 10.0.0.0/24 192.168.1.2
+
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+
+static_route_uuid=`ovn-nbctl --bare --columns _uuid find Logical_Router_Static_Route nexthop=192.168.1.2`
+AT_CHECK([test "$static_route_uuid" != ""])
+
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.0.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid nexthop=192.168.1.3
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.0.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid ip_prefix=10.0.1.0/24
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid_old=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.0.0/24"')
+AT_CHECK([test "$sr_lflow_uuid_old" == ""])
+
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check ovn-nbctl --wait=sb lrp-add r0 r0-lrp2 00:00:00:00:00:02 192.168.1.10/24
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid output_port=r0-lrp2
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid policy=src-ip
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.src == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid policy=dst-ip
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid selection_fields="ip_proto,ip_src,ip_dst"
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid options:ecmp_symmetric_reply=true
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_static_route $static_route_uuid nexthop=\"fe80::2\"
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.dst == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" != ""])
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl remove logical_router r0 static_routes $static_route_uuid
+check_engine_compute northd incremental
+check_engine_compute routes incremental
+check_engine_compute bfd_sync incremental
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
+sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.src == 10.0.1.0/24"')
+AT_CHECK([test "$sr_lflow_uuid" == ""])
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP

@@ -519,3 +519,55 @@ group_ecmp_route_learned_route_change_handler(struct engine_node *eng_node,
     }
     return EN_HANDLED_UNCHANGED;
 }
+
+enum engine_input_handler_result
+group_ecmp_route_routes_change_handler(struct engine_node *eng_node,
+                                       void *_data)
+{
+    struct routes_data *routes_data
+        = engine_get_input_data("routes", eng_node);
+    struct group_ecmp_route_data *data = _data;
+    if (!routes_data->tracked) {
+        return EN_UNHANDLED;
+    }
+
+    data->tracked = true;
+
+    struct parsed_route *pr;
+    struct hmapx updated_routes = HMAPX_INITIALIZER(&updated_routes);
+
+    const struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node,
+                    &routes_data->trk_data.trk_deleted_parsed_route) {
+        pr = hmapx_node->data;
+        if (!handle_deleted_route(data, pr, &updated_routes)) {
+            hmapx_destroy(&updated_routes);
+            return EN_UNHANDLED;
+        }
+    }
+
+    HMAPX_FOR_EACH (hmapx_node,
+                    &routes_data->trk_data.trk_crupdated_parsed_route) {
+        pr = hmapx_node->data;
+        handle_added_route(data, pr, &updated_routes);
+    }
+
+    HMAPX_FOR_EACH (hmapx_node, &updated_routes) {
+        struct group_ecmp_datapath *node = hmapx_node->data;
+        if (hmap_is_empty(&node->unique_routes) &&
+                hmap_is_empty(&node->ecmp_groups)) {
+            hmapx_add(&data->trk_data.deleted_datapath_routes, node);
+            hmap_remove(&data->datapaths, &node->hmap_node);
+        } else {
+            hmapx_add(&data->trk_data.crupdated_datapath_routes, node);
+        }
+    }
+
+    hmapx_destroy(&updated_routes);
+
+    if (!hmapx_is_empty(&data->trk_data.crupdated_datapath_routes) ||
+        !hmapx_is_empty(&data->trk_data.deleted_datapath_routes)) {
+        return EN_HANDLED_UPDATED;
+    }
+    return EN_HANDLED_UNCHANGED;
+}
