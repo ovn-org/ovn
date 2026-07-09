@@ -327,6 +327,13 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         const struct smap l3 = SMAP_CONST1(&l3, "l3gateway-chassis", id);
         sbrec_port_binding_add_clause_options(&pb, OVSDB_F_INCLUDES, &l3);
 
+        /* Also monitor ports with periodic RA enabled so that all chassis
+         * can generate RAs for their local VIFs, even when the port is an
+         * l3gateway bound to a different chassis. */
+        const struct smap ra =
+            SMAP_CONST1(&ra, "ipv6_ra_send_periodic", "true");
+        sbrec_port_binding_add_clause_options(&pb, OVSDB_F_INCLUDES, &ra);
+
         sbrec_controller_event_add_clause_chassis(&ce, OVSDB_F_EQ,
                                                   &chassis->header_.uuid);
         sbrec_igmp_group_add_clause_chassis(&igmp, OVSDB_F_EQ,
