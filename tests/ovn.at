@@ -18016,9 +18016,16 @@ OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
 ])
 
-
+dnl OVN_TEST_PERIODIC_RA_LOCALNET([mode])
+dnl
+dnl Tests that periodic IPv6 RAs on a gateway or distributed gateway port
+dnl are forwarded through localnet ports to the provider network.
+dnl
+dnl mode: "l3gateway" - LR with options:chassis (gateway router)
+dnl        "dgp"      - LRP with gateway_chassis (distributed gateway port)
+m4_define([OVN_TEST_PERIODIC_RA_LOCALNET], [dnl
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([IPv6 periodic gateway RA enabled for localnet adjacent switch ports])
+AT_SETUP([IPv6 periodic $1 RA enabled for localnet adjacent switch ports])
 CHECK_SCAPY
 ovn_start
 
@@ -18034,8 +18041,14 @@ check ovs-vsctl add-br br-phys
 check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 ovn_attach n1 br-phys 192.168.0.3
 
-check ovn-nbctl lr-add ro -- set Logical_Router ro options:chassis="hv1"
+check ovn-nbctl lr-add ro
 check ovn-nbctl lrp-add ro ro-sw 00:00:00:00:00:01
+
+m4_if([$1], [l3gateway], [
+check ovn-nbctl set Logical_Router ro options:chassis="hv1"
+], [
+check ovn-nbctl lrp-set-gateway-chassis ro-sw hv1
+])
 
 check ovn-nbctl ls-add sw
 check ovn-nbctl lsp-add-localnet-port sw ln phys
@@ -18046,7 +18059,14 @@ check ovn-nbctl lsp-set-addresses sw-p1 "00:00:00:00:00:02 aef0::200:ff:fe00:2"
 check ovn-nbctl lsp-add sw sw-p2
 check ovn-nbctl lsp-set-addresses sw-p2 "00:00:00:00:00:03 aef0::200:ff:fe00:3"
 
-AT_CHECK([ovn-sbctl get Port_Binding ro-sw type | tr -d '\n'],[0],[l3gateway])
+check ovn-nbctl --wait=sb sync
+
+m4_if([$1], [l3gateway], [dnl
+AT_CHECK([ovn-sbctl get Port_Binding ro-sw type | tr -d '\n'], [0], [l3gateway])
+], [dnl
+AT_CHECK([ovn-sbctl get Port_Binding ro-sw type | tr -d '\n'], [0], [patch])
+AT_CHECK([ovn-sbctl get Port_Binding cr-ro-sw type | tr -d '\n'], [0], [chassisredirect])
+])
 
 check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:send_periodic=true
 check ovn-nbctl set Logical_Router_Port ro-sw ipv6_ra_configs:address_mode=slaac
@@ -18065,11 +18085,11 @@ wait_for_ports_up
 check ovn-nbctl --wait=hv sync
 
 ra_received() {
-    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $1 | sed '/^ffffffffffff/d' | wc -l
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" ${1} | sed '/^ffffffffffff/d' | wc -l
 }
 
 ra_test() {
-    interface=$1
+    interface=${1}
     shift 1
     local ra_packet=$(fmt_pkt "
         Ether(src='00:00:00:00:00:01', dst='33:33:00:00:00:01') /
@@ -18105,15 +18125,18 @@ ra_test() {
     rm -f expected
 }
 
-# check that RAs are sent
+# Check that RAs are sent to vifs.
 ra_test vif1
 
-# check that RAs are recived on br-phys
+# Check that RAs are received on br-phys.
 ra_test br-phys
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP
-])
+])])
+
+OVN_TEST_PERIODIC_RA_LOCALNET([l3gateway])
+OVN_TEST_PERIODIC_RA_LOCALNET([dgp])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ACL reject rule test])
