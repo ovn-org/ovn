@@ -16999,19 +16999,9 @@ build_lrouter_ipv4_default_ttl_expired_flows(
         return;
     }
 
-    struct ds ip_ds = DS_EMPTY_INITIALIZER;
     for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         ds_clear(match);
         ds_clear(actions);
-        ds_clear(&ip_ds);
-        if (lrp_is_l3dgw(op)) {
-            ds_put_cstr(&ip_ds, "ip4.dst <-> ip4.src");
-            ds_put_format(match, "is_chassis_resident(%s) && ",
-                          op->cr_port->json_key);
-        } else {
-            ds_put_format(&ip_ds, "ip4.dst = ip4.src; ip4.src = %s",
-                          op->lrp_networks.ipv4_addrs[i].addr_s);
-        }
         ds_put_format(match,
                       "inport == %s && ip4 && "
                       "ip4.src == %s/%d && "
@@ -17019,23 +17009,28 @@ build_lrouter_ipv4_default_ttl_expired_flows(
                       op->json_key,
                       op->lrp_networks.ipv4_addrs[i].network_s,
                       op->lrp_networks.ipv4_addrs[i].plen);
+        if (lrp_is_l3dgw(op)) {
+            ds_put_format(match, " && is_chassis_resident(%s)",
+                          op->cr_port->json_key);
+        }
+
         ds_put_format(actions,
                       "icmp4 {"
-                      "eth.dst <-> eth.src; "
+                      "eth.dst = eth.src; eth.src = %s; "
                       "icmp4.type = 11; /* Time exceeded */ "
                       "icmp4.code = 0; /* TTL exceeded in transit */ "
-                      "%s ; ip.ttl = 254; "
+                      "ip4.dst = ip4.src; ip4.src = %s; ip.ttl = 254; "
                       "outport = %s; flags.loopback = 1; output; };",
-                      ds_cstr(&ip_ds), op->json_key);
+                      op->lrp_networks.ea_s,
+                      op->lrp_networks.ipv4_addrs[i].addr_s, op->json_key);
+
         ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 31,
                       ds_cstr(match), ds_cstr(actions), lflow_ref,
                       WITH_CTRL_METER(copp_meter_get(COPP_ICMP4_ERR,
                                                      op->od->nbr->copp,
                                                      meter_groups)),
                       WITH_HINT(&op->nbrp->header_));
-
     }
-    ds_destroy(&ip_ds);
     ds_clear(match);
     ds_clear(actions);
 
@@ -17046,15 +17041,19 @@ build_lrouter_ipv4_default_ttl_expired_flows(
                   "inport == %s && ip4 && "
                   "ip.ttl == {0, 1} && !ip.later_frag",
                   op->json_key);
+    if (lrp_is_l3dgw(op)) {
+        ds_put_format(match, " && is_chassis_resident(%s)",
+                      op->cr_port->json_key);
+    }
     ds_put_format(actions,
                   "icmp4 {"
-                  "eth.dst <-> eth.src; "
+                  "eth.dst = eth.src; eth.src = %s; "
                   "icmp4.type = 11; /* Time exceeded */ "
                   "icmp4.code = 0; /* TTL exceeded in transit */ "
                   "ip4.dst = ip4.src; ip4.src = %s; ip.ttl = 254; "
-                   "outport = %s; flags.loopback = 1; output; };",
-                   op->lrp_networks.ipv4_addrs[0].addr_s,
-                   op->json_key);
+                  "outport = %s; flags.loopback = 1; output; };",
+                  op->lrp_networks.ea_s, op->lrp_networks.ipv4_addrs[0].addr_s,
+                  op->json_key);
     ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 30,
                   ds_cstr(match), ds_cstr(actions), lflow_ref,
                   WITH_CTRL_METER(copp_meter_get(COPP_ICMP4_ERR,
@@ -17077,19 +17076,9 @@ build_lrouter_ipv6_default_ttl_expired_flows(
         return;
     }
 
-    struct ds ip_ds = DS_EMPTY_INITIALIZER;
     for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs - 1; i++) {
         ds_clear(match);
         ds_clear(actions);
-        ds_clear(&ip_ds);
-        if (lrp_is_l3dgw(op)) {
-            ds_put_cstr(&ip_ds, "ip6.dst <-> ip6.src");
-            ds_put_format(match, "is_chassis_resident(%s) && ",
-                          op->cr_port->json_key);
-        } else {
-            ds_put_format(&ip_ds, "ip6.dst = ip6.src; ip6.src = %s",
-                          op->lrp_networks.ipv6_addrs[i].addr_s);
-        }
         ds_put_format(match,
                       "inport == %s && ip6 && "
                       "ip6.src == %s/%d && "
@@ -17097,14 +17086,20 @@ build_lrouter_ipv6_default_ttl_expired_flows(
                       op->json_key,
                       op->lrp_networks.ipv6_addrs[i].network_s,
                       op->lrp_networks.ipv6_addrs[i].plen);
+        if (lrp_is_l3dgw(op)) {
+            ds_put_format(match, " && is_chassis_resident(%s)",
+                          op->cr_port->json_key);
+        }
         ds_put_format(actions,
                       "icmp6 {"
-                      "eth.dst <-> eth.src; "
-                      "%s ; ip.ttl = 254; "
+                      "eth.dst = eth.src; eth.src = %s; "
+                      "ip6.dst = ip6.src; ip6.src = %s; ip.ttl = 254; "
                       "icmp6.type = 3; /* Time exceeded */ "
                       "icmp6.code = 0; /* TTL exceeded in transit */ "
                       "outport = %s; flags.loopback = 1; output; };",
-                      ds_cstr(&ip_ds), op->json_key);
+                      op->lrp_networks.ea_s,
+                      op->lrp_networks.ipv6_addrs[i].addr_s, op->json_key);
+
         ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 31,
                       ds_cstr(match), ds_cstr(actions), lflow_ref,
                       WITH_CTRL_METER(copp_meter_get(COPP_ICMP6_ERR,
@@ -17112,7 +17107,6 @@ build_lrouter_ipv6_default_ttl_expired_flows(
                                                      meter_groups)),
                       WITH_HINT(&op->nbrp->header_));
     }
-    ds_destroy(&ip_ds);
     ds_clear(match);
     ds_clear(actions);
 
@@ -17123,14 +17117,18 @@ build_lrouter_ipv6_default_ttl_expired_flows(
                   "inport == %s && ip6 && "
                   "ip.ttl == {0, 1} && !ip.later_frag",
                   op->json_key);
+    if (lrp_is_l3dgw(op)) {
+        ds_put_format(match, " && is_chassis_resident(%s)",
+                      op->cr_port->json_key);
+    }
     ds_put_format(actions,
                   "icmp6 {"
-                  "eth.dst <-> eth.src; "
+                  "eth.dst = eth.src; eth.src = %s; "
                   "ip6.dst = ip6.src; ip6.src = %s; "
                   "ip.ttl = 254; icmp6.type = 3; /* Time exceeded */ "
                   "icmp6.code = 0; /* TTL exceeded in transit */ "
                   "outport = %s; flags.loopback = 1; output; };",
-                  op->lrp_networks.ipv6_addrs[0].addr_s,
+                  op->lrp_networks.ea_s, op->lrp_networks.ipv6_addrs[0].addr_s,
                   op->json_key);
     ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT, 30,
                   ds_cstr(match), ds_cstr(actions), lflow_ref,
