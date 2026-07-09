@@ -11044,23 +11044,53 @@ build_lswitch_dns_lookup_and_response(struct ovn_datapath *od,
     if (!ls_has_dns_records(od->nbs)) {
         return;
     }
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
-                  "udp.dst == 53",
+
+    const char *dns_server_ip =
+        smap_get(&od->nbs->other_config, "dns_server_ip");
+    const char *copp_meter = copp_meter_get(COPP_DNS, od->nbs->copp,
+                                            meter_groups);
+
+    struct ds match = DS_EMPTY_INITIALIZER;
+
+    /* IPv4 DNS lookup. */
+    if (dns_server_ip) {
+        ds_put_format(&match, "udp.dst == 53 && ip4.dst == %s", dns_server_ip);
+    } else {
+        ds_put_cstr(&match, "udp.dst == 53 && ip4");
+    }
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100, ds_cstr(&match),
                   REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;",
-                  lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_DNS,
-                                                            od->nbs->copp,
-                                                            meter_groups)));
-    const char *dns_action = "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
+                  lflow_ref, WITH_CTRL_METER(copp_meter));
+    ds_clear(&match);
+
+    /* IPv6 DNS lookup. */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_LOOKUP, 100,
+                  "udp.dst == 53 && ip6",
+                  REGBIT_DNS_LOOKUP_RESULT" = dns_lookup(); next;",
+                  lflow_ref, WITH_CTRL_METER(copp_meter));
+
+    /* IPv4 DNS response. */
+    if (dns_server_ip) {
+        ds_put_format(&match, "udp.dst == 53 && ip4.dst == %s && "
+                      REGBIT_DNS_LOOKUP_RESULT, dns_server_ip);
+    } else {
+        ds_put_cstr(&match, "udp.dst == 53 && ip4 && "
+                    REGBIT_DNS_LOOKUP_RESULT);
+    }
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100, ds_cstr(&match),
+                  "eth.dst <-> eth.src; ip4.src <-> ip4.dst; "
                   "udp.dst = udp.src; udp.src = 53; outport = inport; "
-                  "flags.loopback = 1; output;";
-    const char *dns_match = "udp.dst == 53 && "REGBIT_DNS_LOOKUP_RESULT;
+                  "flags.loopback = 1; output;", lflow_ref);
+    ds_clear(&match);
+
+    /* IPv6 DNS response. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
-                  dns_match, dns_action, lflow_ref);
-    dns_action = "eth.dst <-> eth.src; ip6.src <-> ip6.dst; "
+                  "udp.dst == 53 && ip6 && " REGBIT_DNS_LOOKUP_RESULT,
+                  "eth.dst <-> eth.src; ip6.src <-> ip6.dst; "
                   "udp.dst = udp.src; udp.src = 53; outport = inport; "
-                  "flags.loopback = 1; output;";
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_DNS_RESPONSE, 100,
-                  dns_match, dns_action, lflow_ref);
+                  "flags.loopback = 1; output;", lflow_ref);
+
+    ds_destroy(&match);
 }
 
 /* Table 24: External port. Drop ARP request for router ips from
