@@ -18099,46 +18099,48 @@ ra_received() {
     $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" ${1} | sed '/^ffffffffffff/d' | wc -l
 }
 
-ra_test() {
-    interface=${1}
-    shift 1
+ra_check() {
+    local hv=${1}
+    local interface=${2}
     local ra_packet=$(fmt_pkt "
         Ether(src='00:00:00:00:00:01', dst='33:33:00:00:00:01') /
         IPv6(dst='ff02::1', src='fe80::200:ff:fe00:1') /
         ICMPv6ND_RA(chlim=255, prf=0, routerlifetime=65535) /
         ICMPv6NDOptSrcLLAddr(lladdr='00:00:00:00:00:01')
     ")
-    intname="$interface"
+    local intname="$interface"
+    if echo "$interface" | grep -q -v "br"; then
+        intname="$hv-$interface"
+    fi
+    echo $intname
+    as $hv reset_pcap_file $intname $hv/$interface
 
-    for i in hv1 hv2 ; do
-        if echo "$interface" | grep -q -v "br"; then
-            intname="$i-$interface"
-        fi
-        echo $intname
-        as $i reset_pcap_file $intname $i/$interface
+    OVS_WAIT_WHILE([test 0 = $(ra_received $hv/$interface-tx.pcap)])
 
-        OVS_WAIT_WHILE([test 0 = $(ra_received $i/$interface-tx.pcap)])
+    $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $hv/$interface-tx.pcap > packets
+    sed -i '/^ffffffffffff/d' packets
 
-        $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" $i/$interface-tx.pcap > packets
-        sed -i '/^ffffffffffff/d' packets
+    echo ${ra_packet} | cut -c -112 > expout
+    AT_CHECK([head -1 packets | cut -c -112], [0], [expout])
 
-        echo ${ra_packet} | cut -c -112 > expout
-        AT_CHECK([head -1 packets | cut -c -112], [0], [expout])
+    # Skip ICMPv6 checksum.
+    echo ${ra_packet} | cut -c 117- > expout
+    AT_CHECK([head -1 packets | cut -c 117-], [0], [expout])
 
-        # Skip ICMPv6 checksum.
-        echo ${ra_packet} | cut -c 117- > expout
-        AT_CHECK([head -1 packets | cut -c 117-], [0], [expout])
-
-        rm -f packets
-        as $i reset_pcap_file $intname $i/$interface
-    done
-
-    rm -f expected
+    rm -f packets
 }
 
-# Check that RAs are sent to VIFs and localnet ports.
-ra_test vif1
-ra_test br-ln
+# Check that RAs are sent to VIFs on both nodes.
+ra_check hv1 vif1
+ra_check hv2 vif1
+
+# Check that the active gateway chassis (hv1) sends RAs to its localnet.
+ra_check hv1 br-ln
+
+# hv2 is not an active gateway, so it must not send RAs to localnet.
+# We already checked pcaps for 3 other ports and found RAs, if there were
+# any sent, they would be already in the pcap.
+AT_CHECK([test 0 = $(ra_received hv2/br-ln-tx.pcap)])
 
 OVN_CLEANUP([hv1],[hv2])
 AT_CLEANUP

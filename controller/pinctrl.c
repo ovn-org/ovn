@@ -272,7 +272,8 @@ static void destroy_ipv6_ras(void);
 static void ipv6_ra_wait(long long int send_ipv6_ra_time);
 static void prepare_ipv6_ras(
         const struct shash *local_active_ports_ras,
-        struct ovsdb_idl_index *sbrec_port_binding_by_name)
+        struct ovsdb_idl_index *sbrec_port_binding_by_name,
+        const struct sbrec_chassis *chassis)
     OVS_REQUIRES(pinctrl_mutex);
 static void send_ipv6_ras(struct rconn *swconn,
                           long long int *send_ipv6_ra_time)
@@ -4208,7 +4209,8 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     run_put_vport_bindings(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                            sbrec_port_binding_by_key, chassis, cur_cfg);
     send_garp_rarp_prepare(ecmp_nh_table, chassis, ovs_table);
-    prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name);
+    prepare_ipv6_ras(local_active_ports_ras, sbrec_port_binding_by_name,
+                     chassis);
     prepare_ipv6_prefixd(ovnsb_idl_txn, sbrec_port_binding_by_name,
                          local_active_ports_ipv6_pd, chassis,
                          local_datapaths);
@@ -4265,7 +4267,7 @@ struct ipv6_ra_state {
     struct ipv6_ra_config *config;
     int64_t port_key;
     int64_t metadata;
-    bool preserved;
+    bool override_local_only;
     bool delete_me;
 };
 
@@ -4579,7 +4581,7 @@ ipv6_ra_send(struct rconn *swconn, struct ipv6_ra_state *ra)
     put_load(dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
     put_load(port_key, MFF_LOG_INPORT, 0, 32, &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY_BIT, 1, &ofpacts);
-    if (ra->preserved) {
+    if (ra->override_local_only) {
         put_load(1, MFF_LOG_FLAGS, MLF_OVERRIDE_LOCAL_ONLY_BIT, 1, &ofpacts);
     }
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
@@ -4638,7 +4640,8 @@ send_ipv6_ras(struct rconn *swconn, long long int *send_ipv6_ra_time)
  * thread context. */
 static void
 prepare_ipv6_ras(const struct shash *local_active_ports_ras,
-                 struct ovsdb_idl_index *sbrec_port_binding_by_name)
+                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                 const struct sbrec_chassis *chassis)
     OVS_REQUIRES(pinctrl_mutex)
 {
     struct shash_node *iter;
@@ -4694,11 +4697,26 @@ prepare_ipv6_ras(const struct shash *local_active_ports_ras,
          */
         ra->port_key  = peer->tunnel_key;
         ra->metadata  = peer->datapath->tunnel_key;
-        ra->preserved = (!strcmp(pb->type,"l2gateway") ||
-                        !strcmp(pb->type,"l3gateway") ||
-                        !strcmp(pb->type,"chassisredirect") ||
-                        smap_get(&pb->options, "chassis-redirect-port"));
         ra->delete_me = false;
+
+        /* All periodic RAs are local-only to prevent tunneling to
+         * remote chassis (each chassis generates its own for local
+         * VIFs).  MLF_OVERRIDE_LOCAL_ONLY_BIT is set on the active
+         * gateway chassis so the RA passes the localnet anti-leak
+         * check and reaches the physical network. */
+        const char *crp = smap_get(&pb->options, "chassis-redirect-port");
+
+        if (!strcmp(pb->type, "l3gateway") ||
+            !strcmp(pb->type, "l2gateway") ||
+            !strcmp(pb->type, "chassisredirect")) {
+            ra->override_local_only =
+                lport_pb_is_chassis_resident(chassis, pb);
+        } else if (crp) {
+            ra->override_local_only = lport_is_chassis_resident(
+                sbrec_port_binding_by_name, chassis, crp);
+        } else {
+            ra->override_local_only = false;
+        }
 
         /* pinctrl_handler thread will send the IPv6 RAs. */
     }
