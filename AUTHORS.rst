@@ -52,6 +52,7 @@ Alfredo Finelli                    alf@computationes.de
 Alin Balutoiu                      abalutoiu@cloudbasesolutions.com
 Alin Serdean                       aserdean@cloudbasesolutions.com
 Ambika Arora                       ambika.arora@tcs.com
+Amir Aslan Aslani                  amiraslanaslani6@gmail.com
 Amit Bose                          bose@noironetworks.com
 Amitabha Biswas                    azbiswas@gmail.com
 Anand Kumar                        kumaranand@vmware.com
