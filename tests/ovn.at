@@ -32878,9 +32878,12 @@ check ovs-vsctl set interface vif2 external_ids:iface-id=foo
 # is not true.
 wait_row_count Port_Binding 1 logical_port=sw0-p2 'chassis=[[]]'
 
-as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
-AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [1], [dnl
+
+# Wait for flow - note that we can't use ovn-nbctl sync as northd is stopped.
+OVS_WAIT_FOR_OUTPUT([
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
+grep -c "in_port=2" offlows_table0.txt], [1], [dnl
 0
 ])
 
@@ -32912,9 +32915,10 @@ check ovn-sbctl set SB_Global . options:northd_internal_version=$northd_version
 # It should claim sw0-p2
 wait_row_count Port_Binding 1 logical_port=sw0-p2 chassis=$ch
 
-as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
-AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [0], [dnl
+OVS_WAIT_FOR_OUTPUT([
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
+grep -c "in_port=2" offlows_table0.txt], [0], [dnl
 1
 ])
 
@@ -32958,9 +32962,10 @@ as hv1
 check ovs-vsctl set open . external_ids:ovn-remote=$ovn_remote
 
 wait_row_count Port_Binding 1 logical_port=sw0-p2 'chassis=[[]]'
-as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
 AT_CAPTURE_FILE([offlows_table0.txt])
-AT_CHECK_UNQUOTED([grep -c "in_port=2" offlows_table0.txt], [1], [dnl
+OVS_WAIT_FOR_OUTPUT([
+as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG > offlows_table0.txt
+grep -c "in_port=2" offlows_table0.txt], [1], [dnl
 0
 ])
 
