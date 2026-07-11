@@ -9883,14 +9883,14 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
          * expect ARP requests/NS for the DNAT external_ip.
          */
         if (nat_entry_is_v6(nat_entry)) {
-            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v6,
+            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v6_reachable,
                                nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
                     stage_hint, lflow_ref);
             }
         } else {
-            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v4,
+            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v4_reachable,
                                nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,
@@ -9927,14 +9927,14 @@ build_lswitch_rport_arp_req_flows_for_lbnats(
          * expect ARP requests/NS for the SNAT external_ip.
          */
         if (nat_entry_is_v6(nat_entry)) {
-            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v6,
+            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v6_reachable,
                                nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET6, sw_op, sw_od, 80, lflows,
                     stage_hint, lflow_ref);
             }
         } else {
-            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v4,
+            if (!sset_contains(&lr_stateful_rec->lb_ips->ips_v4_reachable,
                                nat->external_ip)) {
                 build_lswitch_rport_arp_req_flow(
                     nat->external_ip, AF_INET, sw_op, sw_od, 80, lflows,
