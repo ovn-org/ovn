@@ -5839,7 +5839,15 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
 
 
 # Make sure that there is no flow for VIP 192.168.4.100 as it is unreachable.
-AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | grep -v clone | grep "_MC_flood" -c], [1], [0
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" -c], [1], [0
+])
+
+AS_BOX([Adding an dnat_and_snat for LB unreachable VIP on ro1])
+check ovn-nbctl --wait=sb lr-nat-add ro1 dnat_and_snat 192.168.4.100 192.168.1.100
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && arp.op == 1 && arp.tpa == 192.168.4.100), action=(clone {outport = "ls1-ro1"; output; }; outport = "_MC_flood_l2"; output;)
 ])
 
 OVN_CLEANUP_NORTHD
