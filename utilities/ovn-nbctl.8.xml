@@ -475,17 +475,31 @@
     <h2>Network Function Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] <code>nf-add</code> <var>nf</var> <var>id</var> <var>inport</var> <var>outport</var></dt>
+      <dt>[<code>--may-exist</code>] <code>nf-add</code> <var>nf</var> <var>id</var> <var>inport</var> [<var>outport</var>]</dt>
       <dd>
         <p>
           Creates a new network function named <var>nf</var> with the specified
           <var>id</var> (an integer between 1 and 255) and logical switch ports
-          <var>inport</var> and <var>outport</var>. Both the ports must be on
-          the same logical switch and must be already created. When used in an
-          ACL action, traffic matching the ACL are redirected to the
-          <var>inport</var> if it is from-lport ACL and to <var>outport</var>
-          if it is to-lport ACL. The response packets are sent through the same
-          ports in reverse order.
+          <var>inport</var> and (optionally) <var>outport</var>. The ports must
+          be on the same logical switch and must be already created.
+        </p>
+
+        <p>
+          When the network function is used in an
+          <code>inline</code>-mode network function group, both
+          <var>inport</var> and <var>outport</var> must be specified.
+          Traffic matching the ACL is redirected to the <var>inport</var> for
+          from-lport ACLs and to the <var>outport</var> for to-lport ACLs.
+          The response packets are sent through the same ports in reverse
+          order.
+        </p>
+
+        <p>
+          When the network function is used in a <code>vtap</code>-mode
+          network function group, only <var>inport</var> is used; traffic
+          matching the ACL is mirrored (cloned) to <var>inport</var> in both
+          directions while the original packet continues to its destination.
+          <var>outport</var> must not be specified for vtap network functions.
         </p>
 
         <p>
@@ -517,16 +531,31 @@
         <p>
           Creates a new network function group named <var>nfg</var> with
           optionally one of more <code>nf</code> added to the group. The nfs
-          must be already created. Traffic redirection would be done towards
-          one of the active network functions, based on health monitoring.
-          If all are down, any one would be chosen for redirection.
+          must be already created. Traffic redirection/mirroring is performed
+          towards one of the active network functions, based on health
+          monitoring (inline) or port binding status (vtap). If all are down,
+          the configured fallback behavior applies.
         </p>
 
         <p>
           Each network function group must have a unique <var>id</var> between
-          <code>1</code> and <code>255</code>. The <var>mode</var> must be
-          <code>inline</code> which is currently the only supported mode.
+          <code>1</code> and <code>255</code>. The supported values for
+          <var>mode</var> are:
         </p>
+
+        <ul>
+          <li>
+            <code>inline</code>: traffic matching the ACL is redirected
+            through the active network function. Both <code>inport</code> and
+            <code>outport</code> must be set on every member network function.
+          </li>
+          <li>
+            <code>vtap</code>: traffic matching the ACL is mirrored (cloned)
+            to the active network function while the original packet
+            continues to its destination. Only <code>inport</code> is used on
+            member network functions.
+          </li>
+        </ul>
 
         <p>
           Without any options, this command regards it as an error if

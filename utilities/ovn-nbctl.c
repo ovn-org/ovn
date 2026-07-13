@@ -414,7 +414,7 @@ Network function group commands:\n\
 \n\
 Network function commands:\n\
   [--may-exist]\n\
-  nf-add NETWORK-FUNCTION ID PORT-IN PORT-OUT\n\
+  nf-add NETWORK-FUNCTION ID PORT-IN [PORT-OUT]\n\
                            create a network-function\n\
   [--if-exists]\n\
   nf-del NETWORK-FUNCTION  delete a network-function\n\
@@ -2248,6 +2248,8 @@ static void
 nbctl_pre_nf_group_add(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_inport);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_outport);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_id);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_mode);
@@ -2255,10 +2257,35 @@ nbctl_pre_nf_group_add(struct ctl_context *ctx)
         ctx->idl, &nbrec_network_function_group_col_network_function);
 }
 
+/* Validates that 'nf' is compatible with the given 'mode'.  In inline
+ * mode both inport and outport must be set; in vtap mode only inport is
+ * used and outport must not be set.  Returns NULL on success or a
+ * dynamically allocated error string on failure. */
+static char * OVS_WARN_UNUSED_RESULT
+nf_check_mode_compatibility(const struct nbrec_network_function *nf,
+                            const char *mode)
+{
+    if (!strcmp(mode, "vtap")) {
+        if (nf->outport) {
+            return xasprintf("network-function %s has outport set; outport "
+                             "must not be set for vtap mode network "
+                             "functions", nf->name);
+        }
+    } else { /* inline */
+        if (!nf->outport) {
+            return xasprintf("network-function %s has no outport set; "
+                             "outport is required for inline mode network "
+                             "functions", nf->name);
+        }
+    }
+    return NULL;
+}
+
 static char *
 set_network_function_in_network_function_group(
     struct ctl_context *ctx,
     const struct nbrec_network_function_group *nf_group,
+    const char *mode,
     char **new_network_function, size_t num_new_network_function)
 {
     struct nbrec_network_function **nfs =
@@ -2268,6 +2295,11 @@ set_network_function_in_network_function_group(
         const struct nbrec_network_function *nf;
         char *error = nf_by_name_or_uuid(ctx, new_network_function[i],
                                          true, &nf);
+        if (error) {
+            free(nfs);
+            return error;
+        }
+        error = nf_check_mode_compatibility(nf, mode);
         if (error) {
             free(nfs);
             return error;
@@ -2319,9 +2351,9 @@ nbctl_nf_group_add(struct ctl_context *ctx)
 
     /* Validate and set mode */
     const char *nfg_mode = ctx->argv[3];
-    if (strcmp(nfg_mode, "inline")) {
+    if (strcmp(nfg_mode, "inline") && strcmp(nfg_mode, "vtap")) {
         ctl_error(ctx, "Unsupported mode provided for "
-                  "network-function-group:%s, supported values: inline",
+                  "network-function-group:%s, supported values: inline, vtap",
                   nfg_name);
         return;
     }
@@ -2330,7 +2362,7 @@ nbctl_nf_group_add(struct ctl_context *ctx)
     /* Set network functions if provided */
     if (ctx->argc > 4) {
         ctx->error = set_network_function_in_network_function_group(
-            ctx, nf_group, ctx->argv + 4, ctx->argc - 4);
+            ctx, nf_group, nfg_mode, ctx->argv + 4, ctx->argc - 4);
     }
 }
 
@@ -2365,6 +2397,7 @@ nbctl_pre_nf_group_list(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_network_function_group_col_network_function);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_mode);
 }
 
 static void
@@ -2375,9 +2408,10 @@ nbctl_nf_group_list(struct ctl_context *ctx)
 
     NBREC_NETWORK_FUNCTION_GROUP_FOR_EACH (nf_group, ctx->idl) {
         smap_add_format(&nf_groups, nf_group->name,
-                        UUID_FMT " (%s)",
+                        UUID_FMT " (%s) mode:%s",
                         UUID_ARGS(&nf_group->header_.uuid),
-                        nf_group->name);
+                        nf_group->name,
+                        nf_group->mode ? nf_group->mode : "inline");
     }
     const struct smap_node **nodes = smap_sort(&nf_groups);
     for (size_t i = 0; i < smap_count(&nf_groups); i++) {
@@ -2394,7 +2428,10 @@ nbctl_pre_nf_group_add_network_function(struct ctl_context *ctx)
     ovsdb_idl_add_column(ctx->idl,
                          &nbrec_network_function_group_col_network_function);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_group_col_mode);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_inport);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_outport);
 }
 
 static void
@@ -2418,6 +2455,15 @@ nbctl_nf_group_add_network_function(struct ctl_context *ctx)
     error = nf_by_name_or_uuid(ctx, ctx->argv[2], true, &nf);
     if (error) {
         ctx->error = error;
+        return;
+    }
+
+    /* Validate mode compatibility of the network function. */
+    const char *mode = nf_group->mode ? nf_group->mode : "inline";
+    error = nf_check_mode_compatibility(nf, mode);
+    if (error) {
+        ctl_error(ctx, "%s", error);
+        free(error);
         return;
     }
 
@@ -2520,10 +2566,14 @@ nbctl_nf_add(struct ctl_context *ctx)
         ctx->error = error;
         return;
     }
-    error = lsp_by_name_or_uuid(ctx, ctx->argv[4], true, &lsp_out);
-    if (error) {
-        ctx->error = error;
-        return;
+    if (ctx->argc == 5) {
+        error = lsp_by_name_or_uuid(ctx, ctx->argv[4], true, &lsp_out);
+        if (error) {
+            ctx->error = error;
+            return;
+        }
+    } else {
+        lsp_out = NULL;
     }
 
     /* Validate and parse ID */
@@ -9367,7 +9417,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_nf_group_del_network_function, NULL, "--if-exists", RW },
 
     /* network-function commands. */
-    { "nf-add", 4, 4, "NETWORK-FUNCTION ID PORT-IN PORT-OUT",
+    { "nf-add", 3, 4, "NETWORK-FUNCTION ID PORT-IN [PORT-OUT]",
       nbctl_pre_nf_add,
       nbctl_nf_add,
       NULL, "--may-exist", RW },

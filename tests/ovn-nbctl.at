@@ -3319,13 +3319,13 @@ AT_CHECK([ovn-nbctl nfg-add nfg0 2 inline nf0], [1], [],
 ])
 AT_CHECK([ovn-nbctl --may-exist nfg-add nfg0 1 inline nf0])
 AT_CHECK([ovn-nbctl nfg-list | uuidfilt], [0], [dnl
-<0> (nfg0)
+<0> (nfg0) mode:inline
 ])
 
 # Test --may-exist overwrite behavior: update existing network function group with new config
 AT_CHECK([ovn-nbctl --may-exist nfg-add nfg0 5 inline nf1 nf2])
 AT_CHECK([ovn-nbctl nfg-list | uuidfilt], [0], [dnl
-<0> (nfg0)
+<0> (nfg0) mode:inline
 ])
 # nf1 and nf2 are already in the group, so adding them should fail without --may-exist
 AT_CHECK([ovn-nbctl nfg-add-nf nfg0 nf1], [1], [],
@@ -3336,8 +3336,8 @@ AT_CHECK([ovn-nbctl nfg-add-nf nfg0 nf0])
 AT_CHECK([ovn-nbctl nfg-del-nf nfg0 nf0])
 AT_CHECK([ovn-nbctl nfg-add nfg1 2 inline nf1])
 AT_CHECK([ovn-nbctl nfg-list | uuidfilt], [0], [dnl
-<0> (nfg0)
-<1> (nfg1)
+<0> (nfg0) mode:inline
+<1> (nfg1) mode:inline
 ])
 
 # Access-list with network-function-group.
@@ -3386,6 +3386,44 @@ AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
 <0> (nf3) id:10 in:svc-port6 out:svc-port7
 ])
 AT_CHECK([ovn-nbctl nf-del nf3])
+
+# Create network-function with only inport (vtap mode).
+AT_CHECK([ovn-nbctl nf-add nf0 1 svc-port6])
+AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
+<0> (nf0) id:1 in:svc-port6 out:<not_set>
+])
+
+# Create a network-function-group in vtap mode.
+AT_CHECK([ovn-nbctl nfg-add nfg0 1 vtap nf0])
+AT_CHECK([ovn-nbctl nfg-list | uuidfilt], [0], [dnl
+<0> (nfg0) mode:vtap
+])
+AT_CHECK([ovn-nbctl nfg-del nfg0])
+
+# Validation: nf0 has only inport, attempting to use it in an inline
+# network-function-group must be rejected.
+AT_CHECK([ovn-nbctl nfg-add nfg0 1 inline nf0], [1], [], [dnl
+ovn-nbctl: network-function nf0 has no outport set; outport is required for inline mode network functions
+])
+AT_CHECK([ovn-nbctl nfg-add nfg0 1 inline])
+AT_CHECK([ovn-nbctl nfg-add-nf nfg0 nf0], [1], [], [dnl
+ovn-nbctl: network-function nf0 has no outport set; outport is required for inline mode network functions
+])
+AT_CHECK([ovn-nbctl nfg-del nfg0])
+
+# Validation: an NF with outport set must not be allowed in a vtap
+# network-function-group.
+AT_CHECK([ovn-nbctl nf-add nf-inline 11 svc-port6 svc-port7])
+AT_CHECK([ovn-nbctl nfg-add nfg0 1 vtap nf-inline], [1], [], [dnl
+ovn-nbctl: network-function nf-inline has outport set; outport must not be set for vtap mode network functions
+])
+AT_CHECK([ovn-nbctl nfg-add nfg0 1 vtap])
+AT_CHECK([ovn-nbctl nfg-add-nf nfg0 nf-inline], [1], [], [dnl
+ovn-nbctl: network-function nf-inline has outport set; outport must not be set for vtap mode network functions
+])
+AT_CHECK([ovn-nbctl nfg-del nfg0])
+AT_CHECK([ovn-nbctl nf-del nf-inline])
+AT_CHECK([ovn-nbctl nf-del nf0])
 ])
 
 AT_SETUP([ovn-nbctl - TLS server name indication (SNI) with --ssl-server-name])
