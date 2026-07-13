@@ -44524,10 +44524,10 @@ create_logical_topology() {
         check ovn-nbctl lsp-add $sw $sw-nf-p$i -- lsp-set-addresses $sw-nf-p$i "f0:00:00:00:01:0$i"
     done
     check ovn-nbctl set logical_switch_port $sw-nf-p1 \
-        options:receive_multicast=false options:lsp_learn_mac=false \
+        options:receive_multicast=false options:lsp_learn_fdb=false \
         options:is-nf=true options:nf-linked-port=$sw-nf-p2
     check ovn-nbctl set logical_switch_port $sw-nf-p2 \
-        options:receive_multicast=false options:lsp_learn_mac=false \
+        options:receive_multicast=false options:lsp_learn_fdb=false \
         options:is-nf=true options:nf-linked-port=$sw-nf-p1
     check ovn-nbctl nf-add nf0 1 $sw-nf-p1 $sw-nf-p2
     check ovn-nbctl nfg-add nfg0 1 inline nf0
@@ -44657,10 +44657,10 @@ create_logical_topology() {
         check ovn-nbctl lsp-add $sw $sw-nf-p$i -- lsp-set-addresses $sw-nf-p$i "f0:00:00:00:01:0$i"
     done
     check ovn-nbctl set logical_switch_port $sw-nf-p1 \
-        options:receive_multicast=false options:lsp_learn_mac=false \
+        options:receive_multicast=false options:lsp_learn_fdb=false \
         options:is-nf=true options:nf-linked-port=$sw-nf-p2
     check ovn-nbctl set logical_switch_port $sw-nf-p2 \
-        options:receive_multicast=false options:lsp_learn_mac=false \
+        options:receive_multicast=false options:lsp_learn_fdb=false \
         options:is-nf=true options:nf-linked-port=$sw-nf-p1
     check ovn-nbctl nf-add nf0 1 $sw-nf-p1 $sw-nf-p2
     check ovn-nbctl nfg-add nfg0 1 inline nf0
