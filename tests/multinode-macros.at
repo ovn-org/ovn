@@ -234,6 +234,12 @@ cleanup_multinode_resources_by_nodes() {
         for i in $(m_as $c ovs-vsctl --bare --columns name list port | grep patch); do
             m_as $c ovs-vsctl del-port $i;
         done
+
+        # Bring down and then up the eth1 interface.
+        # It's possible that previous test runs may have some cached routes
+        # which could affect the other tests.
+        m_as $c ip link set eth1 down
+        m_as $c ip link set eth1 up
     done
 }
 
