@@ -19653,10 +19653,10 @@ check ovn-nbctl ls-add sw0
 check ovn-nbctl lsp-add sw0 sw0-nf-p1
 check ovn-nbctl lsp-add sw0 sw0-nf-p2
 check ovn-nbctl set logical_switch_port sw0-nf-p1 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw0-nf-p2
 check ovn-nbctl set logical_switch_port sw0-nf-p2 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw0-nf-p1
 check ovn-nbctl nf-add nf0 101 sw0-nf-p1 sw0-nf-p2
 check ovn-nbctl nfg-add nfg0 201 inline nf0
@@ -19775,10 +19775,10 @@ AS_BOX([Create another NF and add it to a to-lport ACL.])
 check ovn-nbctl lsp-add sw0 sw0-nf-p3
 check ovn-nbctl lsp-add sw0 sw0-nf-p4
 check ovn-nbctl set logical_switch_port sw0-nf-p3 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw0-nf-p4
 check ovn-nbctl set logical_switch_port sw0-nf-p4 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw0-nf-p3
 check ovn-nbctl nf-add nf1 102 sw0-nf-p3 sw0-nf-p4
 check ovn-nbctl nfg-add nfg1 202 inline nf1
@@ -19856,16 +19856,16 @@ check ovn-nbctl lsp-add sw1 sw1-nf-p2 sw0-nf-p2 100
 check ovn-nbctl lsp-add sw1 sw1-nf-p3 sw0-nf-p3 100
 check ovn-nbctl lsp-add sw1 sw1-nf-p4 sw0-nf-p4 100
 check ovn-nbctl set logical_switch_port sw1-nf-p1 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw1-nf-p2
 check ovn-nbctl set logical_switch_port sw1-nf-p2 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw1-nf-p1
 check ovn-nbctl set logical_switch_port sw1-nf-p3 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw1-nf-p4
 check ovn-nbctl set logical_switch_port sw1-nf-p4 \
-    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=sw1-nf-p3
 check ovn-nbctl --wait=sb sync
 

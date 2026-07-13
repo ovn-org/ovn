@@ -91,7 +91,7 @@ OVN v26.03.0 - 20 Mar 2026
      and support both ingress (from-lport) and egress (to-lport) traffic flows.
      Two new options have been added to Logical_Switch_Port which need to
      be set to false for ports used as network function inport or outport.
-     - "lsp_learn_mac": This can be used to control mac learning on the port.
+     - "lsp_learn_fdb": This can be used to control mac learning on the port.
      - "receive_multicast": This can used to control whether multicast packets
        can be received by the port.
      NOTE:

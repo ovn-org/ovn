@@ -1643,7 +1643,7 @@
           Default: <code>false</code>.
         </column>
 
-        <column name="options" key="lsp_learn_mac"
+        <column name="options" key="lsp_learn_fdb"
                 type='{"type": "boolean"}'>
           If set to <code>false</code>, source MAC address is not learnt by FDB
           when packets are received on this port. The default value is
