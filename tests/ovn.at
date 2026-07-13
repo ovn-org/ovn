@@ -44406,14 +44406,115 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+# Helper functions shared by the NF packet-flow tests.
+m4_define([NF_HELPERS], [
+nf_setup_hypervisors() {
+    net_add n
+    for i in 1 2 3; do
+        sim_add hv$i
+        as hv$i
+        ovs-vsctl add-br br-phys
+        ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+        ovn_attach n br-phys 192.168.1.$i
+    done
+    OVN_POPULATE_ARP
+}
+
+# Stop hv1/hv2/hv3 + main and wipe their sandbox dirs, the
+# matching .expected files, and the ARP cache so the next subtest
+# starts clean.  no_recompute_check=True skips the recompute check.
+nf_teardown_hypervisors() {
+    OVN_CLEANUP_SBOX([hv1], [], [], [], [], ["True"])
+    OVN_CLEANUP_SBOX([hv2], [], [], [], [], ["True"])
+    OVN_CLEANUP_SBOX([hv3], [], [], [], [], ["True"])
+    OVN_CLEANUP_VSWITCH([main])
+    for d in hv1 hv2 hv3 main; do
+        rm -rf "$ovs_base/$d"
+    done
+    rm -f *-vif*.expected
+    for hv in hv1 hv2 hv3; do
+        wait_row_count sb:Chassis 0 name=$hv
+    done
+    OVN_CLEAR_ARP_TABLE
+}
+
+nf_test_icmp() {
+    local inport=${1} src_mac=${2} dst_mac=${3} src_ip=${4} dst_ip=${5} icmp_type=${6} outport=${7} in_hv=${8} out_hv=${9}
+    local packet="inport==\"$inport\" && eth.src==$src_mac &&
+                  eth.dst==$dst_mac && ip.ttl==64 && ip4.src==$src_ip
+                  && ip4.dst==$dst_ip && icmp4.type==$icmp_type &&
+                  icmp4.code==0"
+    as $in_hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+    echo "INJECTED PACKET $packet"
+    echo $packet | ovstest test-ovn expr-to-packets >> $out_hv-$outport.expected
+}
+
+# nf_create_port_binding hvp1 hvp2 hvnf nf_ports
+#   nf_ports: space-separated "iface:lsp" pairs on $hvnf, e.g.
+#   "vif-nf1:sw0-nf-p1 vif-nf2:sw0-nf-p2" (inline) or "vif-nf:sw0-nf-vtap" (vtap).
+nf_create_port_binding() {
+    hvp1=${1} hvp2=${2} hvnf=${3} nf_ports=${4}
+    nf_setup_hypervisors
+    as $hvp1
+    ovs-vsctl add-port br-int vif1 -- \
+        set interface vif1 external-ids:iface-id=sw0-p1 \
+        options:tx_pcap=$hvp1/vif1-tx.pcap \
+        options:rxq_pcap=$hvp1/vif1-rx.pcap
+    as $hvp2
+    ovs-vsctl add-port br-int vif2 -- \
+        set interface vif2 external-ids:iface-id=sw0-p2 \
+        options:tx_pcap=$hvp2/vif2-tx.pcap \
+        options:rxq_pcap=$hvp2/vif2-rx.pcap
+    as $hvnf
+    nf_lsps=
+    for pair in $nf_ports; do
+        iface=${pair%:*}
+        lsp=${pair#*:}
+        nf_lsps="$nf_lsps $lsp"
+        ovs-vsctl add-port br-int $iface -- \
+            set interface $iface external-ids:iface-id=$lsp \
+            options:tx_pcap=$hvnf/$iface-tx.pcap \
+            options:rxq_pcap=$hvnf/$iface-rx.pcap
+    done
+
+    wait_for_ports_up sw0-p1 sw0-p2 $nf_lsps
+    check ovn-nbctl --wait=hv sync
+    # dump-flows for debugging.
+    for hv in hv1 hv2 hv3; do
+        as $hv ovs-ofctl dump-flows br-int > $hv/br-int-flows
+    done
+}
+
+nf_cleanup_port_binding() {
+    hvp1=${1} hvp2=${2} hvnf=${3} nf_ports=${4}
+    as $hvp1
+    ovs-vsctl del-port br-int vif1
+    as $hvp2
+    ovs-vsctl del-port br-int vif2
+    as $hvnf
+    nf_lsps=
+    for pair in $nf_ports; do
+        ovs-vsctl del-port br-int ${pair%:*}
+        nf_lsps="$nf_lsps ${pair#*:}"
+    done
+    # Wait for LSPs to go 'down' before nf_teardown_hypervisors.
+    for lsp in sw0-p1 sw0-p2 $nf_lsps; do
+        wait_row_count nb:Logical_Switch_Port 0 up=true name=$lsp
+    done
+    check ovn-nbctl --wait=hv sync
+    nf_teardown_hypervisors
+}
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Network function packet flow - outbound])
 AT_KEYWORDS([ovn])
-TAG_UNSTABLE
 ovn_start
 
+NF_HELPERS
+
 # Create logical topology. One LS sw0 with 4 ports.
-# From-lport ACL rule directs request packets from sw0-p1 to sw0-p2 via NF port {sw0-nf-p1, sw0-nf-p2}
+# from-lport ACL rule directs request packets from sw0-p1 to sw0-p2 via NF port {sw0-nf-p1, sw0-nf-p2}.
 # Response packets from sw0-p2 to sw0-p1 redirected via NF ports in reverse order.
 create_logical_topology() {
     sw=$1
@@ -44436,136 +44537,77 @@ create_logical_topology() {
 
 create_logical_topology sw0
 
-# Create three hypervisors
-net_add n
-for i in 1 2 3; do
-    sim_add hv$i
-    as hv$i
-    ovs-vsctl add-br br-phys
-    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-    ovn_attach n br-phys 192.168.1.$i
-done
-
-test_icmp() {
-    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5 icmp_type=$6 outport=$7 in_hv=$8 out_hv=$9
-    local packet="inport==\"$inport\" && eth.src==$src_mac &&
-                  eth.dst==$dst_mac && ip.ttl==64 && ip4.src==$src_ip
-                  && ip4.dst==$dst_ip && icmp4.type==$icmp_type &&
-                  icmp4.code==0"
-    OVS_WAIT_UNTIL([as $in_hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
-    echo "INJECTED PACKET $packet"
-    echo $packet | ovstest test-ovn expr-to-packets >> $out_hv-$outport.expected
-}
-
 packet_redirection_test() {
     local hvp1=$1 hvp2=$2 hvnf=$3
     # Inject ICMP request packet from sw0-p1 and make sure it is being redirected to the nf ingress port.
-    test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif-nf1 $hvp1 $hvnf
+    nf_test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif-nf1 $hvp1 $hvnf
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvnf/vif-nf1-tx.pcap], [$hvnf-vif-nf1.expected])
 
     # Forward same packet from nf egress port and make sure it is reaching sw0-p2.
-    test_icmp sw0-nf-p2 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif2 $hvnf $hvp2
+    nf_test_icmp sw0-nf-p2 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif2 $hvnf $hvp2
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp2/vif2-tx.pcap], [$hvp2-vif2.expected])
 
     # Send response from sw0-p2 and check that it is being redirected to nf egress port.
-    test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 0 vif-nf2 $hvp2 $hvnf
+    nf_test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 0 vif-nf2 $hvp2 $hvnf
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvnf/vif-nf2-tx.pcap], [$hvnf-vif-nf2.expected])
 
     # Forward same response packet from nf ingress port and make sure it is reaching sw0-p1.
-    test_icmp sw0-nf-p1 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 0 vif1 $hvnf $hvp1
+    nf_test_icmp sw0-nf-p1 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 0 vif1 $hvnf $hvp1
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp1/vif1-tx.pcap], [$hvp1-vif1.expected])
 
     # Reverse direction packet should flow normally without redirection.
     # Send ICMP request from sw0-p2 destined to sw0-p1.
-    test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif1 $hvp2 $hvp1
+    nf_test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif1 $hvp2 $hvp1
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp1/vif1-tx.pcap], [$hvp1-vif1.expected])
     # Send ICMP response from sw0-p1 destined to sw0-p2.
-    test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 0 vif2 $hvp1 $hvp2
+    nf_test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 0 vif2 $hvp1 $hvp2
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp2/vif2-tx.pcap], [$hvp2-vif2.expected])
-}
-
-create_port_binding() {
-    hvp1=$1 hvp2=$2 hvnf=$3
-    as $hvp1
-    ovs-vsctl add-port br-int vif1 -- \
-        set interface vif1 external-ids:iface-id=sw0-p1 \
-        options:tx_pcap=$hvp1/vif1-tx.pcap \
-        options:rxq_pcap=$hvp1/vif1-rx.pcap
-    as $hvp2
-    ovs-vsctl add-port br-int vif2 -- \
-        set interface vif2 external-ids:iface-id=sw0-p2 \
-        options:tx_pcap=$hvp2/vif2-tx.pcap \
-        options:rxq_pcap=$hvp2/vif2-rx.pcap
-    as $hvnf
-    for i in 1 2; do
-        ovs-vsctl add-port br-int vif-nf$i -- \
-            set interface vif-nf$i external-ids:iface-id=sw0-nf-p$i \
-            options:tx_pcap=$hvnf/vif-nf$i-tx.pcap \
-            options:rxq_pcap=$hvnf/vif-nf$i-rx.pcap
-    done
-
-    OVN_POPULATE_ARP
-    wait_for_ports_up
-    check ovn-nbctl --wait=hv sync
-    sleep 1
-}
-
-cleanup_port_binding() {
-    hvp1=$1 hvp2=$2 hvnf=$3
-    as $hvp1
-    ovs-vsctl del-port br-int vif1
-    as $hvp2
-    ovs-vsctl del-port br-int vif2
-    as $hvnf
-    for i in 1 2; do
-        ovs-vsctl del-port br-int vif-nf$i
-    done
-    sleep 1
 }
 
 test_nf_with_multinodes_outbound() {
     mode=$1
+    nf_ports="vif-nf1:sw0-nf-p1 vif-nf2:sw0-nf-p2"
     # Test 1: Bind all 4 ports to one node
     echo "$mode: Network function outbound with single node"
-    create_port_binding hv1 hv1 hv1
+    nf_create_port_binding hv1 hv1 hv1 "$nf_ports"
 
     packet_redirection_test hv1 hv1 hv1 sw0
 
-    cleanup_port_binding hv1 hv1 hv1
+    nf_cleanup_port_binding hv1 hv1 hv1 "$nf_ports"
 
     # Test 2: src & dst ports on one node, NF on another node
     # sw0-p1, sw0-p2 on hv1, NF ports on hv2
     echo "$mode: Network function outbound with two nodes - nf separate"
-    create_port_binding hv1 hv1 hv2
+    nf_create_port_binding hv1 hv1 hv2 "$nf_ports"
 
     packet_redirection_test hv1 hv1 hv2 sw0
 
-    cleanup_port_binding hv1 hv1 hv2
+    nf_cleanup_port_binding hv1 hv1 hv2 "$nf_ports"
 
     # Test 3: src and nf on one node, dst on a second node
     echo "$mode: Network function outbound with two nodes - nf with src"
-    create_port_binding hv1 hv2 hv1
+    nf_create_port_binding hv1 hv2 hv1 "$nf_ports"
 
     packet_redirection_test hv1 hv2 hv1 sw0
 
-    cleanup_port_binding hv1 hv2 hv1
+    nf_cleanup_port_binding hv1 hv2 hv1 "$nf_ports"
 
     # Test 4: src on one node, nf & dst on a second node
     echo "$mode: Network function outbound with two nodes - nf with dst"
-    create_port_binding hv1 hv2 hv2
+    nf_create_port_binding hv1 hv2 hv2 "$nf_ports"
 
     packet_redirection_test hv1 hv2 hv2 sw0
 
-    cleanup_port_binding hv1 hv2 hv2
+    nf_cleanup_port_binding hv1 hv2 hv2 "$nf_ports"
 
     # Test 5: src on one node, dst on another, NF on a 3rd one
     # sw0-p1 on hv1, sw0-p2 on hv2, NF ports on hv3
     echo "$mode: Network function outbound with three nodes"
-    create_port_binding hv1 hv2 hv3
+    nf_create_port_binding hv1 hv2 hv3 "$nf_ports"
 
     packet_redirection_test hv1 hv2 hv3 sw0
 
-    cleanup_port_binding hv1 hv2 hv3
+    nf_cleanup_port_binding hv1 hv2 hv3 "$nf_ports"
 }
 
 test_nf_with_multinodes_outbound overlay
@@ -44592,18 +44634,20 @@ done
 check ovn-nbctl ls-del sw0
 check ovn-nbctl --wait=hv sync
 
-OVN_CLEANUP([hv1],[hv2],[hv3])
+# hv1/hv2/hv3 + main are already down (last nf_cleanup_port_binding).
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Network function packet flow - inbound])
 AT_KEYWORDS([ovn])
-TAG_UNSTABLE
 ovn_start
 
+NF_HELPERS
+
 # Create logical topology. One LS sw0 with 4 ports.
-# to-lport ACL rule directs request packets from sw0-p2 to sw0-p1 via NF port {sw0-nf-p1, sw0-nf-p2}
+# to-lport ACL rule directs request packets from sw0-p2 to sw0-p1 via NF port {sw0-nf-p1, sw0-nf-p2}.
 # Response packets from sw0-p1 to sw0-p2 redirected via NF ports in reverse order.
 create_logical_topology() {
     sw=$1
@@ -44626,140 +44670,79 @@ create_logical_topology() {
 
 create_logical_topology sw0
 
-# Create three hypervisors
-net_add n
-for i in 1 2 3; do
-    sim_add hv$i
-    as hv$i
-    ovs-vsctl add-br br-phys
-    ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
-    ovn_attach n br-phys 192.168.1.$i
-done
-
-test_icmp() {
-    local inport=$1 src_mac=$2 dst_mac=$3 src_ip=$4 dst_ip=$5 icmp_type=$6 outport=$7 in_hv=$8 out_hv=$9
-    local packet="inport==\"$inport\" && eth.src==$src_mac &&
-                  eth.dst==$dst_mac && ip.ttl==64 && ip4.src==$src_ip
-                  && ip4.dst==$dst_ip && icmp4.type==$icmp_type &&
-                  icmp4.code==0"
-    OVS_WAIT_UNTIL([as $in_hv ovs-appctl -t ovn-controller inject-pkt "$packet"])
-    echo "INJECTED PACKET $packet"
-    echo $packet | ovstest test-ovn expr-to-packets >> $out_hv-$outport.expected
-}
-
 packet_redirection_test() {
     local hvp1=$1 hvp2=$2 hvnf=$3
     # Inject ICMP request packet from sw0-p2 and make sure it is being redirected to the nf outport.
-    test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif-nf2 $hvp2 $hvnf
+    nf_test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif-nf2 $hvp2 $hvnf
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvnf/vif-nf2-tx.pcap], [$hvnf-vif-nf2.expected])
 
     # Forward same packet from nf inport and make sure it is reaching sw0-p1.
-    test_icmp sw0-nf-p1 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif1 $hvnf $hvp1
+    nf_test_icmp sw0-nf-p1 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif1 $hvnf $hvp1
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp1/vif1-tx.pcap], [$hvp1-vif1.expected])
 
     # Send response from sw0-p1 and check that it is being redirected to nf inport.
-    test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 0 vif-nf1 $hvp1 $hvnf
+    nf_test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 0 vif-nf1 $hvp1 $hvnf
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvnf/vif-nf1-tx.pcap], [$hvnf-vif-nf1.expected])
 
     # Forward same response packet from nf outport and make sure it is reaching sw0-p2.
-    test_icmp sw0-nf-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 0 vif2 $hvnf $hvp2
+    nf_test_icmp sw0-nf-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 0 vif2 $hvnf $hvp2
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp2/vif2-tx.pcap], [$hvp2-vif2.expected])
 
     # Reverse direction packet should flow normally without redirection.
     # Send ICMP request from sw0-p1 destined to sw0-p2.
-    test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif2 $hvp1 $hvp2
+    nf_test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif2 $hvp1 $hvp2
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp2/vif2-tx.pcap], [$hvp2-vif2.expected])
     # Send ICMP response from sw0-p2 destined to sw0-p1.
-    test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 0 vif1 $hvp2 $hvp1
+    nf_test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 0 vif1 $hvp2 $hvp1
     OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp1/vif1-tx.pcap], [$hvp1-vif1.expected])
-}
-
-create_port_binding() {
-    hvp1=$1 hvp2=$2 hvnf=$3
-    as $hvp1
-    ovs-vsctl add-port br-int vif1 -- \
-        set interface vif1 external-ids:iface-id=sw0-p1 \
-        options:tx_pcap=$hvp1/vif1-tx.pcap \
-        options:rxq_pcap=$hvp1/vif1-rx.pcap
-    as $hvp2
-    ovs-vsctl add-port br-int vif2 -- \
-        set interface vif2 external-ids:iface-id=sw0-p2 \
-        options:tx_pcap=$hvp2/vif2-tx.pcap \
-        options:rxq_pcap=$hvp2/vif2-rx.pcap
-    as $hvnf
-    for i in 1 2; do
-        ovs-vsctl add-port br-int vif-nf$i -- \
-            set interface vif-nf$i external-ids:iface-id=sw0-nf-p$i \
-            options:tx_pcap=$hvnf/vif-nf$i-tx.pcap \
-            options:rxq_pcap=$hvnf/vif-nf$i-rx.pcap
-    done
-
-    OVN_POPULATE_ARP
-    wait_for_ports_up
-    check ovn-nbctl --wait=hv sync
-    sleep 1
-}
-
-cleanup_port_binding() {
-    hvp1=$1 hvp2=$2 hvnf=$3
-    as $hvp1
-    ovs-vsctl del-port br-int vif1
-    as $hvp2
-    ovs-vsctl del-port br-int vif2
-    as $hvnf
-    for i in 1 2; do
-        ovs-vsctl del-port br-int vif-nf$i
-    done
-    check ovn-nbctl --wait=hv sync
-    sleep 1
 }
 
 test_nf_with_multinodes_inbound() {
     mode=$1
-
+    nf_ports="vif-nf1:sw0-nf-p1 vif-nf2:sw0-nf-p2"
     # Test 1: Bind all 4 ports to one node
     echo "$mode: Network function inbound with single node"
-    create_port_binding hv1 hv1 hv1
+    nf_create_port_binding hv1 hv1 hv1 "$nf_ports"
 
     packet_redirection_test hv1 hv1 hv1 sw0
 
-    cleanup_port_binding hv1 hv1 hv1
+    nf_cleanup_port_binding hv1 hv1 hv1 "$nf_ports"
 
     # Test 2: src & dst ports on one node, NF on another node
     # sw0-p1, sw0-p2 on hv1, NF ports on hv2
     echo "$mode: Network function inbound with two nodes - nf separate"
-    create_port_binding hv1 hv1 hv2
+    nf_create_port_binding hv1 hv1 hv2 "$nf_ports"
 
     packet_redirection_test hv1 hv1 hv2 sw0
 
-    cleanup_port_binding hv1 hv1 hv2
+    nf_cleanup_port_binding hv1 hv1 hv2 "$nf_ports"
 
     # Test 3: dst and nf on one node, src on a second node
     # sw0-p1 & NF ports on hv1, sw0-p2 on hv2
     echo "$mode: Network function inbound with two nodes - nf with dst"
-    create_port_binding hv1 hv2 hv1
+    nf_create_port_binding hv1 hv2 hv1 "$nf_ports"
 
     packet_redirection_test hv1 hv2 hv1 sw0
 
-    cleanup_port_binding hv1 hv2 hv1
+    nf_cleanup_port_binding hv1 hv2 hv1 "$nf_ports"
 
     # Test 4: dst on one node, nf & src on a second node
     # sw0-p1 on hv1, sw0-p2 & NF ports on hv2
     echo "$mode: Network function inbound with two nodes - nf with src"
-    create_port_binding hv1 hv2 hv2
+    nf_create_port_binding hv1 hv2 hv2 "$nf_ports"
 
     packet_redirection_test hv1 hv2 hv2 sw0
 
-    cleanup_port_binding hv1 hv2 hv2
+    nf_cleanup_port_binding hv1 hv2 hv2 "$nf_ports"
 
     # Test 5: src on one node, dst on another, NF on a 3rd one
     # sw0-p1 on hv1, sw0-p2 on hv2, NF ports on hv3
     echo "$mode: Network function inbound with three nodes"
-    create_port_binding hv1 hv2 hv3
+    nf_create_port_binding hv1 hv2 hv3 "$nf_ports"
 
     packet_redirection_test hv1 hv2 hv3 sw0
 
-    cleanup_port_binding hv1 hv2 hv3
+    nf_cleanup_port_binding hv1 hv2 hv3 "$nf_ports"
 }
 
 test_nf_with_multinodes_inbound overlay
@@ -44786,7 +44769,8 @@ done
 check ovn-nbctl ls-del sw0
 check ovn-nbctl --wait=hv sync
 
-OVN_CLEANUP([hv1],[hv2],[hv3])
+# hv1/hv2/hv3 + main are already down (last nf_cleanup_port_binding).
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 

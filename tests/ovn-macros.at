@@ -1522,6 +1522,11 @@ OVS_END_SHELL_HELPERS
 
 m4_define([OVN_POPULATE_ARP], [AT_CHECK(ovn_populate_arp__, [0], [ignore])])
 
+# OVN_CLEAR_ARP_TABLE
+#
+# Clears the ARP table populated by ovn_attach().
+m4_define([OVN_CLEAR_ARP_TABLE], [arp_table=""])
+
 # Defines versions of the test with all combinations of northd,
 # parallelization enabled and conditional monitoring on/off.
 m4_define([OVN_FOR_EACH_NORTHD],
