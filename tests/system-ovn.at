@@ -20036,7 +20036,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([Network Function])
+AT_SETUP([Network Function - inline mode])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
@@ -20320,9 +20320,10 @@ AS_BOX([IPv6 Testing - Setup])
 ip netns exec client ip addr del 192.168.1.10/24 dev client
 ip netns exec server ip addr del 192.168.1.20/24 dev server
 
-# Add IPv6 addresses to client and server
-ip netns exec client ip -6 addr add fd00:192:168:1::10/64 dev client
-ip netns exec server ip -6 addr add fd00:192:168:1::20/64 dev server
+# Add IPv6 addresses to client and server. Use 'nodad' to skip Duplicate
+# Address Detection so the addresses are immediately usable.
+ip netns exec client ip -6 addr add fd00:192:168:1::10/64 dev client nodad
+ip netns exec server ip -6 addr add fd00:192:168:1::20/64 dev server nodad
 
 # Update service monitor IPs to IPv6
 check ovn-nbctl set nb_global . options:svc_monitor_ip=fd00:169:254:100::10
@@ -20346,6 +20347,282 @@ validate_nf_with_traffic "server" "client" "fd00:192:168:1::10" "IPv6 Outbound"
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/failed to query port patch-.*/d
+/.*terminating with signal 15.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Network Function - vtap mode])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+
+# Set external-ids in br-int needed for ovn-controller.
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+# Create namespaces: client, server, and nf (for vtap)
+ADD_NAMESPACES(client)
+ADD_VETH(client, client, br-int, "192.168.1.10/24", "f0:00:00:01:02:10")
+ADD_NAMESPACES(server)
+ADD_VETH(server, server, br-int, "192.168.1.20/24", "f0:00:00:01:02:20")
+ADD_NAMESPACES(nf)
+ADD_VETH(nf-vtap, nf, br-int, "0", "f0:00:00:01:02:30")
+ADD_VETH(nf-vtap2, nf, br-int, "0", "f0:00:00:01:02:40")
+
+# Create logical switch and ports
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 client \
+    -- lsp-set-addresses client "f0:00:00:01:02:10 192.168.1.10/24"
+check ovn-nbctl lsp-add sw0 server \
+    -- lsp-set-addresses server "f0:00:00:01:02:20 192.168.1.20/24"
+check ovn-nbctl lsp-add sw0 nf-vtap
+check ovn-nbctl set logical_switch_port nf-vtap options:receive_multicast=false \
+                                                 options:lsp_learn_fdb=false \
+                                                 options:is-nf=true
+check ovn-nbctl lsp-add sw0 nf-vtap2
+check ovn-nbctl set logical_switch_port nf-vtap2 options:receive_multicast=false \
+                                                  options:lsp_learn_fdb=false \
+                                                  options:is-nf=true
+
+AS_BOX([Setup: Create 2 NFs in vtap mode with health check])
+
+# Create NF0 with only inport (vtap mode)
+check ovn-nbctl nf-add nf0 1 nf-vtap
+nf0_uuid=$(fetch_column nb:network_function _uuid name=nf0)
+
+# Create NF1 with only inport (vtap mode)
+check ovn-nbctl nf-add nf1 2 nf-vtap2
+nf1_uuid=$(fetch_column nb:network_function _uuid name=nf1)
+
+# Create NFG with both NFs
+check ovn-nbctl nfg-add nfg0 1 vtap nf0
+nfg_uuid=$(fetch_column nb:network_function_group _uuid name=nfg0)
+check ovn-nbctl nfg-add-nf nfg0 nf1
+
+# Set monitor IPs for health check
+check ovn-nbctl set nb_global . options:svc_monitor_ip=169.254.100.10
+check ovn-nbctl set nb_global . options:svc_monitor_ip_dst=169.254.100.11
+
+# Create health check configuration and assign to both NFs
+AT_CHECK(
+  [ovn-nbctl --wait=sb \
+          -- --id=@hc create network_function_health_check name=nf_health_cfg \
+             options:interval=1 options:timeout=1 options:success_count=2 options:failure_count=2 \
+          -- add network_function $nf0_uuid health_check @hc | uuidfilt], [0], [<0>
+])
+nf_health_uuid=$(fetch_column nb:network_function_health_check _uuid name=nf_health_cfg)
+check ovn-nbctl set network_function $nf1_uuid health_check=$nf_health_uuid
+
+# Create port group and ACLs for both from-lport and to-lport traffic mirroring
+check ovn-nbctl pg-add pg0 client
+check ovn-nbctl acl-add pg0 from-lport 1001 "inport == @pg0 && ip4.dst == 192.168.1.20" allow-related nfg0
+check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4.src == 192.168.1.20" allow-related nfg0
+
+check ovn-nbctl --wait=hv sync
+
+# Bring up NF ports
+NS_CHECK_EXEC([nf], [ip link set dev nf-vtap up])
+NS_CHECK_EXEC([nf], [ip link set dev nf-vtap2 up])
+
+# Helper function to simulate NF down by removing iface-id
+nf_down() {
+    local port=$1
+    ovs-vsctl remove interface ovs-$port external-ids iface-id
+}
+
+# Helper function to simulate NF up by restoring iface-id
+nf_up() {
+    local port=$1
+    ovs-vsctl set interface ovs-$port external-ids:iface-id="$port"
+}
+
+# Returns 0 if the given address contains ':', i.e. is an IPv6 address.
+is_v6_addr() {
+    test "${1#*:}" != "$1"
+}
+
+validate_nf_vtap_with_traffic() {
+    client_ns=$1; server_ns=$2; sip=$3; direction=$4
+
+    # Filter by IP to ignore unrelated ICMP/ND traffic.
+    local proto="-4"
+    local pcap_filter="icmp and ip host $sip"
+    if is_v6_addr "$sip"; then
+        proto="-6"
+        pcap_filter="icmp6 and ip6 host $sip"
+    fi
+
+    AS_BOX([$direction: Verify traffic mirroring to nf0 when nf0 is active])
+
+    # Ensure nf0 is up, nf1 is down
+    nf_up nf-vtap
+    nf_down nf-vtap2
+    check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-close
+    check ovn-nbctl --wait=hv sync
+
+    # Wait for the health check to mark nf0 as the active NF.
+    wait_column "$nf0_uuid" nb:network_function_group \
+        network_function_active name=nfg0
+
+    NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap $pcap_filter], [tcpdump-nf-vtap])
+
+    # Send 5 ICMP packets - in vtap mode, traffic should be mirrored AND reach destination
+    # NF should see 10 packets: 5 echo requests (from-lport) + 5 echo replies (to-lport)
+    NS_CHECK_EXEC([$client_ns], [ping $proto -c 5 -i 0.3 $sip], [0], [ignore])
+
+    # Verify all mirrored packets were captured (5 requests + 5 replies = 10 packets)
+    OVS_WAIT_UNTIL([
+        n=$(cat tcpdump-nf-vtap.tcpdump | wc -l)
+        test "$n" -ge 10
+    ])
+
+    kill $(cat tcpdump-nf-vtap.pid) 2>/dev/null || true
+
+    AS_BOX([$direction: Verify failover - traffic mirroring to nf1 when nf0 is down])
+
+    # Bring nf0 down, nf1 up (failover)
+    nf_down nf-vtap
+    nf_up nf-vtap2
+    check ovn-nbctl --wait=hv sync
+
+    # Wait for the health check to fail over to nf1.
+    wait_column "$nf1_uuid" nb:network_function_group \
+        network_function_active name=nfg0
+
+    NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap2 $pcap_filter], [tcpdump-nf-vtap])
+
+    # Send 5 ICMP packets - should now be mirrored to nf1
+    # NF should see 10 packets: 5 echo requests + 5 echo replies
+    NS_CHECK_EXEC([$client_ns], [ping $proto -c 5 -i 0.3 $sip], [0], [ignore])
+
+    # Verify all mirrored packets were captured (5 requests + 5 replies = 10 packets)
+    OVS_WAIT_UNTIL([
+        n=$(cat tcpdump-nf-vtap.tcpdump | wc -l)
+        test "$n" -ge 10
+    ])
+
+    kill $(cat tcpdump-nf-vtap.pid) 2>/dev/null || true
+
+    AS_BOX([$direction: Verify fallback - traffic mirroring back to nf0 when nf0 recovers])
+
+    # Bring nf0 back up and nf1 down (fallback to nf0)
+    nf_up nf-vtap
+    nf_down nf-vtap2
+    check ovn-nbctl --wait=hv sync
+
+    # Wait for the health check to fall back to nf0.
+    wait_column "$nf0_uuid" nb:network_function_group \
+        network_function_active name=nfg0
+
+    NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap $pcap_filter], [tcpdump-nf-vtap])
+
+    # Send 5 ICMP packets - should be mirrored back to nf0
+    # NF should see 10 packets: 5 echo requests + 5 echo replies
+    NS_CHECK_EXEC([$client_ns], [ping $proto -c 5 -i 0.3 $sip], [0], [ignore])
+
+    # Verify all mirrored packets were captured (5 requests + 5 replies = 10 packets)
+    OVS_WAIT_UNTIL([
+        n=$(cat tcpdump-nf-vtap.tcpdump | wc -l)
+        test "$n" -ge 10
+    ])
+
+    kill $(cat tcpdump-nf-vtap.pid) 2>/dev/null || true
+
+    AS_BOX([$direction: Verify fail-close - traffic flows but no mirroring when both NFs are down])
+
+    # Bring both NFs down with fail-close
+    nf_down nf-vtap
+    nf_down nf-vtap2
+    check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-close
+    check ovn-nbctl --wait=hv sync
+
+    # Wait for the health check to mark the NFG as having no active NF.
+    wait_column "" nb:network_function_group \
+        network_function_active name=nfg0
+
+    NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap $pcap_filter], [tcpdump-nf-vtap])
+
+    # Send ICMP packets - in vtap mode, traffic still flows (mirroring is separate from forwarding)
+    # but no packets should be mirrored to NF with fail-close
+    NS_CHECK_EXEC([$client_ns], [ping $proto -c 3 -i 0.3 $sip], [0], [ignore])
+
+    # Verify no packets were mirrored (tcpdump should capture nothing).
+    # tcpdump is started with '-l' (line-buffered) by NETNS_START_TCPDUMP, so
+    # any captured packet would already be in the file by the time ping
+    # finishes.
+    AT_CHECK([cat tcpdump-nf-vtap.tcpdump | wc -l], [0], [0
+])
+
+    kill $(cat tcpdump-nf-vtap.pid) 2>/dev/null || true
+
+    AS_BOX([$direction: Verify fail-open - traffic flows with no mirroring when both NFs are down])
+
+    # Set fail-open mode - in vtap mode, this behaves same as fail-close for traffic flow
+    # (traffic always flows), difference is in ACL behavior
+    check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-open
+    check ovn-nbctl --wait=hv sync
+
+    # Send ICMP packets - traffic should flow
+    NS_CHECK_EXEC([$client_ns], [ping $proto -c 3 -i 0.3 $sip], [0], [ignore])
+}
+
+AS_BOX([IPv4 Testing - Inbound traffic])
+validate_nf_vtap_with_traffic "client" "server" "192.168.1.20" "Inbound"
+
+AS_BOX([IPv4 Testing - Outbound traffic])
+validate_nf_vtap_with_traffic "server" "client" "192.168.1.10" "Outbound"
+
+AS_BOX([IPv6 Testing - Setup])
+
+# Remove IPv4 addresses from namespaces
+ip netns exec client ip addr del 192.168.1.10/24 dev client
+ip netns exec server ip addr del 192.168.1.20/24 dev server
+
+# Add IPv6 addresses to client and server. Use 'nodad' to skip Duplicate
+# Address Detection so the addresses are immediately usable.
+ip netns exec client ip -6 addr add fd00:192:168:1::10/64 dev client nodad
+ip netns exec server ip -6 addr add fd00:192:168:1::20/64 dev server nodad
+
+# Update service monitor IPs to IPv6 for health check
+check ovn-nbctl set nb_global . options:svc_monitor_ip=fd00:169:254:100::10
+check ovn-nbctl set nb_global . options:svc_monitor_ip_dst=fd00:169:254:100::11
+
+# Configure IPv6-only addresses on logical ports
+check ovn-nbctl lsp-set-addresses client "f0:00:00:01:02:10 fd00:192:168:1::10"
+check ovn-nbctl lsp-set-addresses server "f0:00:00:01:02:20 fd00:192:168:1::20"
+
+# Add IPv6 ACLs
+check ovn-nbctl acl-add pg0 from-lport 1003 "inport == @pg0 && ip6.dst == fd00:192:168:1::20" allow-related nfg0
+check ovn-nbctl acl-add pg0 to-lport 1004 "outport == @pg0 && ip6.src == fd00:192:168:1::20" allow-related nfg0
+
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([IPv6 Testing - Inbound traffic])
+validate_nf_vtap_with_traffic "client" "server" "fd00:192:168:1::20" "IPv6 Inbound"
+
+AS_BOX([IPv6 Testing - Outbound traffic])
+validate_nf_vtap_with_traffic "server" "client" "fd00:192:168:1::10" "IPv6 Outbound"
+
+# Restore NF iface-ids before cleanup
+nf_up nf-vtap
+nf_up nf-vtap2
+check ovn-nbctl --wait=hv sync
+
+OVN_CLEANUP_CONTROLLER([hv1])
 OVN_CLEANUP_NORTHD
 
 as

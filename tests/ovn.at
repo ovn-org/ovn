@@ -44504,10 +44504,24 @@ nf_cleanup_port_binding() {
     check ovn-nbctl --wait=hv sync
     nf_teardown_hypervisors
 }
+
+nf_test_icmp_mirrored() {
+    local inport=${1} src_mac=${2} dst_mac=${3} src_ip=${4} dst_ip=${5} icmp_type=${6}
+    local nf_outport=${7} dst_outport=${8} in_hv=${9} nf_hv=${10} dst_hv=${11}
+    local packet="inport==\"$inport\" && eth.src==$src_mac &&
+                  eth.dst==$dst_mac && ip.ttl==64 && ip4.src==$src_ip
+                  && ip4.dst==$dst_ip && icmp4.type==$icmp_type &&
+                  icmp4.code==0"
+    as $in_hv ovs-appctl -t ovn-controller inject-pkt "$packet"
+    echo "INJECTED PACKET $packet"
+    # Expect packet at both NF (mirrored) and destination ports.
+    echo $packet | ovstest test-ovn expr-to-packets >> $nf_hv-$nf_outport.expected
+    echo $packet | ovstest test-ovn expr-to-packets >> $dst_hv-$dst_outport.expected
+}
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([Network function packet flow - outbound])
+AT_SETUP([Network function inline packet flow - outbound])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -44640,7 +44654,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
-AT_SETUP([Network function packet flow - inbound])
+AT_SETUP([Network function inline packet flow - inbound])
 AT_KEYWORDS([ovn])
 ovn_start
 
@@ -44766,6 +44780,238 @@ for i in 1 2; do
     check ovn-nbctl lsp-del sw0-p$i
     check ovn-nbctl lsp-del sw0-nf-p$i
 done
+check ovn-nbctl ls-del sw0
+check ovn-nbctl --wait=hv sync
+
+# hv1/hv2/hv3 + main are already down (last nf_cleanup_port_binding).
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Network function vtap packet flow - outbound])
+AT_KEYWORDS([ovn])
+ovn_start
+
+NF_HELPERS
+
+# Create logical topology. One LS sw0 with 3 ports.
+# from-lport ACL rule mirrors request packets from sw0-p1 to sw0-p2 via vtap NF port sw0-nf-vtap.
+# In vtap mode, traffic is mirrored (copied) to NF, original packets still reach destination.
+create_logical_topology() {
+    sw=$1
+    check ovn-nbctl ls-add $sw
+    for i in 1 2; do
+        check ovn-nbctl lsp-add $sw $sw-p$i -- lsp-set-addresses $sw-p$i "f0:00:00:00:00:0$i 192.168.0.1$i"
+    done
+    check ovn-nbctl lsp-add $sw $sw-nf-vtap -- lsp-set-addresses $sw-nf-vtap "f0:00:00:00:01:01"
+    check ovn-nbctl set logical_switch_port $sw-nf-vtap \
+        options:receive_multicast=false options:lsp_learn_fdb=false \
+        options:is-nf=true
+    check ovn-nbctl nf-add nf0 1 $sw-nf-vtap
+    check ovn-nbctl nfg-add nfg0 1 vtap nf0
+    check ovn-nbctl pg-add pg0 $sw-p1
+    check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 192.168.0.12" allow-related nfg0
+}
+
+create_logical_topology sw0
+
+packet_mirroring_test() {
+    local hvp1=$1 hvp2=$2 hvnf=$3
+
+    # Test 1: Inject ICMP request from sw0-p1 to sw0-p2
+    # In vtap mode: single packet should be mirrored to NF AND reach sw0-p2
+    nf_test_icmp_mirrored sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 \
+        vif-nf vif2 $hvp1 $hvnf $hvp2
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvnf/vif-nf-tx.pcap], [$hvnf-vif-nf.expected])
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp2/vif2-tx.pcap], [$hvp2-vif2.expected])
+
+    # Test 2: Reverse direction - ICMP request from sw0-p2 to sw0-p1
+    # No mirroring expected (ACL only matches from-lport on pg0 which contains sw0-p1)
+    nf_test_icmp sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 vif1 $hvp2 $hvp1
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp1/vif1-tx.pcap], [$hvp1-vif1.expected])
+}
+
+test_nf_vtap_with_multinodes_outbound() {
+    mode=$1
+    nf_ports="vif-nf:sw0-nf-vtap"
+    # Bind all 3 ports to one node
+    echo "$mode: Network function vtap outbound with single node"
+    nf_create_port_binding hv1 hv1 hv1 "$nf_ports"
+
+    packet_mirroring_test hv1 hv1 hv1
+
+    nf_cleanup_port_binding hv1 hv1 hv1 "$nf_ports"
+
+    # src & dst ports on one node, NF on another node
+    echo "$mode: Network function vtap outbound with two nodes - nf separate"
+    nf_create_port_binding hv1 hv1 hv2 "$nf_ports"
+
+    packet_mirroring_test hv1 hv1 hv2
+
+    nf_cleanup_port_binding hv1 hv1 hv2 "$nf_ports"
+
+    # src and nf on one node, dst on a second node
+    echo "$mode: Network function vtap outbound with two nodes - nf with src"
+    nf_create_port_binding hv1 hv2 hv1 "$nf_ports"
+
+    packet_mirroring_test hv1 hv2 hv1
+
+    nf_cleanup_port_binding hv1 hv2 hv1 "$nf_ports"
+
+    # src on one node, nf & dst on a second node
+    echo "$mode: Network function vtap outbound with two nodes - nf with dst"
+    nf_create_port_binding hv1 hv2 hv2 "$nf_ports"
+
+    packet_mirroring_test hv1 hv2 hv2
+
+    nf_cleanup_port_binding hv1 hv2 hv2 "$nf_ports"
+
+    # src on one node, dst on another, NF on a 3rd one
+    echo "$mode: Network function vtap outbound with three nodes"
+    nf_create_port_binding hv1 hv2 hv3 "$nf_ports"
+
+    packet_mirroring_test hv1 hv2 hv3
+
+    nf_cleanup_port_binding hv1 hv2 hv3 "$nf_ports"
+}
+
+test_nf_vtap_with_multinodes_outbound overlay
+
+# Tests for VLAN network
+# Add localnet port to make it a VLAN backed LS
+check ovn-nbctl lsp-add-localnet-port sw0 ln0 phys
+check ovn-nbctl set logical_switch_port ln0 tag_request=100
+
+test_nf_vtap_with_multinodes_outbound VLAN
+
+# Cleanup logical topology
+check ovn-nbctl lsp-del ln0
+check ovn-nbctl acl-del pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 192.168.0.12"
+check ovn-nbctl pg-del pg0
+check ovn-nbctl nfg-del nfg0
+check ovn-nbctl nf-del nf0
+check ovn-nbctl clear logical_switch_port sw0-nf-vtap options
+for i in 1 2; do
+    check ovn-nbctl lsp-del sw0-p$i
+done
+check ovn-nbctl lsp-del sw0-nf-vtap
+check ovn-nbctl ls-del sw0
+check ovn-nbctl --wait=hv sync
+
+# hv1/hv2/hv3 + main are already down (last nf_cleanup_port_binding).
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Network function vtap packet flow - inbound])
+AT_KEYWORDS([ovn])
+ovn_start
+
+NF_HELPERS
+
+# Create logical topology. One LS sw0 with 3 ports.
+# to-lport ACL rule mirrors request packets from sw0-p2 to sw0-p1 via vtap NF port sw0-nf-vtap.
+# In vtap mode, traffic is mirrored (copied) to NF, original packets still reach destination.
+create_logical_topology() {
+    sw=$1
+    check ovn-nbctl ls-add $sw
+    for i in 1 2; do
+        check ovn-nbctl lsp-add $sw $sw-p$i -- lsp-set-addresses $sw-p$i "f0:00:00:00:00:0$i 192.168.0.1$i"
+    done
+    check ovn-nbctl lsp-add $sw $sw-nf-vtap -- lsp-set-addresses $sw-nf-vtap "f0:00:00:00:01:01"
+    check ovn-nbctl set logical_switch_port $sw-nf-vtap \
+        options:receive_multicast=false options:lsp_learn_fdb=false \
+        options:is-nf=true
+    check ovn-nbctl nf-add nf0 1 $sw-nf-vtap
+    check ovn-nbctl nfg-add nfg0 1 vtap nf0
+    check ovn-nbctl pg-add pg0 $sw-p1
+    check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4.src == 192.168.0.12" allow-related nfg0
+}
+
+create_logical_topology sw0
+
+packet_mirroring_test() {
+    local hvp1=$1 hvp2=$2 hvnf=$3
+
+    # Test 1: Inject ICMP request from sw0-p2 to sw0-p1
+    # In vtap mode: single packet should be mirrored to NF AND reach sw0-p1
+    nf_test_icmp_mirrored sw0-p2 "f0:00:00:00:00:02" "f0:00:00:00:00:01" "192.168.0.12" "192.168.0.11" 8 \
+        vif-nf vif1 $hvp2 $hvnf $hvp1
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvnf/vif-nf-tx.pcap], [$hvnf-vif-nf.expected])
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp1/vif1-tx.pcap], [$hvp1-vif1.expected])
+
+    # Test 2: Reverse direction - ICMP request from sw0-p1 to sw0-p2
+    # No mirroring expected (ACL only matches to-lport on pg0 which contains sw0-p1)
+    nf_test_icmp sw0-p1 "f0:00:00:00:00:01" "f0:00:00:00:00:02" "192.168.0.11" "192.168.0.12" 8 vif2 $hvp1 $hvp2
+    OVN_CHECK_PACKETS_REMOVE_BROADCAST([$hvp2/vif2-tx.pcap], [$hvp2-vif2.expected])
+}
+
+test_nf_vtap_with_multinodes_inbound() {
+    mode=$1
+    nf_ports="vif-nf:sw0-nf-vtap"
+    # Bind all 3 ports to one node
+    echo "$mode: Network function vtap inbound with single node"
+    nf_create_port_binding hv1 hv1 hv1 "$nf_ports"
+
+    packet_mirroring_test hv1 hv1 hv1
+
+    nf_cleanup_port_binding hv1 hv1 hv1 "$nf_ports"
+
+    # src & dst ports on one node, NF on another node
+    echo "$mode: Network function vtap inbound with two nodes - nf separate"
+    nf_create_port_binding hv1 hv1 hv2 "$nf_ports"
+
+    packet_mirroring_test hv1 hv1 hv2
+
+    nf_cleanup_port_binding hv1 hv1 hv2 "$nf_ports"
+
+    # dst and nf on one node, src on a second node
+    echo "$mode: Network function vtap inbound with two nodes - nf with dst"
+    nf_create_port_binding hv1 hv2 hv1 "$nf_ports"
+
+    packet_mirroring_test hv1 hv2 hv1
+
+    nf_cleanup_port_binding hv1 hv2 hv1 "$nf_ports"
+
+    # dst on one node, nf & src on a second node
+    echo "$mode: Network function vtap inbound with two nodes - nf with src"
+    nf_create_port_binding hv1 hv2 hv2 "$nf_ports"
+
+    packet_mirroring_test hv1 hv2 hv2
+
+    nf_cleanup_port_binding hv1 hv2 hv2 "$nf_ports"
+
+    # src on one node, dst on another, NF on a 3rd one
+    echo "$mode: Network function vtap inbound with three nodes"
+    nf_create_port_binding hv1 hv2 hv3 "$nf_ports"
+
+    packet_mirroring_test hv1 hv2 hv3
+
+    nf_cleanup_port_binding hv1 hv2 hv3 "$nf_ports"
+}
+
+test_nf_vtap_with_multinodes_inbound overlay
+
+# Tests for VLAN network
+# Add localnet port to make it a VLAN backed LS
+check ovn-nbctl lsp-add-localnet-port sw0 ln0 phys
+check ovn-nbctl set logical_switch_port ln0 tag_request=100
+
+test_nf_vtap_with_multinodes_inbound VLAN
+
+# Cleanup logical topology
+check ovn-nbctl lsp-del ln0
+check ovn-nbctl acl-del pg0 to-lport 1002 "outport == @pg0 && ip4.src == 192.168.0.12"
+check ovn-nbctl pg-del pg0
+check ovn-nbctl nfg-del nfg0
+check ovn-nbctl nf-del nf0
+check ovn-nbctl clear logical_switch_port sw0-nf-vtap options
+for i in 1 2; do
+    check ovn-nbctl lsp-del sw0-p$i
+done
+check ovn-nbctl lsp-del sw0-nf-vtap
 check ovn-nbctl ls-del sw0
 check ovn-nbctl --wait=hv sync
 

@@ -90,6 +90,11 @@ Post v26.03.0
      as an override, to Logical_Router_Port) to advertise a router's IPv4
      routes through ovn-ic using the interconnect port's IPv6 address as next
      hop ("IPv4 over IPv6").
+   - Add vtap mode support for Network Function. In vtap mode, traffic matching
+     ACLs is mirrored to the network function while continuing to flow to the
+     original destination. This enables passive monitoring use cases where
+     network functions can observe traffic without being inline in
+     the data path.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

@@ -866,28 +866,34 @@ from the group and overwrites ``reg0[22..29]`` with the specific ``id`` of a
 this NF ID to redirect packets to the appropriate network function port. In the
 future, this stage will be extended to support network function load balancing.
 
-- For each network_function_group *id* with an active network function, a
-  priority-99 flow matches ``reg8[21] == 1 && reg8[22] == 1 && reg0[22..29] ==
-  id`` and sets ``reg0[22..29] = nf_id; next;`` where *nf_id* is the ID of the
-  active network function. This prepares request packets that matched a ``from-
-  lport`` ACL with network_function_group for redirection in the subsequent
-  Network Function table.
+- In inline, vtap mode: For each network_function_group *id* with an active
+  network function, a priority-99 flow matches ``reg8[21] == 1 && reg8[22] == 1
+  && reg0[22..29] == id`` and sets ``reg0[22..29] = nf_id; next;`` where
+  *nf_id* is the ID of the active network function. This prepares request
+  packets that matched a ``from-lport`` ACL with network_function_group for
+  redirection (inline) or mirroring (vtap) in the subsequent Network Function
+  table.
 
-- For each network function group with *id* that has ``fallback`` set to ``fail-
-  open``, a priority-10 flow matches ``reg8[21] == 1 && reg8[22] == 1 &&
-  reg0[22..29] == id`` and sets ``reg8[21] = 0; reg0[22..29] = 0; next;``. This
-  clears both the NF enabled bit and the NF group ID, allowing packets to
-  continue processing through the pipeline without network function redirection
-  when no active network function is available (fail-open behavior).
+- In inline mode: For each network function group with *id* that has
+  ``fallback`` set to ``fail-open``, a priority-10 flow matches ``reg8[21] == 1
+  && reg8[22] == 1 && reg0[22..29] == id`` and sets ``reg8[21] = 0;
+  reg0[22..29] = 0; next;``.
+  In vtap mode: A priority-10 flow with the same match and action is always
+  added (vtap does not support fail-close). This clears both the NF enabled bit
+  and the NF group ID, allowing packets to continue when no active network
+  function is available (fail-open behavior).
 
-- A priority-1 flow matches ``reg8[21] == 1 && reg8[22] == 1`` and sets
-  ``reg0[22..29] = 0; next;``. This is a catch-all flow for network function
-  groups with ``fallback`` set to ``fail-close`` (or default) when no active
-  network function is available. It clears only the NF group ID, leaving the NF
-  enabled bit set. These packets will be dropped by the priority-1 drop rule in
-  the subsequent Network Function table (fail-close behavior).
+- In inline, vtap mode: A priority-1 flow matches ``reg8[21] == 1 && reg8[22]
+  == 1`` and sets ``reg0[22..29] = 0; next;``. This is a catch-all for when no
+  active network function is available and no higher-priority flow matched. For
+  inline groups with ``fallback`` set to ``fail-close`` (or default) this
+  leaves the NF enabled bit set so the packet is dropped by the priority-1
+  drop rule in the subsequent Network Function table (fail-close behavior).
+  For vtap groups this flow is superseded by the priority-10 fail-open flow
+  above and is not reached when an NFG is configured; it acts as a safety net.
 
-- A priority-0 flow that simply moves traffic to the next table.
+- In inline, vtap mode: A priority-0 flow that simply moves traffic to the next
+  table.
 
 .. _ls-in-24:
 
@@ -904,13 +910,13 @@ Ingress Table 24: Stateful
   connection tracker using ``ct_commit; next;`` action based on a hint provided
   by the previous tables (with a match for ``reg0[1] == 1 && reg0[13] == 0``).
 
-- Corresponding to each of the two priority 100 flows above, a priority 110 flow
-  is added, which has the following extra match and action, but otherwise
-  identical to the priority 100 flow. Match: ``reg8[21] == 1`` (packet matched
-  an ACL with ``network_function_group`` set) Action: ``ct_label.nf = 1;
-  ct_label.nf_id = reg0[22..29];`` This is to commit the network_function
-  information in conntrack so that the response and related packets can be
-  redirected to it as well.
+- In inline, vtap mode: Corresponding to each of the two priority 100 flows
+  above, a priority 110 flow is added, which has the following extra match and
+  action, but otherwise identical to the priority 100 flow. Match: ``reg8[21]
+  == 1`` (packet matched an ACL with ``network_function_group`` set). Action:
+  ``ct_label.nf = 1; ct_label.nf_id = reg0[22..29];`` This commits the
+  network_function information in conntrack so that response and related
+  packets can be redirected or mirrored to it as well.
 
 - A priority-0 flow that simply moves traffic to the next table.
 
@@ -940,44 +946,54 @@ If the network function ports are not present on this logical switch, their
 child ports (if any) are used. In the statements below, network function ports
 refer to either the parent or child ports as applicable to this logical switch.
 
-- For each network_function port *P*, a priority-100 flow is added that matches
-  ``inport == P`` and advances packets to the next table. Thus packets coming
-  from network function are not subject to redirection. This flow also sets
-  ``reg5[16..31] = ct_label.tun_if_id``. This is used for tunneling packet to
-  originating host in case of cross host traffic redirection for VLAN subnet.
-  This ct_label field stores the openflow tunnel interface id of the originating
-  host for this connection and gets populated in egress :ref:`Stateful
-  <ls-out-12>` table.
-
-- For each active network function with *id* that is referenced in a network
-  function group, a priority-99 flow matches ``reg8[21] == 1 && reg8[22] == 1 &&
-  reg0[22..29] == id`` and sets ``outport=P; output;`` where *P* is the
-  ``inport`` of that network function. This redirects request packets for flows
-  matching ``from-lport`` ACLs with network_function_group to the specific
-  network function selected by the Pre Network Function stage.
-
-- For each active network function with *id* that is referenced in a network
-  function group, a priority-99 rule matches ``reg8[21] == 1 && reg8[22] == 0 &&
-  ct_label.nf_id == id`` and takes identical action as above. This redirects
-  response and related packets for ``to-lport`` ACLs to the same network
-  function that handled the request, using the NF ID stored in the connection
-  tracking label.
-
-- In each of the above cases, when the same packet comes out unchanged through
-  the other port of the network_function, it would match the priority 100 flow
-  and be forwarded to the next table.
-
-- One priority-100 rule to skip redirection of multicast packets that hit a
-  network_function ACL. Match on ``reg8[21] == 1 && eth.mcast`` and action is to
-  advance to the next table.
-
-- One priority-1 rule that checks ``reg8[21] == 1``, and drops such packets.
-  This is to address the case where a packet hit an ACL with network function
-  but the network function does not have ports or child ports on this logical
-  switch.
-
-- One priority-0 fallback flow that matches all packets and advances to the next
+- In inline: For each network_function port *P*, a priority-100 flow matches
+  ``inport == P`` and advances packets to the next table (packets from the
+  network function are not subject to redirection). This flow also sets
+  ``reg5[16..31] = ct_label.tun_if_id`` for cross host traffic redirection for
+  VLAN subnet; the tunnel id is populated in egress :ref:`Stateful <ls-out-12>`
   table.
+
+- In inline: For each active network function with *id* that is referenced in a
+  network function group, a priority-99 flow matches ``reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and sets ``outport=P; output;`` where
+  *P* is the ``inport`` of that network function. This redirects request
+  packets for flows matching ``from-lport`` ACLs with network_function_group
+  to the specific network function selected by the Pre Network Function stage.
+
+- In vtap mode: For each active network function with *id*, a priority-99
+  forward flow matches ``reg8[21] == 1 && reg8[22] == 1 && reg0[22..29] == id``
+  and sets ``clone { outport = P; output; }; next;`` where *P* is the
+  ``inport`` of that network function. A copy is sent to the NF port while
+  the original packet continues (mirroring; only inport is used, outport is
+  not supported).
+
+- In inline: For each active network function with *id* that is referenced in a
+  network function group, a priority-99 rule matches ``reg8[21] == 1 &&
+  reg8[22] == 0 && ct_label.nf_id == id`` and takes identical action as above.
+  This redirects response and related packets for ``to-lport`` ACLs to the
+  same network function that handled the request.
+
+- In vtap mode: A priority-99 reverse flow matches ``reg8[21] == 1 && reg8[22]
+  == 0 && ct_label.nf_id == id`` and sets ``clone { outport = P; output; };
+  next;`` to mirror response/related packets to the same NF.
+
+- In inline: In each of the above cases, when the same packet comes out
+  unchanged through the other port of the network_function, it would match the
+  priority 100 flow and be forwarded to the next table.
+
+- In vtap mode: A priority-100 flow matches ``inport == P`` (packets from the
+  NF port) and drops them.
+
+- In inline, vtap mode: One priority-100 rule to skip redirection/mirroring of
+  multicast packets that hit a network_function ACL. Match on ``reg8[21] == 1
+  && eth.mcast`` and action is to advance to the next table.
+
+- In inline: One priority-1 rule that checks ``reg8[21] == 1``, and drops such
+  packets when the network function does not have ports or child ports on this
+  logical switch.
+
+- In inline, vtap mode: One priority-0 fallback flow that matches all packets
+  and advances to the next table.
 
 .. _ls-in-26:
 
@@ -1812,28 +1828,32 @@ The subsequent Network Function table uses this NF ID to redirect packets to the
 appropriate network function port. In the future, this stage will be extended to
 support network function load balancing.
 
-- For each network function group with *id* that has an active network function,
-  a priority-99 flow matches ``reg8[21] == 1 && reg8[22] == 1 && reg0[22..29] ==
-  id`` and sets ``reg0[22..29] = nf_id; next;`` where *nf_id* is the ``id`` of
-  the active ``Network_Function`` selected from the group. This prepares request
-  packets that matched a ``to-lport`` ACL with network_function_group for
-  redirection in the subsequent Network Function table.
+- In inline, vtap mode: For each network function group with *id* that has an
+  active network function, a priority-99 flow matches ``reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and sets ``reg0[22..29] = nf_id;
+  next;`` where *nf_id* is the ``id`` of the active ``Network_Function``
+  selected from the group. This prepares request packets that matched a
+  ``to-lport`` ACL with network_function_group for redirection (inline) or
+  mirroring (vtap) in the subsequent Network Function table.
 
-- For each network function group with *id* that has ``fallback`` set to ``fail-
-  open``, a priority-10 flow matches ``reg8[21] == 1 && reg8[22] == 1 &&
-  reg0[22..29] == id`` and sets ``reg8[21] = 0; reg0[22..29] = 0; next;``. This
-  clears both the NF enabled bit and the NF group ID, allowing packets to
-  continue processing through the pipeline without network function redirection
-  when no active network function is available (fail-open behavior).
+- In inline: For each network function group with *id* that has ``fallback``
+  set to ``fail-open``, a priority-10 flow matches ``reg8[21] == 1 && reg8[22]
+  == 1 && reg0[22..29] == id`` and sets ``reg8[21] = 0; reg0[22..29] = 0;
+  next;``. In vtap mode: A priority-10 flow with the same match and action is
+  always added. This clears both the NF enabled bit and the NF group ID when
+  no active network function is available (fail-open behavior).
 
-- A priority-1 flow matches ``reg8[21] == 1 && reg8[22] == 1`` and sets
-  ``reg0[22..29] = 0; next;``. This is a catch-all flow for network function
-  groups with ``fallback`` set to ``fail-close`` (or default) when no active
-  network function is available. It clears only the NF group ID, leaving the NF
-  enabled bit set. These packets will be dropped by the priority-1 drop rule in
-  the subsequent Network Function table (fail-close behavior).
+- In inline, vtap mode: A priority-1 flow matches ``reg8[21] == 1 && reg8[22]
+  == 1`` and sets ``reg0[22..29] = 0; next;``. This is a catch-all for when no
+  active network function is available and no higher-priority flow matched. For
+  inline groups with ``fallback`` set to ``fail-close`` (or default) this
+  leaves the NF enabled bit set so the packet is dropped by the priority-1
+  drop rule in the subsequent Network Function table (fail-close behavior).
+  For vtap groups this flow is superseded by the priority-10 fail-open flow
+  above and is not reached when an NFG is configured; it acts as a safety net.
 
-- A priority-0 flow that simply moves traffic to the next table.
+- In inline, vtap mode: A priority-0 flow that simply moves traffic to the next
+  table.
 
 .. _ls-out-12:
 
@@ -1845,17 +1865,15 @@ are no rules added for load balancing new connections. When
 ``enable-stateless-acl-with-lb`` is enabled, new stateless connections bypass
 connection tracking.
 
-- A priority 120 flow is added for each network function port *P* that is
-  identical to the priority 100 flow except for additional match ``outport ==
-  P`` and additional action  ``ct_label.tun_if_id = reg5[16..31]``. In case
-  packets redirected by network function logic gets tunneled from host1 to host2
-  where the network function port resides, host2's physical table 0 populates
-  reg5[16..31] with the openflow tunnel interface id on which the packet was
-  received. This priority 120 flow commits the tunnel id to the ct_label. That
-  way, when the same packet comes out of the other port of the network function
-  it can retrieve this information from the peer port's CT entry and tunnel the
-  packet back to host1. This is required to make cross host traffic redirection
-  work for VLAN subnet.
+- In inline: A priority 120 flow is added for each network function port *P*
+  that is identical to the priority 100 flow except for additional match
+  ``outport == P`` and additional action ``ct_label.tun_if_id = reg5[16..31]``.
+  In case packets redirected by network function logic get tunneled from host1
+  to host2 where the network function port resides, host2's physical table 0
+  populates reg5[16..31] with the openflow tunnel interface id. This flow
+  commits the tunnel id to ct_label so the packet can be tunneled back to host1
+  when it comes out of the other port of the network function (required for
+  cross host traffic redirection for VLAN subnet).
 
 .. _ls-out-13:
 
@@ -1870,38 +1888,60 @@ packets are handled in the ingress pipeline, but corresponding response/related
 packets for those flows are redirected here using the network function ID stored
 in ``ct_label.nf_id`` during request processing.
 
-- Similar to ingress :ref:`Network Function <ls-in-25>` a priority-100 flow is
-  added for each network_function port, that matches the inport with the network
-  function port and advances the packet to the next table.
+- In inline: Similar to ingress :ref:`Network Function <ls-in-25>`, a
+  priority-100 flow is added for each network_function port that matches the
+  outport with the network function port and advances the packet to the next
+  table.
 
-- For each active network function with *id* that is referenced in a network
-  function group, a priority-99 flow matches ``reg8[21] == 1 && reg8[22] == 1 &&
-  reg0[22..29] == id`` and sets ``outport=P; reg8[23] = 1;
-  next(pipeline=ingress, table=T)`` where *P* is the ``outport`` of that network
-  function and *T* is the ingress table :ref:`Destination Lookup <ls-in-33>`.
-  This redirects request packets matching ``to-lport`` ACLs with
+- In inline: For each active network function with *id* that is referenced in a
+  network function group, a priority-99 flow matches ``reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and sets ``outport=P; reg8[23] = 1;
+  next(pipeline=ingress, table=T)`` where *P* is the ``outport`` of
+  that network function and *T* is the ingress table :ref:`Destination Lookup
+  <ls-in-33>`. This redirects request packets matching ``to-lport`` ACLs with
   network_function_group to the specific network function selected by the Pre
-  Network Function stage. The packets are injected back to the ingress pipeline
-  from where they get sent out, skipping any further lookup because of
-  ``reg8[23]``.
+  Network Function stage.
 
-- For each active network function with *id* that is referenced in a network
-  function group, a priority-99 rule matches ``reg8[21] == 1 && reg8[22] == 0 &&
-  ct_label.nf_id == id`` and takes identical action as above. This redirects
-  response and related packets for ``from-lport`` ACLs to the same network
-  function that handled the request, using the NF ID stored in the connection
-  tracking label.
+- In vtap mode: For each active network function with *id*, a priority-99
+  forward flow matches ``reg8[21] == 1 && reg8[22] == 1 && reg0[22..29] == id``
+  and sets ``clone { outport = P; reg8[23] = 1; next(pipeline=ingress,
+  table=T); }; next;`` where *P* is the ``inport`` of that network function
+  and *T* is the ingress table :ref:`Destination Lookup <ls-in-33>`
+  (mirroring; only inport is used).
 
-- In each of the above cases, when the same packet comes out unchanged through
-  the other port of the network_function, it would match the priority 100 flow
-  and be forwarded to the next table.
+- In inline: For each active network function with *id* that is referenced in a
+  network function group, a priority-99 rule matches ``reg8[21] == 1 &&
+  reg8[22] == 0 && ct_label.nf_id == id`` and takes identical action as above.
+  This redirects response and related packets for ``from-lport`` ACLs to the
+  same network function that handled the request.
 
-- One priority-100 multicast match flow same as ingress :ref:`Network Function
-  <ls-in-25>`.
+- In vtap mode: A priority-99 reverse flow matches ``reg8[21] == 1 && reg8[22]
+  == 0 && ct_label.nf_id == id`` and sets ``clone { outport = P; reg8[23] = 1;
+  next(pipeline=ingress, table=T); }; next;`` where *T* is the ingress table
+  :ref:`Destination Lookup <ls-in-33>`. This loops the mirrored response/
+  related packets back to the ingress pipeline so they reach the NF port even
+  if it resides on a remote chassis.
 
-- One priority-1 flow same as ingress :ref:`Network Function <ls-in-25>`.
+- In inline: In each of the above cases, when the same packet comes out
+  unchanged through the other port of the network_function, it would match the
+  priority 100 flow and be forwarded to the next table.
 
-- One priority-0 flow same as ingress :ref:`Network Function <ls-in-25>`.
+- In vtap mode: A priority-100 flow matches ``outport == P`` (packets to the NF
+  port) and advances to the next table so packets to the NF are not mirrored
+  again.
+
+- In vtap mode: In egress Pre ACL table, a priority-110 flow matches ``ip &&
+  outport == P`` with action ``ct_clear; next;`` for the vtap NF port so
+  packets toward the NF are not committed to conntrack.
+
+- In inline, vtap mode: One priority-100 multicast match flow same as ingress
+  :ref:`Network Function <ls-in-25>`.
+
+- In inline, vtap mode: One priority-1 flow same as ingress :ref:`Network
+  Function <ls-in-25>`.
+
+- In inline, vtap mode: One priority-0 flow same as ingress :ref:`Network
+  Function <ls-in-25>`.
 
 .. _ls-out-14:
 

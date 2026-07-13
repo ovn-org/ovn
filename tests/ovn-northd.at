@@ -20020,7 +20020,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([Check network function])
+AT_SETUP([Check network-function in inline mode])
 ovn_start
 
 AS_BOX([Create a NF and add it to a from-lport ACL])
@@ -20045,11 +20045,12 @@ check ovn-nbctl lsp-add sw0 sw0-p3 -- lsp-set-addresses sw0-p3 "00:00:00:00:00:0
 check ovn-nbctl pg-add pg0 sw0-p1
 check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 10.0.0.3" allow-related nfg0
 
-# Add hypervisor and bind NF ports
-check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
-check ovn-sbctl lsp-bind sw0-nf-p1 hv1
-check ovn-sbctl lsp-bind sw0-nf-p2 hv1
-
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
+    -- set chassis gw1 other_config:ovn-ct-lb-related=true \
+    -- set chassis gw1 other_config:ct-no-masked-label=true
+chassis_uuid=$(fetch_column Chassis _uuid name=gw1)
+check ovn-sbctl set port_binding sw0-nf-p1 up=true chassis=$chassis_uuid
+check ovn-sbctl set port_binding sw0-nf-p2 up=true chassis=$chassis_uuid
 check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 > sw0flows
@@ -20160,8 +20161,8 @@ check ovn-nbctl set logical_switch_port sw0-nf-p4 \
 check ovn-nbctl nf-add nf1 102 sw0-nf-p3 sw0-nf-p4
 check ovn-nbctl nfg-add nfg1 202 inline nf1
 check ovn-nbctl acl-add pg0 to-lport 1003 "outport == @pg0 && ip4.src == 10.0.0.4" allow-related nfg1
-check ovn-sbctl lsp-bind sw0-nf-p3 hv1
-check ovn-sbctl lsp-bind sw0-nf-p4 hv1
+check ovn-sbctl set port_binding sw0-nf-p3 up=true chassis=$chassis_uuid
+check ovn-sbctl set port_binding sw0-nf-p4 up=true chassis=$chassis_uuid
 check ovn-nbctl --wait=sb sync
 
 ovn-sbctl dump-flows sw0 > sw0flows
@@ -20336,11 +20337,17 @@ done
 
 nfsw="nf-sw"
 check ovn-nbctl ls-add $nfsw
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
+    -- set chassis gw1 other_config:ovn-ct-lb-related=true \
+    -- set chassis gw1 other_config:ct-no-masked-label=true
+chassis_uuid=$(fetch_column Chassis _uuid name=gw1)
+
 for i in {1..4}; do
     port=$nfsw-p$i
     check ovn-nbctl lsp-add $nfsw $port
     check ovn-nbctl --wait=sb sync
-    check ovn-sbctl set port_binding $port up=true
+    check ovn-sbctl set port_binding $port up=true chassis=$chassis_uuid
     check ovn-nbctl lsp-add $sw child-$i $port 100
 done
 check ovn-nbctl set logical_switch_port $nfsw-p1 \
@@ -21678,6 +21685,193 @@ sr_lflow_uuid=$(fetch_column Logical_flow _uuid match='"reg7 == 0 && ip4.src == 
 AT_CHECK([test "$sr_lflow_uuid" == ""])
 
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+
+AT_SETUP([Check network-function in vtap mode])
+ovn_start
+
+AS_BOX([Create a NF and add it to a from-lport ACL])
+
+# Create a NF and add it to a from-lport ACL.
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-nf-p1
+check ovn-nbctl set logical_switch_port sw0-nf-p1 options:receive_multicast=false options:lsp_learn_fdb=false options:is-nf=true
+check ovn-nbctl nf-add nf0 1 sw0-nf-p1
+check ovn-nbctl nfg-add nfg0 1 vtap nf0
+
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 "00:00:00:00:00:01 10.0.0.2"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 "00:00:00:00:00:02 10.0.0.3"
+check ovn-nbctl lsp-add sw0 sw0-p3 -- lsp-set-addresses sw0-p3 "00:00:00:00:00:03 10.0.0.4"
+
+check ovn-nbctl pg-add pg0 sw0-p1
+check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 10.0.0.3" allow-related nfg0
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1 \
+    -- set chassis gw1 other_config:ovn-ct-lb-related=true \
+    -- set chassis gw1 other_config:ct-no-masked-label=true
+chassis_uuid=$(fetch_column Chassis _uuid name=gw1)
+check ovn-sbctl set port_binding sw0-nf-p1 up=true chassis=$chassis_uuid
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep pg0 | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+])
+
+# Vtap uses Pre NF (priority 99) to set REG_NF_ID for CT commit, aligned with inline mode.
+# First box has only from-lport ACL (nfg0), so vtap Pre NF flows are only in IN path.
+AT_CHECK(
+  [grep -E 'ls_(in|out)_pre_network_function' sw0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_pre_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_network_function), priority=1    , match=(reg8[[21]] == 1 && reg8[[22]] == 1), action=(reg0[[22..29]] = 0; next;)
+  table=??(ls_in_pre_network_function), priority=10   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(reg8[[21]] = 0; reg0[[22..29]] = 0; next;)
+  table=??(ls_in_pre_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(reg0[[22..29]] = 1; next;)
+  table=??(ls_out_pre_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_network_function), priority=1    , match=(reg8[[21]] == 1 && reg8[[22]] == 1), action=(reg0[[22..29]] = 0; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' sw0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p1"), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(clone {outport = "sw0-nf-p1"; output;}; next;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_id == 1), action=(clone {outport = "sw0-nf-p1"; reg8[[23]] = 1; next(pipeline=ingress, table=??);}; next;)
+])
+
+AT_CHECK([grep "ls_in_l2_lkup" sw0flows | ovn_strip_lflows | grep 'priority=100'], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
+])
+
+# Vtap: egress pre-acl ct_clear for packets going to vtap NF port so they are
+# not committed to conntrack.
+AT_CHECK(
+  [grep 'ls_out_pre_acl' sw0flows | ovn_strip_lflows | grep 'sw0-nf-p1'], [0], [dnl
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "sw0-nf-p1"), action=(ct_clear; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep 'ct_label.nf' | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg0[[17]] = 1; reg8[[21]] = ct_label.nf; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg0[[9]] = 0; reg0[[10]] = 0; reg0[[17]] = 1; reg8[[21]] = ct_label.nf; reg8[[16]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg0[[21]] = 1; reg8[[21]] = ct_label.nf; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(!ct.est && ct.rel && !ct.new && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf; reg8[[16]] = 1; ct_commit_nat;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && !ct.rel && ct.rpl && ct_mark.blocked == 0), action=(reg8[[21]] = ct_label.nf; reg8[[16]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=65532, match=(ct.est && ct_mark.allow_established == 1), action=(reg8[[21]] = ct_label.nf; reg8[[16]] = 1; next;)
+])
+
+# ICMP packets from sw0-p1 should be mirrored to sw0-nf-p1 but traffic originated
+# in opposite direction should not get mirrored.
+flow_eth_from_p1='eth.src == 00:00:00:00:00:01 && eth.dst == 00:00:00:00:00:02'
+flow_ip_from_p1='ip.ttl==64 && ip4.src == 10.0.0.2 && ip4.dst == 10.0.0.3'
+flow_icmp='icmp4.type == 8'
+flow_from_p1="inport == \"sw0-p1\" && ${flow_eth_from_p1} && ${flow_ip_from_p1} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal sw0 "${flow_from_p1}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    clone {
+        output("sw0-nf-p1");
+    };
+    ct_next(ct_state=new|trk) {
+        output("sw0-p2");
+    };
+};
+])
+flow_eth_rev='eth.src == 00:00:00:00:00:02 && eth.dst == 00:00:00:00:00:01'
+flow_ip_rev='ip.ttl==64 && ip4.src == 10.0.0.3 && ip4.dst == 10.0.0.2'
+flow_rev="inport == \"sw0-p2\" && ${flow_eth_rev} && ${flow_ip_rev} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal sw0 "${flow_rev}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        output("sw0-p1");
+    };
+};
+])
+
+AS_BOX([Create another NF and add it to a to-lport ACL.])
+
+# Create another NF and add it to a to-lport ACL.
+check ovn-nbctl lsp-add sw0 sw0-nf-p3
+check ovn-nbctl set logical_switch_port sw0-nf-p3 options:receive_multicast=false options:lsp_learn_fdb=false options:is-nf=true
+check ovn-nbctl nf-add nf1 2 sw0-nf-p3
+check ovn-nbctl nfg-add nfg1 2 vtap nf1
+check ovn-sbctl set port_binding sw0-nf-p3 up=true chassis=$chassis_uuid
+check ovn-nbctl --wait=sb sync
+check ovn-nbctl acl-add pg0 to-lport 1003 "outport == @pg0 && ip4.src == 10.0.0.4" allow-related nfg1
+
+ovn-sbctl dump-flows sw0 > sw0flows
+AT_CAPTURE_FILE([sw0flows])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_acl_eval' sw0flows | ovn_strip_lflows | grep pg0 | sort], [0], [dnl
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[7]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_in_acl_eval     ), priority=2002 , match=(reg0[[8]] == 1 && (inport == @pg0 && ip4.dst == 10.0.0.3)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 1; next;)
+  table=??(ls_out_acl_eval    ), priority=2003 , match=(reg0[[7]] == 1 && (outport == @pg0 && ip4.src == 10.0.0.4)), action=(reg8[[16]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 2; next;)
+  table=??(ls_out_acl_eval    ), priority=2003 , match=(reg0[[8]] == 1 && (outport == @pg0 && ip4.src == 10.0.0.4)), action=(reg8[[16]] = 1; reg0[[1]] = 1; reg8[[21]] = 1; reg8[[22]] = 1; reg0[[22..29]] = 2; next;)
+])
+
+# Pre NF: nfg0 (id=1) is from-lport so IN_PRE_NF only; nfg1 (id=2) is to-lport so OUT_PRE_NF only.
+AT_CHECK(
+  [grep -E 'ls_(in|out)_pre_network_function' sw0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_pre_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_pre_network_function), priority=1    , match=(reg8[[21]] == 1 && reg8[[22]] == 1), action=(reg0[[22..29]] = 0; next;)
+  table=??(ls_in_pre_network_function), priority=10   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(reg8[[21]] = 0; reg0[[22..29]] = 0; next;)
+  table=??(ls_in_pre_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(reg0[[22..29]] = 1; next;)
+  table=??(ls_out_pre_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_pre_network_function), priority=1    , match=(reg8[[21]] == 1 && reg8[[22]] == 1), action=(reg0[[22..29]] = 0; next;)
+  table=??(ls_out_pre_network_function), priority=10   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 2), action=(reg8[[21]] = 0; reg0[[22..29]] = 0; next;)
+  table=??(ls_out_pre_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 2), action=(reg0[[22..29]] = 2; next;)
+])
+
+AT_CHECK(
+  [grep -E 'ls_(in|out)_network_function' sw0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(ls_in_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p1"), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(inport == "sw0-nf-p3"), action=(drop;)
+  table=??(ls_in_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_id == 2), action=(clone {outport = "sw0-nf-p3"; output;}; next;)
+  table=??(ls_in_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 1), action=(clone {outport = "sw0-nf-p1"; output;}; next;)
+  table=??(ls_out_network_function), priority=0    , match=(1), action=(next;)
+  table=??(ls_out_network_function), priority=1    , match=(reg8[[21]] == 1), action=(drop;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p1"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(outport == "sw0-nf-p3"), action=(next;)
+  table=??(ls_out_network_function), priority=100  , match=(reg8[[21]] == 1 && eth.mcast), action=(next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 0 && ct_label.nf_id == 1), action=(clone {outport = "sw0-nf-p1"; reg8[[23]] = 1; next(pipeline=ingress, table=??);}; next;)
+  table=??(ls_out_network_function), priority=99   , match=(reg8[[21]] == 1 && reg8[[22]] == 1 && reg0[[22..29]] == 2), action=(clone {outport = "sw0-nf-p3"; reg8[[23]] = 1; next(pipeline=ingress, table=??);}; next;)
+])
+
+# Vtap: egress pre-acl ct_clear for all vtap NF ports so that they are not committed to conntrack.
+AT_CHECK(
+  [grep 'ls_out_pre_acl' sw0flows | ovn_strip_lflows | grep 'nf-p' | sort], [0], [dnl
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "sw0-nf-p1"), action=(ct_clear; next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "sw0-nf-p3"), action=(ct_clear; next;)
+])
+
+# ICMP packets to sw0-p1 should be mirrored to sw0-nf-p3.
+flow_eth_to_p1='eth.src == 00:00:00:00:00:03 && eth.dst == 00:00:00:00:00:01'
+flow_ip_to_p1='ip.ttl==64 && ip4.src == 10.0.0.4 && ip4.dst == 10.0.0.2'
+flow_to_p1="inport == \"sw0-p3\" && ${flow_eth_to_p1} && ${flow_ip_to_p1} && ${flow_icmp}"
+AT_CHECK_UNQUOTED([ovn_trace --ct new --ct new --minimal sw0 "${flow_to_p1}"], [0], [dnl
+ct_next(ct_state=new|trk) {
+    ct_next(ct_state=new|trk) {
+        clone {
+            output("sw0-nf-p3");
+        };
+        output("sw0-p1");
+    };
+};
+])
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP

@@ -3292,6 +3292,58 @@ create_or_get_service_mon(struct ovsdb_idl_txn *ovnsb_txn,
     return mon_info;
 }
 
+enum nf_port_binding_state {
+    NF_PORT_STATE_UNKNOWN,
+    NF_PORT_STATE_CHASSIS_INVALID,
+    NF_PORT_STATE_DOWN,
+    NF_PORT_STATE_UP
+};
+
+static enum nf_port_binding_state
+network_function_port_binding_state(const char **ports, size_t n_ports,
+                                    struct hmap *ls_ports,
+                                    const char **chassis_name_pptr)
+{
+    const char *chassis_name = NULL;
+    size_t n_port_up = 0;
+
+    for (size_t i = 0; i < n_ports; i++) {
+        const char *port = ports[i];
+        struct ovn_port *op = ovn_port_find(ls_ports, port);
+        if (op == NULL) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_ERR_RL(&rl, "NetworkFunction: skip health check, port:%s "
+                        "not found",  port);
+            return NF_PORT_STATE_UNKNOWN;
+        }
+        if (op->sb && op->sb->chassis) {
+            if (chassis_name == NULL) {
+                chassis_name = op->sb->chassis->name;
+            } else if (strcmp(chassis_name, op->sb->chassis->name)) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_ERR_RL(&rl, "NetworkFunction: chassis mismatch "
+                            "for port:%s chassis:%s peer_port_chassis:%s",
+                            port, op->sb->chassis->name, chassis_name);
+                return NF_PORT_STATE_CHASSIS_INVALID;
+            }
+            if (op->sb->n_up && op->sb->up[0]) {
+                n_port_up++;
+            }
+        } else {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            VLOG_ERR_RL(&rl, "NetworkFunction: chassis not set for port:%s",
+                        port);
+            return NF_PORT_STATE_CHASSIS_INVALID;
+        }
+    }
+
+    if (chassis_name_pptr) {
+        *chassis_name_pptr = chassis_name;
+    }
+
+    return n_port_up == n_ports ? NF_PORT_STATE_UP : NF_PORT_STATE_DOWN;
+}
+
 static void
 ovn_nf_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                   const struct nbrec_network_function *nbrec_nf,
@@ -3310,29 +3362,19 @@ ovn_nf_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     const char *ports[] = {nbrec_nf->outport->name, nbrec_nf->inport->name};
+    size_t n_ports = ARRAY_SIZE(ports);
     const char *chassis_name = NULL;
-    bool port_up = true;
 
-    for (size_t i = 0; i < ARRAY_SIZE(ports); i++) {
+    for (size_t i = 0; i < n_ports; i++) {
         const char *port = ports[i];
         sset_add(svc_monitor_lsps, port);
-        struct ovn_port *op = ovn_port_find(ls_ports, port);
-        if (op == NULL) {
-            VLOG_ERR_RL(&rl, "NetworkFunction: skip health check, port:%s "
-                             "not found",  port);
-            return;
-        }
+    }
 
-        if (op->sb->chassis) {
-            if (chassis_name == NULL) {
-                chassis_name = op->sb->chassis->name;
-            } else if (strcmp(chassis_name, op->sb->chassis->name)) {
-                 VLOG_ERR_RL(&rl, "NetworkFunction: chassis mismatch "
-                                  "chassis:%s port:%s\n",
-                             op->sb->chassis->name, port);
-            }
-        }
-        port_up = port_up && (op->sb->n_up && op->sb->up[0]);
+    enum nf_port_binding_state port_state =
+        network_function_port_binding_state(ports, n_ports, ls_ports,
+                                            &chassis_name);
+    if (port_state == NF_PORT_STATE_UNKNOWN) {
+        return;
     }
 
     struct service_monitor_info *mon_info =
@@ -3372,7 +3414,7 @@ ovn_nf_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                                      svc_global_addresses->ip_dst);
     }
 
-    if (!port_up && mon_info->sbrec_mon->status
+    if (port_state != NF_PORT_STATE_UP && mon_info->sbrec_mon->status
         && !strcmp(mon_info->sbrec_mon->status, "online")) {
         sbrec_service_monitor_set_status(mon_info->sbrec_mon, "offline");
     }
@@ -3855,6 +3897,16 @@ build_svc_monitors_data(
     NBREC_NETWORK_FUNCTION_TABLE_FOR_EACH (nbrec_nf,
                             nbrec_network_function_table) {
         if (nbrec_nf->health_check) {
+            /* For Network Function, health check requires both
+             * inport and outport to be set.
+             */
+            if (!nbrec_nf->inport || !nbrec_nf->outport) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "NetworkFunction: health_check requires "
+                             "both inport and outport, skipping health_check "
+                             "for network_function:%s", nbrec_nf->name);
+                continue;
+            }
             ovn_nf_svc_create(ovnsb_txn,
                               nbrec_nf,
                               svc_global_addresses,
@@ -19175,10 +19227,23 @@ build_lswitch_stateful_nf(struct ovn_port *op,
                   ds_cstr(match), ds_cstr(actions), lflow_ref);
 }
 
+static bool
+network_function_group_is_vtap_mode(
+    const struct nbrec_network_function_group *nfg)
+{
+    const char *mode = nfg->mode ? nfg->mode : "inline";
+    return !strcmp(mode, "vtap");
+}
+
 static const char*
 network_function_group_get_fallback(
     const struct nbrec_network_function_group *nfg)
 {
+    /* For vtap mode, fallback is always defaulted to fail-open */
+    if (network_function_group_is_vtap_mode(nfg)) {
+        return "fail-open";
+    }
+
     if (nfg->fallback) {
         return nfg->fallback;
     }
@@ -19190,10 +19255,7 @@ network_function_group_is_fallback_fail_open(
     const struct nbrec_network_function_group *nfg)
 {
     const char *fallback = network_function_group_get_fallback(nfg);
-    if (!strcasecmp(fallback, "fail-open")) {
-        return true;
-    }
-    return false;
+    return !strcmp(fallback, "fail-open");
 }
 
 static struct nbrec_network_function *
@@ -19206,7 +19268,8 @@ static void
 network_function_update_active(const struct nbrec_network_function_group *nfg,
                                struct hmap *local_svc_monitors_map,
                                struct hmap *ic_learned_svc_monitors_map,
-                               const char *svc_monitor_ip_dst)
+                               const char *svc_monitor_ip_dst,
+                               struct hmap *ls_ports)
 {
     if (!nfg->n_network_function) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
@@ -19218,10 +19281,13 @@ network_function_update_active(const struct nbrec_network_function_group *nfg,
         }
         return;
     }
+
     /* Array to store healthy network functions */
     struct nbrec_network_function **healthy_nfs =
         xmalloc(sizeof *healthy_nfs * nfg->n_network_function);
     struct nbrec_network_function *nf_active_prev = NULL;
+    bool is_nfg_vtap = network_function_group_is_vtap_mode(nfg);
+
     if (nfg->network_function_active) {
         nf_active_prev = nfg->network_function_active;
     }
@@ -19230,32 +19296,65 @@ network_function_update_active(const struct nbrec_network_function_group *nfg,
     /* Determine the set of healthy network functions */
     for (size_t i = 0; i < nfg->n_network_function; i++) {
         struct nbrec_network_function *nf = nfg->network_function[i];
-        bool is_healthy = false;
+        const char *ports[] = {nf->inport->name,
+                               !is_nfg_vtap && nf->outport
+                               ? nf->outport->name : NULL};
+        size_t n_ports = is_nfg_vtap ? 1 : 2;
 
-        if (nf->health_check == NULL) {
-            VLOG_DBG("NetworkFunction: Health check is not configured for "
-                     "network_function %s, considering it healthy", nf->name);
-            is_healthy = true;
+        if (is_nfg_vtap) {
+            if (nf->outport) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_ERR_RL(&rl, "NetworkFunction: outport should not be set "
+                            "for vtap mode, network_function:%s", nf->name);
+                continue;
+            }
+
+            /* For vtap mode, consider network_function healthy based on
+             * port binding status. */
+            if (network_function_port_binding_state(
+                    ports, n_ports, ls_ports, NULL) != NF_PORT_STATE_UP) {
+                continue;
+            }
         } else {
-            struct service_monitor_info *mon_info =
-                get_service_mon(local_svc_monitors_map,
-                                ic_learned_svc_monitors_map,
-                                svc_monitor_ip_dst,
-                                nf->outport->name, 0, "icmp");
-            if (mon_info == NULL) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_ERR_RL(&rl, "NetworkFunction: Service_monitor is not "
-                            "found for network_function:%s", nf->name);
-                is_healthy = false;
-            } else if (mon_info->sbrec_mon->status
-                       && !strcmp(mon_info->sbrec_mon->status, "online")) {
-                is_healthy = true;
+            /* For inline mode, inport and outport must be specified.
+             * inport is mandatory in schema, check for outport. */
+            if (nf->outport == NULL) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_ERR_RL(&rl, "NetworkFunction: outport must be set "
+                            "for inline mode, network_function:%s", nf->name);
+                continue;
+            }
+
+            /* Always check port binding state first. */
+            if (network_function_port_binding_state(
+                    ports, n_ports, ls_ports, NULL) != NF_PORT_STATE_UP) {
+                continue;
+            }
+
+            /* Consider network_function healthy based on port binding
+             * status if health_check is not configured. */
+            if (nf->health_check) {
+                struct service_monitor_info *mon_info =
+                    get_service_mon(local_svc_monitors_map,
+                                    ic_learned_svc_monitors_map,
+                                    svc_monitor_ip_dst,
+                                    nf->outport->name, 0, "icmp");
+                if (mon_info == NULL) {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_ERR_RL(&rl, "NetworkFunction: Service_monitor is not "
+                                "found for network_function:%s", nf->name);
+                    continue;
+                }
+
+                if (!mon_info->sbrec_mon->status
+                    || strcmp(mon_info->sbrec_mon->status, "online")) {
+                    continue;
+                }
             }
         }
 
-        if (is_healthy) {
-            healthy_nfs[n_healthy++] = nf;
-        }
+        healthy_nfs[n_healthy++] = nf;
     }
 
     struct nbrec_network_function *nf_active = NULL;
@@ -19298,15 +19397,15 @@ static void build_network_function_active(
     const struct nbrec_network_function_group_table *nbrec_nfg_table,
     struct hmap *local_svc_monitors_map,
     struct hmap *ic_learned_svc_monitors_map,
-    const char *svc_monitor_ip_dst)
+    const char *svc_monitor_ip_dst,
+    struct hmap *ls_ports)
 {
     const struct nbrec_network_function_group *nbrec_nfg;
     NBREC_NETWORK_FUNCTION_GROUP_TABLE_FOR_EACH (nbrec_nfg,
                             nbrec_nfg_table) {
-        network_function_update_active(nbrec_nfg,
-                                       local_svc_monitors_map,
-                                       ic_learned_svc_monitors_map,
-                                       svc_monitor_ip_dst);
+        network_function_update_active(nbrec_nfg, local_svc_monitors_map,
+                                      ic_learned_svc_monitors_map,
+                                      svc_monitor_ip_dst, ls_ports);
     }
 }
 
@@ -19339,10 +19438,10 @@ network_function_configure_fail_open_flows(struct lflow_table *lflows,
 }
 
 static void
-consider_network_function(struct lflow_table *lflows,
-                          const struct ovn_datapath *od,
-                          struct nbrec_network_function_group *nfg,
-                          bool ingress, struct lflow_ref *lflow_ref)
+consider_network_function_inline(struct lflow_table *lflows,
+                                 const struct ovn_datapath *od,
+                                 struct nbrec_network_function_group *nfg,
+                                 bool ingress, struct lflow_ref *lflow_ref)
 {
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds action = DS_EMPTY_INITIALIZER;
@@ -19362,10 +19461,19 @@ consider_network_function(struct lflow_table *lflows,
      * Load balancing would be added in future. */
     struct nbrec_network_function *nf = nf_get_active(nfg);
     if (!nf) {
-        VLOG_ERR_RL(&rl, "No active network function available, nfg:%s",
-                    nfg->name);
+        VLOG_INFO_RL(&rl, "No active network function available, nfg:%s",
+                     nfg->name);
         return;
     }
+
+    if (nf->outport == NULL) {
+        VLOG_ERR_RL(&rl, "No outport configured for inline mode "
+                    "network function:%s", nf->name);
+        return;
+    }
+
+    VLOG_DBG("network_function %s: inport %s outport %s",
+              nf->name, nf->inport->name, nf->outport->name);
 
     /* If NF ports are present on this LS, use those; otherwise look for child
      * ports. */
@@ -19540,6 +19648,204 @@ consider_network_function(struct lflow_table *lflows,
 }
 
 static void
+consider_network_function_vtap(struct lflow_table *lflows,
+                               const struct ovn_datapath *od,
+                               struct nbrec_network_function_group *nfg,
+                               bool ingress, struct lflow_ref *lflow_ref)
+{
+    struct nbrec_network_function *nf;
+    struct ds match = DS_EMPTY_INITIALIZER;
+    struct ds action = DS_EMPTY_INITIALIZER;
+    const struct ovn_stage *fwd_stage, *rev_stage;
+    struct ovn_port *input_port = NULL;
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+
+    if (nfg->fallback && !strcmp(nfg->fallback, "fail-close")) {
+        VLOG_WARN_RL(&rl, "NF vtap mode: fallback is set to fail-close but "
+                     "will be overridden to fail-open for nfg:%s", nfg->name);
+    }
+
+    /* Configure flows with higher priority than default drop rule to allow
+     * the traffic when there is no active NF available.
+     */
+    network_function_configure_fail_open_flows(lflows, od, lflow_ref,
+                                               nfg->id, ingress);
+    /* Currently we support only one active port-pair in a group.
+     * If there are multiple active pairs, take the first one.
+     * Load balancing would be added in future. */
+    nf = nf_get_active(nfg);
+    if (nf == NULL) {
+        VLOG_ERR_RL(&rl, "No active network function available, nfg:%s",
+                    nfg->name);
+        return;
+    }
+
+    if (nf->outport) {
+        VLOG_ERR_RL(&rl, "Outport is not supported for vtap mode "
+                    "network function:%s", nf->name);
+        return;
+    }
+
+    VLOG_DBG("network_function %s: inport %s",
+              nf->name, nf->inport->name);
+
+    /* If NF ports are present on this LS, use those; otherwise look for child
+     * ports. */
+    input_port = ovn_port_find_port_or_child(od, nf->inport->name);
+    if (input_port == NULL) {
+        VLOG_ERR_RL(&rl, "Port not found for network_function %s", nf->name);
+        return;
+    }
+
+    if (ingress) {
+        fwd_stage = S_SWITCH_IN_NF;
+        rev_stage = S_SWITCH_OUT_NF;
+    } else {
+        fwd_stage = S_SWITCH_OUT_NF;
+        rev_stage = S_SWITCH_IN_NF;
+    }
+
+    /* Pre NF Table (Priority 99):
+     *
+     * Currently, this stage simply writes the active network function ID into
+     * the nf_id register.
+     *
+     * In the future, this stage will be extended to support network function
+     * load balancing.
+     */
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                          REGBIT_NF_ORIG_DIR" == 1 && "
+                          REG_NF_GROUP_ID " == %"PRIu8,
+                  (uint8_t) nfg->id);
+    ds_put_format(&action, REG_NF_ID" = %"PRIu8"; next;", (uint8_t) nf->id);
+    ovn_lflow_add(lflows, od, ingress ? S_SWITCH_IN_PRE_NF
+                                      : S_SWITCH_OUT_PRE_NF,
+                  99, ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Add forward flows for mirroring:
+     * Flows to handle request packets for new or existing connections.
+     *
+     * from-lport ACL in_network_function priority 99:
+     * in_acl_eval has already categorized it and populated nf_enabled,
+     * direction and nfg_id registers. in_pre_nf sets the active network
+     * function id in nf_id register. Here this rule sets the outport to the
+     * NF port for the mirrored packet and does output action to skip the rest
+     * of the ingress pipeline. Original packet continues with ingress
+     * pipeline.
+     *
+     * to-lport ACL out_network_function priority 99:
+     * out_acl_eval, and out_pre_nf set the nf related registers. Then the
+     * out_network_function stage sets the outport to NF port for the mirrored
+     * packet and submits the packet back to ingress pipeline l2_lkup table.
+     * The l2_lkup would skip mac based lookup as the
+     * NETWORK_FUNCTION_EGRESS_LOOPBACK is set. Original packet continues with
+     * the egress pipeline processing.
+     */
+    if (ingress) {
+        ds_put_format(&action, "clone {outport = %s; output;}; next;",
+                      input_port->json_key);
+    } else {
+        ds_put_format(&action, "clone {outport = %s; "
+                      REGBIT_NF_EGRESS_LOOPBACK" = 1; "
+                      "next(pipeline=ingress, table=%d);}; next;",
+                      input_port->json_key,
+                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+    }
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                  REGBIT_NF_ORIG_DIR" == 1 && "
+                  REG_NF_ID " == %"PRIu8, (uint8_t) nf->id);
+    ovn_lflow_add(lflows, od, fwd_stage, 99, ds_cstr(&match),
+                  ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Add reverse flows for mirroring:
+     * Flows to handle response packets for existing connections.
+     *
+     * from-lport ACL out_network_function priority 99:
+     * out_acl stage sets the nf_enabled register based on CT label.
+     * Here this rule sets the outport to the NF port for the mirrored packet
+     * based on nf_id fetched from the CT label. Then it submits the packet
+     * back to ingress pipeline l2_lkup table. The l2_lkup would skip mac
+     * lookup as the NETWORK_FUNCTION_EGRESS_LOOPBACK is set. Original packet
+     * continues with the egress pipeline.
+     *
+     * to-lport ACL in_network_function priority 99:
+     * in_acl stage sets the nf_enabled register based on CT label.
+     * Here this rule sets the outport to the NF port for the mirrored packet
+     * based on nf_id fetched from the CT label and does output action to skip
+     * the rest of the ingress pipeline. Original packet continues with the
+     * ingress pipeline.
+     */
+    if (ingress) {
+        ds_put_format(&action, "clone {outport = %s; "
+                      REGBIT_NF_EGRESS_LOOPBACK" = 1; "
+                      "next(pipeline=ingress, table=%d);}; next;",
+                      input_port->json_key,
+                      ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
+    } else {
+        ds_put_format(&action, "clone {outport = %s; output;}; next;",
+                      input_port->json_key);
+    }
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                 REGBIT_NF_ORIG_DIR" == 0 && "
+                 "ct_label.nf_id == %"PRIu8, (uint8_t) nf->id);
+    ovn_lflow_add(lflows, od, rev_stage, 99, ds_cstr(&match), ds_cstr(&action),
+                  lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Priority 100 flow in in_network_function:
+     * Drop packets coming from network-function in vtap mode.
+     */
+    ds_put_format(&match, "inport == %s", input_port->json_key);
+    ds_put_format(&action, "drop;");
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 100,
+                  ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Priority 100 flow in out_network_function:
+     * Allow packets to go through if outport is network-function port as
+     * we don't want the packets to be mirrored again based on to-lport
+     * match.
+     */
+    ds_put_format(&match, "outport == %s", input_port->json_key);
+    ds_put_format(&action, "next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 100,
+                  ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
+    /* Priority 110 flow in out_pre_acl:
+     * Avoid ct for packets going to network-function port in vtap mode since
+     * these packets get consumed at VNF.
+     */
+    ds_put_format(&match, "ip && outport == %s", input_port->json_key);
+    ds_put_format(&action, "ct_clear; next;");
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, ds_cstr(&match),
+                  ds_cstr(&action), lflow_ref);
+
+    ds_destroy(&match);
+    ds_destroy(&action);
+}
+
+static void
+consider_network_function(struct lflow_table *lflows,
+                          const struct ovn_datapath *od,
+                          struct nbrec_network_function_group *nfg,
+                          bool ingress, struct lflow_ref *lflow_ref)
+{
+    if (network_function_group_is_vtap_mode(nfg)) {
+        consider_network_function_vtap(lflows, od, nfg, ingress, lflow_ref);
+    } else {
+        consider_network_function_inline(lflows, od, nfg, ingress, lflow_ref);
+    }
+}
+
+static void
 build_network_function(const struct ovn_datapath *od,
                        struct lflow_table *lflows,
                        const struct ls_port_group_table *ls_pgs,
@@ -19565,8 +19871,8 @@ build_network_function(const struct ovn_datapath *od,
     /* Ingress and Egress PRE NF Table (Priority 1): ACL stage determined these
      * packets should be redirected, but there is no active NF in NFG.
      * Reset the nf_id register to 0. This will drop the packet by the
-     * default drop rule in the subsequent NF table.
-     */
+     * default drop rule in the subsequent NF table if NF is in fail-close
+     * mode. */
     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_NF, 1,
                   REGBIT_NF_ENABLED" == 1 && " REGBIT_NF_ORIG_DIR" == 1",
                   REG_NF_ID" = 0; next;", lflow_ref);
@@ -21419,7 +21725,8 @@ ovnnb_db_run(struct northd_input *input_data,
         input_data->nbrec_network_function_group_table,
         &data->local_svc_monitors_map,
         input_data->ic_learned_svc_monitors_map,
-        input_data->svc_global_addresses->ip_dst);
+        input_data->svc_global_addresses->ip_dst,
+        &data->ls_ports);
     build_ipam(&data->ls_datapaths.datapaths);
     build_lrouter_groups(&data->lr_ports, &data->lr_datapaths);
     build_ip_mcast(ovnsb_txn, input_data->sbrec_ip_multicast_table,
