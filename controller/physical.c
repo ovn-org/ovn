@@ -2182,6 +2182,23 @@ enforce_tunneling_for_multichassis_ports(
     vector_destroy(&tuns);
 }
 
+/* Check if port is a vtap network function port.
+ * Vtap ports have is-nf option set to true but no nf-linked-port option.
+ */
+static bool
+is_nf_vtap_port(const struct sbrec_port_binding *binding)
+{
+    bool is_nf = smap_get_bool(&binding->options, "is-nf", false);
+    return is_nf && !smap_get(&binding->options, "nf-linked-port");
+}
+
+static bool
+is_nf_inline_port(const struct sbrec_port_binding *binding)
+{
+    bool is_nf = smap_get_bool(&binding->options, "is-nf", false);
+    return is_nf && smap_get(&binding->options, "nf-linked-port");
+}
+
 static void
 consider_port_binding(const struct physical_ctx *ctx,
                       const struct sbrec_port_binding *binding,
@@ -2515,19 +2532,22 @@ consider_port_binding(const struct physical_ctx *ctx,
          * Deliver the packet to the local vif. */
         ofpbuf_clear(ofpacts_p);
         match_outport_dp_and_port_keys(&match, dp_key, port_key);
-        if (tag) {
+        bool should_skip_vlan = is_nf_vtap_port(binding);
+        if (tag && !should_skip_vlan) {
             /* For containers sitting behind a local vif, tag the packets
-             * before delivering them. */
+             * before delivering them. Skip VLAN tagging for vtap network
+             * function ports. */
             ofpact_put_push_vlan(
                 ofpacts_p, localnet_port ? &localnet_port->options : NULL,
                 tag);
         }
         ofpact_put_OUTPUT(ofpacts_p)->port = ofport;
-        if (tag) {
+        if (tag && !should_skip_vlan) {
             /* Revert the tag added to the packets headed to containers
              * in the previous step. If we don't do this, the packets
              * that are to be broadcasted to a VM in the same logical
-             * switch will also contain the tag. */
+             * switch will also contain the tag. Skip VLAN stripping for vtap
+             * network function ports. */
             ofpact_put_STRIP_VLAN(ofpacts_p);
         }
         ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 100,
@@ -2631,9 +2651,8 @@ consider_port_binding(const struct physical_ctx *ctx,
 
         /* Packets egressing from network function ports need to be sent to the
          * source. */
-        if (is_nf && localnet_port) {
-            put_redirect_overlay_to_source_from_nf_port(
-                                 binding,
+        if (is_nf_inline_port(binding) && localnet_port) {
+            put_redirect_overlay_to_source_from_nf_port(binding,
                                  ctx->sbrec_port_binding_by_name,
                                  ctx->chassis_tunnels,
                                  ctx->ct_zones,
