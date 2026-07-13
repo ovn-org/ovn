@@ -6495,10 +6495,14 @@ skip_port_from_conntrack(const struct ovn_datapath *od, struct ovn_port *op,
      * router on hostA, not hostB. This would only work with distributed
      * conntrack state across all chassis. */
 
+    /* Clear the ct_state for packets egressing through localnet ports to
+     * prevent them from matching flows in ls_out_acl_eval stage based on
+     * ct_state carried over from ingress pipeline */
     const char *ingress_action = "next;";
-    const char *egress_action = has_stateful_acl
-                                ? "next;"
-                                : "flags.pkt_sampled = 0; ct_clear; next;";
+    const char *egress_action =
+        (has_stateful_acl && !lsp_is_localnet(op->nbsp))
+        ? "next;"
+        : "flags.pkt_sampled = 0; ct_clear; next;";
 
     char *ingress_match = xasprintf("ip && inport == %s", op->json_key);
     char *egress_match = xasprintf("ip && outport == %s", op->json_key);

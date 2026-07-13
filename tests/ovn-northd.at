@@ -19983,6 +19983,43 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LS localnet conntrack skip with stateful ACLs])
+ovn_start
+
+check ovn-nbctl ls-add sw
+check ovn-nbctl lsp-add sw sw-p1 \
+    -- lsp-set-addresses sw-p1 "00:00:00:00:00:01 10.0.0.2"
+check ovn-nbctl lsp-add sw sw-ln
+check ovn-nbctl lsp-set-type sw-ln localnet
+check ovn-nbctl lsp-set-addresses sw-ln unknown
+check ovn-nbctl acl-add sw from-lport 1002 \
+    "ip4 && tcp && tcp.dst == 80" allow-related
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows sw > lflows
+
+dnl Localnet port: egress pre_acl/pre_lb must use ct_clear even when a
+dnl stateful ACL is configured, so that ingress-zone ct_state does not
+dnl leak into egress ACL evaluation.
+AT_CHECK([grep 'pre_acl' lflows | grep '"sw-ln"' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_acl      ), priority=110  , match=(ip && inport == "sw-ln"), action=(next;)
+  table=??(ls_out_pre_acl     ), priority=110  , match=(ip && outport == "sw-ln"), action=(flags.pkt_sampled = 0; ct_clear; next;)
+])
+
+AT_CHECK([grep 'pre_lb' lflows | grep '"sw-ln"' | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_pre_lb       ), priority=110  , match=(ip && inport == "sw-ln"), action=(next;)
+  table=??(ls_out_pre_lb      ), priority=110  , match=(ip && outport == "sw-ln"), action=(flags.pkt_sampled = 0; ct_clear; next;)
+])
+
+dnl Regular VIF must not get a priority-110 skip flow in pre_acl/pre_lb;
+dnl its traffic must go through conntrack normally.
+AT_CHECK([grep 'pre_acl\|pre_lb' lflows | grep 'priority=110' | grep '"sw-p1"'], [1])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Check network function])
 ovn_start
 
