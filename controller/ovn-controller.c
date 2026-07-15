@@ -5681,11 +5681,24 @@ en_route_exchange_run(struct engine_node *node, void *data)
     }
 
     vector_clear(&rt_notify->watches);
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_chassis", node),
+                "name");
+    const struct sbrec_chassis *chassis
+        = chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
 
     struct route_exchange_ctx_in r_ctx_in = {
         .ovnsb_idl_txn = engine_get_context()->ovnsb_idl_txn,
         .sbrec_learned_route_by_datapath = sbrec_learned_route_by_datapath,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
+        .chassis = chassis,
         .announce_routes = &route_data->announce_routes,
     };
     struct route_exchange_ctx_out r_ctx_out = {
@@ -7049,6 +7062,8 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_route, &en_sb_datapath_binding,
                      route_sb_datapath_binding_handler);
 
+    engine_add_input(&en_route_exchange, &en_ovs_open_vswitch, NULL);
+    engine_add_input(&en_route_exchange, &en_sb_chassis, NULL);
     engine_add_input(&en_route_exchange, &en_route, NULL);
     engine_add_input(&en_route_exchange, &en_sb_learned_route,
                      engine_noop_handler);
