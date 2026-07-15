@@ -2984,6 +2984,148 @@ OVS_WAIT_UNTIL([m_as ovn-gw-2 ip netns exec frr-ns ping -W 1 -c 1 172.16.10.2])
 
 AT_CLEANUP
 
+AT_SETUP([ovn multinode dynamic-routing - BGP learned routes with router filter name and multiple DGPs])
+
+# This is the multinode counterpart of the system test
+# "dynamic-routing - BGP learned routes with router filter name and multiple
+# DGPs": a single logical router with dynamic routing enabled has two
+# distributed gateway ports scheduled on different chassis.  Both LRPs are used
+# for dynamic routing and each has its own dynamic-routing-port-name filter
+# resolving to the interface local to the chassis hosting the port.
+#
+# Each chassis learns a route for the same prefix from its own VRF, so both
+# gateway ports learn it.  Because every LRP has a dynamic-routing-port-name
+# that resolves to a local interface, neither route is flushed: the route
+# learned on ovn-gw-1 (lrp-local-bgp-port) and the route learned on ovn-gw-2
+# (lrp-dgp-dummy) both remain.
+#
+# Topology:
+#
+#   public                              ls-dummy
+#   (local-bgp-port, ovn-gw-1)          (ovn-gw-2)
+#        |                                   |
+#   lrp-local-bgp-port                  lrp-dgp-dummy
+#   (DGP @ ovn-gw-1,                    (DGP @ ovn-gw-2,
+#    port-name local-bgp-port)           port-name dummy-bgp-port)
+#        \                                  /
+#         +------------- lr-frr -----------+
+#          (dynamic-routing, vrf-id $vrf)
+
+# Check that ovn-fake-multinode setup is up and running.
+check_fake_multinode_setup
+
+CHECK_VRF()
+
+# Delete the multinode NB and OVS resources before starting the test.
+cleanup_multinode_resources
+
+CHECK_VRF()
+
+vrf=1000
+
+# Create the VRF manually on both gateway chassis (dynamic-routing-maintain-vrf
+# is false, so OVN does not create it) and learn/read routes from table $vrf.
+for gw in ovn-gw-1 ovn-gw-2; do
+    check m_as $gw ip link add vrf-bgp type vrf table $vrf
+    on_exit "m_as $gw ip link del vrf-bgp"
+    check m_as $gw ip link set vrf-bgp up
+done
+
+# Create the logical router with dynamic routing in VRF $vrf.
+check multinode_nbctl lr-add lr-frr
+check multinode_nbctl set Logical_Router lr-frr   \
+    options:dynamic-routing=true                  \
+    options:dynamic-routing-vrf-id=$vrf           \
+    options:dynamic-routing-redistribute=static
+
+# The DGP that is used for dynamic routing, scheduled on ovn-gw-1.
+check multinode_nbctl lrp-add lr-frr lrp-local-bgp-port 00:00:00:00:00:03 20.0.0.3/24 \
+    -- set Logical_Router_Port lrp-local-bgp-port \
+        options:dynamic-routing-maintain-vrf=false \
+    -- set Logical_Router_Port lrp-local-bgp-port \
+        options:routing-protocol-redirect=local-bgp-port
+check multinode_nbctl lrp-set-gateway-chassis lrp-local-bgp-port ovn-gw-1
+
+check multinode_nbctl ls-add public
+check multinode_nbctl lsp-add-router-port public public-lr-frr lrp-local-bgp-port
+check multinode_nbctl lsp-add public local-bgp-port \
+    -- lsp-set-addresses local-bgp-port unknown
+
+# The second DGP used for dynamic routing, scheduled on ovn-gw-2.  bgp-dummy is
+# not an OVN logical port, so the dynamic-routing-port-name filter is resolved
+# through the dynamic-routing-port-mapping configured on ovn-gw-2 below.
+check multinode_nbctl lrp-add lr-frr lrp-dgp-dummy 00:00:00:00:00:04 20.0.1.3/24 \
+    -- set Logical_Router_Port lrp-dgp-dummy \
+        options:dynamic-routing-maintain-vrf=false
+check multinode_nbctl lrp-set-gateway-chassis lrp-dgp-dummy ovn-gw-2
+
+check multinode_nbctl ls-add ls-dummy
+check multinode_nbctl lsp-add-router-port ls-dummy lsp-dummy lrp-dgp-dummy
+
+check multinode_nbctl --wait=hv sync
+
+# Bind local-bgp-port on ovn-gw-1 and move its interface into the VRF.  The
+# dynamic-routing-port-name filter will be resolved to this interface name.
+check m_as ovn-gw-1 ovs-vsctl add-port br-int local-bgp-port \
+    -- set Interface local-bgp-port type=internal            \
+    -- set Interface local-bgp-port external_ids:iface-id=local-bgp-port
+on_exit "m_as ovn-gw-1 ovs-vsctl del-port br-int local-bgp-port"
+check m_as ovn-gw-1 ip link set local-bgp-port master vrf-bgp
+check m_as ovn-gw-1 ip link set local-bgp-port address 00:00:00:00:00:03
+check m_as ovn-gw-1 ip addr add dev local-bgp-port 20.0.0.3/24
+check m_as ovn-gw-1 ip link set local-bgp-port up
+
+# ovn-gw-2 hosts lrp-dgp-dummy.  Add an interface to its VRF so a route can be
+# present in the VRF table and get learned on this gateway port, and map the
+# dynamic-routing-port-name (dummy-bgp-port) to this interface so the filter
+# resolves locally on ovn-gw-2.
+check m_as ovn-gw-2 ip link add bgp-dummy type dummy
+on_exit "m_as ovn-gw-2 ip link del bgp-dummy"
+check m_as ovn-gw-2 ip link set bgp-dummy master vrf-bgp
+check m_as ovn-gw-2 ip addr add dev bgp-dummy 20.0.1.3/24
+check m_as ovn-gw-2 ip link set bgp-dummy up
+
+check m_as ovn-gw-2 ovs-vsctl set open . \
+    external-ids:dynamic-routing-port-mapping="dummy-bgp-port=bgp-dummy"
+on_exit "m_as ovn-gw-2 ovs-vsctl remove open . external-ids dynamic-routing-port-mapping"
+
+m_wait_for_ports_up
+check multinode_nbctl --wait=hv sync
+
+# Both gateway ports are flagged for dynamic routing.
+m_check_row_count Port_Binding 1 logical_port=cr-lrp-local-bgp-port 'options:dynamic-routing=true'
+m_check_row_count Port_Binding 1 logical_port=cr-lrp-dgp-dummy 'options:dynamic-routing=true'
+
+# Simulate a route learned via a dynamic routing protocol in each chassis' VRF
+# for the same prefix.
+check m_as ovn-gw-1 ip route add 10.10.3.0/24 via 20.0.0.25 vrf vrf-bgp proto bgp
+check m_as ovn-gw-2 ip route add 10.10.3.0/24 via 20.0.1.25 vrf vrf-bgp proto bgp
+
+# Each chassis learns the route on its own gateway port, so there are two
+# Learned_Route rows for the prefix.
+m_wait_row_count Learned_Route 2 ip_prefix=10.10.3.0/24
+
+# Configure a dynamic-routing-port-name filter on both LRPs, each resolving to
+# the interface local to the chassis hosting the port: lrp-local-bgp-port ->
+# local-bgp-port (ovn-gw-1) and lrp-dgp-dummy -> dummy-bgp-port (ovn-gw-2, via
+# the port-mapping configured above).
+check multinode_nbctl set Logical_Router_Port lrp-local-bgp-port \
+    options:dynamic-routing-port-name=local-bgp-port
+check multinode_nbctl --wait=hv set Logical_Router_Port lrp-dgp-dummy \
+    options:dynamic-routing-port-name=dummy-bgp-port
+
+local_lp=$(m_fetch_column port_binding _uuid logical_port=lrp-local-bgp-port)
+dummy_lp=$(m_fetch_column port_binding _uuid logical_port=lrp-dgp-dummy)
+
+# Both filters resolve to a local interface, so no route is flushed: the route
+# learned on ovn-gw-1 (lrp-local-bgp-port) and the route learned on ovn-gw-2
+# (lrp-dgp-dummy) both remain.
+m_wait_row_count Learned_Route 2 ip_prefix=10.10.3.0/24
+m_wait_row_count Learned_Route 1 ip_prefix=10.10.3.0/24 logical_port=$local_lp
+m_wait_row_count Learned_Route 1 ip_prefix=10.10.3.0/24 logical_port=$dummy_lp
+
+AT_CLEANUP
+
 AT_SETUP([HA: Check for missing garp on leader when BFD goes back up])
 # Network topology
 #    ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐

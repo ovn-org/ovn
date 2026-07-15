@@ -459,6 +459,8 @@ digraph "Incremental-Processing-Engine" {
 	route_table_notify [[style=filled, shape=box, fillcolor=white, label="route_table_notify"]];
 	route_exchange_status [[style=filled, shape=box, fillcolor=white, label="route_exchange_status"]];
 	route_exchange [[style=filled, shape=box, fillcolor=white, label="route_exchange"]];
+	OVS_open_vswitch -> route_exchange [[label=""]];
+	SB_chassis -> route_exchange [[label=""]];
 	route -> route_exchange [[label=""]];
 	SB_learned_route -> route_exchange [[label="engine_noop_handler"]];
 	SB_port_binding -> route_exchange [[label="engine_noop_handler"]];

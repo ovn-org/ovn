@@ -87,7 +87,7 @@ maintained_route_table_add(uint32_t table_id)
     hmap_insert(&_maintained_route_tables, &mrt->node, hash);
 }
 
-static void
+static struct route_entry *
 route_add_entry(struct hmap *routes,
                 const struct sbrec_learned_route *sb_route,
                 bool stale)
@@ -103,6 +103,7 @@ route_add_entry(struct hmap *routes,
     hash = hash_string(sb_route->ip_prefix, hash);
 
     hmap_insert(routes, &route_e->hmap_node, hash);
+    return route_e;
 }
 
 static struct route_entry *
@@ -145,17 +146,36 @@ sb_sync_learned_routes(const struct vector *learned_routes,
                        struct ovsdb_idl_txn *ovnsb_idl_txn,
                        struct ovsdb_idl_index *sbrec_port_binding_by_name,
                        struct ovsdb_idl_index *sbrec_learned_route_by_datapath,
-                       bool *sb_changes_pending)
+                       bool *sb_changes_pending,
+                       const struct sbrec_chassis *chassis)
 {
     struct hmap sync_routes = HMAP_INITIALIZER(&sync_routes);
     const struct sbrec_learned_route *sb_route;
-    struct route_entry *route_e;
+    struct hmapx lrp_with_dr_port_name =
+        HMAPX_INITIALIZER(&lrp_with_dr_port_name);
 
     struct sbrec_learned_route *filter =
         sbrec_learned_route_index_init_row(sbrec_learned_route_by_datapath);
     sbrec_learned_route_index_set_datapath(filter, datapath);
     SBREC_LEARNED_ROUTE_FOR_EACH_EQUAL (sb_route, filter,
                                         sbrec_learned_route_by_datapath) {
+        const struct sbrec_port_binding *cr_pb =
+            lport_get_cr_port(sbrec_port_binding_by_name,
+                              sb_route->logical_port, NULL);
+        struct route_entry *route_e = NULL;
+
+        /* Collect the set of unique logical ports we learned routes on. The
+         * (potentially expensive) dynamic-routing-port-name lookups are
+         * postponed until after the loop so that they are performed once per
+         * logical port instead of once per learned route. */
+        hmapx_add(&lrp_with_dr_port_name,
+                  CONST_CAST(void *, sb_route->logical_port));
+
+        if (sb_route->logical_port->chassis == chassis ||
+            (cr_pb && cr_pb->chassis == chassis)) {
+            route_e = route_add_entry(&sync_routes, sb_route, false);
+        }
+
         /* If the port is not local we don't care about it.
          * Some other ovn-controller will handle it.
          * We may not use smap_get since the value might be validly NULL. */
@@ -163,9 +183,42 @@ sb_sync_learned_routes(const struct vector *learned_routes,
                            sb_route->logical_port->logical_port)) {
             continue;
         }
+        if (route_e) {
+            route_e->stale = true;
+            continue;
+        }
         route_add_entry(&sync_routes, sb_route, true);
     }
     sbrec_learned_route_index_destroy_row(filter);
+
+    /* Drop the logical ports that don't have a dynamic-routing-port-name set,
+     * either directly or via their distributed gateway port. */
+    struct hmapx_node *lrp_node;
+    HMAPX_FOR_EACH_SAFE (lrp_node, &lrp_with_dr_port_name) {
+        const struct sbrec_port_binding *lrp = lrp_node->data;
+        const struct sbrec_port_binding *cr_pb =
+            lport_get_cr_port(sbrec_port_binding_by_name, lrp, NULL);
+        const char *dynamic_routing_port_name =
+            smap_get(&lrp->options, "dynamic-routing-port-name");
+        if (!dynamic_routing_port_name && cr_pb) {
+            dynamic_routing_port_name =
+                smap_get(&cr_pb->options, "dynamic-routing-port-name");
+        }
+        if (!dynamic_routing_port_name) {
+            hmapx_delete(&lrp_with_dr_port_name, lrp_node);
+        }
+    }
+
+    if (!hmapx_is_empty(&lrp_with_dr_port_name)) {
+        struct route_entry *route_e;
+        HMAP_FOR_EACH (route_e, hmap_node, &sync_routes) {
+            if (!hmapx_contains(&lrp_with_dr_port_name,
+                                route_e->sb_route->logical_port)) {
+                route_e->stale = true;
+            }
+        }
+    }
+    hmapx_destroy(&lrp_with_dr_port_name);
 
     struct re_nl_received_route_node *learned_route;
     VECTOR_FOR_EACH_PTR (learned_routes, learned_route) {
@@ -196,8 +249,9 @@ sb_sync_learned_routes(const struct vector *learned_routes,
                 continue;
             }
 
-            route_e = route_lookup(&sync_routes, datapath,
-                                   logical_port, ip_prefix, nexthop);
+            struct route_entry *route_e =
+                route_lookup(&sync_routes, datapath,
+                             logical_port, ip_prefix, nexthop);
             if (route_e) {
                 route_e->stale = false;
             } else {
@@ -218,6 +272,7 @@ sb_sync_learned_routes(const struct vector *learned_routes,
         free(nexthop);
     }
 
+    struct route_entry *route_e;
     HMAP_FOR_EACH_POP (route_e, hmap_node, &sync_routes) {
         if (route_e->stale) {
             sbrec_learned_route_delete(route_e->sb_route);
@@ -364,7 +419,8 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
                                        r_ctx_in->ovnsb_idl_txn,
                                        r_ctx_in->sbrec_port_binding_by_name,
                                        sbrec_learned_route_by_datapath,
-                                       &r_ctx_out->sb_changes_pending);
+                                       &r_ctx_out->sb_changes_pending,
+                                       r_ctx_in->chassis);
             }
             route_table_add_watch_request(&r_ctx_out->route_table_watches,
                                           arte->table_id);
