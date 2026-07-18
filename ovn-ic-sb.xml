@@ -802,4 +802,36 @@
       Copy from source SBDB record.
     </column>
   </table>
+
+  <table name="Address_Set" title="Address Sets">
+    <p>
+      Each row in this table represents an advertised Address_Set.
+      The combination of <ref column="name"/> and
+      <ref column="availability_zone"/> is unique: each availability zone
+      may advertise at most one address set with a given name.
+      If multiple availability zones advertise address sets with the same
+      name, a learning availability zone will merge the addresses from all
+      of them into a single Northbound <code>Address_Set</code> entry.
+    </p>
+
+    <column name="name">
+      A name for the address set.  Names are ASCII and must match
+      <code>[a-zA-Z_.][a-zA-Z_.0-9]*</code>.
+    </column>
+
+    <column name="addresses">
+      The set of addresses in string form.
+    </column>
+
+    <column name="availability_zone">
+      The availability zone that has advertised the Address_Set.
+    </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
+      </column>
+    </group>
+  </table>
+
 </database>

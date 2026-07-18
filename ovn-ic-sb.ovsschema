@@ -1,7 +1,7 @@
 {
     "name": "OVN_IC_Southbound",
-    "version": "2.6.0",
-    "cksum": "2842701319 9868",
+    "version": "2.7.0",
+    "cksum": "4014616205 10519",
     "tables": {
         "IC_SB_Global": {
             "columns": {
@@ -195,6 +195,19 @@
                 "external_ids": {
                     "type": {"key": "string", "value": "string",
                              "min": 0, "max": "unlimited"}}},
+            "isRoot": true},
+        "Address_Set": {
+            "columns": {
+                "name": {"type": "string"},
+                "addresses": {"type": {"key": "string",
+                                       "min": 0,
+                                       "max": "unlimited"}},
+                "availability_zone": {"type": {"key": {"type": "uuid",
+                                      "refTable": "Availability_Zone"}}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "indexes": [["name", "availability_zone"]],
             "isRoot": true}
     }
 }

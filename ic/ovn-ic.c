@@ -534,6 +534,183 @@ sync_sb_gw_to_isb(struct ic_context *ctx,
 }
 
 static void
+nb_addr_set_apply_diff(const void *arg, const char *item, bool add)
+{
+    const struct nbrec_address_set *as = arg;
+    if (add) {
+        nbrec_address_set_update_addresses_addvalue(as, item);
+    } else {
+        nbrec_address_set_update_addresses_delvalue(as, item);
+    }
+}
+
+static void
+update_nb_addr_set(struct sset *addrs,
+                   const struct nbrec_address_set *nb_as)
+{
+    struct sorted_array nb_addrs =
+        sorted_array_from_dbrec(nb_as, addresses);
+    struct sorted_array new_addrs = sorted_array_from_sset(addrs);
+    sorted_array_apply_diff(&new_addrs, &nb_addrs,
+                            nb_addr_set_apply_diff, nb_as);
+    sorted_array_destroy(&new_addrs);
+    sorted_array_destroy(&nb_addrs);
+}
+
+static void
+icsb_addr_set_apply_diff(const void *arg, const char *item, bool add)
+{
+    const struct icsbrec_address_set *as = arg;
+    if (add) {
+        icsbrec_address_set_update_addresses_addvalue(as, item);
+    } else {
+        icsbrec_address_set_update_addresses_delvalue(as, item);
+    }
+}
+
+static void
+update_icsb_addr_set(struct sorted_array *nb_addrs,
+                     const struct icsbrec_address_set *icsb_as)
+{
+    struct sorted_array icsb_addrs =
+        sorted_array_from_dbrec(icsb_as, addresses);
+    sorted_array_apply_diff(nb_addrs, &icsb_addrs,
+                            icsb_addr_set_apply_diff, icsb_as);
+    sorted_array_destroy(&icsb_addrs);
+}
+
+static void
+sync_addr_set_to_icsb(struct ovsdb_idl_txn *ovnisb_txn,
+                      const struct sbrec_address_set *sb_as,
+                      const struct icsbrec_address_set *icsb_as,
+                      const struct icsbrec_availability_zone *az)
+{
+    struct sorted_array addrs =
+        sorted_array_from_dbrec(sb_as, addresses);
+    if (!icsb_as) {
+        icsb_as = icsbrec_address_set_insert(ovnisb_txn);
+        icsbrec_address_set_set_name(icsb_as, sb_as->name);
+        icsbrec_address_set_set_availability_zone(icsb_as, az);
+        icsbrec_address_set_set_addresses(icsb_as, addrs.arr, addrs.n);
+    } else {
+        update_icsb_addr_set(&addrs, icsb_as);
+    }
+    sorted_array_destroy(&addrs);
+}
+
+static void
+sync_addr_set_from_icsb(struct ovsdb_idl_txn *ovnnb_txn,
+                        const char *name, struct sset *addrs)
+{
+    struct sorted_array sorted_addrs = sorted_array_from_sset(addrs);
+    struct nbrec_address_set *nb_as = nbrec_address_set_insert(ovnnb_txn);
+    nbrec_address_set_set_name(nb_as, name);
+    nbrec_address_set_update_external_ids_setkey(nb_as, "ic-learnt", "true");
+    nbrec_address_set_set_addresses(nb_as, sorted_addrs.arr, sorted_addrs.n);
+    sorted_array_destroy(&sorted_addrs);
+}
+
+static void
+address_set_run(struct ic_context *ctx)
+{
+    if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
+        return;
+    }
+
+    struct shash ic_local_as = SHASH_INITIALIZER(&ic_local_as);
+    struct shash ic_remote_as = SHASH_INITIALIZER(&ic_remote_as);
+    const struct icsbrec_address_set *ic_as;
+    ICSBREC_ADDRESS_SET_FOR_EACH (ic_as, ctx->ovnisb_unlocked_idl) {
+        if (ic_as->availability_zone == ctx->runned_az) {
+            shash_add(&ic_local_as, ic_as->name, ic_as);
+        } else {
+            /* Merge addresses from all remote AZs that share the same
+             * address-set name into a single sset so that duplicate names
+             * across AZs are aggregated rather than colliding in the shash.
+             */
+            struct sset *addrs = shash_find_data(&ic_remote_as, ic_as->name);
+            if (!addrs) {
+                addrs = xmalloc(sizeof *addrs);
+                sset_init(addrs);
+                shash_add(&ic_remote_as, ic_as->name, addrs);
+            }
+            sset_add_array(addrs, ic_as->addresses, ic_as->n_addresses);
+        }
+    }
+
+    const struct nbrec_nb_global *nb_global =
+        nbrec_nb_global_first(ctx->ovnnb_idl);
+    ovs_assert(nb_global);
+    bool global_learn = smap_get_bool(&nb_global->options, "ic-as-learn",
+                                      false);
+    bool global_adv = smap_get_bool(&nb_global->options, "ic-as-adv", false);
+
+    /* Advertise address set - from SB to IC-SB:
+     * - Each SB address set that needs to be advertised (ic-adv option set),
+     *   check if it is already present in IC-SB. If not, create new entry in
+     *   IC-SB. Otherwise sync addresses from local address set to IC-SB entry.
+     * - Delete extra address sets in IC-SB that were earlier learnt from this
+     *   AZ, but is no longer present, or not enabled for advertisement.
+     */
+    if (global_adv) {
+        const struct sbrec_address_set *sb_as;
+        SBREC_ADDRESS_SET_FOR_EACH (sb_as, ctx->ovnsb_idl) {
+            if (smap_get_bool(&sb_as->options, "ic-adv", false)) {
+                const struct icsbrec_address_set *icsb_as;
+                icsb_as = shash_find_and_delete(&ic_local_as, sb_as->name);
+                sync_addr_set_to_icsb(ctx->ovnisb_unlocked_txn, sb_as, icsb_as,
+                                      ctx->runned_az);
+            }
+        }
+    }
+    struct shash_node *node;
+    SHASH_FOR_EACH (node, &ic_local_as) {
+        icsbrec_address_set_delete(node->data);
+    }
+    shash_destroy(&ic_local_as);
+
+    /* Learn address set - from IC-SB to NB:
+     * - For each NB Address set entries that were earlier learnt from IC-SB
+     *   (external-id "ic-learnt" set to true), check if it is still present
+     *   in IC-SB. If not, delete local entry in NB. If yes, sync addresses
+     *   from IC-SB to NB.
+     * - Any remote address sets in IC-SB (AZ not same as local AZ) that is not
+     *   present in local AZ, create local entry in NB with external-id
+     *   "ic-learnt" set to true.
+     */
+    const struct nbrec_address_set *nb_as;
+    NBREC_ADDRESS_SET_FOR_EACH_SAFE (nb_as, ctx->ovnnb_idl) {
+        struct sset *addrs = shash_find_and_delete(&ic_remote_as, nb_as->name);
+        if (smap_get_bool(&nb_as->external_ids, "ic-learnt", false)) {
+            if (!addrs || !global_learn) {
+                nbrec_address_set_delete(nb_as);
+            } else {
+                update_nb_addr_set(addrs, nb_as);
+            }
+        }
+        if (addrs) {
+            sset_destroy(addrs);
+            free(addrs);
+        }
+    }
+
+    if (global_learn) {
+        SHASH_FOR_EACH (node, &ic_remote_as) {
+            /* In case local address-set with same name exists, we
+             * will not overwrite it because such address sets are already
+             * removed from ic_remote_as in the loop above.
+             */
+            sync_addr_set_from_icsb(ctx->ovnnb_txn, node->name, node->data);
+        }
+    }
+    SHASH_FOR_EACH (node, &ic_remote_as) {
+        sset_destroy(node->data);
+        free(node->data);
+    }
+    shash_destroy(&ic_remote_as);
+}
+
+static void
 gateway_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
@@ -3500,6 +3677,7 @@ ovn_db_run(struct ic_context *ctx)
     port_binding_run(ctx);
     route_run(ctx);
     sync_service_monitor(ctx);
+    address_set_run(ctx);
 
     ovn_destroy_tnlids(&dp_tnlids);
     shash_destroy(&isb_ts_dps);
@@ -3838,6 +4016,16 @@ main(int argc, char *argv[])
     ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
                                &nbrec_load_balancer_group_col_load_balancer);
 
+    ovsdb_idl_add_table(ovnnb_idl_loop.idl, &nbrec_table_address_set);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_address_set_col_name);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_address_set_col_addresses);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_address_set_col_options);
+    ovsdb_idl_track_add_column(ovnnb_idl_loop.idl,
+                               &nbrec_address_set_col_external_ids);
+
     /* ovn-sb db. */
     struct ovsdb_idl_loop ovnsb_idl_loop = OVSDB_IDL_LOOP_INITIALIZER(
         ovsdb_idl_create(ovnsb_db, &sbrec_idl_class, false, true));
@@ -3923,6 +4111,15 @@ main(int argc, char *argv[])
                                &sbrec_learned_route_col_ip_prefix);
     ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
                                &sbrec_learned_route_col_datapath);
+
+    ovsdb_idl_add_table(ovnsb_idl_loop.idl, &sbrec_table_address_set);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_address_set_col_name);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_address_set_col_addresses);
+    ovsdb_idl_track_add_column(ovnsb_idl_loop.idl,
+                               &sbrec_address_set_col_options);
+
     /* Create IDL indexes */
     struct ovsdb_idl_index *nbrec_ls_by_name
         = ovsdb_idl_index_create1(ovnnb_idl_loop.idl,

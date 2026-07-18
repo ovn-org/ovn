@@ -1,5 +1,9 @@
 Post v26.03.0
 -------------
+   - OVN Interconnection now supports advertising Address_Sets to remote
+     availability zones.  Set options:ic-adv=true on an NB Address_Set to
+     have ovn-ic publish it to the IC-SB database and import it into the
+     Northbound databases of other availability zones.
    - Load balancer health checks now "fail closed" for newly added backends:
      ovn-northd initializes a newly created Service_Monitor row to the
      "offline" state, so traffic is not forwarded to a backend until its first

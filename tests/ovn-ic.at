@@ -923,6 +923,214 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- address-set sync])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    # Enable address-set learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-as-learn=true
+    # Enable address-set advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-as-adv=true
+
+    # Create address-set to advertise
+    check_uuid ovn-nbctl create Address_Set name=az$i-as1 addresses=\"$i.1.1.1\",\"$i.1.1.2\" options:ic-adv=true
+done
+
+wait_row_count ic-sb:Address_Set 2
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as1], [0], [dnl
+addresses           : [["1.1.1.1", "1.1.1.2"]]
+])
+
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az2-as1], [0], [dnl
+addresses           : [["2.1.1.1", "2.1.1.2"]]
+])
+
+for i in 1 2; do
+    OVS_WAIT_UNTIL([ovn_as az$i ovn-nbctl list Address_Set | grep learnt])
+done
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set az2-as1], [0], [dnl
+addresses           : [["2.1.1.1", "2.1.1.2"]]
+external_ids        : {ic-learnt="true"}
+])
+
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids list Address_Set az1-as1], [0], [dnl
+addresses           : [["1.1.1.1", "1.1.1.2"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Update AZ1 address_set (add 2 new IPs and delete one) and check it is synced to IC and AZ2.
+ovn_as az1 ovn-nbctl set Address_Set az1-as1 addresses=\"1.1.1.1\",\"1.1.1.3\",\"1.1.1.4\"
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as1], [0], [dnl
+addresses           : [["1.1.1.1", "1.1.1.3", "1.1.1.4"]]
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids list Address_Set az1-as1], [0], [dnl
+addresses           : [["1.1.1.1", "1.1.1.3", "1.1.1.4"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Add 2 new address-sets in AZ1 - one to advertise, another not to.
+ovn_as az1 ovn-nbctl create Address_Set name=az1-as2 addresses=\"1.1.2.1\",\"1.1.2.2\" options:ic-adv=true
+ovn_as az1 ovn-nbctl create Address_Set name=az1-as3 addresses=\"1.1.3.1\",\"1.1.3.2\"
+wait_row_count ic-sb:Address_Set 3
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as2], [0], [dnl
+addresses           : [["1.1.2.1", "1.1.2.2"]]
+])
+AT_CHECK([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as3], [0], [dnl
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids list Address_Set az1-as2], [0], [dnl
+addresses           : [["1.1.2.1", "1.1.2.2"]]
+external_ids        : {ic-learnt="true"}
+])
+AT_CHECK([ovn_as az2 ovn-nbctl --columns=addresses,external_ids find Address_Set name=az1-as3], [0], [dnl
+])
+
+# Now set the option field of the above address-set to advertise it.
+ovn_as az1 ovn-nbctl set Address_Set az1-as3 options={ic-adv=true}
+wait_row_count ic-sb:Address_Set 4
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as3], [0], [dnl
+addresses           : [["1.1.3.1", "1.1.3.2"]]
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids list Address_Set az1-as3], [0], [dnl
+addresses           : [["1.1.3.1", "1.1.3.2"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Change the options of one of the address-sets to not advertise.
+ovn_as az1 ovn-nbctl set Address_Set az1-as2 options={ic-adv=false}
+wait_row_count ic-sb:Address_Set 3
+AT_CHECK([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as2], [0], [dnl
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids find Address_Set name=az1-as2], [0], [dnl
+])
+
+# Delete one of the advertised address-sets in AZ1.
+ovn_as az1 ovn-nbctl destroy Address_Set az1-as3
+wait_row_count ic-sb:Address_Set 2
+AT_CHECK([ovn-ic-sbctl --columns=addresses find Address_Set name=az1-as3], [0], [dnl
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids find Address_Set name=az1-as3], [0], [dnl
+])
+
+# Add an IPv6 address-set in AZ2.
+ovn_as az2 ovn-nbctl create Address_Set name=az2-as2 addresses=\"2001:0db8:85a3:0000:0000:8a2e:0370:7334\",\"2001:0db8:85a3:0000:0000:8a2e:0370:7335\" options:ic-adv=true
+wait_row_count ic-sb:Address_Set 3
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az2-as2], [0], [dnl
+addresses           : [["2001:0db8:85a3:0000:0000:8a2e:0370:7334", "2001:0db8:85a3:0000:0000:8a2e:0370:7335"]]
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set az2-as2], [0], [dnl
+addresses           : [["2001:0db8:85a3:0000:0000:8a2e:0370:7334", "2001:0db8:85a3:0000:0000:8a2e:0370:7335"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Set the global option in AZ1 to not learn.
+ovn_as az1 ovn-nbctl set nb_global . options:ic-as-learn=false
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl list Address_Set | grep learnt])
+ovn_as az1 wait_row_count nb:Address_Set 2
+
+# Set the global option in AZ1 back to learn.
+ovn_as az1 ovn-nbctl set nb_global . options:ic-as-learn=true
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl list Address_Set | grep learnt])
+ovn_as az1 wait_row_count nb:Address_Set 4
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set az2-as2], [0], [dnl
+addresses           : [["2001:0db8:85a3:0000:0000:8a2e:0370:7334", "2001:0db8:85a3:0000:0000:8a2e:0370:7335"]]
+external_ids        : {ic-learnt="true"}
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set az2-as1], [0], [dnl
+addresses           : [["2.1.1.1", "2.1.1.2"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Set the global option in AZ2 to not advertise.
+ovn_as az2 ovn-nbctl set nb_global . options:ic-as-adv=false
+wait_row_count ic-sb:Address_Set 1
+AT_CHECK([ovn-ic-sbctl --columns=addresses find Address_Set name=az2-as1], [0], [dnl])
+AT_CHECK([ovn-ic-sbctl --columns=addresses find Address_Set name=az2-as2], [0], [dnl])
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl list Address_Set | grep learnt])
+
+# Set the global option in AZ2 back to advertise.
+ovn_as az2 ovn-nbctl set nb_global . options:ic-as-adv=true
+wait_row_count ic-sb:Address_Set 3
+ovn_as az1 wait_row_count nb:Address_Set 4
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az2-as1], [0], [dnl
+addresses           : [["2.1.1.1", "2.1.1.2"]]
+])
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=az2-as2], [0], [dnl
+addresses           : [["2001:0db8:85a3:0000:0000:8a2e:0370:7334", "2001:0db8:85a3:0000:0000:8a2e:0370:7335"]]
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set az2-as1], [0], [dnl
+addresses           : [["2.1.1.1", "2.1.1.2"]]
+external_ids        : {ic-learnt="true"}
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set az2-as2], [0], [dnl
+addresses           : [["2001:0db8:85a3:0000:0000:8a2e:0370:7334", "2001:0db8:85a3:0000:0000:8a2e:0370:7335"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Create an address-set in AZ1 and then try to advertise an address-set with same name from AZ2.
+# It will sync to IC-SB but will not propagate to AZ1.
+ovn_as az1 ovn-nbctl create Address_Set name=dup-as addresses=\"5.5.5.1\"
+ovn_as az2 ovn-nbctl create Address_Set name=dup-as addresses=\"5.5.5.2\" options:ic-adv=true
+wait_row_count ic-sb:Address_Set 4
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl --columns=addresses find Address_Set name=dup-as], [0], [dnl
+addresses           : [["5.5.5.2"]]
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids list Address_Set dup-as], [0], [dnl
+addresses           : [["5.5.5.1"]]
+external_ids        : {}
+])
+OVS_WAIT_FOR_OUTPUT([ovn_as az2 ovn-nbctl --columns=addresses,external_ids list Address_Set dup-as], [0], [dnl
+addresses           : [["5.5.5.2"]]
+external_ids        : {}
+])
+
+# Create shared-as in AZ2 before starting AZ3 so that AZ2's local entry
+# takes precedence over any learnt entry from AZ3's advertisement.
+check_uuid ovn_as az2 ovn-nbctl create Address_Set name=shared-as \
+    addresses=\"6.6.6.1\",\"6.6.6.2\" options:ic-adv=true
+
+# Introduce a third AZ to test merging of same-named address sets from
+# multiple remote AZs into a single NB entry.
+ovn_start az3
+ovn_as az3
+check ovn-ic-nbctl --wait=sb sync
+check ovn-nbctl set nb_global . options:ic-as-adv=true
+# Create shared-as before enabling learning so that ovn-ic does not
+# auto-create a conflicting learnt entry once az2 advertises the same name.
+check_uuid ovn-nbctl create Address_Set name=shared-as \
+    addresses=\"7.7.7.1\",\"7.7.7.2\" options:ic-adv=true
+check ovn-nbctl set nb_global . options:ic-as-learn=true
+
+# IC-SB must have two "shared-as" rows, one per advertising AZ.
+wait_row_count ic-sb:Address_Set 2 name=shared-as
+
+# AZ1 should learn exactly one merged NB entry "shared-as" containing
+# all addresses from both AZ2 and AZ3 combined.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses,external_ids \
+    list Address_Set shared-as], [0], [dnl
+addresses           : [["6.6.6.1", "6.6.6.2", "7.7.7.1", "7.7.7.2"]]
+external_ids        : {ic-learnt="true"}
+])
+
+# Update AZ3's addresses; AZ1's merged set should reflect the change.
+ovn_as az3 ovn-nbctl set Address_Set shared-as \
+    addresses=\"7.7.7.1\",\"7.7.7.3\"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl --columns=addresses \
+    list Address_Set shared-as], [0], [dnl
+addresses           : [["6.6.6.1", "6.6.6.2", "7.7.7.1", "7.7.7.3"]]
+])
+
+OVN_CLEANUP_IC([az1], [az2], [az3])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- route sync])
 
 ovn_init_ic_db

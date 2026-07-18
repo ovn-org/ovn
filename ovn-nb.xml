@@ -583,6 +583,25 @@
         </column>
       </group>
 
+      <group title="Options for interconnection address_set advertisement">
+        <p>
+          These options control whether address_sets propagate from one OVN
+          deployment to another via the global <ref db="OVN_IC_Southbound"/>.
+        </p>
+
+        <column name="options" key="ic-as-adv">
+          A boolean value that enables address_set advertisement to the global
+          <ref db="OVN_IC_Southbound"/> database.  Default is
+          <code>false</code>.
+        </column>
+
+        <column name="options" key="ic-as-learn">
+          A boolean value that enables address_set learning from the global
+          <ref db="OVN_IC_Southbound"/> database.  Default is
+          <code>false</code>.
+        </column>
+      </group>
+
     </group>
 
     <group title="Connection Options">
@@ -2431,6 +2450,16 @@
 
     <column name="addresses">
       The set of addresses in string form.
+    </column>
+
+    <column name="options">
+      This column provides general key/value settings. The supported
+      options are described individually below.
+    </column>
+
+    <column name="options" key="ic-adv">
+      A boolean value that enables advertisement of this Address_Set to
+      the global OVN_IC_Southbound database. Default is <code>false</code>.
     </column>
 
     <group title="Common Columns">

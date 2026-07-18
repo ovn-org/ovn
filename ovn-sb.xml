@@ -592,6 +592,7 @@
 
     <column name="name"/>
     <column name="addresses"/>
+    <column name="options"/>
   </table>
 
   <table name="Port_Group" title="Port Groups">
