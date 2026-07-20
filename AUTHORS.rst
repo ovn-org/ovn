@@ -482,6 +482,7 @@ xieyanker                          xjsisnice@gmail.com
 xushengping                        shengping.xu@huawei.com
 yinpeijun                          yinpeijun@huawei.com
 zangchuanqiang                     zangchuanqiang@huawei.com
+Zhang Hua                          joshua.zhang@canonical.com
 zhang yanxian                      zhangyanxian@pmlabs.com.cn
 zhangqiang45                       zhangqiang45@lenovo.com
 zhaojingjing                       zhao.jingjing1@zte.com.cn
