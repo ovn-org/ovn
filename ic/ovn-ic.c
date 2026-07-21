@@ -2088,14 +2088,7 @@ add_static_to_routes_ad(
 
         ds_put_format(&msg, "Advertising static route: %s -> %s, ic nexthop: ",
                       nb_route->ip_prefix, nb_route->nexthop);
-
-        if (IN6_IS_ADDR_V4MAPPED(&nexthop)) {
-            ds_put_format(&msg, IP_FMT,
-                          IP_ARGS(in6_addr_get_mapped_ipv4(&nexthop)));
-        } else {
-            ipv6_format_addr(&nexthop, &msg);
-        }
-
+        ipv6_format_mapped(&nexthop, &msg);
         ds_put_format(&msg, ", route_table: %s", nb_route->route_table[0]
                                                  ? nb_route->route_table
                                                  : "<main>");
@@ -2159,12 +2152,7 @@ add_network_to_routes_ad(struct hmap *routes_ad, const char *network,
             ds_put_format(&msg, " of lrp %s,", nb_lrp->name);
         }
         ds_put_format(&msg, " nexthop ");
-        if (IN6_IS_ADDR_V4MAPPED(&nexthop)) {
-            ds_put_format(&msg, IP_FMT,
-                          IP_ARGS(in6_addr_get_mapped_ipv4(&nexthop)));
-        } else {
-            ipv6_format_addr(&nexthop, &msg);
-        }
+        ipv6_format_mapped(&nexthop, &msg);
 
         VLOG_DBG("%s", ds_cstr(&msg));
         ds_destroy(&msg);
@@ -2234,13 +2222,7 @@ add_lb_vip_to_routes_ad(struct hmap *routes_ad, const char *vip_key,
 
         ds_put_format(&msg, "Adding lb vip route to <main> routing "
                       "table: %s, nexthop ", vip_str);
-
-        if (IN6_IS_ADDR_V4MAPPED(&nexthop)) {
-            ds_put_format(&msg, IP_FMT,
-                          IP_ARGS(in6_addr_get_mapped_ipv4(&nexthop)));
-        } else {
-            ipv6_format_addr(&nexthop, &msg);
-        }
+        ipv6_format_mapped(&nexthop, &msg);
 
         VLOG_DBG("%s", ds_cstr(&msg));
         ds_destroy(&msg);
@@ -2769,36 +2751,20 @@ advertise_routes(struct ic_context *ctx,
     }
     icsbrec_route_index_destroy_row(isb_route_key);
 
+    struct ds prefix = DS_EMPTY_INITIALIZER;
+
     /* Create the missing routes in IC-SB */
     struct ic_route_info *route_adv;
     HMAP_FOR_EACH_SAFE (route_adv, node, routes_ad) {
+        ds_clear(&prefix);
+        ipv6_format_mapped(&route_adv->prefix, &prefix);
+        ds_put_format(&prefix, "/%d", route_adv->plen);
+        char *nexthop_s = normalize_v46(&route_adv->nexthop);
+
         isb_route = icsbrec_route_insert(ctx->ovnisb_unlocked_txn);
         icsbrec_route_set_transit_switch(isb_route, ts_name);
         icsbrec_route_set_availability_zone(isb_route, az);
-
-        /* The prefix and the next hop are formatted independently: an IPv4
-         * prefix may be advertised with an IPv6 next hop ("IPv4 over IPv6").
-         */
-        char *prefix_s, *nexthop_s;
-        if (IN6_IS_ADDR_V4MAPPED(&route_adv->prefix)) {
-            ovs_be32 ipv4 = in6_addr_get_mapped_ipv4(&route_adv->prefix);
-            prefix_s = xasprintf(IP_FMT "/%d", IP_ARGS(ipv4), route_adv->plen);
-        } else {
-            char network_s[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &route_adv->prefix, network_s,
-                      INET6_ADDRSTRLEN);
-            prefix_s = xasprintf("%s/%d", network_s, route_adv->plen);
-        }
-        if (IN6_IS_ADDR_V4MAPPED(&route_adv->nexthop)) {
-            ovs_be32 nh = in6_addr_get_mapped_ipv4(&route_adv->nexthop);
-            nexthop_s = xasprintf(IP_FMT, IP_ARGS(nh));
-        } else {
-            char network_s[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &route_adv->nexthop, network_s,
-                      INET6_ADDRSTRLEN);
-            nexthop_s = xstrdup(network_s);
-        }
-        icsbrec_route_set_ip_prefix(isb_route, prefix_s);
+        icsbrec_route_set_ip_prefix(isb_route, ds_cstr(&prefix));
         icsbrec_route_set_nexthop(isb_route, nexthop_s);
         icsbrec_route_set_origin(isb_route, route_adv->origin);
         icsbrec_route_set_route_table(isb_route, route_adv->route_table
@@ -2808,7 +2774,6 @@ advertise_routes(struct ic_context *ctx,
             icsbrec_route_update_options_setkey(isb_route,
                 ROUTE_OVERRIDE_CONNECTED, "true");
         }
-        free(prefix_s);
         free(nexthop_s);
 
         ad_route_sync_external_ids(route_adv, isb_route);
@@ -2816,6 +2781,8 @@ advertise_routes(struct ic_context *ctx,
         hmap_remove(routes_ad, &route_adv->node);
         free(route_adv);
     }
+
+    ds_destroy(&prefix);
 }
 
 static void
