@@ -336,6 +336,7 @@ Paul Boca                          pboca@cloudbasesolutions.com
 Paul Fazzone                       pfazzone@vmware.com
 Paul Ingram
 Paul-Emmanuel Raoul                skyper@skyplabs.net
+Paulo Guilherme Silva              guilherme.paulo@magalu.cloud
 Pavithra Ramesh                    paramesh@vmware.com
 Pedro Guimaraes                    pedro.guimaraes@canonical.com
 Peter Downs                        padowns@gmail.com
@@ -656,7 +657,6 @@ Patrik Andersson R              patrik.r.andersson@ericsson.com
 Patryk Diak                     pdiak@redhat.com
 Paul Greenberg
 Paulo Cravero                   pcravero@as2594.net
-Paulo Guilherme da Silva        guilherme.paulo@luizalabs.com
 Pawan Shukla                    shuklap@vmware.com
 Periyasamy Palanisamy           periyasamy.palanisamy@ericsson.com
 Peter Amidon                    peter@picnicpark.org
