@@ -7963,13 +7963,32 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          * We need to set ct_mark.blocked=0 to let the connection continue,
          * which will be done by ct_commit in the "stateful" stage.
          * Subsequent packets will hit the flow at priority 0 that just
-         * uses "next;". */
+         * uses "next;".
+         *
+         * When tiered ACLs are configured, this default-allow must only
+         * be hit after the tier loop has reached the highest configured
+         * tier; otherwise a drop ACL at a higher tier would be bypassed
+         * for an already-blocked connection (it would short-circuit on
+         * the first tier-0 visit, set VERDICT_ALLOW, and skip the rest
+         * of the tier loop).  Gate the match on REG_ACL_TIER == max_tier
+         * so the rule only matches once every tier has been evaluated. */
         ds_clear(&match);
-        ds_put_format(&match, "ip && ct.est && ct_mark.blocked == 1");
+        ds_put_cstr(&match, "ip && ct.est && ct_mark.blocked == 1");
+        if (ls_stateful_rec->max_acl_tier.ingress_pre_lb) {
+            ds_put_format(&match, " && " REG_ACL_TIER " == %"PRIu64,
+                          ls_stateful_rec->max_acl_tier.ingress_pre_lb);
+        }
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, 1,
                       ds_cstr(&match),
                       REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
                       lflow_ref);
+
+        ds_clear(&match);
+        ds_put_cstr(&match, "ip && ct.est && ct_mark.blocked == 1");
+        if (ls_stateful_rec->max_acl_tier.egress) {
+            ds_put_format(&match, " && " REG_ACL_TIER " == %"PRIu64,
+                          ls_stateful_rec->max_acl_tier.egress);
+        }
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, 1,
                       ds_cstr(&match),
                       REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
