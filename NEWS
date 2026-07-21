@@ -95,6 +95,9 @@ Post v26.03.0
      original destination. This enables passive monitoring use cases where
      network functions can observe traffic without being inline in
      the data path.
+   - Added a new "ovn-debug lflow-pipeline-oftable-start-list" command that
+     prints the starting OpenFlow table number of the logical ingress and
+     egress pipelines.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

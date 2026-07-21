@@ -24,5 +24,10 @@
             Convert the logical flow stage name e.g. <code>ls_in_lb</code> into
             the OpenFlow table number e.g. <code>21</code>.
         </dd>
+        <dt><code>lflow-pipeline-oftable-start-list</code></dt>
+        <dd>
+            Print the starting OpenFlow table number of the
+            <code>ingress</code> and <code>egress</code> pipelines.
+        </dd>
     </dl>
 </manpage>

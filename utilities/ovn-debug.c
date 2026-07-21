@@ -77,6 +77,14 @@ lflow_stage_to_table(struct ovs_cmdl_context *ctx)
 }
 
 static void
+lflow_pipeline_oftable_start_list(struct ovs_cmdl_context *ctx OVS_UNUSED)
+{
+    printf("ingress %"PRIu8"\n", (uint8_t) OFTABLE_LOG_INGRESS_PIPELINE);
+    printf("egress %"PRIu8"\n", (uint8_t) OFTABLE_LOG_EGRESS_PIPELINE);
+    exit(EXIT_SUCCESS);
+}
+
+static void
 uuid_to_cookie_str(struct ovs_cmdl_context *ctx)
 {
     const char *uuid_str = ctx->argv[1];
@@ -102,6 +110,8 @@ lflow-stage-to-ltable STAGE_NAME\n\
   Converts STAGE_NAME into logical flow table number.\n\
 lflow-stage-to-oftable STAGE_NAME\n\
   Converts STAGE_NAME into OpenFlow table number.\n\
+lflow-pipeline-oftable-start-list\n\
+  Prints the starting OpenFlow table number of the logical pipelines.\n\
 uuid-to-cookie UUID\n\
   Converts UUID into cookie format.\n\
 \n\
@@ -161,6 +171,8 @@ main(int argc, char *argv[])
              OVS_RO},
             {"lflow-stage-to-ltable", NULL, 1, 1, lflow_stage_to_table,
              OVS_RO},
+            {"lflow-pipeline-oftable-start-list", NULL, 0, 0,
+             lflow_pipeline_oftable_start_list, OVS_RO},
             {"uuid-to-cookie", NULL, 1, 1, uuid_to_cookie_str,
              OVS_RO},
             { "help", NULL, 0, INT_MAX, help, OVS_RO },

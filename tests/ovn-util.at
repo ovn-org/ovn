@@ -106,3 +106,10 @@ cookie=$egress, priority=0,metadata=0x1 actions=resubmit(,??)
 OVN_CLEANUP([hv1])
 
 AT_CLEANUP
+
+AT_SETUP([ovn-debug - lflow-pipeline-oftable-start-list])
+AT_CHECK([ovn-debug lflow-pipeline-oftable-start-list], [0], [dnl
+ingress OFTABLE_LOG_INGRESS_PIPELINE
+egress OFTABLE_LOG_EGRESS_PIPELINE
+])
+AT_CLEANUP
