@@ -46,6 +46,14 @@ Post v26.03.0
        port, so that they can be advertised as EVPN Type-2 routes.  This
        is gated on a new "nat" token of the Logical_Switch
        "dynamic-routing-redistribute" option, independent of "ip".
+     * ovn-controller now automatically discovers the veth peer interface
+       of a Logical Switch Port referenced by the "routing-protocol-redirect"
+       option, when that port is bound locally and connected through a veth
+       pair.  This removes the need to manually configure
+       "dynamic-routing-port-name" and/or the Open_vSwitch
+       "external_ids:dynamic-routing-port-mapping" for veth-based routing
+       daemon integrations.  This feature is Linux-only and requires
+       OVS version >= 4.0.
    - Added "override-connected" option to Logical Router Static Routes to mark
      static routes as higher-priority than connected routes, which in turn led
      to changes in administrative distance for specific route types. Please see

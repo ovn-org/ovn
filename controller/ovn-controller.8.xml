@@ -414,6 +414,14 @@
           dynamic-routing-port-name option on Logical_Router_Ports.
           See the <code>ovn-nb</code>(5) for more details.
         </p>
+
+        <p>
+          Note: When using the <code>routing-protocol-redirect</code> option
+          with veth pairs on Linux systems, this mapping may not be necessary
+          as <code>ovn-controller</code> can automatically discover the veth
+          peer interface name. See the <code>routing-protocol-redirect</code>
+          option documentation in <code>ovn-nb</code>(5) for details.
+        </p>
       </dd>
 
       <dt><code>external_ids:ovn-cleanup-on-exit</code></dt>

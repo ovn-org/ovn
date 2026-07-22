@@ -4196,6 +4196,11 @@ sync_pb_for_lrp(struct ovn_port *op,
             if (portname) {
                 smap_add(&new, "dynamic-routing-port-name", portname);
             }
+            const char *redirect_port = smap_get(&op->nbrp->options,
+                                                 "routing-protocol-redirect");
+            if (redirect_port) {
+                smap_add(&new, "routing-protocol-redirect", redirect_port);
+            }
         }
 
         const char *redistribute_local_only_name =

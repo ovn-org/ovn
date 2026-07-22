@@ -38,6 +38,42 @@ VLOG_DEFINE_THIS_MODULE(exchange);
 #define PRIORITY_DEFAULT 1000
 #define PRIORITY_LOCAL_BOUND 100
 
+/* Discover the veth peer interface name of 'iface' using the
+ * status:peer_ifindex value that OVS populates for veth devices.
+ *
+ * Returns the peer interface name, or NULL if 'iface' is not a veth device
+ * or if the peer ifindex does not resolve to an interface in this
+ * namespace.
+ *
+ * Caller must free the returned string.
+ */
+static char *
+find_veth_peer(const struct ovsrec_interface *iface)
+{
+    if (!iface) {
+        return NULL;
+    }
+
+    /* Only veth devices have status:peer_ifindex set. */
+    const char *peer_ifindex_str = smap_get(&iface->status, "peer_ifindex");
+    if (!peer_ifindex_str) {
+        return NULL;
+    }
+
+    unsigned int peer_ifindex;
+    if (!str_to_uint(peer_ifindex_str, 10, &peer_ifindex) || !peer_ifindex) {
+        return NULL;
+    }
+
+    /* Resolve the peer ifindex in ovn-controller namespace. */
+    char peer_ifname[IFNAMSIZ];
+    if (!if_indextoname(peer_ifindex, peer_ifname)) {
+        return NULL;
+    }
+
+    return xstrdup(peer_ifname);
+}
+
 static bool
 route_exchange_relevant_port(const struct sbrec_port_binding *pb)
 {
@@ -150,6 +186,25 @@ build_port_mapping(struct smap *mapping, const char *port_mapping)
     free(orig);
 }
 
+/* Looks up the OVS interface locally bound to logical port 'port_name'.
+ * Returns NULL if 'port_name' has no local binding on this chassis or
+ * if the port binding is not resident on 'chassis'. */
+static const struct ovsrec_interface *
+local_iface_for_port_name(struct shash *local_bindings,
+                          const struct sbrec_chassis *chassis,
+                          const char *port_name)
+{
+    const struct binding_lport *b_lport =
+        local_binding_get_primary_lport(local_binding_find(local_bindings,
+                                                           port_name));
+
+    if (!b_lport || !lport_pb_is_chassis_resident(chassis, b_lport->pb)) {
+        return NULL;
+    }
+
+    return b_lport->lbinding->iface;
+}
+
 static const char *
 ifname_from_port_name(const struct smap *port_mapping,
                       struct shash *local_bindings,
@@ -161,15 +216,110 @@ ifname_from_port_name(const struct smap *port_mapping,
         return iface;
     }
 
-    const struct binding_lport *b_lport =
-        local_binding_get_primary_lport(local_binding_find(local_bindings,
-                                                           port_name));
+    const struct ovsrec_interface *ovs_iface =
+        local_iface_for_port_name(local_bindings, chassis, port_name);
 
-    if (!b_lport || !lport_pb_is_chassis_resident(chassis, b_lport->pb)) {
+    return ovs_iface ? ovs_iface->name : NULL;
+}
+
+/* Resolves the veth peer interface name for the Logical Switch Port referred
+ * to by the LRP 'routing-protocol-redirect' option ('redirect_port').
+ * Returns NULL, without logging, if 'redirect_port' is not bound locally,
+ * since some other ovn-controller is expected to handle it. Returns NULL,
+ * after logging, if 'redirect_port' is bound locally but its interface is
+ * not a veth device or its peer cannot be resolved.
+ *
+ * Caller must free the returned string.
+ */
+static char *
+find_veth_peer_for_redirect_port(struct shash *local_bindings,
+                                 const struct sbrec_chassis *chassis,
+                                 const char *redirect_port)
+{
+    const struct ovsrec_interface *iface =
+        local_iface_for_port_name(local_bindings, chassis, redirect_port);
+    if (!iface) {
         return NULL;
     }
 
-    return b_lport->lbinding->iface->name;
+    char *peer_iface = find_veth_peer(iface);
+
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
+    if (peer_iface) {
+        VLOG_DBG_RL(&rl, "Auto-discovered veth peer '%s' for port '%s' "
+                     "(bound to '%s')", peer_iface, redirect_port,
+                     iface->name);
+    } else {
+        VLOG_DBG_RL(&rl, "Cannot auto-discover veth peer for port '%s' "
+                    "(bound to '%s'), falling back to learning routes "
+                    "from all ports", redirect_port, iface->name);
+    }
+
+    return peer_iface;
+}
+
+/* Determines which local interface, if any, route learning for local_peer
+ * should be scoped to, and records it in ad->bound_ports (keyed by the
+ * peer logical port).  The value is:
+ *  - the resolved interface name, if learning must be filtered to a
+ *    specific interface (an explicit dynamic-routing-port-name, or a veth
+ *    peer auto-discovered from routing-protocol-redirect); or
+ *  - NULL, if routes should be learned from all interfaces on this LRP.
+ *
+ * A port referenced via dynamic-routing-port-name or via
+ * routing-protocol-redirect is added to filtered_ports so that changes to
+ * its binding trigger a recompute.
+ *
+ * Returns true if a specific interface filter was applied for this peer
+ * (i.e. the value stored in bound_ports is non-NULL), false otherwise. */
+static bool
+route_add_bound_port(struct route_ctx_in *r_ctx_in,
+                     struct route_ctx_out *r_ctx_out,
+                     struct advertise_datapath_entry *ad,
+                     const struct sbrec_port_binding *repb,
+                     const struct sbrec_port_binding *local_peer,
+                     const char *port_name,
+                     const struct smap *port_mapping)
+{
+    /* An explicit dynamic-routing-port-name filters learning to the name
+     * from the port-mapping or the interface name of the local binding. If
+     * the port is neither in the port-mapping nor bound locally we will not
+     * learn routes for this port. */
+    if (port_name) {
+        const char *ifname = ifname_from_port_name(
+            port_mapping, r_ctx_in->local_bindings,
+            r_ctx_in->chassis, port_name);
+        if (ifname) {
+            smap_add(&ad->bound_ports, local_peer->logical_port, ifname);
+        }
+        sset_add(r_ctx_out->filtered_ports, port_name);
+        return true;
+    }
+
+    /* No explicit port-name. If routing-protocol-redirect points to a LSP
+     * that is bound locally and connected through a veth pair, auto-discover
+     * its peer interface and use it to scope route learning, without
+     * requiring dynamic-routing-port-name/port-mapping to be configured
+     * manually. */
+    char *peer_iface = NULL;
+    const char *redirect_port = smap_get(&repb->options,
+                                         "routing-protocol-redirect");
+    if (redirect_port) {
+        /* Track redirect_port so that we recompute if its binding changes. */
+        sset_add(r_ctx_out->filtered_ports, redirect_port);
+
+        peer_iface = find_veth_peer_for_redirect_port(
+            r_ctx_in->local_bindings, r_ctx_in->chassis, redirect_port);
+    }
+
+    /* If auto-discovery succeeded, peer_iface scopes learning to that
+     * interface (like an explicit dynamic-routing-port-name would).
+     * Otherwise peer_iface is NULL and we learn routes from all
+     * interfaces on this LRP.  Either way bound_ports takes ownership of
+     * peer_iface. */
+    smap_add_nocopy(&ad->bound_ports, xstrdup(local_peer->logical_port),
+                    peer_iface);
+    return peer_iface != NULL;
 }
 
 static void
@@ -275,24 +425,9 @@ route_run(struct route_ctx_in *r_ctx_in,
                          route_get_table_id(ad->db));
             }
 
-            if (!port_name) {
-                /* No port-name set, so we learn routes from all ports. */
-                smap_add_nocopy(&ad->bound_ports,
-                                xstrdup(local_peer->logical_port), NULL);
-            } else {
-                /* If a port_name is set the we filter for the name as set in
-                 * the port-mapping or the interface name of the local
-                 * binding. If the port is not in the port_mappings and not
-                 * bound locally we will not learn routes for this port. */
-                const char *ifname = ifname_from_port_name(
-                    &port_mapping, r_ctx_in->local_bindings,
-                    r_ctx_in->chassis, port_name);
-                if (ifname) {
-                    smap_add(&ad->bound_ports, local_peer->logical_port,
-                             ifname);
-                }
-                sset_add(r_ctx_out->filtered_ports, port_name);
-            }
+            lr_has_port_name_filter |= route_add_bound_port(
+                r_ctx_in, r_ctx_out, ad, repb, local_peer, port_name,
+                &port_mapping);
         }
 
         if (ad) {

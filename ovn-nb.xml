@@ -4549,6 +4549,32 @@ or
           Logical Switch and act as if they were listening on Logical Router
           Port's IP addresses.
         </p>
+
+        <p>
+          When used with dynamic routing (when <ref column="options"
+          key="dynamic-routing" table="Logical_Router"/> is set to
+          <code>true</code>), if the specified Logical Switch Port is bound
+          locally and connected to a veth pair, <code>ovn-controller</code>
+          is able to automatically discover the peer interface name and use
+          it for route learning. This removes the need to manually configure
+          <ref column="options" key="dynamic-routing-port-name"/> and/or
+          <ref key="dynamic-routing-port-mapping" table="Open_vSwitch"
+          column="external_ids" db="Open_vSwitch"/> for veth-based routing
+          daemon integrations. If those options are set they always take
+          precedence over auto-discovery.
+        </p>
+
+        <p>
+          The auto-discovery feature relies on the peer interface index
+          being reported in the <code>Open_vSwitch</code>
+          <code>Interface</code> table <code>status:peer_ifindex</code>
+          key, which is only populated for veth devices on Linux systems by
+          a sufficiently recent version of Open vSwitch. If the bound
+          interface is not a veth device, if the peer cannot be resolved, or
+          if OVS does not report <code>status:peer_ifindex</code>, the system
+          will fallback to learning routes from all interfaces on the Logical
+          Router Port.
+        </p>
       </column>
 
       <column name="options" key="routing-protocols" type='{"type": "string"}'>

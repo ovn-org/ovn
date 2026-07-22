@@ -20976,6 +20976,149 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 /Failed to acquire.*/d
 /connection dropped.*/d
 /Couldn't parse IPv6 prefix nexthop.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - routing-protocol-redirect auto-discovery])
+AT_SKIP_IF([test "$(uname -s)" != "Linux"])
+
+vni=1337
+VRF_RESERVE([$vni])
+
+# This test validates that automatic veth peer discovery works with the
+# routing-protocol-redirect option, using the status:peer_ifindex key
+# populated by Open vSwitch for veth devices, and that routes can be
+# learned through the auto-discovered interface.
+# Note: This feature is Linux-only, as status:peer_ifindex is only
+# populated by OVS for veth devices on Linux.
+#
+# Topology:
+#  +----------+
+#  |    lr    | (learns routes from VRF 1337)
+#  +----+-----+
+#       |
+#  +----+----+
+#  |   ls    |
+#  +----+----+
+#       |
+#  +----+------+     +----------+
+#  | bgp-lsp   |-----| bgp-peer | (veth pair - auto-discovered, in VRF 1337)
+#  +-----------+     +----------+
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+# Create VRF for route learning
+OVS_WAIT_WHILE([ip link | grep -q ovnvrf$vni:.*UP])
+check ip link add vrf-$vni type vrf table $vni
+on_exit "ip link del vrf-$vni"
+check ip link set vrf-$vni up
+
+check ovn-appctl -t ovn-controller vlog/set exchange:file:dbg
+
+# Create logical router with routing-protocol-redirect.
+# Note: neither dynamic-routing-port-name nor the Open_vSwitch
+# external_ids:dynamic-routing-port-mapping are configured, so route
+# learning can only work if ovn-controller successfully auto-discovers
+# the veth peer of "bgp-lsp".
+check ovn-nbctl                                                   \
+    -- lr-add lr                                                  \
+      -- set Logical_Router lr                                    \
+          options:chassis=hv1                                     \
+          options:dynamic-routing=true                            \
+          options:dynamic-routing-vrf-id=$vni                     \
+          options:dynamic-routing-maintain-vrf=false              \
+    -- lrp-add lr lr-ext 00:00:00:01:00:10 1.1.1.1/24             \
+      -- lrp-set-options lr-ext dynamic-routing=true              \
+                                routing-protocol-redirect=bgp-lsp \
+    -- ls-add ls                                                  \
+      -- lsp-add-router-port ls ls-lr-ext lr-ext                  \
+      -- lsp-add ls bgp-lsp                                       \
+        -- lsp-set-options bgp-lsp dynamic-routing=true           \
+        -- lsp-set-addresses bgp-lsp unknown
+
+# Create veth pair: one end bound to OVN (bgp-ovn), other end for BGP daemon (bgp-peer)
+# The auto-discovery will find bgp-peer from bgp-ovn
+check ip link add bgp-ovn type veth peer name bgp-peer
+on_exit "ip link del bgp-ovn"
+check ip link set bgp-ovn up
+check ip link set bgp-peer master vrf-$vni
+check ip link set bgp-peer up
+check ip addr add 1.1.1.100/24 dev bgp-peer
+
+# Bind bgp-ovn to OVN
+check ovs-vsctl add-port br-int bgp-ovn \
+    -- set interface bgp-ovn external_ids:iface-id=bgp-lsp
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up bgp-lsp
+
+# Verify OVS itself reports the correct peer_ifindex for "bgp-ovn" before
+# checking that ovn-controller consumed it.
+bgp_peer_ifindex=$(cat /sys/class/net/bgp-peer/ifindex)
+OVS_WAIT_UNTIL_EQUAL([ovs-vsctl get interface bgp-ovn status:peer_ifindex],
+                     ["\"$bgp_peer_ifindex\""])
+
+# Verify veth peer auto-discovery happened in ovn-controller.
+OVS_WAIT_UNTIL([grep -q "Auto-discovered veth peer 'bgp-peer' for port "\
+"'bgp-lsp'" ovn-controller.log])
+
+# Add a route to the VRF (simulating BGP learning a route via bgp-peer)
+AT_CHECK([ip route add 10.10.1.1 via 1.1.1.2 vrf vrf-$vni proto zebra])
+
+# Verify learned route appears in SB database
+OVS_WAIT_UNTIL([ovn-sbctl list Learned_Route | grep ip_prefix | grep -Fe 10.10.1.1])
+
+# Add a second route
+AT_CHECK([ip route add 10.10.2.1 via 1.1.1.2 vrf vrf-$vni proto zebra])
+
+# Verify both routes appear in SB database
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+ip_prefix           : "10.10.1.1"
+ip_prefix           : "10.10.2.1"
+])
+
+# Remove one route
+AT_CHECK([ip route del 10.10.2.1 via 1.1.1.2 vrf vrf-$vni])
+
+# Verify only one route remains
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+ip_prefix           : "10.10.1.1"
+])
+
+# Remove second route
+AT_CHECK([ip route del 10.10.1.1 via 1.1.1.2 vrf vrf-$vni])
+
+# Verify all routes removed
+OVS_WAIT_FOR_OUTPUT([ovn-sbctl list Learned_Route | grep ip_prefix | sort], [0], [dnl
+])
+
+# Delete logical objects before cleanup
+check ovn-nbctl --wait=hv ls-del ls
+check ovn-nbctl --wait=hv lr-del lr
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
+/failed to query port patch-.*/d
+/.*terminating with signal 15.*/d
+/could not open network device bgp-ovn.*/d"])
+
 AT_CLEANUP
 ])
 
