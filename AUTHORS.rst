@@ -74,6 +74,7 @@ Antonio Ojea                       antonio.ojea.garcia@gmail.com
 Anupam Chanda
 Ariel Tubaltsev                    atubaltsev@vmware.com
 Arnoldo Lutz                       arnoldo.lutz.guevara@hpe.com
+Arpit Jain                         arpit.jain@nutanix.com
 Artem Teleshev                     artem.teleshev@gmail.com
 Arun Sharma                        arun.sharma@calsoftinc.com
 Aryan TaheriMonfared               aryan.taherimonfared@uis.no
