@@ -2114,6 +2114,20 @@ Following flows are added:
       reg9[3] = 1;
       next;
 
+- A higher priority-105 flow which matches on IPv6 Neighbor Discovery
+  advertisement packet with ``nd.tll == 0`` and applies the actions if
+  the option ``always_learn_from_arp_request`` is ``true``::
+
+      reg9[2] = lookup_nd(inport, nd.target, eth.src);
+      next;
+
+  If the option ``always_learn_from_arp_request`` is ``false``, a priority-115
+  flow is added instead::
+
+      reg9[2] = lookup_nd(inport, nd.target, eth.src);
+      reg9[3] = lookup_nd_ip(inport, nd.target);
+      next;
+
 - A priority-100 flow which matches on IPv6 Neighbor Discovery solicitation
   packet and applies the actions if the option ``always_learn_from_arp_request``
   is ``true``::

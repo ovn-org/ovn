@@ -9201,6 +9201,29 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
   table=??(lr_in_lookup_neighbor), priority=100  , match=(arp.op == 2), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); next;)
+  table=??(lr_in_lookup_neighbor), priority=105  , match=(nd_na && nd.tll == 0), action=(reg9[[2]] = lookup_nd(inport, nd.target, eth.src); next;)
+])
+
+check ovn-nbctl --wait=sb set Logical_Router lr0 options:always_learn_from_arp_request=false
+
+ovn-sbctl dump-flows lr0 > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_learn_neighbor), priority=0    , match=(1), action=(drop;)
+  table=??(lr_in_learn_neighbor), priority=100  , match=(reg9[[2]] == 1 || reg9[[3]] == 0), action=(mac_cache_use; next;)
+  table=??(lr_in_learn_neighbor), priority=90   , match=(arp), action=(put_arp(inport, arp.spa, arp.sha); next;)
+  table=??(lr_in_learn_neighbor), priority=90   , match=(nd_na), action=(put_nd(inport, nd.target, nd.tll); next;)
+  table=??(lr_in_learn_neighbor), priority=90   , match=(nd_ns), action=(put_nd(inport, ip6.src, nd.sll); next;)
+  table=??(lr_in_learn_neighbor), priority=95   , match=(nd_na && nd.tll == 0), action=(put_nd(inport, nd.target, eth.src); next;)
+  table=??(lr_in_learn_neighbor), priority=95   , match=(nd_ns && (ip6.src == 0 || nd.sll == 0)), action=(next;)
+  table=??(lr_in_lookup_neighbor), priority=0    , match=(1), action=(reg9[[2]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(arp.op == 2), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); reg9[[3]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); reg9[[3]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); reg9[[3]] = lookup_nd_ip(inport, ip6.src); next;)
+  table=??(lr_in_lookup_neighbor), priority=105  , match=(nd_na && nd.tll == 0), action=(reg9[[2]] = lookup_nd(inport, nd.target, eth.src); reg9[[3]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=110  , match=(nd_na && ip6.src == fe80::/10 && ip6.dst == ff00::/8), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); reg9[[3]] = lookup_nd_ip(inport, nd.target); next;)
+  table=??(lr_in_lookup_neighbor), priority=115  , match=(nd_na && nd.tll == 0 && ip6.src == fe80::/10 && ip6.dst == ff00::/8), action=(reg9[[2]] = lookup_nd(inport, nd.target, eth.src); reg9[[3]] = lookup_nd_ip(inport, nd.target); next;)
 ])
 
 OVN_CLEANUP_NORTHD
