@@ -13778,6 +13778,7 @@ build_neigh_learning_flows_for_lrouter(
      * REGBIT_LOOKUP_NEIGHBOR_RESULT bit. If
      * "always_learn_from_arp_request" is set to false,
      * REGBIT_LOOKUP_NEIGHBOR_IP_RESULT bit is set.
+     * The lookup backs up to eth.src in case when nd.tll == 0.
      *
      * For IPv6 ND NS packets, table LOOKUP_NEIGHBOR does a lookup
      * for the (ip6.src, nd.sll) in the mac binding table using the
@@ -13815,6 +13816,14 @@ build_neigh_learning_flows_for_lrouter(
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 100, "nd_na",
                   ds_cstr(actions), lflow_ref);
 
+    ds_clear(actions);
+    ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                  " = lookup_nd(inport, nd.target, eth.src); %s%snext;",
+                  learn_from_arp_request ? "" :
+                  REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1; ", flood);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 105,
+                  "nd_na && nd.tll == 0", ds_cstr(actions), lflow_ref);
+
     if (!learn_from_arp_request) {
         /* Add flow to skip GARP LLA if we don't know it already.
          * From RFC 2461, section 4.4, Neighbor Advertisement Message
@@ -13831,6 +13840,17 @@ build_neigh_learning_flows_for_lrouter(
                                flood);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 110,
                       "nd_na && ip6.src == fe80::/10 && ip6.dst == ff00::/8",
+                      ds_cstr(actions), lflow_ref);
+
+        ds_clear(actions);
+        ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                               " = lookup_nd(inport, nd.target, eth.src); "
+                               REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
+                               " = lookup_nd_ip(inport, nd.target); %snext;",
+                               flood);
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 115,
+                      "nd_na && nd.tll == 0 && "
+                      "ip6.src == fe80::/10 && ip6.dst == ff00::/8",
                       ds_cstr(actions), lflow_ref);
     }
 

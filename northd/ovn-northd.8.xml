@@ -2945,6 +2945,31 @@ next;
 
       <li>
         <p>
+          A higher priority-105 flow which matches on IPv6 Neighbor Discovery
+          advertisement packet with <code>nd.tll == 0</code> and applies the
+          actions if the option <code>>always_learn_from_arp_request</code>
+          is <code>>true</code>:
+        </p>
+
+        <pre>
+          reg9[2] = lookup_nd(inport, nd.target, eth.src);
+          next;
+        </pre>
+
+        <p>
+          If the option <code>always_learn_from_arp_request</code>> is
+          <code>false</code>, a priority-115 flow is added instead:
+        </p>
+
+        <pre>
+          reg9[2] = lookup_nd(inport, nd.target, eth.src);
+          reg9[3] = lookup_nd_ip(inport, nd.target);
+          next;
+         </pre>
+      </li>
+
+      <li>
+        <p>
           A priority-100 flow which matches on IPv6 Neighbor Discovery
           solicitation packet and applies the actions if the option
           <code>always_learn_from_arp_request</code> is <code>true</code>:
