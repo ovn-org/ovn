@@ -37196,8 +37196,8 @@ OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |
 send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 192.168.20.100 192.168.10.100
 send_udp hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:2b 192.168.10.100 192.168.20.100
 # Wait for ARP requests to be generated.
-dump_arp 1 00:00:00:00:20:00 ff:ff:ff:ff:ff:ff 192.168.20.1 192.168.20.100 00:00:00:00:00:00 > expected1
-dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 192.168.10.1 192.168.10.100 00:00:00:00:00:00 > expected2
+dump_arp 1 00:00:00:00:20:00 00:00:00:00:10:1b 192.168.20.1 192.168.20.100 00:00:00:00:10:1b > expected1
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.10.1 192.168.10.100 00:00:00:00:10:1a > expected2
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected2])
 
 # Check MAC_Binding timestamp is updated receiving the ARP replay.
@@ -37206,8 +37206,8 @@ send_garp hv1 vif2 2 00:00:00:00:10:1b 00:00:00:00:20:00 192.168.20.100 192.168.
 OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp ip=192.168.10.100) -gt $ts0])
 
 # Refresh OFTABLE_MAC_BINDING entires.
-dump_arp 1 00:00:00:00:20:00 ff:ff:ff:ff:ff:ff 192.168.20.1 192.168.20.100 00:00:00:00:00:00 >> expected1
-dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 192.168.10.1 192.168.10.100 00:00:00:00:00:00 >> expected2
+dump_arp 1 00:00:00:00:20:00 00:00:00:00:10:1b 192.168.20.1 192.168.20.100 00:00:00:00:10:1b >> expected1
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.10.1 192.168.10.100 00:00:00:00:10:1a >> expected2
 OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
                        awk '/arp_spa=192.168.20.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
 send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 192.168.20.100 192.168.10.100
@@ -37234,8 +37234,8 @@ OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE |
 send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd12::64 fd11::64
 send_udp6 hv1 vif2 00:00:00:00:20:00 00:00:00:00:10:2b fd11::64 fd12::64
 
-dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 > expected2
-dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 >> expected2
+dump_ns 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1 fd11::64 > expected2
+dump_ns 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1 fd11::64 >> expected2
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected2])
 
 send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1
@@ -37336,16 +37336,16 @@ send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2b fd11::64 fd12::64
 
 # Verify ARP probes use the correct source IPs from matching subnets.
 # ARP for 10.10.10.100 must use source IP 10.10.10.1 (first subnet).
-dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 10.10.10.1 10.10.10.100 00:00:00:00:00:00 > expected
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1a 10.10.10.1 10.10.10.100 00:00:00:00:10:1a > expected
 # ARP for 42.42.42.253 must use source IP 42.42.42.1 (second subnet).
-dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 42.42.42.1 42.42.42.253 00:00:00:00:00:00 >> expected
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1b 42.42.42.1 42.42.42.253 00:00:00:00:10:1b >> expected
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected])
 
 # Verify NS probes use the correct source IPs from matching subnets.
 # NS for fd11::64 must use source IP fd11::1 (first IPv6 subnet).
-dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 > expected_v6
+dump_ns 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1 fd11::64 > expected_v6
 # NS for fd12::64 must use source IP fd12::1 (second IPv6 subnet).
-dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd12::1 fd12::64 >> expected_v6
+dump_ns 00:00:00:00:10:1b 00:00:00:00:10:00 fd12::64 fd12::1 fd12::64 >> expected_v6
 OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_v6])
 
 # Send ARP/NA replies and check MAC_Binding UUIDs remain consistent.
@@ -37422,8 +37422,8 @@ wait_row_count mac_binding 0 ip="$ext_ip" logical_port="lr-ls"
 
 # hv1 should have sent out arps for mac binding refresh
 arp_req=$(fmt_pkt \
-    "Ether(dst='ff:ff:ff:ff:ff:ff', src='$lrp_mac')/ \
-     ARP(hwsrc='$lrp_mac', hwdst='00:00:00:00:00:00', psrc='$lrp_ip', pdst='$ext_ip')")
+    "Ether(dst='$ext_mac', src='$lrp_mac')/ \
+     ARP(hwsrc='$lrp_mac', hwdst='$ext_mac', psrc='$lrp_ip', pdst='$ext_ip')")
 echo $arp_req >> hv1_snoopvif.expected
 OVN_CHECK_PACKETS_CONTAIN([hv1/snoopvif-tx.pcap], [hv1_snoopvif.expected])
 
@@ -37533,7 +37533,8 @@ send_imcp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 1
 OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log) -eq 2])
 
 check ovn-nbctl --wait=hv acl-del join
-wait_row_count mac_binding 0
+wait_row_count mac_binding 0 ip="192.168.10.100" logical_port="gw-public"
+wait_row_count mac_binding 0 ip="192.168.20.2" logical_port="gw-join"
 
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
 wait_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
@@ -37550,7 +37551,7 @@ sleep $((aging_th / 2))
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
 OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log) -eq 2])
 
-wait_row_count mac_binding 0
+wait_row_count mac_binding 0 ip=\"fd12::2\" logical_port="gw-join"
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

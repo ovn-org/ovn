@@ -961,7 +961,8 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
             send_self_originated_neigh_packet(probe_data->swconn,
                                               sbrec->datapath->tunnel_key,
                                               pb->tunnel_key, laddr.ea,
-                                              &local, &mb->data.ip,
+                                              mb->data.mac, &local,
+                                              &mb->data.ip,
                                               OFTABLE_LOCAL_OUTPUT);
         }
 

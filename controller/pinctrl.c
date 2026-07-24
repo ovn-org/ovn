@@ -5199,7 +5199,8 @@ send_arp_nd_update(const struct sbrec_port_binding *pb, const char *nexthop,
 void
 send_self_originated_neigh_packet(struct rconn *swconn,
                                   uint32_t dp_key, uint32_t port_key,
-                                  struct eth_addr eth,
+                                  struct eth_addr eth_src,
+                                  struct eth_addr eth_dst,
                                   struct in6_addr *local,
                                   struct in6_addr *target,
                                   uint8_t table_id)
@@ -5208,13 +5209,15 @@ send_self_originated_neigh_packet(struct rconn *swconn,
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
     if (!local) {
-        compose_rarp(&packet, eth);
+        compose_rarp(&packet, eth_src);
     } else if (IN6_IS_ADDR_V4MAPPED(local)) {
-        compose_arp(&packet, ARP_OP_REQUEST, eth, eth_addr_zero, true,
+        compose_arp(&packet, ARP_OP_REQUEST, eth_src, eth_dst,
+                    eth_addr_is_zero(eth_dst),
                     in6_addr_get_mapped_ipv4(local),
                     in6_addr_get_mapped_ipv4(target));
     } else {
-        compose_nd_ns(&packet, true, eth, eth_addr_zero, local, target);
+        compose_nd_ns(&packet, eth_addr_is_zero(eth_dst), eth_src,
+                      eth_dst, local, target);
     }
 
     /* Inject GARP request. */
@@ -5269,13 +5272,15 @@ send_garp_rarp(struct rconn *swconn, struct garp_rarp_node *garp_rarp,
         send_self_originated_neigh_packet(swconn,
                                           garp_rarp->dp_key,
                                           garp_rarp->port_key,
-                                          garp_rarp->ea, &addr, &addr,
+                                          garp_rarp->ea, eth_addr_zero,
+                                          &addr, &addr,
                                           OFTABLE_LOG_INGRESS_PIPELINE);
     } else {
         send_self_originated_neigh_packet(swconn,
                                           garp_rarp->dp_key,
                                           garp_rarp->port_key,
-                                          garp_rarp->ea, NULL, NULL,
+                                          garp_rarp->ea, eth_addr_zero,
+                                          NULL, NULL,
                                           OFTABLE_LOG_INGRESS_PIPELINE);
     }
 
@@ -6387,7 +6392,8 @@ send_arp_nd(struct rconn *swconn, struct arp_nd_data *e,
     /* Compose a ARP request packet. */
     send_self_originated_neigh_packet(swconn,
                                       e->dp_key, e->port_key,
-                                      e->ea, &e->src_ip, &e->dst_ip,
+                                      e->ea, eth_addr_zero,
+                                      &e->src_ip, &e->dst_ip,
                                       OFTABLE_LOCAL_OUTPUT);
 
     /* Set the next announcement.  At most 5 announcements are sent for a
