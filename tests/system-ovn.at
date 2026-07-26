@@ -275,13 +275,13 @@ check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd30::1)'])
 
 # 'alice1' should be able to ping 'foo1' directly.
-NS_CHECK_EXEC([alice1], [ping6 -q -c 3 -i 0.3 -w 2 fd11::2 | FORMAT_PING], \
+NS_CHECK_EXEC([alice1], [ping -6 -q -c 3 -i 0.3 -w 2 fd11::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
 # North-South DNAT: 'alice1' should also be able to ping 'foo1' via fd30::2
-NS_CHECK_EXEC([alice1], [ping6 -q -c 3 -i 0.3 -w 2 fd30::2 | FORMAT_PING], \
+NS_CHECK_EXEC([alice1], [ping -6 -q -c 3 -i 0.3 -w 2 fd30::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -295,7 +295,7 @@ icmpv6,orig=(src=fd21::2,dst=fd30::2,id=<cleared>,type=128,code=0),reply=(src=fd
 
 # South-North SNAT: 'bar1' pings 'alice1'. But 'alice1' receives traffic
 # from fd30::1
-NS_CHECK_EXEC([bar1], [ping6 -q -c 3 -i 0.3 -w 2 fd21::2 | FORMAT_PING], \
+NS_CHECK_EXEC([bar1], [ping -6 -q -c 3 -i 0.3 -w 2 fd21::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -316,7 +316,7 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK([ovs-appctl dpctl/flush-conntrack])
 
 # East-west DNAT and SNAT: 'bar1' pings fd30::2. 'foo1' receives it.
-NS_CHECK_EXEC([bar1], [ping6 -q -c 3 -i 0.3 -w 2 fd30::2 | FORMAT_PING], \
+NS_CHECK_EXEC([bar1], [ping -6 -q -c 3 -i 0.3 -w 2 fd30::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -918,7 +918,7 @@ check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int | grep 'nat(src=fd40::4)'])
 
 # North-South DNAT: 'alice1' should be able to ping 'foo1' via fd30::2
-NS_CHECK_EXEC([alice1], [ping6 -q -c 3 -i 0.3 -w 2 fd40::2 | FORMAT_PING], \
+NS_CHECK_EXEC([alice1], [ping -6 -q -c 3 -i 0.3 -w 2 fd40::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -936,7 +936,7 @@ icmpv6,orig=(src=fd30::3,dst=fd11::2,id=<cleared>,type=128,code=0),reply=(src=fd
 ])
 
 # North-South DNAT: 'bob1' should be able to ping 'foo1' via fd40::3
-NS_CHECK_EXEC([bob1], [ping6 -q -c 3 -i 0.3 -w 2 fd40::3 | FORMAT_PING], \
+NS_CHECK_EXEC([bob1], [ping -6 -q -c 3 -i 0.3 -w 2 fd40::3 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -955,7 +955,7 @@ icmpv6,orig=(src=fd30::4,dst=fd11::2,id=<cleared>,type=128,code=0),reply=(src=fd
 
 # South-North SNAT: 'bar1' pings 'bob1'. But 'bob1' receives traffic
 # from fd40::4
-NS_CHECK_EXEC([bar1], [ping6 -q -c 3 -i 0.3 -w 2 fd30::4 | FORMAT_PING], \
+NS_CHECK_EXEC([bar1], [ping -6 -q -c 3 -i 0.3 -w 2 fd30::4 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -968,7 +968,7 @@ icmpv6,orig=(src=fd12::2,dst=fd30::4,id=<cleared>,type=128,code=0),reply=(src=fd
 
 # South-North SNAT: 'foo1' pings 'alice1'. But 'alice1' receives traffic
 # from fd40::1
-NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 fd30::3 | FORMAT_PING], \
+NS_CHECK_EXEC([foo1], [ping -6 -q -c 3 -i 0.3 -w 2 fd30::3 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -1179,7 +1179,7 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 30.0.0.2 | FORMAT_PING], \
 ])
 
 # North-South DNAT: 'alice16' should be able to ping 'foo16' via fd30::2
-NS_CHECK_EXEC([alice16], [ping6 -q -c 3 -i 0.3 -w 2 fd40::2 | FORMAT_PING], \
+NS_CHECK_EXEC([alice16], [ping -6 -q -c 3 -i 0.3 -w 2 fd40::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -1212,7 +1212,7 @@ NS_CHECK_EXEC([bob1], [ping -q -c 3 -i 0.3 -w 2 30.0.0.3 | FORMAT_PING], \
 ])
 
 # North-South DNAT: 'bob16' should be able to ping 'foo16' via fd40::3
-NS_CHECK_EXEC([bob16], [ping6 -q -c 3 -i 0.3 -w 2 fd40::3 | FORMAT_PING], \
+NS_CHECK_EXEC([bob16], [ping -6 -q -c 3 -i 0.3 -w 2 fd40::3 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -1247,7 +1247,7 @@ NS_CHECK_EXEC([bar1], [ping -q -c 3 -i 0.3 -w 2 172.16.1.4 | FORMAT_PING], \
 ])
 # South-North SNAT: 'bar16' pings 'bob16'. But 'bob16' receives traffic
 # from fd40::4
-NS_CHECK_EXEC([bar16], [ping6 -q -c 3 -i 0.3 -w 2 fd30::4 | FORMAT_PING], \
+NS_CHECK_EXEC([bar16], [ping -6 -q -c 3 -i 0.3 -w 2 fd30::4 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -1271,7 +1271,7 @@ NS_CHECK_EXEC([foo1], [ping -q -c 3 -i 0.3 -w 2 172.16.1.3 | FORMAT_PING], \
 
 # South-North SNAT: 'foo16' pings 'alice16'. But 'alice16' receives traffic
 # from fd40::1
-NS_CHECK_EXEC([foo16], [ping6 -q -c 3 -i 0.3 -w 2 fd30::3 | FORMAT_PING], \
+NS_CHECK_EXEC([foo16], [ping -6 -q -c 3 -i 0.3 -w 2 fd30::3 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -9168,7 +9168,7 @@ NS_CHECK_EXEC([ls1p1], [ping -q -c 3 -i 0.3 -w 2  172.16.1.1 | FORMAT_PING], \
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 
-NS_CHECK_EXEC([ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
+NS_CHECK_EXEC([ls1p1], [ping -6 -q -c 3 -i 0.3 -w 2 1711::1  | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -11161,12 +11161,12 @@ check ovn-nbctl lsp-add bar bar1 \
 check ovn-nbctl --wait=hv sync
 
 # Force ipv6 nd neighbour solicitation
-NS_EXEC([foo1], [ping6 -c 1 fd12::2])
+NS_EXEC([foo1], [ping -6 -c 1 fd12::2])
 
 NETNS_START_TCPDUMP([foo1], [-vvvv -ttt -nn -e -i foo1 'ether dst 0a:58:a9:fe:01:01 and icmp6'], [foo1-icmp6])
 
 # 'foo1' should be able to ping 'bar1'
-NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+NS_CHECK_EXEC([foo1], [ping -6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -11176,12 +11176,12 @@ OVS_WAIT_UNTIL([
 ])
 
 # Force ipv6 nd neighbour solicitation
-NS_EXEC([foo2], [ping6 -c 1 fd12::2])
+NS_EXEC([foo2], [ping -6 -c 1 fd12::2])
 
 NETNS_START_TCPDUMP([foo2], [-vvvv -ttt -nn -e -i foo2 'ether dst 0a:58:a9:fe:01:01 and icmp6'], [foo2-icmp6])
 
 # 'foo2' should be able to ping 'bar1'
-NS_CHECK_EXEC([foo2], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+NS_CHECK_EXEC([foo2], [ping -6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -11191,12 +11191,12 @@ OVS_WAIT_UNTIL([
 ])
 
 # Force ipv6 nd neighbour solicitation
-NS_EXEC([foo3], [ping6 -c 1 fd12::2])
+NS_EXEC([foo3], [ping -6 -c 1 fd12::2])
 
 NETNS_START_TCPDUMP([foo3], [-vvvv -ttt -nn -e -i foo3 'ether dst 0a:58:a9:fe:01:01 and icmp6'], [foo3-icmp6])
 
 # 'foo3' should be able to ping 'bar1'
-NS_CHECK_EXEC([foo3], [ping6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
+NS_CHECK_EXEC([foo3], [ping -6 -q -c 3 -i 0.3 -w 2 fd12::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -11629,7 +11629,7 @@ check ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror1
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre_mirror6])
 
-NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
+NS_CHECK_EXEC([foo1], [ping -6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -11660,7 +11660,7 @@ check ovn-nbctl --wait=hv lsp-attach-mirror bar1 mirror3
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror ip6[[42:2]]=0x88be], [erspan_mirror6])
 
-NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
+NS_CHECK_EXEC([foo1], [ping -6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -11674,7 +11674,7 @@ check ovn-nbctl --wait=hv set mirror $uuid type=gre
 
 NETNS_START_TCPDUMP([mirror], [-c 3 -neei mirror proto GRE], [gre2_mirror6])
 
-NS_CHECK_EXEC([foo1], [ping6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
+NS_CHECK_EXEC([foo1], [ping -6 -q -c 3 -i 0.3 -w 2 2002::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -15270,7 +15270,7 @@ check ovn-nbctl --wait=hv sync
 NETNS_DAEMONIZE([alice], [nc -6 -l -k 80], [alice.pid])
 NETNS_DAEMONIZE([peter], [nc -6 -l -k 80], [peter.pid])
 
-NS_CHECK_EXEC([bob], [ping6 -q -c 3 -i 0.3 -w 2 fd11::2 | FORMAT_PING], \
+NS_CHECK_EXEC([bob], [ping -6 -q -c 3 -i 0.3 -w 2 fd11::2 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -21363,7 +21363,7 @@ wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=udp
 
 check ovn-nbctl lsp-hc-del lport
 
-# IPv6 ICMP health check (ping6).
+# IPv6 ICMP health check (ping -6).
 check ovn-nbctl lsp-hc-add lport icmp 2001:db8::ff 2001:db8::10
 check ovn-nbctl --wait=hv sync
 check_row_count sb:Service_Monitor 1
