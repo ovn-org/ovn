@@ -414,8 +414,8 @@ m4_define([NS_CHECK_CONNECTIVITY__],
     check ovs-appctl revalidator/wait
 
     # Start a simple TCP and UDP echo server that replies with "ack <received_msg>".
-    NETNS_DAEMONIZE($ns_dst, [nc $proto -l -p 1235 -d 0.1 -c '/bin/cat'], [nc-$ns_dst-$ip-tcp.pid])
-    NETNS_DAEMONIZE($ns_dst, [nc $proto -l -u -p 1234 -d 0.1 -c '/bin/cat'], [nc-$ns_dst-$ip-udp.pid])
+    NETNS_DAEMONIZE($ns_dst, [nc $proto -l -p 1235 -d 0.1 -c 'cat'], [nc-$ns_dst-$ip-tcp.pid])
+    NETNS_DAEMONIZE($ns_dst, [nc $proto -l -u -p 1234 -d 0.1 -c 'cat'], [nc-$ns_dst-$ip-udp.pid])
 
     # Ensure that the destination NS can be pinged on the specified IP
     NS_CHECK_EXEC([$ns_src], [ping $proto -q -c 3 -i 0.3 -w 2 $ip | FORMAT_PING], \
