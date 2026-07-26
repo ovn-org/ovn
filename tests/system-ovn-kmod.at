@@ -931,7 +931,7 @@ printf %8000s > datafile
 printf %32000s > frag_test_srv.expected
 printf %16000s > frag_test_client.expected
 
-NETNS_DAEMONIZE([lsp], [nc -e /bin/cat -u -v -l 42.42.42.1 2021 -o udp_frag_test_srv.rcvd], [lsp-nc.pid])
+NETNS_DAEMONIZE([lsp], [nc -e "$(command -v cat)" -u -v -l 42.42.42.1 2021 -o udp_frag_test_srv.rcvd], [lsp-nc.pid])
 
 # Send 2 client requests with the same port so that the 2nd one
 # is categorized as ct.est and not ct.new.
@@ -993,7 +993,7 @@ printf %8000s > datafile
 printf %32000s > frag_test_srv.expected
 printf %16000s > frag_test_client.expected
 
-NETNS_DAEMONIZE([lsp], [nc -e /bin/cat -u -v -l 4200::1 2021 -o udp_frag_test_srv.rcvd], [lsp-nc.pid])
+NETNS_DAEMONIZE([lsp], [nc -e "$(command -v cat)" -u -v -l 4200::1 2021 -o udp_frag_test_srv.rcvd], [lsp-nc.pid])
 
 # Send 2 client requests with the same port so that the 2nd one
 # is categorized as ct.est and not ct.new.
@@ -1536,8 +1536,8 @@ NETNS_START_TCPDUMP([pod], [-vnne "ip or icmp"], [pod])
 echo -e "Hello UDP\nHello UDP" > udp.expected
 echo -e "Hello TCP\nHello TCP" > tcp.expected
 
-NETNS_DAEMONIZE([pod], [nc -e /bin/cat -v -l -u -o server_udp.log 192.168.100.5 2323], [nc1.pid])
-NETNS_DAEMONIZE([pod], [nc -e /bin/cat -v -l -o server_tcp.log 192.168.100.5 2324], [nc2.pid])
+NETNS_DAEMONIZE([pod], [nc -e "$(command -v cat)" -v -l -u -o server_udp.log 192.168.100.5 2323], [nc1.pid])
+NETNS_DAEMONIZE([pod], [nc -e "$(command -v cat)" -v -l -o server_tcp.log 192.168.100.5 2324], [nc2.pid])
 
 NS_CHECK_EXEC([mgmt], [(echo "Hello UDP"; sleep 3) | nc -u -s 172.16.100.2 -o client_udp.log 172.16.0.5 5656], [0], [ignore], [ignore])
 check cmp server_udp.log udp.expected

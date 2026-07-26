@@ -12942,7 +12942,7 @@ dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
 dnl Start UDP echo server on vm2.
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$(command -v cat)" -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
 
 dnl Send traffic to the UDP server (hits both ACL tiers).
 NS_CHECK_EXEC([vm1], [echo a | nc --send-only -u 42.42.42.3 1000])
@@ -13060,7 +13060,7 @@ dnl And wait for it to be up and running.
 OVS_WAIT_UNTIL([ovs-ofctl dump-ipfix-flow br-int | grep -q '1 ids'])
 
 dnl Start UDP echo server on vm2.
-NETNS_DAEMONIZE([vm2], [nc -e /bin/cat -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
+NETNS_DAEMONIZE([vm2], [nc -e "$(command -v cat)" -k -u -v -l -m 1 1000], [nc-vm2-1000.pid])
 
 dnl Send traffic to the UDP server (hits both ACL tiers).
 NS_CHECK_EXEC([vm1], [echo a | nc --send-only -u 42.42.42.3 1000])
