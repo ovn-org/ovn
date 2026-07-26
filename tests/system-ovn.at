@@ -7883,8 +7883,9 @@ reject: acl-meter
 ])
 
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
-send (p, iface='sw01', loop = 0, verbose = 0, count = 20)
+p = Ether(src="f0:00:00:01:02:03", dst="00:00:01:01:02:03") / \
+    IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
+sendp(p, iface='sw01', loop = 0, verbose = 0, count = 20)
 EOF
 
 # 1pps
@@ -7900,8 +7901,9 @@ NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp -Q in], [reject])
 check ovn-nbctl --may-exist --wait=hv meter-add acl-meter drop 5 pktps 0
 OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow15 meter-stats br-int | grep -q packet_count:0])
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
-send (p, iface='sw01', loop = 0, verbose = 0, count = 40)
+p = Ether(src="f0:00:00:01:02:03", dst="00:00:01:01:02:03") / \
+    IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
+sendp(p, iface='sw01', loop = 0, verbose = 0, count = 40)
 EOF
 
 # 10pps
@@ -7917,8 +7919,9 @@ NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp -Q in], [reject])
 check ovn-nbctl --wait=hv copp-del copp0 reject
 
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
-send (p, iface='sw01', loop = 0, verbose = 0, count = 20)
+p = Ether(src="f0:00:00:01:02:03", dst="00:00:01:01:02:03") / \
+    IP(src="192.168.1.2", dst="192.168.1.1") / UDP(dport = 12345) / Raw(b"X"*64)
+sendp(p, iface='sw01', loop = 0, verbose = 0, count = 20)
 EOF
 
 OVS_WAIT_UNTIL([
@@ -7935,8 +7938,9 @@ arp-resolve: arp-meter
 ])
 
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="172.16.1.100") / TCP(dport = 80, flags="S") / Raw(b"X"*64)
-send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
+p = Ether(src="f0:00:00:01:02:03", dst="00:00:01:01:02:03") / \
+    IP(src="192.168.1.2", dst="172.16.1.100") / TCP(dport = 80, flags="S") / Raw(b"X"*64)
+sendp(p, iface='sw01', loop = 0, verbose = 0, count = 100)
 EOF
 
 # 1pps
@@ -7954,8 +7958,9 @@ icmp4-error: icmp-meter
 
 NETNS_START_TCPDUMP([sw01], [-n -i sw01 icmp], [icmp])
 ip netns exec sw01 scapy -H <<-EOF
-p = IP(src="192.168.1.2", dst="172.16.1.100", ttl=1) / TCP(dport = 8080, flags="S") / Raw(b"X"*64)
-send (p, iface='sw01', loop = 0, verbose = 0, count = 100)
+p = Ether(src="f0:00:00:01:02:03", dst="00:00:01:01:02:03") / \
+    IP(src="192.168.1.2", dst="172.16.1.100", ttl=1) / TCP(dport = 8080, flags="S") / Raw(b"X"*64)
+sendp(p, iface='sw01', loop = 0, verbose = 0, count = 100)
 EOF
 
 # 1pps
