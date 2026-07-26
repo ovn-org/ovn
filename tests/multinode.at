@@ -173,7 +173,7 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
 
 m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1400 dev eth1
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping6 -c 5 -s 1450 -M do 2000::3 2>&1 | grep -q -i "message too long"])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -6 -c 5 -s 1450 -M do 2000::3 2>&1 | grep -q -i "message too long"])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 172.20.1.2 | FORMAT_PING], \
 [0], [dnl
@@ -399,7 +399,7 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
 
 m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1400 dev eth1
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping6 -c 5 -s 1450 -M do 2000::3 2>&1 | grep -q -i "message too long"])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -6 -c 5 -s 1450 -M do 2000::3 2>&1 | grep -q -i "message too long"])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
@@ -625,7 +625,7 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add default via 10.0.0.1 dev sw0p1])
 
 m_as ovn-chassis-1 ip route change 170.168.0.0/16 mtu 1400 dev eth1
-M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping6 -c 5 -s 1450 -M do 2000::3 2>&1 | grep -q -i "message too long"])
+M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -6 -c 5 -s 1450 -M do 2000::3 2>&1 | grep -q -i "message too long"])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route flush dev sw0p1])
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ip route add 10.0.0.0/24 dev sw0p1])
@@ -5009,13 +5009,13 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping -q -c 3 -i 0.3 -w 2 172.18.86.10
 ])
 m_wait_row_count mac_binding 1 ip="172.18.86.102" logical_port="lr1-pub"
 
-M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::101 | FORMAT_PING], \
+M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping -6 -q -c 3 -i 0.3 -w 2 6812:86::101 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 m_wait_row_count mac_binding 1 ip="6812\:86\:\:101" logical_port="lr1-pub"
 
-M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::102 | FORMAT_PING], \
+M_NS_CHECK_EXEC([ovn-chassis-1], [ls1p1], [ping -6 -q -c 3 -i 0.3 -w 2 6812:86::102 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -5040,13 +5040,13 @@ M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping -q -c 3 -i 0.3 -w 2 172.18.86
 ])
 m_wait_row_count mac_binding 1 ip="172.18.86.101" logical_port="lr1-pub"
 
-M_NS_CHECK_EXEC([ovn-chassis-1], [ovn-ext1], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
+M_NS_CHECK_EXEC([ovn-chassis-1], [ovn-ext1], [ping -6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
 m_wait_row_count mac_binding 1 ip="6812\:86\:\:101" logical_port="lr1-pub"
 
-M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping -6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
@@ -5056,7 +5056,7 @@ m_wait_row_count mac_binding 1 ip="6812\:86\:\:102" logical_port="lr1-pub"
 m_central_as ovn-sbctl --all destroy  mac_binding
 M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ip -6 neigh del 6812:86::11 dev ext2 lladdr 0a:0a:56:33:02:11])
 
-M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
+M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping -6 -q -c 3 -i 0.3 -w 2 6812:86::11 | FORMAT_PING], \
 [0], [dnl
 3 packets transmitted, 3 received, 0% packet loss, time 0ms
 ])
