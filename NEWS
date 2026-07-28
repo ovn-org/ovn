@@ -1,5 +1,13 @@
 Post v26.03.0
 -------------
+   - Logical_Router_Port: Added a new "options:dhcpv4_primary_ip" key
+     that selects which of the port's IPv4 addresses ovn-northd uses as
+     the relay agent address (giaddr) in relayed DHCP packets.  When
+     unset, ovn-northd picks the same address it picked before
+     (whichever CIDR in "networks" sorts first as a string), so
+     existing deployments are unaffected; deployments that need a
+     specific address on a multi-IP port can pin it via the new
+     option.
    - OVN Interconnection now supports advertising Address_Sets to remote
      availability zones.  Set options:ic-adv=true on an NB Address_Set to
      have ovn-ic publish it to the IC-SB database and import it into the

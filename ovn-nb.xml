@@ -4197,6 +4197,30 @@ or
       to <ref table="DHCP_Relay"/> table.
     </column>
 
+    <column name="options" key="dhcpv4_primary_ip">
+      <p>
+        Optional.  Selects which of the logical router port's IPv4
+        addresses <code>ovn-northd</code> uses as the relay agent
+        address (<code>giaddr</code>) in DHCP packets relayed via this
+        port (see <ref column="dhcp_relay"/>).  The value must be a
+        bare IPv4 host address (no prefix length, e.g.
+        <code>10.0.0.1</code>) that equals one of the addresses
+        configured in <ref column="networks"/>.  If the value is not a
+        valid IPv4 address or does not match one of the addresses in
+        <ref column="networks"/>, <code>ovn-northd</code> skips
+        emitting DHCP relay flows for this port.
+      </p>
+      <p>
+        When unset, <code>ovn-northd</code> defaults to the first
+        address in <ref column="networks"/> as ordered by OVSDB: the
+        CIDR that sorts first as a string.  This default may not match
+        the address intended as the DHCP relay address of the port, so
+        on multi-IP ports this option should be set explicitly.  On
+        single-IP ports the only configured address is always used and
+        the option may be left unset.
+      </p>
+    </column>
+
     <group title="Distributed Gateway Ports">
       <p>
         Gateways, as documented under <code>Gateways</code> in the OVN

@@ -13764,14 +13764,14 @@ check ovn-nbctl --wait=sb sync
 ovn-sbctl lflow-list > lflows
 AT_CAPTURE_FILE([lflows])
 
-AT_CHECK([grep -e "DHCP_RELAY_" lflows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 192.168.1.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 192.168.1.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
   table=??(lr_in_ip_input     ), priority=110  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && ip.frag == 0 && udp.src == 68 && udp.dst == 67), action=(reg9[[7]] = dhcp_relay_req_chk(192.168.1.1, 172.16.1.1);next; /* DHCP_RELAY_REQ */)
   table=??(lr_in_ip_input     ), priority=110  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && ip.frag == 0 && udp.src == 67 && udp.dst == 67), action=(next; /* DHCP_RELAY_RESP */)
-  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 192.168.1.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
-  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
-  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
-  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 192.168.1.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
-  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
   table=??(ls_in_l2_lkup      ), priority=100  , match=(inport == "ls0-port1" && eth.src == 02:00:00:00:00:10 && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(eth.dst = 02:00:00:00:00:01; outport = "lrp1-attachment"; next; /* DHCP_RELAY_REQ */)
 ])
 
@@ -13781,14 +13781,14 @@ check ovn-nbctl --wait=sb set Logical_Switch ls0 other_config:dhcp_relay_port=fo
 ovn-sbctl lflow-list > lflows
 AT_CAPTURE_FILE([lflows])
 
-AT_CHECK([grep -e "DHCP_RELAY_" lflows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 192.168.1.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 192.168.1.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
   table=??(lr_in_ip_input     ), priority=110  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && ip.frag == 0 && udp.src == 68 && udp.dst == 67), action=(reg9[[7]] = dhcp_relay_req_chk(192.168.1.1, 172.16.1.1);next; /* DHCP_RELAY_REQ */)
   table=??(lr_in_ip_input     ), priority=110  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && ip.frag == 0 && udp.src == 67 && udp.dst == 67), action=(next; /* DHCP_RELAY_RESP */)
-  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 192.168.1.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
-  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
-  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
-  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 192.168.1.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
-  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
 ])
 
 # Clear the dhcp_relay from lrp1
@@ -13797,7 +13797,7 @@ check ovn-nbctl --wait=sb clear Logical_Router_port lrp1 dhcp_relay
 ovn-sbctl lflow-list > lflows
 AT_CAPTURE_FILE([lflows])
 
-AT_CHECK([grep -e "DHCP_RELAY_" lflows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
 ])
 
 # set the dhcp_relay_port in ls0 to proper one.
@@ -13806,7 +13806,83 @@ check ovn-nbctl --wait=sb set Logical_Switch ls0 other_config:dhcp_relay_port=lr
 ovn-sbctl lflow-list > lflows
 AT_CAPTURE_FILE([lflows])
 
-AT_CHECK([grep -e "DHCP_RELAY_" lflows | sed 's/table=../table=??/'], [0], [dnl
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+])
+
+# Multi-IP LRP: re-enable DHCP relay on lrp1 and add a second IPv4
+# network.  options:dhcpv4_primary_ip is unset, so ovn-northd falls
+# back to the first address returned by OVSDB - whichever CIDR sorts
+# first as a string.  For ["10.0.0.1/24","192.168.1.1/24"] that is
+# 10.0.0.1/24, so DHCP relay flows are emitted using 10.0.0.1.
+check ovn-nbctl --wait=sb set Logical_Router_port lrp1 dhcp_relay=$dhcp_relay
+check ovn-nbctl --wait=sb set Logical_Router_port lrp1 \
+    'networks=["10.0.0.1/24","192.168.1.1/24"]'
+
+ovn-sbctl lflow-list > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 10.0.0.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 10.0.0.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 10.0.0.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 10.0.0.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 10.0.0.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(10.0.0.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_ip_input     ), priority=110  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && ip.frag == 0 && udp.src == 68 && udp.dst == 67), action=(reg9[[7]] = dhcp_relay_req_chk(10.0.0.1, 172.16.1.1);next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_ip_input     ), priority=110  , match=(ip4.src == 172.16.1.1 && ip4.dst == 10.0.0.1 && ip.frag == 0 && udp.src == 67 && udp.dst == 67), action=(next; /* DHCP_RELAY_RESP */)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(inport == "ls0-port1" && eth.src == 02:00:00:00:00:10 && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(eth.dst = 02:00:00:00:00:01; outport = "lrp1-attachment"; next; /* DHCP_RELAY_REQ */)
+])
+
+# Pin the DHCPv4 primary IP via options:dhcpv4_primary_ip.  Every DHCP
+# relay flow should now reference 192.168.1.1/24 instead of 10.0.0.1/24.
+check ovn-nbctl --wait=sb set Logical_Router_port lrp1 \
+    options:dhcpv4_primary_ip=192.168.1.1
+
+ovn-sbctl lflow-list > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 192.168.1.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 192.168.1.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 192.168.1.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(192.168.1.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_ip_input     ), priority=110  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && ip.frag == 0 && udp.src == 68 && udp.dst == 67), action=(reg9[[7]] = dhcp_relay_req_chk(192.168.1.1, 172.16.1.1);next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_ip_input     ), priority=110  , match=(ip4.src == 172.16.1.1 && ip4.dst == 192.168.1.1 && ip.frag == 0 && udp.src == 67 && udp.dst == 67), action=(next; /* DHCP_RELAY_RESP */)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(inport == "ls0-port1" && eth.src == 02:00:00:00:00:10 && ip4.src == {0.0.0.0, 192.168.1.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(eth.dst = 02:00:00:00:00:01; outport = "lrp1-attachment"; next; /* DHCP_RELAY_REQ */)
+])
+
+# Setting options:dhcpv4_primary_ip to an address that does not belong
+# to 'networks' is a misconfiguration: ovn-northd logs a warning and
+# skips DHCP relay flow generation for the port.
+check ovn-nbctl --wait=sb set Logical_Router_port lrp1 \
+    options:dhcpv4_primary_ip=10.99.99.99
+
+ovn-sbctl lflow-list > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+])
+AT_CHECK([grep -q "options:dhcpv4_primary_ip=10.99.99.99 does not match any address in 'networks'" northd/ovn-northd.log])
+
+# Reducing 'networks' back to a single IPv4 makes the option no longer
+# mandatory; clearing it should restore DHCP relay flows that reference
+# the remaining address.
+check ovn-nbctl --wait=sb set Logical_Router_port lrp1 \
+    'networks=["10.0.0.1/24"]'
+check ovn-nbctl --wait=sb remove Logical_Router_port lrp1 options dhcpv4_primary_ip
+
+ovn-sbctl lflow-list > lflows
+AT_CAPTURE_FILE([lflows])
+
+AT_CHECK([grep -e "DHCP_RELAY_" lflows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dhcp_relay_req), priority=1    , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]] == 0), action=(drop; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_req), priority=100  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && reg9[[7]]), action=(ip4.src = 10.0.0.1; ip4.dst = 172.16.1.1; udp.src = 67; next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_dhcp_relay_resp), priority=1    , match=(ip4.src == 172.16.1.1 && reg2 == 10.0.0.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]] == 0), action=(drop; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp), priority=100  , match=(ip4.src == 172.16.1.1 && reg2 == 10.0.0.1 && udp.src == 67 && udp.dst == 67 && reg9[[8]]), action=(ip4.src = 10.0.0.1; udp.dst = 68; outport = "lrp1"; output; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_dhcp_relay_resp_chk), priority=100  , match=(ip4.src == 172.16.1.1 && ip4.dst == 10.0.0.1 && udp.src == 67 && udp.dst == 67), action=(reg2 = ip4.dst; reg9[[8]] = dhcp_relay_resp_chk(10.0.0.1, 172.16.1.1); next; /* DHCP_RELAY_RESP */)
+  table=??(lr_in_ip_input     ), priority=110  , match=(inport == "lrp1" && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && ip.frag == 0 && udp.src == 68 && udp.dst == 67), action=(reg9[[7]] = dhcp_relay_req_chk(10.0.0.1, 172.16.1.1);next; /* DHCP_RELAY_REQ */)
+  table=??(lr_in_ip_input     ), priority=110  , match=(ip4.src == 172.16.1.1 && ip4.dst == 10.0.0.1 && ip.frag == 0 && udp.src == 67 && udp.dst == 67), action=(next; /* DHCP_RELAY_RESP */)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(inport == "ls0-port1" && eth.src == 02:00:00:00:00:10 && ip4.src == {0.0.0.0, 10.0.0.0/24} && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67), action=(eth.dst = 02:00:00:00:00:01; outport = "lrp1-attachment"; next; /* DHCP_RELAY_REQ */)
 ])
 
 OVN_CLEANUP_NORTHD
