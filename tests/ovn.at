@@ -21451,10 +21451,6 @@ grep controller | grep tp_src=546 | grep \
 check ovn-nbctl --wait=hv lsp-add-localnet-port ls1 ln-public phys
 
 ln_public_key=$(fetch_column Port_Binding tunnel_key logical_port=ln-public)
-# DHCP lflows for external ports now match on the external LSP's inport
-# (after the inport-rewrite at table 0), so the OF flow's reg14 value is
-# the external LSP's tunnel_key, not the localnet's.
-lp_ext1_key=$(fetch_column Port_Binding tunnel_key logical_port=ls1-lp_ext1)
 
 # The ls1-lp_ext1 should be bound to hv1 as only hv1 is part of the
 # ha chassis group.
@@ -21466,13 +21462,13 @@ wait_for_ports_up ls1-lp_ext1
 (ovn-sbctl dump-flows lr0; ovn-sbctl dump-flows ls1) > sbflows
 as hv1 ovs-ofctl dump-flows br-int > brintflows
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
-grep controller | grep "0a.00.00.06" | grep reg14=0x$lp_ext1_key | \
+grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
 wc -l], [0], [1
 ])
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
-grep reg14=0x$lp_ext1_key | wc -l], [0], [1
+grep reg14=0x$ln_public_key | wc -l], [0], [1
 ])
 
 # There should be no DHCPv4/v6 flows for ls1-lp_ext1 on hv2
@@ -21716,16 +21712,15 @@ ovn-sbctl find port_binding logical_port=ls1-lp_ext1
 wait_row_count Port_Binding 1 logical_port=ls1-lp_ext1 chassis=$hv2_uuid
 wait_for_ports_up ls1-lp_ext1
 
-# There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2.
-# reg14 carries the external LSP's tunnel_key (after inport rewrite).
+# There should be OF flows for DHCP4/v6 for the ls1-lp_ext1 port in hv2
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
-grep controller | grep "0a.00.00.06" | grep reg14=0x$lp_ext1_key | \
+grep controller | grep "0a.00.00.06" | grep reg14=0x$ln_public_key | \
 wc -l], [0], [1
 ])
 AT_CHECK([as hv2 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
-grep reg14=0x$lp_ext1_key | wc -l], [0], [1
+grep reg14=0x$ln_public_key | wc -l], [0], [1
 ])
 
 # There should be no DHCPv4/v6 flows for ls1-lp_ext1 on hv1
@@ -21735,7 +21730,7 @@ grep controller | grep "0a.00.00.06" | wc -l], [0], [0
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int | \
 grep controller | grep tp_src=546 | grep \
 "ae.70.00.00.00.00.00.00.00.00.00.00.00.00.00.06" | \
-grep reg14=0x$lp_ext1_key | wc -l], [0], [0
+grep reg14=0x$ln_public_key | wc -l], [0], [0
 ])
 
 # Send DHCPDISCOVER again for hv1/ext1. The DHCP response should come from
@@ -46639,5 +46634,103 @@ echo $nd_ns > expected_nd_ns
 OVN_CHECK_PACKETS_CONTAIN([hv/br-phys_n1-tx.pcap], [expected_nd_ns])
 
 OVN_CLEANUP([hv])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Traffic from external port not looped back to localnet])
+
+ovn_start
+CHECK_SCAPY()
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+
+# Topology:
+# A logical switch with mcast_snoop enabled, a localnet port (sw-ln),
+# a regular VIF port (sw-p1) to make the datapath local, and an
+# external port (sw-ext) representing a baremetal node.
+
+check ovn-nbctl ls-add sw              \
+    -- lsp-add sw sw-ln                \
+    -- lsp-set-type sw-ln localnet     \
+    -- lsp-set-addresses sw-ln unknown \
+    -- lsp-set-options sw-ln network_name=phys mcast_flood_reports=true
+
+check ovn-nbctl lsp-add sw sw-p1 \
+    -- lsp-set-addresses sw-p1 "00:00:00:00:00:10 10.0.0.10"
+
+check ovn-nbctl lsp-add sw sw-ext   \
+    -- lsp-set-type sw-ext external \
+    -- lsp-set-addresses sw-ext "50:54:00:00:00:01"
+
+check ovn-nbctl set logical_switch sw \
+    other_config:mcast_snoop=true     \
+    other_config:mcast_querier=false
+
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+check ovn-sbctl lsp-bind sw-ext hv1
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -c connected])
+
+as hv1 reset_pcap_file br-phys_n1 hv1/br-phys_n1
+
+# Unicast unknown.  The destination MAC is not known to any LSP so
+# the packet hits S_SWITCH_IN_L2_UNKNOWN and gets flooded to
+# MC_UNKNOWN (which includes the localnet port).
+packet=$(fmt_pkt \
+    "Ether(dst='aa:bb:cc:dd:ee:ff', src='50:54:00:00:00:01') / \
+     IP(src='10.0.0.1', dst='10.0.0.99') / \
+     UDP(sport=1234, dport=5678) / Raw(b'test')")
+check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+
+# MLDv2 report.  Simulates a baremetal node sending an MLD report
+# during PXE boot via the provisioning network.
+packet=$(fmt_pkt \
+    "Ether(dst='33:33:00:00:00:16', src='50:54:00:00:00:01') / \
+     IPv6(src='fe80::1', dst='ff02::16', hlim=1) / \
+     IPv6ExtHdrHopByHop(options=RouterAlert(value=0)) / \
+     ICMPv6MLReport2(records=ICMPv6MLDMultAddrRec(rtype=4, \
+         dst='ff0a:dead:beef::1'))")
+check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+
+# IGMPv3 report.  Same scenario but with IPv4 multicast.
+packet=$(fmt_pkt \
+    "Ether(dst='01:00:5e:00:00:16', src='50:54:00:00:00:01') / \
+     IP(src='10.0.0.1', dst='224.0.0.22', ttl=1, \
+        options=IPOption_Router_Alert()) / \
+     IGMPv3(type=0x22) / \
+     IGMPv3mr(records=IGMPv3gr(rtype=4, maddr='239.1.2.3'))")
+check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+
+# Wait for pinctrl to fully process the IGMP/MLD reports and sync them
+# to the SB database.  This guarantees that pinctrl has also re-injected
+# the reports for flooding to mrouters (where the loopback would occur).
+# The unicast unknown packet (sent first) was processed synchronously in
+# the datapath, so it is certainly done by now.
+wait_row_count IGMP_Group 1 address=239.1.2.3
+wait_row_count IGMP_Group 1 address='"ff0a:dead:beef::1"'
+
+# None of the packets must have been sent back to the localnet port.
+AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" \
+    hv1/br-phys_n1-tx.pcap > tx_packets.txt])
+AT_CHECK([test ! -s tx_packets.txt])
+
+# Check if ovs did prevent any loop.
+AT_CHECK([grep "skipping output to input port" \
+    hv1/ovs-vswitchd.log], [1])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
