@@ -1,5 +1,8 @@
 OVN v26.03.3 - xx xxx xxxx
 --------------------------
+  - Reverted fix for Load_Balancer health check replies for baremetal
+    pool members whose backend LSP is type=external.  This was causing
+    a packet loop.
 
 OVN v26.03.2 - 16 Jun 2026
 --------------------------

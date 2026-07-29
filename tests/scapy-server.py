@@ -11,6 +11,7 @@ import binascii
 from socket import *  # noqa: F401,F403
 from scapy.all import *  # noqa: F401,F403
 from scapy.all import raw
+from scapy.contrib.igmpv3 import *  # noqa: F401,F403
 
 
 vlog = ovs.vlog.Vlog("scapy-server")
