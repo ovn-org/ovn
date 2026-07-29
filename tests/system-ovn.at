@@ -18258,6 +18258,54 @@ f0:00:0f:16:01:20 dev $LO_NAME master $BR_NAME static
 f0:00:0f:16:01:20 dev $LO_NAME vlan 1 master $BR_NAME static
 ])
 
+AS_BOX([L2 EVPN learned FDB advertising])
+
+# Add a port with "unknown" addresses and FDB learning enabled.
+# redistribute=fdb is already set from the previous section.
+check ovn-nbctl --wait=hv                                          \
+    -- lsp-add ls-evpn wl-unknown                                  \
+    -- lsp-set-addresses wl-unknown "unknown"
+
+ADD_NAMESPACES(wl-unknown)
+ADD_VETH(wl-unknown, wl-unknown, br-int, "172.16.1.30/24", "f0:00:0f:16:01:30")
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up wl-unknown
+
+# Trigger FDB learning by sending traffic from the namespace.
+NS_CHECK_EXEC([wl-unknown], [ping -c 1 -W 1 172.16.1.10 > /dev/null 2>&1 || true])
+
+# Wait for the FDB entry to appear in the SB database.
+learned_mac=f0:00:0f:16:01:30
+wait_row_count fdb 1 mac='"'$learned_mac'"'
+
+# The dynamically learned FDB MAC should be advertised on the loopback.
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "$learned_mac" | sort], [0], [dnl
+$learned_mac dev $LO_NAME master $BR_NAME static
+$learned_mac dev $LO_NAME vlan 1 master $BR_NAME static
+])
+
+# Also verify that FDB entries learned on localnet ports are advertised.
+# The localnet port already has addresses="unknown" from lsp-add-localnet-port.
+check ovn-nbctl --wait=hv set Logical_Switch_Port ln_port \
+    options:localnet_learn_fdb=true
+
+# Send traffic from the physical side to trigger localnet FDB learning.
+ADD_NAMESPACES(ext-host)
+ADD_VETH(ext-host, ext-host, br-ext, "172.16.1.40/24", "aa:bb:cc:dd:ee:ff")
+NS_CHECK_EXEC([ext-host], [ping -c 1 -W 1 172.16.1.10 > /dev/null 2>&1 || true])
+
+ln_learned_mac=aa:bb:cc:dd:ee:ff
+wait_row_count fdb 1 mac='"'$ln_learned_mac'"'
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "$ln_learned_mac" | sort], [0], [dnl
+$ln_learned_mac dev $LO_NAME master $BR_NAME static
+$ln_learned_mac dev $LO_NAME vlan 1 master $BR_NAME static
+])
+
+# Cleanup.
+check ovn-sbctl --all destroy FDB
+check ovn-nbctl --wait=hv lsp-del wl-unknown \
+    -- remove Logical_Switch_Port ln_port options localnet_learn_fdb
+
 check ovn-nbctl --wait=hv lsp-del workload2
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:0f:16:01" | sort], [0], [dnl
 f0:00:0f:16:01:10 dev $LO_NAME master $BR_NAME static
