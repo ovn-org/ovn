@@ -46,6 +46,9 @@ neighbor_interface_monitor_alloc(enum neighbor_family family,
 static void neighbor_collect_mac_to_advertise(
     const struct neighbor_ctx_in *, struct hmap *neighbors,
     struct sset *advertised_pbs, const struct sbrec_datapath_binding *);
+static void neighbor_collect_fdb_to_advertise(
+    const struct neighbor_ctx_in *, struct hmap *neighbors,
+    struct hmapx *fdb_datapaths, struct local_datapath *);
 static void neighbor_collect_advertised_mac_bindings(
     const struct neighbor_ctx_in *, enum neigh_redistribute_mode mode,
     struct hmap *fdb_neighbors,
@@ -176,6 +179,10 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
                                               &lo->announced_neighbors,
                                               n_ctx_out->advertised_pbs,
                                               ld->datapath);
+            neighbor_collect_fdb_to_advertise(n_ctx_in,
+                                              &lo->announced_neighbors,
+                                              n_ctx_out->fdb_datapaths,
+                                              ld);
         }
         /* Advertise every SB Advertised_MAC_Binding row of the datapath as an
          * EVPN Type-2 MAC+IP neighbor; ovn-northd only populates rows that are
@@ -303,6 +310,60 @@ neighbor_collect_mac_to_advertise(const struct neighbor_ctx_in *n_ctx_in,
     }
 
     sbrec_port_binding_index_destroy_row(target);
+}
+
+/* Walks the SB FDB entries for 'dp' and advertises each learned MAC as an
+ * EVPN Type-2 MAC-only neighbor (into 'neighbors').  Only FDB entries
+ * learned on VIF ports bound to this chassis or on localnet ports are
+ * included.  The per-port 'dynamic-routing-advertise' option is honored. */
+static void
+neighbor_collect_fdb_to_advertise(const struct neighbor_ctx_in *n_ctx_in,
+                                  struct hmap *neighbors,
+                                  struct hmapx *fdb_datapaths,
+                                  struct local_datapath *ld)
+{
+    hmapx_add(fdb_datapaths, ld);
+
+    const struct sbrec_datapath_binding *dp = ld->datapath;
+    struct sbrec_fdb *fdb_target =
+        sbrec_fdb_index_init_row(n_ctx_in->sbrec_fdb_by_dp_key);
+    sbrec_fdb_index_set_dp_key(fdb_target, dp->tunnel_key);
+
+    const struct sbrec_fdb *fdb;
+    SBREC_FDB_FOR_EACH_EQUAL (fdb, fdb_target,
+                              n_ctx_in->sbrec_fdb_by_dp_key) {
+        const struct sbrec_port_binding *pb =
+            lport_lookup_by_key_with_dp(n_ctx_in->sbrec_pb_by_key,
+                                        dp, fdb->port_key);
+        if (!pb) {
+            continue;
+        }
+
+        enum en_lport_type type = get_lport_type(pb);
+        if (type == LP_VIF &&
+            !lport_pb_is_chassis_resident(n_ctx_in->chassis, pb)) {
+            continue;
+        }
+
+        if (type != LP_VIF && type != LP_LOCALNET) {
+            continue;
+        }
+
+        if (!smap_get_bool(&pb->options, "dynamic-routing-advertise", true)) {
+            continue;
+        }
+
+        struct eth_addr ea;
+        if (!eth_addr_from_string(fdb->mac, &ea)) {
+            continue;
+        }
+
+        if (!advertise_neigh_find(neighbors, ea, &in6addr_any)) {
+            advertise_neigh_add(neighbors, ea, in6addr_any);
+        }
+    }
+
+    sbrec_fdb_index_destroy_row(fdb_target);
 }
 
 /* Walks the SB Advertised_MAC_Binding rows of 'dp' and advertises each as an

@@ -6081,6 +6081,9 @@ struct ed_type_neighbor {
     struct vector monitored_interfaces;
     /* Contains set of PB names that are currently advertised. */
     struct sset advertised_pbs;
+    /* Contains 'struct local_datapath' pointers for datapaths with FDB
+     * advertisement enabled. */
+    struct hmapx fdb_datapaths;
 };
 
 static void *
@@ -6093,6 +6096,7 @@ en_neighbor_init(struct engine_node *node OVS_UNUSED,
         .monitored_interfaces =
             VECTOR_EMPTY_INITIALIZER(struct neighbor_interface_monitor *),
         .advertised_pbs = SSET_INITIALIZER(&data->advertised_pbs),
+        .fdb_datapaths = HMAPX_INITIALIZER(&data->fdb_datapaths),
     };
     return data;
 }
@@ -6105,6 +6109,7 @@ en_neighbor_cleanup(void *data)
     neighbor_cleanup(&ne_data->monitored_interfaces);
     vector_destroy(&ne_data->monitored_interfaces);
     sset_destroy(&ne_data->advertised_pbs);
+    hmapx_destroy(&ne_data->fdb_datapaths);
 }
 
 static enum engine_node_state
@@ -6131,6 +6136,14 @@ en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
         engine_ovsdb_node_get_index(
             engine_get_input("SB_advertised_mac_binding", node),
             "datapath");
+    struct ovsdb_idl_index *sbrec_port_binding_by_key =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_port_binding", node),
+            "key");
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_fdb", node),
+            "dp_key");
 
     const char *chassis_id = get_ovs_chassis_id(ovs_table);
     ovs_assert(chassis_id);
@@ -6143,16 +6156,20 @@ en_neighbor_run(struct engine_node *node OVS_UNUSED, void *data)
         .sbrec_pb_by_dp = sbrec_port_binding_by_datapath,
         .sbrec_amb_by_dp = sbrec_advertised_mac_binding_by_datapath,
         .sbrec_pb_by_name = sbrec_port_binding_by_name,
+        .sbrec_pb_by_key = sbrec_port_binding_by_key,
+        .sbrec_fdb_by_dp_key = sbrec_fdb_by_dp_key,
         .chassis = chassis,
     };
 
     struct neighbor_ctx_out n_ctx_out = {
         .monitored_interfaces = &ne_data->monitored_interfaces,
         .advertised_pbs = &ne_data->advertised_pbs,
+        .fdb_datapaths = &ne_data->fdb_datapaths,
     };
 
     neighbor_cleanup(&ne_data->monitored_interfaces);
     sset_clear(&ne_data->advertised_pbs);
+    hmapx_clear(&ne_data->fdb_datapaths);
     neighbor_run(&n_ctx_in, &n_ctx_out);
 
     return EN_UPDATED;
@@ -6276,6 +6293,35 @@ neighbor_sb_port_binding_handler(struct engine_node *node, void *data)
 
         if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_MAC) &&
             sset_contains(&ne_data->advertised_pbs, pb->logical_port)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+neighbor_sb_fdb_handler(struct engine_node *node, void *data)
+{
+    /* This handler assumes that local_datapaths have not been added or
+     * removed in this engine run.  This is guaranteed because
+     * neighbor_runtime_data_handler() returns EN_UNHANDLED when it detects
+     * a new or removed datapath (TRACKED_RESOURCE_NEW / _REMOVED), which
+     * forces a full recompute of en_neighbor before this handler can run.
+     * If neighbor_runtime_data_handler() is ever changed to handle those
+     * cases incrementally, this handler must be updated to account for
+     * datapaths that were not present when it looked up FDB entries. */
+    struct ed_type_neighbor *ne_data = data;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    const struct sbrec_fdb_table *fdb_table =
+        EN_OVSDB_GET(engine_get_input("SB_fdb", node));
+
+    const struct sbrec_fdb *fdb;
+    SBREC_FDB_TABLE_FOR_EACH_TRACKED (fdb, fdb_table) {
+        struct local_datapath *ld =
+            get_local_datapath(&rt_data->local_datapaths, fdb->dp_key);
+        if (ld && hmapx_contains(&ne_data->fdb_datapaths, ld)) {
             return EN_UNHANDLED;
         }
     }
@@ -7212,6 +7258,7 @@ inc_proc_ovn_controller_init(
                      neighbor_sb_datapath_binding_handler);
     engine_add_input(&en_neighbor, &en_sb_port_binding,
                      neighbor_sb_port_binding_handler);
+    engine_add_input(&en_neighbor, &en_sb_fdb, neighbor_sb_fdb_handler);
     engine_add_input(&en_neighbor_exchange, &en_neighbor, NULL);
     engine_add_input(&en_neighbor_exchange, &en_host_if_monitor, NULL);
     engine_add_input(&en_neighbor_exchange, &en_neighbor_table_notify, NULL);

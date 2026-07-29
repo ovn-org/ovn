@@ -21,6 +21,7 @@
 #include <net/if.h>
 #include <stdint.h>
 
+#include "hmapx.h"
 #include "lib/sset.h"
 #include "openvswitch/hmap.h"
 
@@ -48,6 +49,10 @@ struct neighbor_ctx_in {
     struct ovsdb_idl_index *sbrec_amb_by_dp;
     /* Index for Port Binding by name. */
     struct ovsdb_idl_index *sbrec_pb_by_name;
+    /* Index for Port Binding by datapath and tunnel key. */
+    struct ovsdb_idl_index *sbrec_pb_by_key;
+    /* Index for FDB by dp_key. */
+    struct ovsdb_idl_index *sbrec_fdb_by_dp_key;
     const struct sbrec_chassis *chassis;
 };
 
@@ -56,6 +61,9 @@ struct neighbor_ctx_out {
     struct vector *monitored_interfaces;
     /* Contains set of port binding names that are currently advertised. */
     struct sset *advertised_pbs;
+    /* Contains 'struct local_datapath' pointers for datapaths with FDB
+     * advertisement enabled. */
+    struct hmapx *fdb_datapaths;
 };
 
 enum neighbor_interface_type {

@@ -395,6 +395,7 @@ digraph "Incremental-Processing-Engine" {
 	runtime_data -> neighbor [[label="neighbor_runtime_data_handler"]];
 	SB_datapath_binding -> neighbor [[label="neighbor_sb_datapath_binding_handler"]];
 	SB_port_binding -> neighbor [[label="neighbor_sb_port_binding_handler"]];
+	SB_fdb -> neighbor [[label="neighbor_sb_fdb_handler"]];
 	host_if_monitor [[style=filled, shape=box, fillcolor=white, label="host_if_monitor"]];
 	neighbor_table_notify [[style=filled, shape=box, fillcolor=white, label="neighbor_table_notify"]];
 	neighbor_exchange_status [[style=filled, shape=box, fillcolor=white, label="neighbor_exchange_status"]];

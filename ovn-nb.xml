@@ -1041,9 +1041,13 @@
 
         <p>
           If <code>fdb</code> is specified then ovn-controller will advertise
-          all workloads that are local to the chassis. The applies to VIFs,
+          all workloads that are local to the chassis. This applies to VIFs,
           container ports, virtual ports, connected DGPs and connected GW
-          routers.
+          routers.  Additionally, dynamically learned FDB entries (from ports
+          with <code>unknown</code> addresses) are also advertised.  For VIF
+          ports, only entries learned on the local chassis are advertised;
+          for localnet ports, entries are advertised on all chassis where the
+          datapath is local.
         </p>
 
         <p>
