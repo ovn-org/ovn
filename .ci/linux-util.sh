@@ -49,3 +49,15 @@ function disable_apparmor()
     sudo aa-teardown || true
     sudo systemctl disable --now apparmor.service
 }
+
+# XXX This should be removed when the following issue is fixed and the
+# correct crun version is packaged into the runner image.
+# https://github.com/actions/runner-images/issues/14473
+function fixup_crun()
+{
+    crun --version
+    sudo curl -L "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-amd64" \
+        -o /usr/bin/crun
+    sudo chmod +x /usr/bin/crun
+    echo "New crun version: "$(crun --version)
+}

@@ -47,6 +47,11 @@ jobs:
           . .ci/linux-util.sh
           disable_apparmor
 
+      - name: Fixup crun
+        run: |
+          . .ci/linux-util.sh
+          fixup_crun
+
       - name: Choose image distro
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         run: |
@@ -170,6 +175,11 @@ jobs:
       run: |
         . .ci/linux-util.sh
         disable_apparmor
+
+    - name: Fixup crun
+      run: |
+        . .ci/linux-util.sh
+        fixup_crun
 
     - name: image cache
       id: image_cache
