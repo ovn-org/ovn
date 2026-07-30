@@ -20973,3 +20973,99 @@ check_column "$global_svc_mon_mac" sb:Service_Monitor src_mac port=2
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ovn-northd - engine stopwatches enable/disable])
+AT_KEYWORDS([ovn])
+ovn_start
+
+dnl By default, engine stopwatches are disabled.  Trigger a recompute to
+dnl ensure the engine runs, then verify that no samples were collected.
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+check ovn-nbctl --wait=sb sync
+AT_CHECK([as northd ovn-appctl -t ovn-northd stopwatch/show northd], [0], [dnl
+Statistics for 'northd'
+  Total samples: 0
+  Maximum: 0 msec
+  Minimum: 0 msec
+  95th percentile: 0.000000 msec
+  Short term average: 0.000000 msec
+  Long term average: 0.000000 msec
+])
+
+dnl Enable stopwatches only for the "northd" node.
+check as northd ovn-appctl -t ovn-northd inc-engine/enable-stopwatch northd
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+check ovn-nbctl --wait=sb sync
+
+dnl The "northd" stopwatch should have collected samples.
+OVS_WAIT_UNTIL([
+    stats=$(as northd ovn-appctl -t ovn-northd stopwatch/show northd)
+    echo "$stats" | grep -q 'Total samples: [[1-9]]'
+])
+
+dnl The "lr_nat" stopwatch should still have no samples.
+AT_CHECK([as northd ovn-appctl -t ovn-northd stopwatch/show lr_nat], [0], [dnl
+Statistics for 'lr_nat'
+  Total samples: 0
+  Maximum: 0 msec
+  Minimum: 0 msec
+  95th percentile: 0.000000 msec
+  Short term average: 0.000000 msec
+  Long term average: 0.000000 msec
+])
+
+dnl Enable stopwatches globally (no argument).
+check as northd ovn-appctl -t ovn-northd inc-engine/enable-stopwatch
+check as northd ovn-appctl -t ovn-northd stopwatch/reset
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+check ovn-nbctl --wait=sb sync
+
+dnl Now "lr_nat" should also have collected samples.
+OVS_WAIT_UNTIL([
+    stats=$(as northd ovn-appctl -t ovn-northd stopwatch/show lr_nat)
+    echo "$stats" | grep -q 'Total samples: [[1-9]]'
+])
+
+dnl Disable stopwatches only for the "northd" node.
+check as northd ovn-appctl -t ovn-northd inc-engine/disable-stopwatch northd
+check as northd ovn-appctl -t ovn-northd stopwatch/reset
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+check ovn-nbctl --wait=sb sync
+
+dnl Verify "northd" has no new samples but "lr_nat" still collects.
+AT_CHECK([as northd ovn-appctl -t ovn-northd stopwatch/show northd], [0], [dnl
+Statistics for 'northd'
+  Total samples: 0
+  Maximum: 0 msec
+  Minimum: 0 msec
+  95th percentile: 0.000000 msec
+  Short term average: 0.000000 msec
+  Long term average: 0.000000 msec
+])
+OVS_WAIT_UNTIL([
+    stats=$(as northd ovn-appctl -t ovn-northd stopwatch/show lr_nat)
+    echo "$stats" | grep -q 'Total samples: [[1-9]]'
+])
+
+dnl Disable stopwatches globally and verify no samples are collected.
+check as northd ovn-appctl -t ovn-northd inc-engine/disable-stopwatch
+check as northd ovn-appctl -t ovn-northd stopwatch/reset
+check as northd ovn-appctl -t ovn-northd inc-engine/recompute
+check ovn-nbctl --wait=sb sync
+AT_CHECK([as northd ovn-appctl -t ovn-northd stopwatch/show northd], [0], [dnl
+Statistics for 'northd'
+  Total samples: 0
+  Maximum: 0 msec
+  Minimum: 0 msec
+  95th percentile: 0.000000 msec
+  Short term average: 0.000000 msec
+  Long term average: 0.000000 msec
+])
+
+dnl Error case: non-existent node name.
+AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/enable-stopwatch nonexistent_node], [2], [], [ignore])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

@@ -210,6 +210,45 @@
         <p> Reset <code>ovn-northd</code> engine counters. </p>
       </dd>
 
+      <dt><code>inc-engine/recompute</code></dt>
+      <dd>
+        Triggers a full recompute of the incremental processing engine
+        on the next iteration.
+      </dd>
+
+      <dt><code>inc-engine/compute-log-timeout</code> <var>msecs</var></dt>
+      <dd>
+        Sets the timeout in milliseconds for logging engine compute
+        events.
+      </dd>
+
+      <dt><code>inc-engine/list-stopwatches</code> [<var>node</var>]</dt>
+      <dd>
+        Lists the engine nodes and their change handler names.  If
+        <var>node</var> is specified, only the handlers for that engine
+        node are listed.
+      </dd>
+
+      <dt><code>inc-engine/enable-stopwatch</code> [<var>node</var>]</dt>
+      <dd>
+        Enables the per-node and per-handler stopwatches in the
+        incremental processing engine.  If <var>node</var> is specified,
+        only that node's stopwatches are enabled; otherwise all nodes
+        are affected.  While enabled, every engine node recompute and
+        change handler invocation is timed and the results can be
+        viewed with the <code>stopwatch/show</code> command.
+        Stopwatches are disabled by default because they add measurable
+        CPU overhead.
+      </dd>
+
+      <dt><code>inc-engine/disable-stopwatch</code> [<var>node</var>]</dt>
+      <dd>
+        Disables the per-node and per-handler stopwatches in the
+        incremental processing engine.  If <var>node</var> is specified,
+        only that node's stopwatches are disabled; otherwise all nodes
+        are affected.  This is the default state.
+      </dd>
+
       </dl>
     </p>
 
