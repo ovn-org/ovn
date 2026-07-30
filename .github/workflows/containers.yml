@@ -34,6 +34,11 @@ jobs:
           . .ci/linux-util.sh
           fix_etc_hosts
 
+      - name: Fixup crun
+        run: |
+          . .ci/linux-util.sh
+          fixup_crun
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
