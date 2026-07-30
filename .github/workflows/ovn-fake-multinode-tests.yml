@@ -68,6 +68,12 @@ jobs:
         disable_apparmor
       working-directory: ovn-fake-multinode/ovn
 
+    - name: Fixup crun
+      run: |
+        . .ci/linux-util.sh
+        fixup_crun
+      working-directory: ovn-fake-multinode/ovn
+
     - name: Build ovn-fake-multi-node ${{ matrix.cfg.branch }} image
       run: |
         set -x
@@ -131,6 +137,11 @@ jobs:
       run: |
         . .ci/linux-util.sh
         disable_apparmor
+
+    - name: Fixup crun
+      run: |
+        . .ci/linux-util.sh
+        fixup_crun
 
     - name: Free up disk space
       run: |

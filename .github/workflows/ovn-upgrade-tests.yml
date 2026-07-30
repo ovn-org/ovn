@@ -59,6 +59,11 @@ jobs:
         . .ci/linux-util.sh
         disable_apparmor
 
+    - name: Fixup crun
+      run: |
+        . .ci/linux-util.sh
+        fixup_crun
+
     - name: Download container
       run: sudo podman pull ghcr.io/ovn-org/ovn-tests:ubuntu
 
