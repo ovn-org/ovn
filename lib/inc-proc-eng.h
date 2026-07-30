@@ -282,6 +282,9 @@ struct engine_node {
 
     /* Indication if the node writes to SB DB. */
     bool sb_write;
+
+    /* Whether stopwatches are enabled for this node. */
+    bool stopwatch_enabled;
 };
 
 /* Initialize the data for the engine nodes. It calls each node's

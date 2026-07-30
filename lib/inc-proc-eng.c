@@ -221,6 +221,46 @@ engine_list_stopwatch_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
 }
 
 static void
+engine_set_stopwatch_cmd(struct unixctl_conn *conn, int argc,
+                         const char *argv[], bool enabled)
+{
+    const char *node_name = argc > 1 ? argv[1] : NULL;
+
+    struct engine_node *node;
+    bool found = false;
+    VECTOR_FOR_EACH (&engine_nodes, node) {
+        if (node_name && strcmp(node->name, node_name)) {
+            continue;
+        }
+        node->stopwatch_enabled = enabled;
+        found = true;
+        if (node_name) {
+            break;
+        }
+    }
+
+    if (node_name && !found) {
+        unixctl_command_reply_error(conn, "node not found");
+        return;
+    }
+    unixctl_command_reply(conn, NULL);
+}
+
+static void
+engine_enable_stopwatches_cmd(struct unixctl_conn *conn, int argc,
+                              const char *argv[], void *arg OVS_UNUSED)
+{
+    engine_set_stopwatch_cmd(conn, argc, argv, true);
+}
+
+static void
+engine_disable_stopwatches_cmd(struct unixctl_conn *conn, int argc,
+                               const char *argv[], void *arg OVS_UNUSED)
+{
+    engine_set_stopwatch_cmd(conn, argc, argv, false);
+}
+
+static void
 engine_get_compute_failure_info(struct engine_node *node)
 {
     VLOG_DBG("Node \"%s\" is missing compute failure debug info.", node->name);
@@ -256,6 +296,10 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
                              engine_set_log_timeout_cmd, NULL);
     unixctl_command_register("inc-engine/list-stopwatches", "", 0, 1,
                              engine_list_stopwatch_cmd, NULL);
+    unixctl_command_register("inc-engine/enable-stopwatch", "[node]", 0, 1,
+                             engine_enable_stopwatches_cmd, NULL);
+    unixctl_command_register("inc-engine/disable-stopwatch", "[node]", 0, 1,
+                             engine_disable_stopwatches_cmd, NULL);
 }
 
 void
@@ -455,9 +499,13 @@ static enum engine_node_state
 run_recompute_callback(struct engine_node *node)
 {
     enum engine_node_state ret;
-    stopwatch_start(node->name, time_msec());
+    if (node->stopwatch_enabled) {
+        stopwatch_start(node->name, time_msec());
+    }
     ret = node->run(node, node->data);
-    stopwatch_stop(node->name, time_msec());
+    if (node->stopwatch_enabled) {
+        stopwatch_stop(node->name, time_msec());
+    }
     return ret;
 }
 
@@ -465,9 +513,13 @@ static enum engine_input_handler_result
 run_change_handler(struct engine_node *node, struct engine_node_input *input)
 {
     enum engine_input_handler_result ret;
-    stopwatch_start(input->change_handler_name, time_msec());
+    if (node->stopwatch_enabled) {
+        stopwatch_start(input->change_handler_name, time_msec());
+    }
     ret = input->change_handler(node, node->data);
-    stopwatch_stop(input->change_handler_name, time_msec());
+    if (node->stopwatch_enabled) {
+        stopwatch_stop(input->change_handler_name, time_msec());
+    }
     return ret;
 }
 

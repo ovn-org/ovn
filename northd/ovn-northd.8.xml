@@ -257,6 +257,26 @@
         node are listed.
       </dd>
 
+      <dt><code>inc-engine/enable-stopwatch</code> [<var>node</var>]</dt>
+      <dd>
+        Enables the per-node and per-handler stopwatches in the
+        incremental processing engine.  If <var>node</var> is specified,
+        only that node's stopwatches are enabled; otherwise all nodes
+        are affected.  While enabled, every engine node recompute and
+        change handler invocation is timed and the results can be
+        viewed with the <code>stopwatch/show</code> command.
+        Stopwatches are disabled by default because they add measurable
+        CPU overhead.
+      </dd>
+
+      <dt><code>inc-engine/disable-stopwatch</code> [<var>node</var>]</dt>
+      <dd>
+        Disables the per-node and per-handler stopwatches in the
+        incremental processing engine.  If <var>node</var> is specified,
+        only that node's stopwatches are disabled; otherwise all nodes
+        are affected.  This is the default state.
+      </dd>
+
       </dl>
     </p>
 
