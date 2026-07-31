@@ -46257,22 +46257,22 @@ check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $packet
 
 # MLDv2 report.  Simulates a baremetal node sending an MLD report
 # during PXE boot via the provisioning network.
-packet=$(fmt_pkt \
+mld_packet=$(fmt_pkt \
     "Ether(dst='33:33:00:00:00:16', src='50:54:00:00:00:01') / \
      IPv6(src='fe80::1', dst='ff02::16', hlim=1) / \
      IPv6ExtHdrHopByHop(options=RouterAlert(value=0)) / \
      ICMPv6MLReport2(records=ICMPv6MLDMultAddrRec(rtype=4, \
          dst='ff0a:dead:beef::1'))")
-check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $mld_packet
 
 # IGMPv3 report.  Same scenario but with IPv4 multicast.
-packet=$(fmt_pkt \
+igmp_packet=$(fmt_pkt \
     "Ether(dst='01:00:5e:00:00:16', src='50:54:00:00:00:01') / \
      IP(src='10.0.0.1', dst='224.0.0.22', ttl=1, \
         options=IPOption_Router_Alert()) / \
      IGMPv3(type=0x22) / \
      IGMPv3mr(records=IGMPv3gr(rtype=4, maddr='239.1.2.3'))")
-check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $packet
+check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $igmp_packet
 
 # Wait for pinctrl to fully process the IGMP/MLD reports and sync them
 # to the SB database.  This guarantees that pinctrl has also re-injected
@@ -46285,7 +46285,9 @@ wait_row_count IGMP_Group 1 address='"ff0a:dead:beef::1"'
 # None of the packets must have been sent back to the localnet port.
 AT_CHECK([$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" \
     hv1/br-phys_n1-tx.pcap > tx_packets.txt])
-AT_CHECK([test ! -s tx_packets.txt])
+AT_CHECK([grep -q $packet tx_packets.txt], [1])
+AT_CHECK([grep -q $mld_packet tx_packets.txt], [1])
+AT_CHECK([grep -q $igmp_packet tx_packets.txt], [1])
 
 # Check if ovs did prevent any loop.
 AT_CHECK([grep "skipping output to input port" \
