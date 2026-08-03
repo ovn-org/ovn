@@ -70,7 +70,6 @@ EXTRA_DIST = \
 	MAINTAINERS.rst \
 	README.rst \
 	NOTICE \
-	.cirrus.yml \
 	.ci/ci.sh \
 	.ci/linux-build.sh \
 	.ci/linux-util.sh \
@@ -82,6 +81,7 @@ EXTRA_DIST = \
 	.ci/ovn-kubernetes/custom.patch \
 	.github/workflows/containers.yml \
 	.github/workflows/test.yml \
+	.github/workflows/test-arm.yml \
 	.github/workflows/ovn-kubernetes.yml \
 	.github/workflows/ovn-fake-multinode-tests.yml \
 	.github/workflows/ovn-upgrade-tests.yml \
