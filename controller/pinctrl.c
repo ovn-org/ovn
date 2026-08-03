@@ -5206,7 +5206,7 @@ send_self_originated_neigh_packet(struct rconn *swconn,
                     in6_addr_get_mapped_ipv4(local),
                     in6_addr_get_mapped_ipv4(target));
     } else {
-        compose_nd_ns(&packet, eth, local, target);
+        compose_nd_ns(&packet, true, eth, eth_addr_zero, local, target);
     }
 
     /* Inject GARP request. */
@@ -6575,7 +6575,8 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
         hton128(flow_get_xxreg(&pin->flow_metadata.flow, 0));
     memcpy(&ipv6_nh, &nexthop_be, sizeof ipv6_nh);
 
-    compose_nd_ns(&packet, ip_flow->dl_src, &ipv6_src, &ipv6_nh);
+    compose_nd_ns(&packet, true, ip_flow->dl_src, eth_addr_zero, &ipv6_src,
+                  &ipv6_nh);
 
     /* Reload previous packet metadata and set actions from userdata. */
     set_actions_and_enqueue_msg(swconn, &packet,
