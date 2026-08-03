@@ -56,7 +56,8 @@ function disable_apparmor()
 function fixup_crun()
 {
     crun --version
-    sudo curl -L "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-amd64" \
+    local arch=$(dpkg --print-architecture)
+    sudo curl -L "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-${arch}" \
         -o /usr/bin/crun
     sudo chmod +x /usr/bin/crun
     echo "New crun version: "$(crun --version)
