@@ -79,7 +79,8 @@ struct ovs_list *get_ports_to_activate_in_engine(void);
 bool pinctrl_is_port_activated(int64_t dp_key, int64_t port_key);
 void send_self_originated_neigh_packet(struct rconn *swconn,
                                        uint32_t dp_key, uint32_t port_key,
-                                       struct eth_addr eth,
+                                       struct eth_addr eth_src,
+                                       struct eth_addr eth_dst,
                                        struct in6_addr *local,
                                        struct in6_addr *target,
                                        uint8_t table_id);
