@@ -1197,8 +1197,8 @@ check multinode_nbctl set logical_switch_port ln-sw1 tag_request=101
 
 check multinode_nbctl --wait=hv sync
 
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
 [0], [dnl
@@ -1217,8 +1217,8 @@ m_as ovn-chassis-1 killall tcpdump
 rm -f *.tcpdump
 rm -f *.stderr
 
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
 [0], [dnl
@@ -1242,8 +1242,8 @@ m_as ovn-chassis-1 killall tcpdump
 rm -f *.tcpdump
 rm -f *.stderr
 
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.4 | FORMAT_PING], \
 [0], [dnl
@@ -1262,8 +1262,8 @@ m_as ovn-chassis-1 killall tcpdump
 rm -f *.tcpdump
 rm -f *.stderr
 
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
 [0], [dnl
@@ -1286,8 +1286,8 @@ rm -f *.stderr
 check multinode_nbctl --wait=hv lsp-del ln-sw1
 # Traffic from sw0p1 to sw1p1 should be tunneled.
 
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 20.0.0.3 | FORMAT_PING], \
 [0], [dnl
@@ -1318,9 +1318,9 @@ m_as ovn-gw-1 ip netns exec sw0-p10 ip link set sw0-p10 address 32:31:8c:da:64:4
 # sw0p1 -> br-int -> localnet port (vlan tagged 100) -> br-ex -> eth2 of ovn-chassis-1 to
 # eth2 of ovn-gw-1  -> br-ex -> sw0-p10
 
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
-M_START_TCPDUMP([ovn-gw-1], [-c 2 -neei eth2 icmp], [gw1_eth2])
+M_START_TCPDUMPS([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2],
+                 [ovn-gw-1], [-c 2 -neei eth2 icmp], [gw1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [sw0p1], [ping -q -c 3 -i 0.3 -w 2 10.0.0.10 | FORMAT_PING], \
 [0], [dnl
@@ -1356,12 +1356,12 @@ check multinode_nbctl --wait=hv lr-nat-add lr0 dnat_and_snat 172.20.0.110 10.0.0
 #  -> ln-public -> br-ex -> eth2 -> ovn-chassis-1 -> br-ex -> ln-public -> br-int ->
 #  -> DNAT 172.20.0.110 to 10.0.0.3 -> sw0-p1 with src ip 172.20.0.100 and dst ip 10.0.0.3.
 
-M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei genev_sys_6081 icmp], [ch2_genev])
-M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei eth2 icmp], [ch2_eth2])
-M_START_TCPDUMP([ovn-gw-1], [-c 2 -neei genev_sys_6081 icmp], [gw1_geneve])
-M_START_TCPDUMP([ovn-gw-1], [-c 2 -neei eth2 icmp], [gw1_eth2])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-2], [-c 2 -neei genev_sys_6081 icmp], [ch2_genev],
+                 [ovn-chassis-2], [-c 2 -neei eth2 icmp], [ch2_eth2],
+                 [ovn-gw-1], [-c 2 -neei genev_sys_6081 icmp], [gw1_geneve],
+                 [ovn-gw-1], [-c 2 -neei eth2 icmp], [gw1_eth2],
+                 [ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-2], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.110 | FORMAT_PING], \
 [0], [dnl
@@ -1407,12 +1407,12 @@ check multinode_nbctl --wait=hv lr-nat-add lr0 dnat_and_snat 172.20.0.110 10.0.0
 # sw1-p1 in ovn-chassis-2 -> tunnel -> ovn-gw-1 -> In ovn-gw-1 SNAT 20.0.0.3 to 172.20.0.100 ->
 #  DNAT 172.20.0.110 -> 10.0.0.3 -> tunnel -> ovn-chassis-1 -> br-int -> sw0p1
 
-M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei genev_sys_6081 icmp], [ch2_genev])
-M_START_TCPDUMP([ovn-chassis-2], [-c 2 -neei eth2 icmp], [ch2_eth2])
-M_START_TCPDUMP([ovn-gw-1], [-c 4 -neei genev_sys_6081 icmp], [gw1_geneve])
-M_START_TCPDUMP([ovn-gw-1], [-c 4 -neei eth2 icmp], [gw1_eth2])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
+M_START_TCPDUMPS([ovn-chassis-2], [-c 2 -neei genev_sys_6081 icmp], [ch2_genev],
+                 [ovn-chassis-2], [-c 2 -neei eth2 icmp], [ch2_eth2],
+                 [ovn-gw-1], [-c 4 -neei genev_sys_6081 icmp], [gw1_geneve],
+                 [ovn-gw-1], [-c 4 -neei eth2 icmp], [gw1_eth2],
+                 [ovn-chassis-1], [-c 2 -neei genev_sys_6081 icmp], [ch1_genev],
+                 [ovn-chassis-1], [-c 2 -neei eth2 icmp], [ch1_eth2])
 
 M_NS_CHECK_EXEC([ovn-chassis-2], [sw1p1], [ping -q -c 3 -i 0.3 -w 2 172.20.0.110 | FORMAT_PING], \
 [0], [dnl
@@ -2585,8 +2585,8 @@ M_NS_CHECK_EXEC([ovn-chassis-1], [external], [ping -q -c 5 -i 0.3 -w 2 10:200::2
 
 M_NS_CHECK_EXEC([ovn-chassis-1], [mgmt], [ip a a 172.16.100.2/24 dev mgmt])
 M_NS_DAEMONIZE([ovn-chassis-1], [pod10], [nc -e /bin/cat -v -l -o server.log 10.100.200.10 2324], [pod10.pid])
-M_START_TCPDUMP([ovn-chassis-1], [-neei pod10-p ip], [pod10])
-M_START_TCPDUMP([ovn-chassis-1], [-neei mgmt-p ip], [mgmt])
+M_START_TCPDUMPS([ovn-chassis-1], [-neei pod10-p ip], [pod10],
+                 [ovn-chassis-1], [-neei mgmt-p ip], [mgmt])
 
 m_as ovn-chassis-1 sh -c 'echo -e "Hello\nHello" > msg.expected'
 check m_as ovn-chassis-1 ovn-nbctl --policy="src-ip" lr-route-add tr 10.100.200.0/24 10.100.200.11
@@ -2716,14 +2716,14 @@ done
 
 m_wait_for_ports_up
 
-M_START_TCPDUMP([ovn-chassis-1], [-neei genev_sys_6081 arp or ip], [ch1_genev])
-M_START_TCPDUMP([ovn-chassis-1], [-neei migrator-p arp or ip], [ch1_migrator])
-M_START_TCPDUMP([ovn-chassis-2], [-neei genev_sys_6081 arp or ip], [ch2_genev])
-for i in 1 2 3; do
-    M_START_TCPDUMP([ovn-chassis-${i}], [-neei sw0-port${i}-p arp or ip], [ch${i}_sw0-port${i}])
-done
-M_START_TCPDUMP([ovn-chassis-3], [-neei genev_sys_6081 arp or ip], [ch3_genev])
-M_START_TCPDUMP([ovn-chassis-3], [-neei migrator-p arp or ip], [ch3_migrator])
+M_START_TCPDUMPS([ovn-chassis-1], [-neei genev_sys_6081 arp or ip], [ch1_genev],
+                 [ovn-chassis-1], [-neei migrator-p arp or ip], [ch1_migrator],
+                 [ovn-chassis-2], [-neei genev_sys_6081 arp or ip], [ch2_genev],
+                 [ovn-chassis-1], [-neei sw0-port1-p arp or ip], [ch1_sw0-port1],
+                 [ovn-chassis-2], [-neei sw0-port2-p arp or ip], [ch2_sw0-port2],
+                 [ovn-chassis-3], [-neei sw0-port3-p arp or ip], [ch3_sw0-port3],
+                 [ovn-chassis-3], [-neei genev_sys_6081 arp or ip], [ch3_genev],
+                 [ovn-chassis-3], [-neei migrator-p arp or ip], [ch3_migrator])
 
 AS_BOX([Migration with vifs])
 for i in 1 2 3; do
@@ -3372,14 +3372,14 @@ check multinode_nbctl --wait=hv sync
 
 start_tcpdump() {
     echo "$(date +%H:%M:%S.%03N) Starting tcpdump"
-    M_START_TCPDUMP([ovn-chassis-1], [-neei hv1-vif1-p], [ch1])
-    M_START_TCPDUMP([ovn-chassis-2], [-neei eth2], [ch2])
-    M_START_TCPDUMP([ovn-gw-1], [-neei eth2], [gw1])
-    M_START_TCPDUMP([ovn-gw-1], [-neei eth2 -Q out], [gw1_out])
-    M_START_TCPDUMP([ovn-gw-2], [-neei eth2], [gw2])
-    M_START_TCPDUMP([ovn-gw-2], [-neei eth2 -Q out], [gw2_out])
-    M_START_TCPDUMP([ovn-gw-3], [-neei eth2], [gw3])
-    M_START_TCPDUMP([ovn-gw-3], [-neei eth2 -Q out], [gw3_out])
+    M_START_TCPDUMPS([ovn-chassis-1], [-neei hv1-vif1-p], [ch1],
+                     [ovn-chassis-2], [-neei eth2], [ch2],
+                     [ovn-gw-1], [-neei eth2], [gw1],
+                     [ovn-gw-1], [-neei eth2 -Q out], [gw1_out],
+                     [ovn-gw-2], [-neei eth2], [gw2],
+                     [ovn-gw-2], [-neei eth2 -Q out], [gw2_out],
+                     [ovn-gw-3], [-neei eth2], [gw3],
+                     [ovn-gw-3], [-neei eth2 -Q out], [gw3_out])
 }
 
 stop_tcpdump() {
@@ -5328,8 +5328,8 @@ M_START_L4_SERVER([ovn-chassis-2], [ls1p3], [192.168.1.3], [10880], [ls1p3], [ls
 # Capture traffic to verify load balancing occurs locally without east-west traffic
 for i in {1..2}; do
     node_name="ovn-chassis-$i"
-    M_START_TCPDUMP([$node_name], [-c 2 -neei genev_sys_6081 port 10880], [ch${i}_genev])
-    M_START_TCPDUMP([$node_name], [-c 2 -neei eth2 port 10880], [ch${i}_eth2])
+    M_START_TCPDUMPS([$node_name], [-c 2 -neei genev_sys_6081 port 10880], [ch${i}_genev],
+                     [$node_name], [-c 2 -neei eth2 port 10880], [ch${i}_eth2])
 done
 
 AT_CHECK([m_as ovn-gw-1 /bin/bash -c 'for i in $(seq 500); \
