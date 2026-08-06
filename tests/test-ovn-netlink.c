@@ -334,6 +334,46 @@ test_nexthop_table_notify(struct ovs_cmdl_context *ctx)
     ovn_netlink_notifiers_destroy();
 }
 
+/* Dumps the nexthop table after applying the changes caused by running
+ * 'shell_command' to it.  Unlike "nexthop-sync", which builds the table from
+ * scratch, this goes through the incremental update path. */
+static void
+test_nexthop_table_update(struct ovs_cmdl_context *ctx)
+{
+    unsigned int shift = 1;
+
+    const char *cmd = test_read_value(ctx, shift++, "shell_command");
+    if (!cmd) {
+        return;
+    }
+
+    struct hmap nexthops = HMAP_INITIALIZER(&nexthops);
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_NEXTHOP, true);
+    nexthops_sync(&nexthops);
+    /* The table is up to date, anything reported so far is already in it. */
+    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_NEXTHOP);
+
+    run_command_under_notifier(cmd);
+
+    nexthops_handle_changes(&nexthops,
+                            ovn_netlink_get_msgs(OVN_NL_NOTIFIER_NEXTHOP));
+    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_NEXTHOP);
+
+    struct nexthop_entry *nhe;
+    HMAP_FOR_EACH (nhe, hmap_node, &nexthops) {
+        ds_clear(&ds);
+        nexthop_entry_format(&ds, nhe);
+        printf("Nexthop %s\n", ds_cstr(&ds));
+    }
+
+    ds_destroy(&ds);
+    nexthops_destroy(&nexthops);
+    hmap_destroy(&nexthops);
+    ovn_netlink_notifiers_destroy();
+}
+
 static void
 test_ovn_netlink(int argc, char *argv[])
 {
@@ -349,6 +389,8 @@ test_ovn_netlink(int argc, char *argv[])
         {"nexthop-sync", NULL, 0, 0, test_nexthop_sync, OVS_RO},
         {"nexthop-table-notify", NULL, 1, 1,
          test_nexthop_table_notify, OVS_RO},
+        {"nexthop-table-update", NULL, 1, 1,
+         test_nexthop_table_update, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;
