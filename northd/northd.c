@@ -13854,15 +13854,6 @@ build_neigh_learning_flows_for_lrouter(
                       ds_cstr(actions), lflow_ref);
     }
 
-    ds_clear(actions);
-    ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
-                  " = lookup_nd(inport, ip6.src, nd.sll); %snext;",
-                  learn_from_arp_request ? "" :
-                  REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
-                  " = lookup_nd_ip(inport, ip6.src); ");
-    ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 100, "nd_ns",
-                  ds_cstr(actions), lflow_ref);
-
     /* For other packet types, we can skip neighbor learning.
      * So set REGBIT_LOOKUP_NEIGHBOR_RESULT to 1. */
     ovn_lflow_add(lflows, od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 0, "1",
@@ -13926,7 +13917,7 @@ build_neigh_learning_flows_for_lrouter_port(
         "always_learn_from_arp_request", true);
 
     /* Check if we need to learn mac-binding from ARP requests. */
-    for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         if (!learn_from_arp_request) {
             /* ARP request to this address should always get learned,
              * so add a priority-110 flow to set
@@ -13974,6 +13965,59 @@ build_neigh_learning_flows_for_lrouter_port(
                                 ds_cstr(match), ds_cstr(actions),
                                 &op->nbrp->header_,
                                 lflow_ref);
+    }
+
+    /* Check if we need to learn mac-binding from ND NS. */
+    for (size_t i = 0; i < op->lrp_networks.n_ipv6_addrs; i++) {
+        if (in6_is_lla(&op->lrp_networks.ipv6_addrs[i].addr)) {
+            continue;
+        }
+
+        if (!learn_from_arp_request) {
+            /* ND NS request to this address should always get learned,
+             * so add a priority-110 flow to set
+             * REGBIT_LOOKUP_NEIGHBOR_IP_RESULT to 1. */
+            ds_clear(match);
+            ds_put_format(match,
+                          "inport == %s && ip6.src == %s/%u && "
+                          "nd.target == %s && nd_ns",
+                          op->json_key,
+                          op->lrp_networks.ipv6_addrs[i].network_s,
+                          op->lrp_networks.ipv6_addrs[i].plen,
+                          op->lrp_networks.ipv6_addrs[i].addr_s);
+            if (lrp_is_l3dgw(op)) {
+                ds_put_format(match, " && is_chassis_resident(%s)",
+                              op->cr_port->json_key);
+            }
+            const char *actions_s = REGBIT_LOOKUP_NEIGHBOR_RESULT
+                              " = lookup_nd(inport, ip6.src, nd.sll); "
+                              REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1;"
+                              " next;";
+            ovn_lflow_add_with_hint(lflows, op->od,
+                                    S_ROUTER_IN_LOOKUP_NEIGHBOR, 110,
+                                    ds_cstr(match), actions_s,
+                                    &op->nbrp->header_, lflow_ref);
+        }
+        ds_clear(match);
+        ds_put_format(match,
+                      "inport == %s && ip6.src == %s/%u && nd_ns",
+                      op->json_key,
+                      op->lrp_networks.ipv6_addrs[i].network_s,
+                      op->lrp_networks.ipv6_addrs[i].plen);
+        if (lrp_is_l3dgw(op)) {
+            ds_put_format(match, " && is_chassis_resident(%s)",
+                          op->cr_port->json_key);
+        }
+        ds_clear(actions);
+        ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                      " = lookup_nd(inport, ip6.src, nd.sll); %snext;",
+                      learn_from_arp_request ? "" :
+                      REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
+                      " = lookup_nd_ip(inport, ip6.src); ");
+        ovn_lflow_add_with_hint(lflows, op->od,
+                                S_ROUTER_IN_LOOKUP_NEIGHBOR, 100,
+                                ds_cstr(match), ds_cstr(actions),
+                                &op->nbrp->header_, lflow_ref);
     }
 
     if (lrp_is_l3dgw(op)) {

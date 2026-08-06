@@ -5673,6 +5673,136 @@ OVN_CLEANUP([hv1], [hv2])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding learning from ARP request and ND NS])
+CHECK_SCAPY
+ovn_start
+
+dnl Logical network:
+dnl
+dnl One logical router lr0 connected to two logical switches.
+dnl ls-ext has a localnet port ln0 (physnet0) and a router attachment
+dnl for lrp0.  ls-int has one VIF lsp1 on hv1.
+dnl
+dnl lrp0 is a distributed gateway port (172.18.0.3/16, fd00::3/64),
+dnl resident on hv1.  On hv2 the LS ARP/ND responder for lrp0 is
+dnl conditioned with is_chassis_resident("cr-lrp0"), so ARP/NS
+dnl injected via the localnet on hv2 bypasses the LS responder and
+dnl reaches the router pipeline where lr_in_lookup_neighbor runs.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl ls-add ls-ext
+check ovn-nbctl ls-add ls-int
+
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:00:ff:01 \
+    172.18.0.3/16 fd00::3/64
+check ovn-nbctl lsp-add-router-port ls-ext lrp0-attach lrp0
+
+check ovn-nbctl lrp-add lr0 lrp1 00:00:00:00:ff:02 192.168.1.1/24
+check ovn-nbctl lsp-add-router-port ls-int lrp1-attach lrp1
+
+check ovn-nbctl lsp-add ls-int lsp1 \
+    -- lsp-set-addresses lsp1 "f0:00:00:00:00:01 192.168.1.10"
+
+check ovn-nbctl lsp-add-localnet-port ls-ext ln0 physnet0
+check ovn-nbctl lrp-set-gateway-chassis lrp0 hv1 20
+
+net_add n1
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+    as hv$i ovs-vsctl set open . external-ids:ovn-bridge-mappings=physnet0:br-phys
+done
+
+check as hv1 ovs-vsctl \
+    -- add-port br-int vif1 \
+    -- set Interface vif1 external_ids:iface-id=lsp1
+
+dnl Add a dummy port on hv2's br-phys to inject external packets.
+check as hv2 ovs-vsctl \
+    -- add-port br-phys ext1 \
+    -- set Interface ext1 type=internal
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl External device's addresses.
+sha=f0:00:00:00:10:01
+spa=172.18.0.100
+spa6=fd00::100
+
+dnl Router port addresses (target of ARP request / ND NS).
+router_ip=172.18.0.3
+router_ip6=fd00::3
+
+AS_BOX([always_learn_from_arp_request=false])
+check ovn-nbctl --wait=hv set logical_router lr0 \
+    options:always_learn_from_arp_request=false
+
+AS_BOX([ARP request targeting router own IPv4])
+packet=$(dump_arp 1 $sha ff:ff:ff:ff:ff:ff $spa $router_ip 00:00:00:00:00:00)
+as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+wait_row_count MAC_Binding 1 ip="$spa" mac=\"$sha\"
+
+check ovn-sbctl --all destroy mac_binding
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([ND NS targeting router own IPv6])
+packet=$(dump_ns 33:33:ff:00:00:03 $sha ff02::1:ff00:3 $spa6 $router_ip6)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
+
+check ovn-sbctl --all destroy mac_binding
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([GARP for unknown IP - no binding expected])
+unknown_ip=172.18.0.200
+packet=$(dump_arp 1 $sha ff:ff:ff:ff:ff:ff $unknown_ip $unknown_ip 00:00:00:00:00:00)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+check ovn-nbctl --wait=hv sync
+sleep 1
+check_row_count MAC_Binding 0 ip="$unknown_ip"
+
+AS_BOX([ND NS for unknown IPv6 - no binding expected])
+unknown_ip6=fd00::200
+packet=$(dump_ns 33:33:ff:00:02:00 $sha ff02::1:ff00:200 $spa6 $unknown_ip6)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+check ovn-nbctl --wait=hv sync
+sleep 1
+check_row_count MAC_Binding 0 ip=\"$spa6\"
+
+AS_BOX([Update existing ARP binding with new MAC])
+check ovn-sbctl --all destroy mac_binding
+check ovn-nbctl --wait=hv sync
+
+packet=$(dump_arp 1 $sha ff:ff:ff:ff:ff:ff $spa $router_ip 00:00:00:00:00:00)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+wait_row_count MAC_Binding 1 ip="$spa" mac=\"$sha\"
+check ovn-nbctl --wait=hv sync
+
+sha2=f0:00:00:00:10:02
+packet=$(dump_arp 1 $sha2 ff:ff:ff:ff:ff:ff $spa $router_ip 00:00:00:00:00:00)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+wait_row_count MAC_Binding 1 ip="$spa" mac=\"$sha2\"
+
+AS_BOX([Update existing ND binding with new MAC])
+packet=$(dump_ns 33:33:ff:00:00:03 $sha ff02::1:ff00:3 $spa6 $router_ip6)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha\"
+check ovn-nbctl --wait=hv sync
+
+packet=$(dump_ns 33:33:ff:00:00:03 $sha2 ff02::1:ff00:3 $spa6 $router_ip6)
+check as hv2 ovs-appctl netdev-dummy/receive ext1 $packet
+wait_row_count MAC_Binding 1 ip=\"$spa6\" mac=\"$sha2\"
+
+OVN_CLEANUP([hv1], [hv2])
+
+AT_CLEANUP
+])
+
 # 3 hypervisors, one logical switch, 3 logical ports per hypervisor
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([portsecurity : 3 HVs, 1 LS, 3 lports/HV])
