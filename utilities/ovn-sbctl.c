@@ -496,7 +496,9 @@ cmd_chassis_del(struct ctl_context *ctx)
             size_t i;
 
             for (i = 0; i < sbctl_ch->ch_cfg->n_encaps; i++) {
-                sbrec_encap_delete(sbctl_ch->ch_cfg->encaps[i]);
+                if (sbctl_ch->ch_cfg->encaps[i]) {
+                    sbrec_encap_delete(sbctl_ch->ch_cfg->encaps[i]);
+                }
             }
 
             struct sbctl_chassis_private *sbctl_ch_priv;
