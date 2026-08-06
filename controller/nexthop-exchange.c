@@ -19,7 +19,6 @@
 
 #include "lib/netlink.h"
 #include "lib/netlink-socket.h"
-#include "hmapx.h"
 #include "openvswitch/ofpbuf.h"
 #include "openvswitch/vlog.h"
 #include "packets.h"
@@ -157,8 +156,6 @@ nexthops_handle_changes(struct hmap *nexthops, struct vector *msgs)
         return false;
     }
 
-    struct hmapx updated_groups = HMAPX_INITIALIZER(&updated_groups);
-
     struct nh_table_msg *msg;
     VECTOR_FOR_EACH_PTR (msgs, msg) {
         struct nexthop_entry *nhe = nexthop_entry_find(nexthops, msg->nhe->id);
@@ -171,22 +168,15 @@ nexthops_handle_changes(struct hmap *nexthops, struct vector *msgs)
             hmap_insert(nexthops, &msg->nhe->hmap_node,
                         nexthop_entry_hash(msg->nhe->id));
 
-            if (msg->nhe->n_grps) {
-                hmapx_add(&updated_groups, msg->nhe);
-            }
-
             /* The nexthop entry moved into the hmap, prevent double free. */
             msg->nhe = NULL;
         }
     }
 
-    struct hmapx_node *hmapx_node;
-    HMAPX_FOR_EACH (hmapx_node, &updated_groups) {
-        struct nexthop_entry *nhe = hmapx_node->data;
+    struct nexthop_entry *nhe;
+    HMAP_FOR_EACH (nhe, hmap_node, nexthops) {
         nh_populate_grp_pointers(nhe, nexthops);
     }
-
-    hmapx_destroy(&updated_groups);
 
     return true;
 }
