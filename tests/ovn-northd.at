@@ -9009,7 +9009,7 @@ AT_SETUP([LR neighbor lookup and learning flows])
 ovn_start
 
 # Create logical routers
-check ovn-nbctl --wait=sb lr-add lr0
+check ovn-nbctl --wait=sb lr-add lr0 -- lrp-add lr0 lrp 00:00:00:00:00:01 192.168.0.1/24 fd10::1/96
 
 ovn-sbctl dump-flows lr0 > lrflows
 AT_CAPTURE_FILE([lrflows])
@@ -9024,8 +9024,9 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
   table=??(lr_in_learn_neighbor), priority=95   , match=(nd_ns && (ip6.src == 0 || nd.sll == 0)), action=(next;)
   table=??(lr_in_lookup_neighbor), priority=0    , match=(1), action=(reg9[[2]] = 1; next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(arp.op == 2), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "lrp" && arp.spa == 192.168.0.0/24 && arp.op == 1), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "lrp" && ip6.src == fd10::/96 && nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); next;)
-  table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); next;)
   table=??(lr_in_lookup_neighbor), priority=105  , match=(nd_na && nd.tll == 0), action=(reg9[[2]] = lookup_nd(inport, nd.target, eth.src); next;)
 ])
 
@@ -9044,9 +9045,12 @@ AT_CHECK([cat lrflows | grep -e lr_in_lookup_neighbor -e lr_in_learn_neighbor | 
   table=??(lr_in_learn_neighbor), priority=95   , match=(nd_ns && (ip6.src == 0 || nd.sll == 0)), action=(next;)
   table=??(lr_in_lookup_neighbor), priority=0    , match=(1), action=(reg9[[2]] = 1; next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(arp.op == 2), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); reg9[[3]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "lrp" && arp.spa == 192.168.0.0/24 && arp.op == 1), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); reg9[[3]] = lookup_arp_ip(inport, arp.spa); next;)
+  table=??(lr_in_lookup_neighbor), priority=100  , match=(inport == "lrp" && ip6.src == fd10::/96 && nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); reg9[[3]] = lookup_nd_ip(inport, ip6.src); next;)
   table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_na), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); reg9[[3]] = 1; next;)
-  table=??(lr_in_lookup_neighbor), priority=100  , match=(nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); reg9[[3]] = lookup_nd_ip(inport, ip6.src); next;)
   table=??(lr_in_lookup_neighbor), priority=105  , match=(nd_na && nd.tll == 0), action=(reg9[[2]] = lookup_nd(inport, nd.target, eth.src); reg9[[3]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=110  , match=(inport == "lrp" && arp.spa == 192.168.0.0/24 && arp.tpa == 192.168.0.1 && arp.op == 1), action=(reg9[[2]] = lookup_arp(inport, arp.spa, arp.sha); reg9[[3]] = 1; next;)
+  table=??(lr_in_lookup_neighbor), priority=110  , match=(inport == "lrp" && ip6.src == fd10::/96 && nd.target == fd10::1 && nd_ns), action=(reg9[[2]] = lookup_nd(inport, ip6.src, nd.sll); reg9[[3]] = 1; next;)
   table=??(lr_in_lookup_neighbor), priority=110  , match=(nd_na && ip6.src == fe80::/10 && ip6.dst == ff00::/8), action=(reg9[[2]] = lookup_nd(inport, nd.target, nd.tll); reg9[[3]] = lookup_nd_ip(inport, nd.target); next;)
   table=??(lr_in_lookup_neighbor), priority=115  , match=(nd_na && nd.tll == 0 && ip6.src == fe80::/10 && ip6.dst == ff00::/8), action=(reg9[[2]] = lookup_nd(inport, nd.target, eth.src); reg9[[3]] = lookup_nd_ip(inport, nd.target); next;)
 ])
