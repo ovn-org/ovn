@@ -1185,6 +1185,34 @@ AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep -c learned], [0], [dnl
 1
 ])
 
+# Disable lr1.  Route collection must be skipped for it, so AZ1 stops
+# advertising lr1's routes and both AZs drop what they learned through it.
+# The skip must happen before the TS port addresses are parsed, so no
+# "addresses are invalid" message may be logged for the disabled router.
+n_addr_log=$(grep -c "Route sync ignores port" az1/ic/ovn-ic.log || :)
+check ovn_as az1 ovn-nbctl set logical_router lr1 enabled=false
+check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
+wait_row_count ic-sb:Route 0 ip_prefix=10.11.1.0/24
+OVS_WAIT_WHILE([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned])
+OVS_WAIT_WHILE([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned])
+AT_CHECK([test "$(grep -c "Route sync ignores port" az1/ic/ovn-ic.log || :)" \
+          = "$n_addr_log"])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr1], [0], [dnl
+IPv4 Routes
+Route Table <main>:
+             10.11.1.0/24               169.254.0.1 dst-ip
+             10.22.1.0/24               169.254.0.2 src-ip
+])
+
+# Re-enable lr1, advertising and learning should resume.
+check ovn_as az1 ovn-nbctl set logical_router lr1 enabled=true
+check ovn-ic-nbctl --wait=sb sync
+check ovn-ic-nbctl --wait=sb sync
+wait_row_count ic-sb:Route 1 ip_prefix=10.11.1.0/24
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr2 | grep learned | grep 10.11.1.0])
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep learned | grep 10.11.2.0])
+
 # Disable route-learning for AZ1
 ovn_as az1 ovn-nbctl set nb_global . options:ic-route-learn=false
 ovn-ic-nbctl --wait=sb sync

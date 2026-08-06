@@ -2952,6 +2952,10 @@ collect_lr_routes(struct ic_context *ctx,
             shash_add(routes_ad_by_ts, ts_name, routes_ad);
         }
 
+        if (!lrouter_is_enabled(ic_lr->lr)) {
+            continue;
+        }
+
         if (!extract_lsp_addresses(isb_pb->address, &ts_port_addrs)) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
             VLOG_INFO_RL(&rl, "Route sync ignores port %s on ts %s for router"
