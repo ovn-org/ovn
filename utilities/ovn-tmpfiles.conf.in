@@ -1,0 +1,2 @@
+d @LOGDIR@ 0750 @LOGUSER@ @LOGGROUP@ -
+f @LOGDIR@/ovn-controller.log 0640 @LOGUSER@ @LOGGROUP@ -

@@ -26,6 +26,8 @@ EXTRA_DIST += \
     utilities/ovn-ctl \
     utilities/ovn-lib.in \
     utilities/ovn-ctl.8.xml \
+    utilities/ovn-tmpfiles.conf.in \
+    utilities/ovn-sysusers.conf.in \
     utilities/ovn-docker-overlay-driver.in \
     utilities/ovn-docker-underlay-driver.in \
     utilities/ovn-nbctl.8.xml \
@@ -48,6 +50,8 @@ EXTRA_DIST += \
 CLEANFILES += \
     utilities/ovn-ctl.8 \
     utilities/ovn-lib \
+    utilities/ovn-tmpfiles.conf \
+    utilities/ovn-sysusers.conf \
     utilities/ovn-docker-overlay-driver \
     utilities/ovn-docker-underlay-driver \
     utilities/ovn-nbctl.8 \
@@ -66,7 +70,13 @@ CLEANFILES += \
 EXTRA_DIST += utilities/ovn-sim.in
 noinst_SCRIPTS += utilities/ovn-sim
 
+if TMPFILES_LOG_OWNERSHIP
+tmpfiles_DATA += utilities/ovn-tmpfiles.conf
+sysusers_DATA += utilities/ovn-sysusers.conf
+endif
 utilities/ovn-lib: $(top_builddir)/config.status
+utilities/ovn-tmpfiles.conf: $(top_builddir)/config.status
+utilities/ovn-sysusers.conf: $(top_builddir)/config.status
 
 # ovn-nbctl
 bin_PROGRAMS += utilities/ovn-nbctl
