@@ -35,6 +35,12 @@ ovn_netlink_get_msgs(enum ovn_netlink_notifier_type type OVS_UNUSED)
     return &empty;
 }
 
+bool
+ovn_netlink_notifier_lost(enum ovn_netlink_notifier_type type OVS_UNUSED)
+{
+    return false;
+}
+
 void
 ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type OVS_UNUSED)
 {

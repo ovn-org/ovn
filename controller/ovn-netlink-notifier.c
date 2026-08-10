@@ -40,6 +40,10 @@ struct ovn_netlink_notifier {
     struct nln_notifier *nln_notifier;
     /* Messages received by given notifier. */
     struct vector msgs;
+    /* Set when the kernel reported a change we could not read, in which case
+     * 'msgs' does not describe everything that happened and the state derived
+     * from it has to be built again from scratch. */
+    bool lost;
     /* Notifier change handler. */
     nln_notify_func *change_handler;
     /* Name of the notifier. */
@@ -57,6 +61,7 @@ static void ovn_netlink_neighbor_change_handler(const void *change_,
                                                 void *aux);
 static void ovn_netlink_nexthop_change_handler(const void *change_,
                                                void *aux);
+static void ovn_netlink_notifier_report_lost(struct ovn_netlink_notifier *);
 
 static struct ovn_netlink_notifier notifiers[OVN_NL_NOTIFIER_MAX] = {
     [OVN_NL_NOTIFIER_ROUTE_V4] = {
@@ -115,14 +120,30 @@ ovn_netlink_notifier_parse(struct ofpbuf *buf, void *change_)
     return 0;
 }
 
+/* Records that the kernel told us that something changed without us being
+ * able to tell what, which happens when the receive buffer overflows or when
+ * a message cannot be parsed.  It is reported for every group, since the
+ * notifiers share a single socket. */
+static void
+ovn_netlink_notifier_report_lost(struct ovn_netlink_notifier *notifier)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
+    VLOG_INFO_RL(&rl, "Missed %s table notifications, resyncing.",
+                 notifier->name);
+    notifier->lost = true;
+}
+
 static void
 ovn_netlink_route_change_handler(const void *change_, void *aux)
 {
+    struct ovn_netlink_notifier *notifier = aux;
+
     if (!change_) {
+        ovn_netlink_notifier_report_lost(notifier);
         return;
     }
 
-    struct ovn_netlink_notifier *notifier = aux;
     union ovn_notifier_msg_change *change =
         CONST_CAST(union ovn_notifier_msg_change *, change_);
 
@@ -139,11 +160,13 @@ ovn_netlink_route_change_handler(const void *change_, void *aux)
 static void
 ovn_netlink_neighbor_change_handler(const void *change_, void *aux)
 {
+    struct ovn_netlink_notifier *notifier = aux;
+
     if (!change_) {
+        ovn_netlink_notifier_report_lost(notifier);
         return;
     }
 
-    struct ovn_netlink_notifier *notifier = aux;
     const union ovn_notifier_msg_change *change = change_;
 
     if (!ne_is_ovn_owned(&change->neighbor.nd)) {
@@ -154,11 +177,13 @@ ovn_netlink_neighbor_change_handler(const void *change_, void *aux)
 static void
 ovn_netlink_nexthop_change_handler(const void *change_, void *aux)
 {
+    struct ovn_netlink_notifier *notifier = aux;
+
     if (!change_) {
+        ovn_netlink_notifier_report_lost(notifier);
         return;
     }
 
-    struct ovn_netlink_notifier *notifier = aux;
     const union ovn_notifier_msg_change *change = change_;
     vector_push(&notifier->msgs, &change->nexthop);
 }
@@ -238,6 +263,16 @@ ovn_netlink_get_msgs(enum ovn_netlink_notifier_type type)
     return &notifiers[type].msgs;
 }
 
+/* Returns true if notifications were missed since the last flush, in which
+ * case the messages of 'type' do not describe every change and the caller has
+ * to read the table it tracks again. */
+bool
+ovn_netlink_notifier_lost(enum ovn_netlink_notifier_type type)
+{
+    ovs_assert(type < OVN_NL_NOTIFIER_MAX);
+    return notifiers[type].lost;
+}
+
 void
 ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type)
 {
@@ -260,6 +295,7 @@ ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type)
     }
 
     vector_clear(&notifier->msgs);
+    notifier->lost = false;
 }
 
 void
