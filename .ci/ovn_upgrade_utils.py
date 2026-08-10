@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass
@@ -294,13 +295,16 @@ def ovn_upgrade_extract_info(config):
 def ovn_upgrade_checkout_local(config, base_version):
     base_dir = config.path.base_dir
     git_log = config.file.git_log
-    log(f"Running locally. Cloning to {base_dir}")
+    log(f"Running locally. Copying to {base_dir}")
 
-    result = run_command(f"git clone --local --shared . {str(base_dir)} "
-                         f" --branch {base_version}", git_log)
-    if result.returncode:
-        log(f"Failed to clone to {base_dir}")
-        return False
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir) / "ovn"
+        try:
+            shutil.copytree(config.path.ovn_root_dir, tmp_path)
+            shutil.copytree(tmp_path, base_dir, dirs_exist_ok=True)
+        except Exception as e:
+            log(f"Failed to copy the OVN repository locally: {e}")
+            return False
 
     with chdir(base_dir):
         log(f"Checking out base version: {base_version} from {base_dir}")
