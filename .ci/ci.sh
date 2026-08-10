@@ -92,12 +92,6 @@ function copy_sources_to_workdir() {
     "
 }
 
-function overwrite_jobs() {
-    container_exec "
-        sed -i s/-j[0-9]/-j$jobs/ $CONTAINER_WORKDIR/.ci/linux-build.sh
-    "
-}
-
 function run_tests() {
     container_exec "
         cd $CONTAINER_WORKDIR \
@@ -105,7 +99,7 @@ function run_tests() {
         ARCH=$ARCH CC=$CC LIBS=$LIBS OPTS=$OPTS TESTSUITE=$TESTSUITE \
         TEST_RANGE=$TEST_RANGE SANITIZERS=$SANITIZERS DPDK=$DPDK \
         RECHECK=$RECHECK UNSTABLE=$UNSTABLE TIMEOUT=$TIMEOUT \
-        BASE_VERSION=$BASE_VERSION ./.ci/linux-build.sh
+        BASE_VERSION=$BASE_VERSION JOBS=$JOBS ./.ci/linux-build.sh
     "
 }
 
@@ -130,7 +124,7 @@ while true; do
         ;;
     --jobs)
         shift
-        jobs="$1"
+        JOBS="-j$1"
         ;;
     --ovn-path)
         shift
@@ -182,10 +176,6 @@ CONTAINER_ID="$($CONTAINER_CMD run --privileged -d \
 trap remove_container EXIT
 
 copy_sources_to_workdir
-
-if [ -n "$jobs" ]; then
-    overwrite_jobs
-fi
 
 if [ -n "$shell" ];then
     container_shell
