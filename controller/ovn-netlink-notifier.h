@@ -31,6 +31,7 @@ enum ovn_netlink_notifier_type {
 void ovn_netlink_update_notifier(enum ovn_netlink_notifier_type type,
                                  bool enabled);
 struct vector *ovn_netlink_get_msgs(enum ovn_netlink_notifier_type type);
+bool ovn_netlink_notifier_lost(enum ovn_netlink_notifier_type type);
 void ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type);
 void ovn_netlink_notifiers_run(void);
 void ovn_netlink_notifiers_wait(void);
