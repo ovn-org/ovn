@@ -5124,6 +5124,12 @@ check_stateful_flows() {
   table=??(ls_in_pre_stateful ), priority=120  , match=(reg0[[2]] == 1 && ip4.dst == 10.0.0.20 && tcp.dst == 80), action=(reg4 = 10.0.0.20; reg2[[0..15]] = 80; ct_lb_mark;)
 ])
 
+    AT_CHECK([grep "ls_in_ct_extract" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_ct_extract   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_ct_extract   ), priority=100  , match=(ct.new && ip4.dst == 10.0.0.10 && tcp), action=(reg1[[16..23]] = ct_proto(); reg1[[0..15]] = ct_tp_dst(); next;)
+  table=??(ls_in_ct_extract   ), priority=100  , match=(ct.new && ip4.dst == 10.0.0.20 && tcp), action=(reg1[[16..23]] = ct_proto(); reg1[[0..15]] = ct_tp_dst(); next;)
+])
+
     AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
@@ -5200,6 +5206,10 @@ AT_CHECK([grep "ls_in_pre_stateful" sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_pre_stateful ), priority=115  , match=(reg0[[2]] == 1 && ip.is_frag), action=(reg0[[19]] = 1; ct_lb_mark;)
 ])
 
+AT_CHECK([grep "ls_in_ct_extract" sw0flows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_ct_extract   ), priority=0    , match=(1), action=(next;)
+])
+
 AT_CHECK([grep "ls_in_lb " sw0flows | ovn_strip_lflows], [0], [dnl
   table=??(ls_in_lb           ), priority=0    , match=(1), action=(next;)
 ])
@@ -5244,6 +5254,11 @@ AT_CHECK([ovn-sbctl dump-flows sw0 | grep "ls_in_lb " | ovn_strip_lflows ], [0],
   table=??(ls_in_lb           ), priority=110  , match=(ct.new && ip4.dst == 10.0.0.20), action=(drop;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip4), action=(reg4 = ct_nw_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
   table=??(ls_in_lb           ), priority=110  , match=(ct.trk && ct.est && !ct.rpl && reg0[[19]] == 1 && ip6), action=(xxreg1 = ct_ip6_dst(); reg2[[0..15]] = ct_tp_dst(); next;)
+])
+
+# A VIP without an L4 port does not use the extracted fields.
+AT_CHECK([ovn-sbctl dump-flows sw0 | grep "ls_in_ct_extract" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_ct_extract   ), priority=0    , match=(1), action=(next;)
 ])
 
 OVN_CLEANUP_NORTHD

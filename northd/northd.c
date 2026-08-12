@@ -9154,6 +9154,22 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
         ds_clear(action);
         ds_clear(match);
 
+        /* Extract the original L4 tuple only for traffic that can match this
+         * port-bearing VIP.  Accessing conntrack tuple fields for every new
+         * connection prevents unrelated traffic from being offloaded by some
+         * hardware implementations. */
+        if (lb_vip->port_str) {
+            ds_put_format(match, "ct.new && %s.dst == %s && %s", ip_match,
+                          lb_vip->vip_str, lb->proto);
+            ovn_lflow_add_with_dp_group(
+                lflows, lb_dps->nb_ls_map.map, ods_size(ls_datapaths),
+                S_SWITCH_IN_CT_EXTRACT, 100, ds_cstr(match),
+                REG_CT_PROTO " = ct_proto(); "
+                REG_CT_TP_DST " = ct_tp_dst(); next;",
+                lb_dps->lflow_ref, WITH_HINT(&lb->nlb->header_));
+            ds_clear(match);
+        }
+
         /* New connections in Ingress table. */
         const char *meter = NULL;
         bool reject = build_lb_vip_actions(lb, lb_vip, lb_vip_nb, action,
@@ -19247,16 +19263,6 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
     build_acls(ls_stateful_rec, od, lflows, ls_pgs, meter_groups,
                sampling_apps, features, ls_stateful_rec->lflow_ref,
                sbrec_acl_id_table);
-
-    /* Build CT extraction flows - only needed if this datapath has load
-     * balancers. */
-    if (ls_stateful_rec->has_lb_vip) {
-        ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
-                      "ct.new && ip",
-                      REG_CT_PROTO " = ct_proto(); "
-                      REG_CT_TP_DST " = ct_tp_dst(); next;",
-                      ls_stateful_rec->lflow_ref);
-    }
 
     build_lb_hairpin(ls_stateful_rec, od, lflows, ls_stateful_rec->lflow_ref);
 }

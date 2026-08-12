@@ -551,10 +551,13 @@ Ingress Table 13: Connection Tracking Field Extraction
 This table extracts connection tracking fields for new connections to be used by
 subsequent load balancing stages.
 
-- A priority-100 flow matches ``ct.new && ip`` and extracts connection tracking
-  protocol and destination port information into registers ``reg1[16..23]``
-  (protocol) and ``reg1[0..15]`` (destination port) using the actions
-  ``reg1[16..23] = ct_proto(); reg1[0..15] = ct_tp_dst(); next;``.
+- For every load balancer VIP on the switch that includes an L4 port *PORT* of
+  protocol *P* and IP address *VIP*, a priority-100 flow is added.  For IPv4
+  *VIPs*, the flow matches ``ct.new && ip4.dst == VIP && P``.  For IPv6 *VIPs*,
+  the flow matches ``ct.new && ip6.dst == VIP && P``.  It extracts connection
+  tracking protocol and destination port information into registers
+  ``reg1[16..23]`` (protocol) and ``reg1[0..15]`` (destination port) using the
+  actions ``reg1[16..23] = ct_proto(); reg1[0..15] = ct_tp_dst(); next;``.
 
 - A priority-0 flow matches all packets and advances to the next table.
 
