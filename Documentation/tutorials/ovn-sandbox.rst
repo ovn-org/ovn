@@ -47,7 +47,7 @@ Running the sandbox does the following steps to the environment:
 1. Creates the ``OVN_Northbound`` and ``OVN_Southbound`` databases as described in
    `ovn-nb(5)`_ and `ovn-sb(5)`_.
 
-2. Creates a backup server for ``OVN_Southbond`` database. Sandbox launch
+2. Creates a backup server for ``OVN_Southbound`` database. Sandbox launch
    screen provides the instructions on accessing the backup database.  However
    access to the backup server is not required to go through the tutorial.
 

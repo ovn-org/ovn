@@ -61,7 +61,7 @@ check COMMAND...
 
 Function to run COMMAND and check that it succeeds without any output. Also
 logs the COMMAND. Note that most ``ovn-nbctl`` and ``ovn-sbctl`` must be run
-withing ``check`` so that the return status is checked.
+within ``check`` so that the return status is checked.
 
 OVN_CHECK_PACKETS([PCAP], [EXPECTED])
 +++++++++++++++++++++++++++++++++++++
@@ -102,8 +102,8 @@ uuid as output. It also fails if the output is empty.
 Daemon/Sandbox Management
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-ovn_start [--backup-northd=none|paused] [AZ]
-++++++++++++++++++++++++++++++++++++++++++++
+ovn_start [--backup-northd[=paused] | --use-tcp-to-sb] [AZ]
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Creates and initializes ovn-sb and ovn-nb databases and starts their
 ovsdb-server instance, sets appropriate environment variables so that ovn-sbctl
@@ -129,7 +129,8 @@ ovn_attach NETWORK BRIDGE IP [MASKLEN] [ENCAP]
 
 First, this function attaches BRIDGE to interconnection network NETWORK.
 Second, it configures (simulated) address IP (with network mask length MASKLEN,
-which defaults to 24) on BRIDGE. Finally, it configures the Open vSwitch
+which defaults to 24) on BRIDGE. ENCAP specifies the tunnel encapsulation types
+(defaults to ``geneve,vxlan``). Finally, it configures the Open vSwitch
 database to work with OVN and starts ovn-controller.
 
 sim_add SANDBOX
@@ -156,7 +157,7 @@ or::
 as [OVS_DIR] COMMAND
 ++++++++++++++++++++
 
-``as $1`` sets the ``OVS_*DIR`` and ``OVN_*DIR*`` environment variables to
+``as $1`` sets the ``OVS_*DIR`` and ``OVN_*DIR`` environment variables to
 point to $ovs_base/$1.
 
 ``as $1 COMMAND...`` sets those variables in a subshell and invokes COMMAND
@@ -187,36 +188,30 @@ OVN_POPULATE_ARP()
 ++++++++++++++++++
 
 Macro to pre-populate the ARP tables of all of the OVN instances that have been
-started with ```ovn_attach()``. That means that packets sent from one
+started with ``ovn_attach()``. That means that packets sent from one
 hypervisor to another never get dropped or delayed by ARP resolution, which
 makes testing easier.
 
-OVS_TRAFFIC_VSWITCHD_START([vsctl-args], [vsctl-output], [=override])
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+OVS_TRAFFIC_VSWITCHD_START([vsctl-args], [vsctl-output])
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Macro to create a database and starts ovsdb-server, starts ovs-vswitchd
-connected to that database, calls ovs-vsctl to create a bridge named br0 with
-predictable settings, passing 'vsctl-args' as additional commands to
-ovs-vsctl. If 'vsctl-args' causes ovs-vsctl to provide output (e.g. because it
-includes "create" commands) then 'vsctl-output' specifies the expected output
-after filtering through uuidfilt.
-
-If a test needs to use "system" devices (as dummies), then specify
-``=override`` (literally) as the third argument. Otherwise, system devices
-won't work at all (which makes sense because tests should not access a system's
-real Ethernet devices).
+Macro to create a database and start ovsdb-server, start ovs-vswitchd connected
+to that database, and create a bridge named br0 with predictable settings.
+Additional ovs-vsctl commands can be passed via 'vsctl-args'. If those commands
+produce output (e.g. "create" commands), 'vsctl-output' specifies the expected
+output after filtering through uuidfilt.
 
 OVS_TRAFFIC_VSWITCHD_STOP([WHITELIST], [extra_cmds])
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-Macro to gracefully stops ovs-vswitchd and ovsdb-server, checking their log
+Macro to gracefully stop ovs-vswitchd and ovsdb-server, checking their log
 files for messages with severity WARN or higher and signaling an error if any
 is present. The optional WHITELIST may contain shell-quoted "sed" commands to
 delete any warnings that are actually expected, e.g.::
 
     OVS_TRAFFIC_VSWITCHD_STOP(["/expected error/d"])
 
-'extra_cmds' are shell commands to be executed afte OVS_VSWITCHD_STOP() is
+'extra_cmds' are shell commands to be executed after OVS_VSWITCHD_STOP() is
 invoked. They can be used to perform additional cleanups such as name space
 removal.
 
@@ -240,35 +235,34 @@ and after recompute are the same. Optional arguments may also contain
 acceptable ``related_ports`` differences, datapaths and tables on which flow
 differences are considered as acceptable.
 
-OVN_CLEANUP_SBOX(sbox)
-++++++++++++++++++++++
+OVN_CLEANUP_SBOX(sbox[, error[, related_ports[, ignored_dp[, ignored_tables[, no_recompute_check]]]]])
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Macro to gracefully terminate OVN daemons in the specified sandbox instance.
 The sandbox name ``vtep`` is treated as a special case, and is assumed to have
 ovn-controller-vtep and ovs-vtep daemons running instead of ovn-controller.
 
 Also checks the log file for messages with severity WARN or
-higher and signals an error if any is present. Optional arguments may contain
-"acceptable" error messages.
+higher and signals an error if any is present. The 'error' argument may contain
+sed commands to delete acceptable error messages.
 
 Before terminating the daemons, it also issues recomputes on ovn-controllers in
-listed sandboxes, and checks whether the related ports and the openflows before
-and after recompute are the same. Optional arguments may also contain
-acceptable ``related_ports`` differences, datapaths and tables on which flow
-differences are considered as acceptable.
+the sandbox, and checks whether the related ports and the openflows before
+and after recompute are the same. The 'related_ports', 'ignored_dp', and
+'ignored_tables' arguments specify acceptable differences.
 
-OVN_CLEANUP_CONTROLLER(sbox)
-++++++++++++++++++++++++++++
+OVN_CLEANUP_CONTROLLER(hv[, sbox[, related_ports[, ignored_dp[, ignored_tables[, no_recompute_check]]]]])
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Macro to gracefully terminate ovn-controller in the specified sandbox
-instance. The sandbox name ``vtep`` is treated as a special case, and is
-assumed to have ovn-controller-vtep and ovs-vtep daemons running instead of
-ovn-controller.
+instance. The 'hv' argument names the hypervisor; when it equals ``vtep``, the
+macro stops ovn-controller-vtep and ovs-vtep instead of ovn-controller. The
+'sbox' argument names the sandbox directory.
 
-Issues recomputes on ovn-controllers in listed sandbox, and checks whether the
-related ports and the openflows before and after recompute are the same.
-Optional arguments may also contain acceptable ``related_ports`` differences,
-datapaths and tables on which flow differences are considered as acceptable.
+Unless 'no_recompute_check' is ``True``, issues recomputes on ovn-controller
+and checks whether the related ports and the openflows before and after
+recompute are the same. The 'related_ports', 'ignored_dp', and
+'ignored_tables' arguments specify acceptable differences.
 
 OVN_CLEANUP_IC([az ...])
 ++++++++++++++++++++++++
@@ -314,7 +308,7 @@ RUN_OVN_NBCTL()
 +++++++++++++++
 
 Macro to execute a list of commands built by the ``OVN_NBCTL`` macro. The list
-of commands is executed in a single invocation of ``ovn-nbctl``
+of commands is executed in a single invocation of ``ovn-nbctl``.
 
 OVS_VSCTL(VSCTL_COMMAND)
 ++++++++++++++++++++++++
@@ -335,7 +329,7 @@ STDOUT on stdout, and prints STDERR on stderr. If this doesn't happen within a
 reasonable time limit, then the test fails.
 
 There is an ``OVS_WAIT_FOR_OUTPUT_UNQUOTED`` version of this macro that expands
-shell ``$variables``, ``$(command)``, and so on.  The plain version does not
+shell ``$variables``, ``$(command)``, and so on.  The plain version does not.
 
 OVS_WAIT_UNTIL(COMMAND[, IF-FAILED])
 ++++++++++++++++++++++++++++++++++++

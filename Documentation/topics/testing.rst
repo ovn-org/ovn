@@ -36,7 +36,7 @@ validating basic functionality of OVN. Before running any of the tests
 described here, you must bootstrap, configure and build OVN as
 described in :doc:`/intro/install/general`. You do not need to install
 OVN, Open vSwitch or to build or load the kernel module to run these test
-suites.You do not need supervisor privilege to run these test suites.
+suites. You do not need superuser privilege to run these test suites.
 
 Unit Tests
 ~~~~~~~~~~
@@ -78,7 +78,7 @@ To see a complete list of test options, run::
     $ make check TESTSUITEFLAGS=--help
 
 The results of a testing run are reported in ``tests/testsuite.log``. Report
-report test failures as bugs and include the ``testsuite.log`` in your report.
+test failures as bugs and include the ``testsuite.log`` in your report.
 
 .. note::
   Sometimes a few tests may fail on some runs but not others. This is usually a
@@ -266,7 +266,7 @@ cached. In order to force the tests to rebuild all these objects, run::
 A typical workflow for a developer trying to improve the performance of OVN
 would be the following:
 
-0. Optional: Modify/add a performance test to buld the topology that you are
+0. Optional: Modify/add a performance test to build the topology that you are
    benchmarking, if required.
 1. Run ``make check-perf TESTSUITEFLAGS="--rebuild"`` to generate cached
    databases (and complete a test run). The results of each test run are
@@ -283,7 +283,7 @@ would be the following:
 2. Run ``make check-perf`` to measure the performance metric that you are
    benchmarking against. If you are only using one test, you can specify the
    test to run by adding the test number to the ``make`` command.
-   (e.g. ``make check-perf TESTSUITEFLAGS="--rebuild <test number>"``)
+   (e.g. ``make check-perf TESTSUITEFLAGS="<test number>"``)
 3. Modify OVN code to implement the change that you believe will improve the
    performance.
 4. Go to Step 2. to continue making improvements.
@@ -447,12 +447,12 @@ CI Integration
 Upgrade tests run automatically in GitHub Actions:
 
 *On Schedule (Weekly)*
-  - Tests all supported versions (24.03, 24.09, 25.03, 25.09)
+  - Tests all supported versions.
 
 Implementation Details
 ++++++++++++++++++++++
 
-Test are run locally through ``check-upgrade`` Makefile target.
+Tests are run locally through ``check-upgrade`` Makefile target.
 The flow for make check-upgrade is:
 
 - Makefile
