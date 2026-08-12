@@ -34,7 +34,6 @@ DOC_SOURCE = \
 	Documentation/topics/incremental-processing/index.rst \
 	Documentation/topics/incremental-processing/incremental-processing.rst \
 	Documentation/topics/integration.rst \
-	Documentation/topics/ovn-news-2.8.rst \
 	Documentation/topics/role-based-access-control.rst \
 	Documentation/topics/vif-plug-providers/index.rst \
 	Documentation/topics/vif-plug-providers/vif-plug-providers.rst \

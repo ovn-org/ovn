@@ -41,7 +41,6 @@ OVN
    incremental-processing/index
    high-availability
    role-based-access-control
-   ovn-news-2.8
    vif-plug-providers/index
    testing
    test-development
