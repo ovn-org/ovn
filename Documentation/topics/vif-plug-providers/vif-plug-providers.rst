@@ -25,10 +25,10 @@
 VIF Plug Providers
 ==================
 
-Traditionally it has been the CMSes responsibility to create VIFs as part of
+Traditionally it has been the CMS's responsibility to create VIFs as part of
 instance life cycle, and subsequently manage plug/unplug operations on the
 integration bridge following the conventions described in the
-`Open vSwitch Integration Guide`_ for mapping of VIFs to OVN logical port.
+`Open vSwitch Integration Guide`_ for mapping of VIFs to OVN logical ports.
 
 With the advent of NICs connected to multiple distinct CPUs we can have a
 topology where the instance runs on one host and Open vSwitch and OVN runs on
@@ -44,7 +44,7 @@ the plugging, we provide a pluggable infrastructure in OVN that allows the
 `ovn-controller` to perform the plugging on CMS direction.
 
 Hardware or platform specific details for initialization and lookup of
-representor ports is provided by an plugging provider library hosted inside or
+representor ports is provided by a plugging provider library hosted inside or
 outside the core OVN repository, and linked at OVN build time.
 
 Life Cycle of an OVN plugged VIF
@@ -70,10 +70,11 @@ Life Cycle of an OVN plugged VIF
    exists yet.
 
 4. It will fill the `struct vif_plug_port_ctx_in` as defined in
-   `lib/vif-plug.h` with `op_type` set to 'PLUG_OP_CREATE' and make a call to
-   the VIF plug providers `vif_plug_port_prepare` callback function.  VIF plug
-   provider performs lookup and fills the `struct vif_plug_port_ctx_out` as
-   defined in `lib/vif-plug.h`.
+   `lib/vif-plug-provider.h` with `op_type` set to 'PLUG_OP_CREATE' and
+   make a call to the VIF plug providers `vif_plug_port_prepare` callback
+   function.  VIF plug provider performs lookup and fills the
+   `struct vif_plug_port_ctx_out` as defined in
+   `lib/vif-plug-provider.h`.
 
 5. `ovn-controller` creates a port and interface record in the local OVSDB
    using the details provided by the VIF plug provider and also adds
@@ -84,7 +85,7 @@ Life Cycle of an OVN plugged VIF
    `vif_plug_port_ctx_destroy` function to free any memory allocated by the VIF
    plug implementation.
 
-6. The Open vSwitch vswitchd will assign a ofport to the newly created
+6. The Open vSwitch vswitchd will assign an ofport to the newly created
    interface and on the next `ovn-controller` main loop iteration flows will be
    installed.
 
@@ -115,9 +116,11 @@ will be registered by the identifier provided in the `const char *type`
 pointer, at this time the `init` function pointer will be called if it is
 non-NULL.
 
-> **Note**: apart from the `const char *type` pointer, no attempt will be made
-            to access VIF plug provider data or functions before the call to
-            the `init` has been made.
+.. note::
+
+   Apart from the ``const char *type`` pointer, no attempt will be made
+   to access VIF plug provider data or functions before the call to
+   the ``init`` has been made.
 
 On `ovn-controller` exit, the VIF plug providers registered in the above
 mentioned procedure will have their `destroy` function pointer called if it is
@@ -143,17 +146,19 @@ Before creating or updating an existing interface record the VIF plug provider
 structures.  If the VIF plug provider implementation is able to perform lookup
 it should fill the `struct vif_plug_port_ctx_out` data structure and return
 'true'.  The `ovn-controller` will then create or update the port/interface
-records and then call `vif_plug_port_finish` when the transactions commits and
+records and then call `vif_plug_port_finish` when the transaction commits and
 `vif_plug_port_ctx_destroy` to free any allocated memory.  If the VIF plug
 provider implementation is unable to perform lookup or prepare the desired
 resource at this time, it should return 'false' which will tell the
 `ovn-controller` to not plug the port, in this case it will not call
 `vif_plug_port_finish` nor `vif_plug_port_ctx_destroy`.
 
-> **Note**: The VIF plug provider implementation should exhaust all
-            non-blocking options to succeed with lookup from within the
-            `vif_plug_port_prepare` handler, including refreshing lookup
-            tables if necessary.
+.. note::
+
+   The VIF plug provider implementation should exhaust all
+   non-blocking options to succeed with lookup from within the
+   ``vif_plug_port_prepare`` handler, including refreshing lookup
+   tables if necessary.
 
 Before removing port and interface records previously plugged by the
 `ovn-controller` as identified by presence of the Interface
