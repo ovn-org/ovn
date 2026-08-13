@@ -35,7 +35,7 @@ def run_tests(config):
 
         cmd = f"""CC={config.env.cc} TESTSUITE=system-test UPGRADE_TEST=yes
               TEST_RANGE="{config.env.flags}" UNSTABLE={config.env.unstable}
-              NO_DEBUG={no_debug}
+              ARCH="{config.env.arch}" NO_DEBUG={no_debug}
               . {config.path.ovn_root_dir}/.ci/linux-build.sh"""
 
         return run_shell_command(cmd)

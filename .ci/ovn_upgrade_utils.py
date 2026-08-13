@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -59,6 +60,7 @@ class EnvConfig:
     jobs: str
     opts: str
     unstable: str
+    arch: str
     use_sparse: str
 
 
@@ -100,6 +102,7 @@ class UpgradeConfig:
             jobs=os.environ.get('JOBS', ''),
             opts=os.environ.get('OPTS', ''),
             unstable=os.environ.get('UNSTABLE', 'no'),
+            arch=os.environ.get('ARCH', platform.machine()),
             # Enable parse in CI. Disable for local run as might depend of
             # content of /usr/local/include/openvswitch
             use_sparse='yes' if (is_ci and shutil.which('sparse')) else 'no'
@@ -110,8 +113,8 @@ class UpgradeConfig:
 
     def get_ctx(self):
         env = os.environ.copy()
-        env.update(CC=self.env.cc, OPTS=self.env.opts,
-                   JOBS=self.env.jobs, USE_SPARSE=self.env.use_sparse)
+        env.update(CC=self.env.cc, OPTS=self.env.opts, JOBS=self.env.jobs,
+                   ARCH=self.env.arch, USE_SPARSE=self.env.use_sparse)
         return env
 
 
