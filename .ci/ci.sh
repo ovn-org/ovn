@@ -23,9 +23,7 @@ IMAGE_NAME=${IMAGE_NAME:-"ovn-org/ovn-tests"}
 TIMEOUT=${TIMEOUT:-"0"}
 
 # Test variables
-ARCH=${ARCH:-$(uname -m)}
 CC=${CC:-gcc}
-
 
 test -t 1 && USE_TTY="t"
 
@@ -103,16 +101,6 @@ function run_tests() {
     "
 }
 
-function check_clang_version_ge() {
-    lower=$1
-    version=$(clang --version | head -n1 | cut -d' ' -f3)
-    if ! echo -e "$lower\n$version" | sort -CV; then
-      return 1
-    fi
-
-    return 0
-}
-
 options=$(getopt --options "" \
     --long help,shell,archive-logs,jobs:,ovn-path:,ovs-path:,image-name:,timeout:\
     -- "${@}")
@@ -160,15 +148,9 @@ while true; do
     shift
 done
 
-# Workaround for https://bugzilla.redhat.com/2153359
-if [ "$ARCH" = "aarch64" ] && ! check_clang_version_ge "16.0.0"; then
-    ASAN_OPTIONS="detect_leaks=0"
-fi
-
 CONTAINER_ID="$($CONTAINER_CMD run --privileged -d \
     --pids-limit=-1 \
     --security-opt apparmor=unconfined \
-    --env ASAN_OPTIONS=$ASAN_OPTIONS \
     -v /lib/modules/$(uname -r):/lib/modules/$(uname -r):ro \
     -v $OVN_PATH:$CONTAINER_WORKSPACE/ovn:Z \
     -v $OVS_PATH:$CONTAINER_WORKSPACE/ovs:Z \
