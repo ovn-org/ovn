@@ -14,8 +14,7 @@ import shlex
 import sys
 
 UPGRADE_DIR = 'tests/upgrade-testsuite.dir'
-SYSTEM_TESTS_LOGS = 'tests/system-kmod-testsuite.log'
-SYSTEM_TESTS_DIR = 'tests/system-kmod-testsuite.dir'
+SYSTEM_TESTS_GLOB = 'tests/system-kmod-testsuite.*'
 BASE_REPO_DIR = 'base-repo'
 BINARIES_DIR = 'ovn-upgrade-binaries'
 BUILD_LOG = 'build-base.log'
@@ -41,13 +40,12 @@ class PathConfig:
     upgrade_dir: Path   # Path where all upgrade-tests related files are stored
     base_dir: Path      # Path for base branch i.e. from which we upgrade
     binaries_dir: Path  # Path for binaries from dst branch
-    test_dir: Path      # Path for system tests run by upgrade tests.
+    test_glob: str      # Glob for test results in base_dir
 
 
 @dataclass
 class FileConfig:
     git_log: Path
-    test_log: Path
     build_log: Path
     new_egress: Path
     m4_defines: Path
@@ -85,11 +83,10 @@ class UpgradeConfig:
             binaries_dir=upgrade_dir / BINARIES_DIR,
             base_dir=base_dir,
             upgrade_dir=upgrade_dir,
-            test_dir=base_dir / SYSTEM_TESTS_DIR,
+            test_glob=str(base_dir / SYSTEM_TESTS_GLOB),
         )
 
         file_obj = FileConfig(
-            test_log=base_dir / SYSTEM_TESTS_LOGS,
             build_log=upgrade_dir / BUILD_LOG,
             git_log=upgrade_dir / GIT_LOG,
             new_egress=upgrade_dir / NEW_EGRESS,
@@ -659,22 +656,37 @@ def run_upgrade_workflow(config):
         return True
 
 
-def remove_upgrade_test_directory(config):
+def collect_logs(config):
+    """Move base-repo test logs into upgrade-testsuite.dir.
+
+    Moves system-kmod-testsuite.* from base-repo/tests/ into
+    upgrade-testsuite.dir/ so they are preserved after base-repo
+    is removed. Remove the base-repo after the collection.
+    """
     upgrade_dir = config.path.upgrade_dir
-    test_dir = config.path.test_dir
-    test_log = config.file.test_log
+    base_dir = config.path.base_dir
+
+    if not run_shell_command(f"sudo mv {config.path.test_glob} {upgrade_dir}"):
+        log(f"Failed to collect test logs from {config.path.test_glob}")
+    else:
+        log(f"Test logs collected in {upgrade_dir}")
+
+    if base_dir.exists():
+        log(f"Removing {base_dir}...")
+    run_command(f"sudo rm -rf {base_dir}")
+
+
+def remove_upgrade_test_directory(config):
+    """Remove the entire upgrade-testsuite.dir.
+
+    Used at startup to clear leftovers from a previous run.
+    """
+    upgrade_dir = config.path.upgrade_dir
 
     if not upgrade_dir.exists():
         return True
 
     log(f"Removing old {upgrade_dir}...")
+    result = run_command(f"sudo rm -rf {upgrade_dir}")
 
-    run_command(f"sudo rm -rf {test_dir}")
-    run_command(f"sudo rm -f {test_log}")
-
-    try:
-        shutil.rmtree(upgrade_dir)
-        return True
-    except OSError as e:
-        log(f"Failed to remove {upgrade_dir}: {e}")
-        return False
+    return result.returncode == 0
