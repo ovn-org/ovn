@@ -8,7 +8,7 @@ if [ "$NO_DEBUG" = "0" ]; then
     set -x
 fi
 
-ARCH=${ARCH:-"x86_64"}
+ARCH=${ARCH:-$(uname -m)}
 USE_SPARSE=${USE_SPARSE:-"yes"}
 COMMON_CFLAGS=""
 OVN_CFLAGS=""
