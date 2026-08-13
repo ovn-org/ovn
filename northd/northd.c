@@ -11535,7 +11535,7 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
     }
 
     HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sync_bfd_connections) {
-        if (bfd_e->stale) {
+        if (bfd_e->stale && bfd_e->sb_bt) {
             sbrec_bfd_delete(bfd_e->sb_bt);
         }
         bfd_erase_entry(bfd_e);
