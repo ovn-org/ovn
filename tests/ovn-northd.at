@@ -4167,6 +4167,11 @@ check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw9)
 AT_CHECK([ovn-nbctl list logical_router_policy | sed s/,//g | grep -q "$bfd_route_policy_uuid"])
 
+# Check that the logical router port can be deleted and the bfd
+# recompute does not crash northd.
+check ovn-nbctl --wait=sb lrp-del r0-sw2
+check ovn-nbctl --wait=sb sync
+
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
