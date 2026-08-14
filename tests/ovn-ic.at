@@ -3717,6 +3717,188 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- route tag -- learn tag rules])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+
+    # Enable route learning at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    # Enable route advertising at AZ level
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+done
+
+as az1 check ovn-appctl -t ic/ovn-ic vlog/disable-rate-limit
+
+# Test topology is next:
+#
+#                              / logical router (lr2) - 192.168.2.0/24 (vpc2)
+# logical router (lr1) - ts1 - - logical router (lr3) - 192.168.3.0/24 (vpc3)
+#                              \ logical router (lr4) - 192.168.4.0/24 (no tag)
+#
+# The learn tag rules are configured on lrp-lr1-ts1, the LRP through which lr1
+# learns the routes advertised by lr2, lr3 and lr4.
+
+ovn_as az1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:01:01 169.254.100.1/24
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr1 lrp-lr1-ts1
+
+ovn_as az2
+for i in 2 3 4; do
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:0$i:01 \
+        169.254.100.$i/24
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
+    # Create the directly-connected route advertised by lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i aa:aa:aa:aa:0$i:02 192.168.$i.1/24
+done
+
+# Tag the routes advertised by lr2 and lr3.  lr4 routes stay untagged.
+check ovn-nbctl set logical_router_port lrp-lr2-ts1 options:ic-route-tag="vpc2"
+check ovn-nbctl --wait=sb set logical_router_port lrp-lr3-ts1 \
+    options:ic-route-tag="vpc3"
+
+check ovn-ic-nbctl --wait=sb sync
+
+wait_row_count ic-sb:Route 1 ip_prefix=192.168.2.1/24 external_ids:ic-route-tag=vpc2
+wait_row_count ic-sb:Route 1 ip_prefix=192.168.3.1/24 external_ids:ic-route-tag=vpc3
+
+# Without the learn tag rules option every route is learned.
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.3.0/24 169.254.100.3
+192.168.4.0/24 169.254.100.4
+])
+
+# Allow the vpc2 route tag only.  The route tagged with vpc3 and the untagged
+# one are not learned.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="allow:vpc2"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+])
+
+# Allow both route tags.  Only the untagged route is not learned.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="allow:vpc2,vpc3"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.3.0/24 169.254.100.3
+])
+
+# Block the vpc2 route tag.  Every other route, the untagged one included, is
+# learned.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="block:vpc2"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.3.0/24 169.254.100.3
+192.168.4.0/24 169.254.100.4
+])
+
+# Block both route tags.  Only the untagged route is learned.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="block:vpc2,vpc3"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.4.0/24 169.254.100.4
+])
+
+# The allow: and block: forms are mutually exclusive: only the leading prefix
+# is honored and everything after it is a route tag name.  So allowing vpc2 and
+# blocking vpc3 in the same value allows vpc2 and the "block:vpc3" tag, and the
+# route tagged with vpc3 is not learned because it is not allowed.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="allow:vpc2,block:vpc3"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+])
+
+# The same the other way around: vpc2 and the "allow:vpc3" tag are blocked, so
+# the route tagged with vpc3 is learned.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="block:vpc2,allow:vpc3"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.3.0/24 169.254.100.3
+192.168.4.0/24 169.254.100.4
+])
+
+# A value that uses neither the allow: nor the block: prefix is invalid and is
+# ignored, so every route is learned again.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="vpc2"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.3.0/24 169.254.100.3
+192.168.4.0/24 169.254.100.4
+])
+OVS_WAIT_UNTIL([grep -q "Ignoring invalid ic-route-learn-tag-rules value" \
+    az1/ic/ovn-ic.log])
+
+# A value with an empty route tag list is invalid and is ignored as well.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="allow:"
+OVS_WAIT_UNTIL([grep -q "no route tag specified" az1/ic/ovn-ic.log])
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+          grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.3.0/24 169.254.100.3
+192.168.4.0/24 169.254.100.4
+])
+
+# The deprecated ic-route-filter-tag option is still honored on its own: the
+# route tagged with vpc3 is not learned.
+ovn_as az1 ovn-nbctl remove logical_router_port lrp-lr1-ts1 options \
+    ic-route-learn-tag-rules
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-filter-tag="vpc3"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.4.0/24 169.254.100.4
+])
+OVS_WAIT_UNTIL([grep -q "The ic-route-filter-tag option of logical router port lrp-lr1-ts1 is deprecated" az1/ic/ovn-ic.log])
+
+# The learn tag rules take precedence over the deprecated option: the route
+# tagged with vpc3 is learned again as ic-route-filter-tag is now ignored.
+ovn_as az1 ovn-nbctl set logical_router_port lrp-lr1-ts1 \
+    options:ic-route-learn-tag-rules="allow:vpc2,vpc3"
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.3.0/24 169.254.100.3
+])
+OVS_WAIT_UNTIL([grep -q "The deprecated ic-route-filter-tag option of logical router port lrp-lr1-ts1 is ignored" az1/ic/ovn-ic.log])
+
+# Remove both filtering options.  Every route is learned again.
+ovn_as az1 ovn-nbctl remove logical_router_port lrp-lr1-ts1 options \
+    ic-route-learn-tag-rules
+ovn_as az1 ovn-nbctl remove logical_router_port lrp-lr1-ts1 options \
+    ic-route-filter-tag
+OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr1 | grep 192.168 |
+             grep learned | awk '{print $1, $2}' | sort ], [0], [dnl
+192.168.2.0/24 169.254.100.2
+192.168.3.0/24 169.254.100.3
+192.168.4.0/24 169.254.100.4
+])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([spine-leaf: 3 AZs, 3 HVs, 3 LSs, connected via transit spine switch])
 AT_KEYWORDS([spine leaf])
 CHECK_SCAPY

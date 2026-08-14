@@ -2526,6 +2526,91 @@ lrp_is_ts_port(struct ic_context *ctx, struct ic_router_info *ic_lr,
     return false;
 }
 
+#define IC_ROUTE_LEARN_TAG_RULES "ic-route-learn-tag-rules"
+#define IC_ROUTE_LEARN_TAG_ALLOW "allow:"
+#define IC_ROUTE_LEARN_TAG_BLOCK "block:"
+#define IC_ROUTE_FILTER_TAG "ic-route-filter-tag"
+
+/* Route tag rules of a TS LRP, as configured through its
+ * "ic-route-learn-tag-rules" option. */
+struct route_learn_tag_rules {
+    const char *config;     /* Option value, for logging purposes. */
+    bool configured;        /* False if the option is unset or invalid, in
+                             * which case no route is filtered. */
+    bool allow;             /* True: only routes tagged with one of 'tags' are
+                             * learned.  False: routes tagged with one of
+                             * 'tags' are not learned. */
+    struct sset tags;
+};
+
+/* Initializes 'rules' from the "ic-route-learn-tag-rules" option of 'lrp',
+ * which may be NULL.  The option value must be either
+ * "allow:<comma-separated-tags>" or "block:<comma-separated-tags>"; any other
+ * value is logged and ignored.  Route tags cannot contain commas. */
+static void
+route_learn_tag_rules_init(struct route_learn_tag_rules *rules,
+                           const struct nbrec_logical_router_port *lrp)
+{
+    static struct vlog_rate_limit bad_value_rl = VLOG_RATE_LIMIT_INIT(5, 1);
+    static struct vlog_rate_limit no_tag_rl = VLOG_RATE_LIMIT_INIT(5, 1);
+    const char *tags = "";
+
+    rules->config = lrp ? smap_get(&lrp->options, IC_ROUTE_LEARN_TAG_RULES)
+                        : NULL;
+    rules->configured = false;
+    rules->allow = false;
+
+    if (rules->config) {
+        if (!strncmp(rules->config, IC_ROUTE_LEARN_TAG_ALLOW,
+                     strlen(IC_ROUTE_LEARN_TAG_ALLOW))) {
+            tags = rules->config + strlen(IC_ROUTE_LEARN_TAG_ALLOW);
+            rules->allow = true;
+            rules->configured = true;
+        } else if (!strncmp(rules->config, IC_ROUTE_LEARN_TAG_BLOCK,
+                            strlen(IC_ROUTE_LEARN_TAG_BLOCK))) {
+            tags = rules->config + strlen(IC_ROUTE_LEARN_TAG_BLOCK);
+            rules->configured = true;
+        } else {
+            VLOG_WARN_RL(&bad_value_rl,
+                         "Ignoring invalid %s value [%s] of logical "
+                         "router port %s: expected \"%s<tags>\" or "
+                         "\"%s<tags>\".", IC_ROUTE_LEARN_TAG_RULES,
+                         rules->config, lrp->name,
+                         IC_ROUTE_LEARN_TAG_ALLOW, IC_ROUTE_LEARN_TAG_BLOCK);
+        }
+    }
+
+    sset_from_delimited_string(&rules->tags, tags, ",");
+
+    if (rules->configured && sset_is_empty(&rules->tags)) {
+        VLOG_WARN_RL(&no_tag_rl,
+                     "Ignoring %s value [%s] of logical router port %s: "
+                     "no route tag specified.", IC_ROUTE_LEARN_TAG_RULES,
+                     rules->config, lrp->name);
+        rules->configured = false;
+    }
+}
+
+static void
+route_learn_tag_rules_destroy(struct route_learn_tag_rules *rules)
+{
+    sset_destroy(&rules->tags);
+}
+
+/* Returns true if a route tagged with 'route_tag' (NULL if the route
+ * carries no tag) can be learned according to 'rules'. */
+static bool
+route_learn_tag_rules_allow(const struct route_learn_tag_rules *rules,
+                            const char *route_tag)
+{
+    if (!rules->configured) {
+        return true;
+    }
+
+    bool listed = route_tag && sset_contains(&rules->tags, route_tag);
+    return rules->allow ? listed : !listed;
+}
+
 static void
 sync_learned_routes(struct ic_context *ctx,
                     struct ic_router_info *ic_lr)
@@ -2549,10 +2634,28 @@ sync_learned_routes(struct ic_context *ctx,
         if (lrp) {
             ts_route_table = smap_get_def(&lrp->options, "route_table", "");
             route_filter_tag = smap_get_def(&lrp->options,
-                                            "ic-route-filter-tag", "");
+                                            IC_ROUTE_FILTER_TAG, "");
         } else {
             ts_route_table = "";
             route_filter_tag = "";
+        }
+
+        struct route_learn_tag_rules learn_tag_rules;
+        route_learn_tag_rules_init(&learn_tag_rules, lrp);
+
+        if (route_filter_tag[0]) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+            if (learn_tag_rules.configured) {
+                VLOG_WARN_RL(&rl, "The deprecated %s option of logical router "
+                             "port %s is ignored as %s is also configured.",
+                             IC_ROUTE_FILTER_TAG, lrp->name,
+                             IC_ROUTE_LEARN_TAG_RULES);
+            } else {
+                VLOG_WARN_RL(&rl, "The %s option of logical router port %s is "
+                             "deprecated and will be removed in the 28.09 "
+                             "release; use %s instead.", IC_ROUTE_FILTER_TAG,
+                             lrp->name, IC_ROUTE_LEARN_TAG_RULES);
+            }
         }
 
         isb_route_key = icsbrec_route_index_init_row(ctx->icsbrec_route_by_ts);
@@ -2578,11 +2681,24 @@ sync_learned_routes(struct ic_context *ctx,
 
             const char *isb_route_tag = smap_get(&isb_route->external_ids,
                                                  "ic-route-tag");
-            if (isb_route_tag  && !strcmp(isb_route_tag, route_filter_tag)) {
+            /* The deprecated filter tag is honored only when the route learn
+             * tag rules are not in effect. */
+            if (!learn_tag_rules.configured && isb_route_tag &&
+                !strcmp(isb_route_tag, route_filter_tag)) {
                 VLOG_DBG("Skip learning route %s -> %s as its route tag "
-                         "[%s] is filtered by the filter tag [%s] of TS LRP ",
+                         "[%s] is filtered by the filter tag [%s] of TS LRP",
                          isb_route->ip_prefix, isb_route->nexthop,
                          isb_route_tag, route_filter_tag);
+                continue;
+            }
+
+            if (!route_learn_tag_rules_allow(&learn_tag_rules,
+                                             isb_route_tag)) {
+                VLOG_DBG("Skip learning route %s -> %s as its route tag "
+                         "[%s] is filtered by the %s [%s] of TS LRP",
+                         isb_route->ip_prefix, isb_route->nexthop,
+                         isb_route_tag ? isb_route_tag : "",
+                         IC_ROUTE_LEARN_TAG_RULES, learn_tag_rules.config);
                 continue;
             }
 
@@ -2650,6 +2766,7 @@ sync_learned_routes(struct ic_context *ctx,
             }
         }
         icsbrec_route_index_destroy_row(isb_route_key);
+        route_learn_tag_rules_destroy(&learn_tag_rules);
     }
 
     /* Delete extra learned routes. */

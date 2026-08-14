@@ -4697,6 +4697,67 @@ or
           <ref db="OVN_IC_Southbound"/> database, will be filtered and not
           learned by the <code>ovn-ic</code> daemon.
         </p>
+
+        <p>
+          This option is deprecated and will be removed in the 28.09
+          release.  Use
+          <ref column="options" key="ic-route-learn-tag-rules"/> instead,
+          which supports more than one route tag and which, when set, causes
+          this option to be ignored.
+        </p>
+      </column>
+
+      <column name="options" key="ic-route-learn-tag-rules"
+              type='{"type": "string"}'>
+        <p>
+          This option controls, based on route tags, which routes the
+          <code>ovn-ic</code> daemon learns through this Logical Router Port.
+          It expects a value in one of the following two forms, where
+          <code>tags</code> is a comma-separated list of route-tag names, for
+          example <code>allow:vpc1,vpc2</code>:
+        </p>
+
+        <ul>
+          <li>
+            <code>allow:tags</code> - only routes whose
+            <code>ic-route-tag</code> matches one of the listed tags are
+            learned.  Every other route, including routes that carry no
+            <code>ic-route-tag</code> at all, is not learned.
+          </li>
+
+          <li>
+            <code>block:tags</code> - routes whose <code>ic-route-tag</code>
+            matches one of the listed tags are not learned.  Every other
+            route, including routes that carry no <code>ic-route-tag</code> at
+            all, is learned.
+          </li>
+        </ul>
+
+        <p>
+          The <code>ic-route-tag</code> of a route is the one present in the
+          <code>external_ids</code> register of the advertised route entry in
+          the <ref table="Route" db="OVN_IC_Southbound"/> table of the
+          <ref db="OVN_IC_Southbound"/> database.  As commas separate the
+          tags, a route tag cannot contain a comma.  Values that use neither
+          the <code>allow:</code> nor the <code>block:</code> prefix, as well
+          as values with an empty tag list, are invalid and are ignored (no
+          route is filtered by this option).
+        </p>
+
+        <p>
+          The two forms are mutually exclusive: only the leading prefix is
+          honored and everything after it is a route tag name.  In
+          <code>allow:vpc1,block:vpc2</code>, for example, the allowed tags
+          are <code>vpc1</code> and <code>block:vpc2</code>.
+        </p>
+
+        <p>
+          This option supersedes the deprecated
+          <ref column="options" key="ic-route-filter-tag"/> option: whenever a
+          valid value is set here, the route tags to learn are the ones
+          defined by this option only and
+          <ref column="options" key="ic-route-filter-tag"/> is ignored.
+        </p>
       </column>
 
       <column name="options" key="requested-chassis">

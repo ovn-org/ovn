@@ -224,6 +224,8 @@ when the feature/action will move from ``Deprecated`` to ``Removed``.
   * ``OVN_FEATURE_MAC_BINDING_TIMESTAMP`` feature, should be removed in 28.09.
   * ``OVN_FEATURE_FDB_TIMESTAMP`` feature, should be removed in 28.09.
   * ``OVN_FEATURE_LS_DPG_COLUMN`` feature, should be removed in 28.09.
+  * ``ic-route-filter-tag`` Logical_Router_Port option, superseded by
+    ``ic-route-learn-tag-rules``, should be removed in 28.09.
 
 * 26.03 Deprecated
 

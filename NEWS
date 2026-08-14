@@ -96,6 +96,10 @@ Post v26.03.0
      egress pipelines.
    - The support for co-hosting multiple controller instances is now
      considered stable.  Its "experimental" tag has been removed.
+   - Added the "ic-route-learn-tag-rules" option to Logical_Router_Port to
+     filter the routes learned through the port by route tag.  This supersedes
+     "ic-route-filter-tag", which is now deprecated and is ignored when
+     "ic-route-learn-tag-rules" is set.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------
