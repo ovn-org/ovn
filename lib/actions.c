@@ -1534,6 +1534,7 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
     }
 
     if (!n_active_backends) {
+        ds_destroy(&ds);
         return;
     }
 
