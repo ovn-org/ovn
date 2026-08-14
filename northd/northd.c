@@ -382,13 +382,16 @@ static const char *reg_ct_state[] = {
  *  2. ic-learned connected routes with route_table set.
  *  3. connected routes, including ic-learned.
  *  4. static routes, including ic-learned.
- *  5. routes learned from the outside via ovn-controller (e.g. bgp)
- *  6. (lowest priority) src-ip routes */
+ *  5. routes synthesized from connected-neighbour
+ *     dynamic-routing-redistribute={lb,nat}.
+ *  6. routes learned from the outside via ovn-controller (e.g. bgp)
+ *  7. (lowest priority) src-ip routes */
 #define ROUTE_PRIO_OFFSET_MULTIPLIER 12
 #define ROUTE_PRIO_OFFSET_PRIORITY_STATIC 10
 #define ROUTE_PRIO_OFFSET_IC_LEARNED_CONNECTED_WITH_TABLEID 8
 #define ROUTE_PRIO_OFFSET_CONNECTED 6
 #define ROUTE_PRIO_OFFSET_STATIC 4
+#define ROUTE_PRIO_OFFSET_REDISTRIBUTE 3
 #define ROUTE_PRIO_OFFSET_LEARNED 2
 
 #define ROUTE_PRIO_BASE_SHIFT ((MAX_PREFIX_LEN + 1) * \
@@ -12934,12 +12937,19 @@ get_route_offset(enum route_source source,
                ? ROUTE_PRIO_OFFSET_PRIORITY_STATIC
                : ROUTE_PRIO_OFFSET_STATIC;
 
+    case ROUTE_SOURCE_NAT:
+    case ROUTE_SOURCE_LB:
+        /* Priority offset for forwarding routes installed by
+         * redistribute={lb,nat}. Placed above LEARNED so dynamically
+         * learned routes for the same prefix cannot displace the locally
+         * known nexthop, and below STATIC so operator-installed routes
+         * still win. */
+        return ROUTE_PRIO_OFFSET_REDISTRIBUTE;
+
     case ROUTE_SOURCE_LEARNED:
         return ROUTE_PRIO_OFFSET_LEARNED;
 
-    /* Dynamic route types (NAT, LB, and connected-as-host) are not used. */
-    case ROUTE_SOURCE_NAT:
-    case ROUTE_SOURCE_LB:
+    /* connected-as-host advertisements don't produce forwarding routes. */
     case ROUTE_SOURCE_CONNECTED_AS_HOST:
     default:
         OVS_NOT_REACHED();

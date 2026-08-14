@@ -168,9 +168,13 @@ digraph "Incremental-Processing-Engine" {
 	learned_route_sync [[style=filled, shape=box, fillcolor=white, label="learned_route_sync"]];
 	SB_learned_route -> learned_route_sync [[label="learned_route_sync_sb_learned_route_change_handler"]];
 	northd -> learned_route_sync [[label="learned_route_sync_northd_change_handler"]];
+	dynamic_routes [[style=filled, shape=box, fillcolor=white, label="dynamic_routes"]];
+	lr_stateful -> dynamic_routes [[label="dynamic_routes_lr_stateful_change_handler"]];
+	northd -> dynamic_routes [[label="dynamic_routes_northd_change_handler"]];
 	group_ecmp_route [[style=filled, shape=box, fillcolor=white, label="group_ecmp_route"]];
 	routes -> group_ecmp_route [[label="group_ecmp_route_routes_change_handler"]];
 	learned_route_sync -> group_ecmp_route [[label="group_ecmp_route_learned_route_change_handler"]];
+	dynamic_routes -> group_ecmp_route [[label=""]];
 	ls_stateful [[style=filled, shape=box, fillcolor=white, label="ls_stateful"]];
 	northd -> ls_stateful [[label="ls_stateful_northd_handler"]];
 	port_group -> ls_stateful [[label="ls_stateful_port_group_handler"]];
@@ -218,9 +222,6 @@ digraph "Incremental-Processing-Engine" {
 	SB_ecmp_nexthop -> ecmp_nexthop [[label=""]];
 	SB_port_binding -> ecmp_nexthop [[label=""]];
 	SB_mac_binding -> ecmp_nexthop [[label="ecmp_nexthop_mac_binding_handler"]];
-	dynamic_routes [[style=filled, shape=box, fillcolor=white, label="dynamic_routes"]];
-	lr_stateful -> dynamic_routes [[label="dynamic_routes_lr_stateful_change_handler"]];
-	northd -> dynamic_routes [[label="dynamic_routes_northd_change_handler"]];
 	SB_advertised_route [[style=filled, shape=box, fillcolor=white, label="SB_advertised_route"]];
 	advertised_route_sync [[style=filled, shape=box, fillcolor=white, label="advertised_route_sync"]];
 	routes -> advertised_route_sync [[label=""]];

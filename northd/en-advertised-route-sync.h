@@ -18,10 +18,20 @@
 
 #include "lib/inc-proc-eng.h"
 #include "lib/uuidset.h"
+#include "openvswitch/hmap.h"
 
 struct dynamic_routes_data {
-    /* Stores struct ar_entry, one for each dynamic route. */
+    /* Stores struct ar_entry, one for each dynamic route. Fed only to
+     * en_advertised_route_sync (SB Advertised_Route table). */
     struct hmap routes;
+    /* Stores struct parsed_route, one per VIP/NAT-external IP whose
+     * advertisement was synthesized from a *connected-neighbour* LR (i.e.
+     * dynamic-routing-redistribute=lb/nat for an LRP whose peer LS hosts
+     * another LR that owns the LB/NAT). Without these the advertising LR
+     * would claim reachability for a prefix it had no local forwarding
+     * route to. Fed to en_group_ecmp_route alongside en_routes and
+     * en_learned_route_sync. */
+    struct hmap parsed_routes;
     /* Contains the uuids of all NB Logical Routers where we used a
      * lr_stateful_record during computation. */
     struct uuidset nb_lr;

@@ -21,6 +21,7 @@
 #include "openvswitch/vlog.h"
 #include "northd.h"
 
+#include "en-advertised-route-sync.h"
 #include "en-group-ecmp-route.h"
 #include "en-learned-route-sync.h"
 #include "openvswitch/hmap.h"
@@ -180,6 +181,24 @@ unique_routes_destroy(struct hmap *unique_routes)
     hmap_destroy(unique_routes);
 }
 
+/* Allow LB and NAT forwarding routes for the same prefix to coexist as
+ * ECMP members instead of one silently replacing the other.  This is an
+ * edge case: it arises only when two different peer LRs independently
+ * use the same IP as a VIP and a NAT external IP, and a CMS would
+ * typically prevent such overlap.  Without this guard, one route
+ * would silently win and traffic to the other service would be
+ * black-holed. */
+static bool
+route_sources_ecmp_compatible(enum route_source a, enum route_source b)
+{
+    if (a == b) {
+        return true;
+    }
+
+    return (a == ROUTE_SOURCE_NAT || a == ROUTE_SOURCE_LB) &&
+           (b == ROUTE_SOURCE_NAT || b == ROUTE_SOURCE_LB);
+}
+
 /* Remove the unique_routes_node from the group, and return the parsed_route
  * pointed by the removed node. */
 static const struct parsed_route *
@@ -191,7 +210,8 @@ unique_routes_remove(struct group_ecmp_datapath *gn,
         if (ipv6_addr_equals(&route->prefix, &ur->route->prefix) &&
             route->plen == ur->route->plen &&
             route->is_src_route == ur->route->is_src_route &&
-            route->source == ur->route->source &&
+            route_sources_ecmp_compatible(route->source,
+                                          ur->route->source) &&
             route->route_table_id == ur->route->route_table_id) {
             hmap_remove(&gn->unique_routes, &ur->hmap_node);
             const struct parsed_route *existed_route = ur->route;
@@ -304,7 +324,7 @@ ecmp_groups_find(struct group_ecmp_datapath *gn,
             eg->plen == route->plen &&
             eg->is_src_route == route->is_src_route &&
             eg->route_table_id == route->route_table_id &&
-            eg->source == route->source) {
+            route_sources_ecmp_compatible(eg->source, route->source)) {
             return eg;
         }
     }
@@ -356,7 +376,8 @@ add_route(struct group_ecmp_datapath *gn, const struct parsed_route *pr)
 static void
 group_ecmp_route(struct group_ecmp_route_data *data,
                  const struct routes_data *routes_data,
-                 const struct learned_route_sync_data *learned_route_data)
+                 const struct learned_route_sync_data *learned_route_data,
+                 const struct dynamic_routes_data *dynamic_routes_data)
 {
     struct group_ecmp_datapath *gn;
     const struct parsed_route *pr;
@@ -366,6 +387,11 @@ group_ecmp_route(struct group_ecmp_route_data *data,
     }
 
     HMAP_FOR_EACH (pr, key_node, &learned_route_data->parsed_routes) {
+        gn = group_ecmp_datapath_lookup_or_add(data, pr->od);
+        add_route(gn, pr);
+    }
+
+    HMAP_FOR_EACH (pr, key_node, &dynamic_routes_data->parsed_routes) {
         gn = group_ecmp_datapath_lookup_or_add(data, pr->od);
         add_route(gn, pr);
     }
@@ -381,8 +407,11 @@ en_group_ecmp_route_run(struct engine_node *node, void *_data)
         = engine_get_input_data("routes", node);
     struct learned_route_sync_data *learned_route_data
         = engine_get_input_data("learned_route_sync", node);
+    struct dynamic_routes_data *dynamic_routes_data
+        = engine_get_input_data("dynamic_routes", node);
 
-    group_ecmp_route(data, routes_data, learned_route_data);
+    group_ecmp_route(data, routes_data, learned_route_data,
+                     dynamic_routes_data);
 
     return EN_UPDATED;
 }

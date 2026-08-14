@@ -17310,8 +17310,8 @@ check_engine_compute northd incremental
 check_engine_compute routes incremental
 check_engine_compute advertised_route_sync recompute
 check_engine_compute learned_route_sync incremental
-check_engine_compute group_ecmp_route unchanged
-check_engine_compute lflow incremental
+check_engine_compute group_ecmp_route recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -17334,8 +17334,8 @@ check_engine_compute northd incremental
 check_engine_compute routes incremental
 check_engine_compute advertised_route_sync recompute
 check_engine_compute learned_route_sync incremental
-check_engine_compute group_ecmp_route unchanged
-check_engine_compute lflow incremental
+check_engine_compute group_ecmp_route recompute
+check_engine_compute lflow recompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -18110,6 +18110,634 @@ check_row_count Advertised_Route 3
 # Removing the lr will remove all routes.
 check ovn-nbctl --wait=sb lr-del lr0
 check_row_count Advertised_Route 0
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute installs local forwarding route])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When dynamic-routing-redistribute=lb is set on an LRP whose peer LS
+# hosts a neighbouring LR with an attached load balancer, northd emits
+# both an SB Advertised_Route entry and a /32 forwarding parsed_route
+# on the advertising LR so it can forward traffic to the peer's VIP.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+
+# lr0's transit LRP toward 'up' is unnumbered (no IPv4 address).
+# dynamic-routing-redistribute=lb is set on this LRP.
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+# lr1 is the neighbouring router that owns the load balancer.
+# Its LRP on 'up' carries an IPv4 address (10.0.0.1) which becomes the
+# nexthop for the forwarding route synthesised on lr0.
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+# An Advertised_Route entry for lb0's VIP is emitted on lr0 with
+# tracked_port pointing at lr1's LRP.
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_lr1_up
+
+# lr0 also gets a /32 forwarding flow with reg0 = lr1's LRP IP
+# (10.0.0.1) and outport = lr0-up. Because lr0-up is unnumbered
+# (no IPv4 address) there is no REG_SRC_IPV4 clause in the action.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+# Removing the redistribution option also removes the forwarding route.
+check ovn-nbctl --wait=sb remove Logical_Router_Port lr0-up options dynamic-routing-redistribute
+ovn-sbctl lflow-list lr0 > lr0_flows_after_remove
+AT_CHECK([grep -c 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows_after_remove], [1], [0
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute forwarding route - numbered LRP])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Same as "LB redistribute installs local forwarding route" but the
+# advertising LRP is numbered (has an IPv4 address), so the emitted
+# forwarding flow includes reg5 = <src-ip> (REG_SRC_IPV4).
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01 10.0.0.2/24
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+# lr0-up is numbered (10.0.0.2) so reg5 = 10.0.0.2 appears in the action.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; reg5 = 10.0.0.2; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - NAT redistribute forwarding route IPv4])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When dynamic-routing-redistribute=nat is set on an LRP whose peer LS
+# hosts a neighbouring LR with a NAT external IP, northd emits a /32
+# forwarding parsed_route on the advertising LR.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=nat
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-up hv1
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 172.16.1.10 192.168.1.10
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+
+# SB Advertised_Route for lr1's NAT external IP is emitted on lr0.
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0          \
+    logical_port=$pb_lr0_up         \
+    tracked_port=$pb_lr1_up
+
+# lr0 also gets a /32 forwarding flow to lr1-up (10.0.0.1).
+# Grep for priority 1935 specifically to avoid matching the connected
+# host route (priority 1938) that --add-route also produces.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | grep 'priority=1935' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - NAT redistribute forwarding route IPv6])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# IPv6 variant of the NAT redistribute forwarding route test.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=nat
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 2001:db8::1/64
+check ovn-nbctl lrp-set-gateway-chassis lr1-up hv1
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 2001:db8:ffff::10 2001:db8:1::10
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="2001\:db8\:ffff\:\:10"  \
+    datapath=$datapath_lr0              \
+    logical_port=$pb_lr0_up             \
+    tracked_port=$pb_lr1_up
+
+# /128 forwarding flow for v6 NAT external IP.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*2001:db8:ffff::10/128' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=3087 , match=(ip6.dst == 2001:db8:ffff::10/128), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = 2001:db8::1; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - NAT redistribute distributed NAT tracked_port])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When a neighbouring LR has a distributed NAT (logical_port +
+# external_mac set), the connected-neighbour path must use the
+# backend LSP as tracked_port rather than the DGP.  The DGP must
+# not be the same port that peers with the advertising LR, because
+# that creates a cr_port on the peer LSP and disables distributed
+# NAT (en-lr-nat.c: lr_nat_entry_set_dgw_port).
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=nat
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+# DGP on a separate port (lr1-ext), so lr1-up's peer LSP does not
+# get a cr_port and the NAT stays distributed.
+check ovn-nbctl lrp-add lr1 lr1-ext 00:00:00:00:00:04 192.168.2.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-ext hv1
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add-router-port ext ext-lr1 lr1-ext
+check ovn-nbctl lsp-add ext ln-ext
+check ovn-nbctl lsp-set-type ln-ext localnet
+check ovn-nbctl lsp-set-options ln-ext network_name=phys
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+# Distributed NAT: logical_port and external_mac point to the backend LSP.
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 172.16.1.10 192.168.1.10 be-vm1 00:00:00:00:01:01
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+
+# The advertised route must carry the backend LSP as tracked_port,
+# not the DGP (lr1-ext).
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0          \
+    logical_port=$pb_lr0_up         \
+    tracked_port=$pb_be_vm1
+
+# The forwarding route uses the peer LRP even though Advertised_Route tracks
+# the backend LSP.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - NAT redistribute own-LR distributed NAT])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When a router with a distributed NAT advertises its own NAT routes
+# (build_nat_routes path), the Advertised_Route must use the backend
+# LSP as tracked_port.
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl set Logical_Router lr1 \
+    options:dynamic-routing=true
+
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lrp-set-options lr1-up dynamic-routing-redistribute=nat
+check ovn-nbctl lrp-set-gateway-chassis lr1-up hv1
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+check ovn-nbctl lsp-add up ln-up
+check ovn-nbctl lsp-set-type ln-up localnet
+check ovn-nbctl lsp-set-options ln-up network_name=phys
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+
+# Distributed NAT: logical_port and external_mac point to the backend LSP.
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 172.16.1.10 192.168.1.10 be-vm1 00:00:00:00:01:01
+check ovn-nbctl --wait=sb sync
+
+datapath_lr1=$(fetch_column Datapath_Binding _uuid external_ids:name=lr1)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+
+# The own-LR advertised route must carry the backend LSP as tracked_port.
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr1          \
+    logical_port=$pb_lr1_up         \
+    tracked_port=$pb_be_vm1
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - NAT redistribute connected-neighbour distributed NAT on localnet LS])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# A provider LS backed by a localnet port connects two LRs.  The
+# neighbour LR has a distributed NAT whose DGP is on a separate
+# provider LS (also localnet-backed).  The advertising LR must emit
+# an Advertised_Route with the backend LSP as tracked_port and a forwarding
+# parsed_route through the peer LRP on the provider network.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01 10.0.0.2/24
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=nat
+check ovn-nbctl ls-add provider
+check ovn-nbctl lsp-add-router-port provider prov-lr0 lr0-up
+check ovn-nbctl lsp-add provider ln-prov
+check ovn-nbctl lsp-set-type ln-prov localnet
+check ovn-nbctl lsp-set-options ln-prov network_name=physnet
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-prov 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port provider prov-lr1 lr1-prov
+
+# DGP on a separate provider LS, so lr1-prov's peer LSP does not get
+# a cr_port and the NAT stays distributed.
+check ovn-nbctl lrp-add lr1 lr1-ext 00:00:00:00:00:04 192.168.2.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-ext hv1
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add-router-port ext ext-lr1 lr1-ext
+check ovn-nbctl lsp-add ext ln-ext
+check ovn-nbctl lsp-set-type ln-ext localnet
+check ovn-nbctl lsp-set-options ln-ext network_name=physnet2
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+
+# Distributed NAT: logical_port and external_mac point to the backend LSP.
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 172.16.1.10 192.168.1.10 be-vm1 00:00:00:00:01:01
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+
+# Advertised_Route uses the backend LSP as tracked_port.
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0          \
+    logical_port=$pb_lr0_up         \
+    tracked_port=$pb_be_vm1
+
+# The forwarding route uses lr1-prov as its nexthop while route locality is
+# still tracked through be-vm1.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; reg5 = 10.0.0.2; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute forwarding route IPv6])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# IPv6 variant of the LB forwarding route test.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 2001:db8::1/64
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl \
+    -- lb-add lb0 [[2001:db8:ffff::10]]:80 [[2001:db8:1::10]]:80,[[2001:db8:1::11]]:80 \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="2001\:db8\:ffff\:\:10"   \
+    datapath=$datapath_lr0               \
+    logical_port=$pb_lr0_up              \
+    tracked_port=$pb_lr1_up
+
+# /128 forwarding flow for v6 LB VIP.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*2001:db8:ffff::10/128' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=3087 , match=(ip6.dst == 2001:db8:ffff::10/128), action=(ip.ttl--; reg8[[0..15]] = 0; xxreg0 = 2001:db8::1; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 0; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB group and NAT overlap use ECMP via LS])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Two LRs (lr1, lr2) connect to a shared LS "join".  lr1 owns an LB and lr2
+# owns a NAT.  lr0 has redistribute=lb,nat on its LRP toward "join". lr0's
+# peer on "join" is an LSP (not a direct LR-LR peer), so northd discovers
+# both routes through the LS's router_ports.
+#
+# This is an edge case: a VIP IP and a NAT external IP are unlikely to
+# overlap in practice and a CMS would typically prevent it.  The test
+# verifies that both paths survive as ECMP members rather than one
+# silently replacing the other and black-holing traffic.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-join 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-join \
+    dynamic-routing-redistribute=lb,nat
+check ovn-nbctl ls-add join
+check ovn-nbctl lsp-add-router-port join join-lr0 lr0-join
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-join 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port join join-lr1 lr1-join
+check ovn-nbctl \
+    -- lb-add lb1 172.16.1.10:80 192.168.1.10:80
+lb1=$(fetch_column nb:Load_Balancer _uuid name=lb1)
+lbg1=$(ovn-nbctl create Load_Balancer_Group name=lbg1 \
+    load_balancer=$lb1)
+check ovn-nbctl add Logical_Router lr1 load_balancer_group $lbg1
+
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr2 lr2-join 00:00:00:00:00:03 10.0.0.2/24
+check ovn-nbctl lrp-set-gateway-chassis lr2-join hv1
+check ovn-nbctl lsp-add-router-port join join-lr2 lr2-join
+check ovn-nbctl --add-route lr-nat-add lr2 dnat_and_snat \
+    172.16.1.10 192.168.2.10
+
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_join=$(fetch_column Port_Binding _uuid logical_port=lr0-join)
+pb_lr1_join=$(fetch_column Port_Binding _uuid logical_port=lr1-join)
+pb_lr2_join=$(fetch_column Port_Binding _uuid logical_port=lr2-join)
+
+# The LB VIP and NAT external IP overlap.  Both neighboring paths must be
+# represented and combined into ECMP forwarding on lr0.
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"         \
+    datapath=$datapath_lr0           \
+    logical_port=$pb_lr0_join        \
+    tracked_port=$pb_lr1_join
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"         \
+    datapath=$datapath_lr0           \
+    logical_port=$pb_lr0_join        \
+    tracked_port=$pb_lr2_join
+
+# One ECMP selection flow covers the prefix and two member flows carry the
+# respective neighbor nexthops.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | \
+          grep -c 'select(1, 2)'], [0], [1
+])
+AT_CHECK([grep 'lr_in_ip_routing_ecmp' lr0_flows | \
+          grep -E -c 'reg0 = 10\.0\.0\.[[12]];'], [0], [2
+])
+
+# Removing the group withdraws both the advertised and forwarding route for
+# lb1 without affecting the overlapping NAT path.
+check ovn-nbctl --wait=sb remove Logical_Router lr1 load_balancer_group $lbg1
+check_row_count Advertised_Route 1 ip_prefix="172.16.1.10"
+ovn-sbctl lflow-list lr0 > lr0_flows_after_remove
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' \
+          lr0_flows_after_remove | grep -c 'reg0 = 10.0.0.2;'], [0], [1
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB forwarding route updates on nexthop change])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Regression test: parsed_route_lookup must treat routes with different
+# nexthops as distinct.  Create a forwarding route for an LB VIP with
+# nexthop 10.0.0.1, then change the peer LRP address to 10.0.0.42 and
+# verify the logical flow is updated.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01 10.0.0.2/24
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80 \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+# Forwarding flow on lr0 points at 10.0.0.1 (lr1-up's address).
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; reg5 = 10.0.0.2; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+# Change lr1-up's address from 10.0.0.1 to 10.0.0.42.
+check ovn-nbctl --wait=sb set Logical_Router_Port lr1-up networks=\"10.0.0.42/24\"
+
+# The forwarding flow must now use 10.0.0.42 as nexthop.
+ovn-sbctl lflow-list lr0 > lr0_flows_after
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows_after | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.42; reg5 = 10.0.0.2; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+# The old nexthop (10.0.0.1) must no longer appear in the flow.
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows_after | grep -c 'reg0 = 10.0.0.1' || true], [0], [0
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute advertise=false skips forwarding route])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When dynamic-routing-redistribute=lb is set on an LRP but the LB has
+# options:dynamic-routing-advertise=false, both the Advertised_Route row
+# and the forwarding parsed route / logical flow are not installed.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01 10.0.0.2/24
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80 \
+    -- set Load_Balancer lb0 options:dynamic-routing-advertise=false \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+# No Advertised_Route should be emitted.
+check_row_count Advertised_Route 0
+
+# No forwarding flow for the LB VIP.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep -c 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows || true], [0], [0
+])
+
+# Enabling advertise should produce both.
+check ovn-nbctl --wait=sb remove Load_Balancer lb0 options dynamic-routing-advertise
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0          \
+    logical_port=$pb_lr0_up         \
+    tracked_port=$pb_lr1_up
+
+ovn-sbctl lflow-list lr0 > lr0_flows_on
+AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows_on | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; reg5 = 10.0.0.2; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
+])
+
+# Disabling again should withdraw both.
+check ovn-nbctl --wait=sb set Load_Balancer lb0 options:dynamic-routing-advertise=false
+check_row_count Advertised_Route 0
+
+ovn-sbctl lflow-list lr0 > lr0_flows_off
+AT_CHECK([grep -c 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows_off || true], [0], [0
+])
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
