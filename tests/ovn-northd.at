@@ -17310,8 +17310,9 @@ check_engine_compute northd incremental
 check_engine_compute routes incremental
 check_engine_compute advertised_route_sync recompute
 check_engine_compute learned_route_sync incremental
-check_engine_compute group_ecmp_route recompute
-check_engine_compute lflow recompute
+# See comment below re group_ecmp_route incremental vs unchanged.
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -17334,8 +17335,13 @@ check_engine_compute northd incremental
 check_engine_compute routes incremental
 check_engine_compute advertised_route_sync recompute
 check_engine_compute learned_route_sync incremental
-check_engine_compute group_ecmp_route recompute
-check_engine_compute lflow recompute
+# dynamic_routes recomputes on every en_northd update. the handler on
+# en_group_ecmp_route returns UNCHANGED when no connected-neighbour
+# LB/NAT forwarding routes are produced (this LR uses =connected-as-host,
+# not =lb/=nat), but the call itself increments compute_ct so the state
+# is "incremental" rather than "unchanged".
+check_engine_compute group_ecmp_route incremental
+check_engine_compute lflow incremental
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -18168,6 +18174,16 @@ ovn-sbctl lflow-list lr0 > lr0_flows
 AT_CHECK([grep 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows | ovn_strip_lflows], [0], [dnl
   table=??(lr_in_ip_routing   ), priority=1935 , match=(ip4.dst == 172.16.1.10/32), action=(ip.ttl--; reg8[[0..15]] = 0; reg0 = 10.0.0.1; eth.src = 00:00:00:00:00:01; outport = "lr0-up"; flags.loopback = 1; reg9[[9]] = 1; next;)
 ])
+
+# Changing an LB option rebuilds dynamic_routes, but leaves the synthesized
+# forwarding route unchanged.  group_ecmp_route must consume that empty diff
+# incrementally instead of rebuilding its nonempty route map.  The reject
+# option is arbitrary: any LB option that does not affect VIPs or backends
+# would serve the same purpose.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set Load_Balancer lb0 options:reject=true
+check_engine_compute dynamic_routes recompute
+check_engine_compute group_ecmp_route incremental
 
 # Removing the redistribution option also removes the forwarding route.
 check ovn-nbctl --wait=sb remove Logical_Router_Port lr0-up options dynamic-routing-redistribute

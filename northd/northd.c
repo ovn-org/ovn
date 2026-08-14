@@ -12486,7 +12486,7 @@ find_static_route_outport(const struct ovn_datapath *od,
 /* Parse and validate the route. Return the parsed route if successful.
  * Otherwise return NULL. */
 
-static struct parsed_route *
+struct parsed_route *
 parsed_route_lookup(struct hmap *routes, size_t hash,
                     struct parsed_route *new_pr)
 {

@@ -24,6 +24,7 @@
 #include "en-advertised-route-sync.h"
 #include "en-group-ecmp-route.h"
 #include "en-learned-route-sync.h"
+#include "hmapx.h"
 #include "openvswitch/hmap.h"
 
 VLOG_DEFINE_THIS_MODULE(en_group_ecmp_route);
@@ -596,6 +597,62 @@ group_ecmp_route_routes_change_handler(struct engine_node *eng_node,
 
     if (!hmapx_is_empty(&data->trk_data.crupdated_datapath_routes) ||
         !hmapx_is_empty(&data->trk_data.deleted_datapath_routes)) {
+        return EN_HANDLED_UPDATED;
+    }
+    return EN_HANDLED_UNCHANGED;
+}
+
+/* dynamic_routes rebuilds parsed_routes and diffs it against its previous
+ * content.  tracked=false therefore means that the rebuild produced no
+ * delta, even when parsed_routes itself is nonempty. */
+enum engine_input_handler_result
+group_ecmp_route_dynamic_routes_change_handler(struct engine_node *eng_node,
+                                                void *data)
+{
+    struct group_ecmp_route_data *gdata = data;
+    struct dynamic_routes_data *dynamic_routes_data
+        = engine_get_input_data("dynamic_routes", eng_node);
+
+    if (!dynamic_routes_data->tracked) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    gdata->tracked = true;
+
+    struct hmapx updated_routes = HMAPX_INITIALIZER(&updated_routes);
+
+    const struct hmapx_node *hmapx_node;
+    const struct parsed_route *pr;
+    HMAPX_FOR_EACH (hmapx_node,
+                    &dynamic_routes_data->trk_data.trk_deleted_parsed_routes) {
+        pr = hmapx_node->data;
+        if (!handle_deleted_route(gdata, pr, &updated_routes)) {
+            hmapx_destroy(&updated_routes);
+            return EN_UNHANDLED;
+        }
+    }
+
+    HMAPX_FOR_EACH (hmapx_node,
+                    &dynamic_routes_data->trk_data.trk_created_parsed_routes) {
+        pr = hmapx_node->data;
+        handle_added_route(gdata, pr, &updated_routes);
+    }
+
+    HMAPX_FOR_EACH (hmapx_node, &updated_routes) {
+        struct group_ecmp_datapath *node = hmapx_node->data;
+        if (hmap_is_empty(&node->unique_routes) &&
+                hmap_is_empty(&node->ecmp_groups)) {
+            hmapx_add(&gdata->trk_data.deleted_datapath_routes, node);
+            hmap_remove(&gdata->datapaths, &node->hmap_node);
+        } else {
+            hmapx_add(&gdata->trk_data.crupdated_datapath_routes, node);
+        }
+    }
+
+    hmapx_destroy(&updated_routes);
+
+    if (!(hmapx_is_empty(&gdata->trk_data.crupdated_datapath_routes) &&
+          hmapx_is_empty(&gdata->trk_data.deleted_datapath_routes))) {
         return EN_HANDLED_UPDATED;
     }
     return EN_HANDLED_UNCHANGED;

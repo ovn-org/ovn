@@ -231,10 +231,38 @@ add_redistribute_parsed_route(struct hmap *parsed_routes_out,
         return;
     }
 
-    parsed_route_add(advertising_od, nexthop, &prefix, plen, false,
-                     lrp_addr_s, advertising_op, 0, false, false, false, NULL,
-                     source, false, source_hint, tracked_port,
-                     parsed_routes_out);
+    size_t n_routes = hmap_count(parsed_routes_out);
+    struct parsed_route *new_pr = parsed_route_add(
+        advertising_od, nexthop, &prefix, plen, false, lrp_addr_s,
+        advertising_op, 0, false, false, false, NULL, source, false,
+        source_hint, tracked_port, parsed_routes_out);
+
+    /* A duplicate route was already reconciled by an earlier call. */
+    if (hmap_count(parsed_routes_out) == n_routes) {
+        return;
+    }
+
+    struct dynamic_routes_data *data = CONTAINER_OF(
+        parsed_routes_out, struct dynamic_routes_data, parsed_routes);
+    size_t hash = parsed_route_hash(new_pr);
+    struct parsed_route *old_pr = parsed_route_lookup(
+        &data->old_parsed_routes, hash, new_pr);
+    if (!old_pr) {
+        hmapx_add(&data->trk_data.trk_created_parsed_routes, new_pr);
+        return;
+    }
+
+    /* Keep the existing object so pointers held by group_ecmp_route remain
+     * valid, and cancel the deletion recorded at rebuild start. */
+    struct hmapx_node *deleted = hmapx_find(
+        &data->trk_data.trk_deleted_parsed_routes, old_pr);
+    ovs_assert(deleted);
+    hmapx_delete(&data->trk_data.trk_deleted_parsed_routes, deleted);
+
+    hmap_remove(&data->old_parsed_routes, &old_pr->key_node);
+    hmap_remove(parsed_routes_out, &new_pr->key_node);
+    hmap_insert(parsed_routes_out, &old_pr->key_node, hash);
+    parsed_route_free(new_pr);
 }
 
 /* This function adds a new route for each entry in lr_nat record
@@ -643,11 +671,32 @@ en_dynamic_routes_init(struct engine_node *node OVS_UNUSED,
     *data = (struct dynamic_routes_data) {
         .routes = HMAP_INITIALIZER(&data->routes),
         .parsed_routes = HMAP_INITIALIZER(&data->parsed_routes),
+        .old_parsed_routes = HMAP_INITIALIZER(&data->old_parsed_routes),
         .nb_lr = UUIDSET_INITIALIZER(&data->nb_lr),
         .nb_ls = UUIDSET_INITIALIZER(&data->nb_ls),
+        .tracked = false,
+        .trk_data.trk_created_parsed_routes =
+            HMAPX_INITIALIZER(&data->trk_data.trk_created_parsed_routes),
+        .trk_data.trk_deleted_parsed_routes =
+            HMAPX_INITIALIZER(&data->trk_data.trk_deleted_parsed_routes),
     };
 
     return data;
+}
+
+static void
+dynamic_routes_clear_tracked(struct dynamic_routes_data *data)
+{
+    hmapx_clear(&data->trk_data.trk_created_parsed_routes);
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH_SAFE (hmapx_node,
+                         &data->trk_data.trk_deleted_parsed_routes) {
+        struct parsed_route *pr = hmapx_node->data;
+        hmap_remove(&data->old_parsed_routes, &pr->key_node);
+        parsed_route_free(pr);
+        hmapx_delete(&data->trk_data.trk_deleted_parsed_routes, hmapx_node);
+    }
+    data->tracked = false;
 }
 
 static void
@@ -663,6 +712,34 @@ en_dynamic_routes_clear(struct dynamic_routes_data *data)
         parsed_route_free(pr);
     }
 
+    dynamic_routes_clear_tracked(data);
+
+    uuidset_clear(&data->nb_lr);
+    uuidset_clear(&data->nb_ls);
+}
+
+/* Mark the current parsed routes as deleted, then move them aside so each
+ * route can be reconciled as its replacement is calculated. */
+static void
+dynamic_routes_prepare_rebuild(struct dynamic_routes_data *data)
+{
+    dynamic_routes_clear_tracked(data);
+
+    ovs_assert(hmap_is_empty(&data->old_parsed_routes));
+    hmap_swap(&data->old_parsed_routes, &data->parsed_routes);
+
+    struct parsed_route *pr;
+    HMAP_FOR_EACH (pr, key_node, &data->old_parsed_routes) {
+        hmapx_add(&data->trk_data.trk_deleted_parsed_routes, pr);
+    }
+
+    /* TODO: Track advertised-route deltas like the parsed-route deltas
+     * consumed by group_ecmp_route, then add a dynamic_routes change handler
+     * to advertised_route_sync. */
+    struct ar_entry *ar;
+    HMAP_FOR_EACH_POP (ar, hmap_node, &data->routes) {
+        ar_entry_free(ar);
+    }
     uuidset_clear(&data->nb_lr);
     uuidset_clear(&data->nb_ls);
 }
@@ -675,6 +752,9 @@ en_dynamic_routes_cleanup(void *data_)
     en_dynamic_routes_clear(data);
     hmap_destroy(&data->routes);
     hmap_destroy(&data->parsed_routes);
+    hmap_destroy(&data->old_parsed_routes);
+    hmapx_destroy(&data->trk_data.trk_created_parsed_routes);
+    hmapx_destroy(&data->trk_data.trk_deleted_parsed_routes);
     uuidset_destroy(&data->nb_lr);
     uuidset_destroy(&data->nb_ls);
 }
@@ -687,7 +767,7 @@ en_dynamic_routes_run(struct engine_node *node, void *data)
     struct ed_type_lr_stateful *lr_stateful_data =
         engine_get_input_data("lr_stateful", node);
 
-    en_dynamic_routes_clear(dynamic_routes_data);
+    dynamic_routes_prepare_rebuild(dynamic_routes_data);
 
     const struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
@@ -719,6 +799,12 @@ en_dynamic_routes_run(struct engine_node *node, void *data)
         build_lb_connected_routes(od, &lr_stateful_data->table,
                                   dynamic_routes_data);
     }
+
+    dynamic_routes_data->tracked =
+        !hmapx_is_empty(
+            &dynamic_routes_data->trk_data.trk_created_parsed_routes)
+        || !hmapx_is_empty(
+            &dynamic_routes_data->trk_data.trk_deleted_parsed_routes);
 
     return EN_UPDATED;
 }

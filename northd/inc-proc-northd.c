@@ -386,7 +386,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     /* Connected-neighbour redistribute={lb,nat} also emits forwarding
      * parsed_routes. Consume those to compose ECMP groups alongside
      * routes and learned_route_sync. */
-    engine_add_input(&en_group_ecmp_route, &en_dynamic_routes, NULL);
+    engine_add_input(&en_group_ecmp_route, &en_dynamic_routes,
+                     group_ecmp_route_dynamic_routes_change_handler);
 
     engine_add_input(&en_sync_meters, &en_nb_acl, sync_meters_nb_acl_handler);
     engine_add_input(&en_sync_meters, &en_nb_meter, NULL);

@@ -881,6 +881,8 @@ struct parsed_route {
 };
 
 struct parsed_route *parsed_route_clone(const struct parsed_route *);
+struct parsed_route *parsed_route_lookup(struct hmap *routes, size_t hash,
+                                         struct parsed_route *new_pr);
 struct parsed_route *parsed_route_lookup_by_source(
     enum route_source source, const struct ovsdb_idl_row *source_hint,
     const struct hmap *routes);

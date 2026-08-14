@@ -174,7 +174,7 @@ digraph "Incremental-Processing-Engine" {
 	group_ecmp_route [[style=filled, shape=box, fillcolor=white, label="group_ecmp_route"]];
 	routes -> group_ecmp_route [[label="group_ecmp_route_routes_change_handler"]];
 	learned_route_sync -> group_ecmp_route [[label="group_ecmp_route_learned_route_change_handler"]];
-	dynamic_routes -> group_ecmp_route [[label=""]];
+	dynamic_routes -> group_ecmp_route [[label="group_ecmp_route_dynamic_routes_change_handler"]];
 	ls_stateful [[style=filled, shape=box, fillcolor=white, label="ls_stateful"]];
 	northd -> ls_stateful [[label="ls_stateful_northd_handler"]];
 	port_group -> ls_stateful [[label="ls_stateful_port_group_handler"]];
