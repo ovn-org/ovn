@@ -62,6 +62,7 @@
 #include "lib/ovn-dirs.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
+#include "lib/uuidset.h"
 #include "ovsport.h"
 #include "patch.h"
 #include "vif-plug.h"
@@ -364,7 +365,6 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
          * ones. */
         ovsdb_idl_condition_add_clause_true(&ar);
     }
-
     if (local_ifaces) {
         const char *name;
 
@@ -5263,6 +5263,13 @@ struct ed_type_route {
      * locally. */
     struct sset tracked_ports_remote;
 
+    /* Contains logical ports referenced by health-gated advertised routes. */
+    struct sset health_check_ports;
+
+    /* Service_Monitor rows matched during the last route run.  Their UUIDs
+     * identify relevant deletions and selector changes. */
+    struct uuidset relevant_service_monitors;
+
     /* Contains all the currently configured dynamic-routing-port-name values
      * on all datapaths.
      */
@@ -5270,7 +5277,6 @@ struct ed_type_route {
 
     /* Contains struct advertise_datapath_entry */
     struct hmap announce_routes;
-
     struct ovsdb_idl *ovnsb_idl;
 };
 
@@ -5301,7 +5307,9 @@ en_route_run(struct engine_node *node, void *data)
 
     const struct sbrec_advertised_route_table *advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
-
+    struct ovsdb_idl_index *service_monitor_by_selector =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_service_monitor", node), "selector");
     const struct ovsrec_open_vswitch *cfg
         = ovsrec_open_vswitch_table_first(ovs_table);
     const char *dynamic_routing_port_mapping =
@@ -5309,6 +5317,7 @@ en_route_run(struct engine_node *node, void *data)
 
     struct route_ctx_in r_ctx_in = {
         .advertised_route_table = advertised_route_table,
+        .service_monitor_by_selector = service_monitor_by_selector,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .chassis = chassis,
         .dynamic_routing_port_mapping = dynamic_routing_port_mapping,
@@ -5319,6 +5328,9 @@ en_route_run(struct engine_node *node, void *data)
     struct route_ctx_out r_ctx_out = {
         .tracked_re_datapaths = &re_data->tracked_route_datapaths,
         .tracked_ports_local = &re_data->tracked_ports_local,
+        .health_check_ports = &re_data->health_check_ports,
+        .relevant_service_monitors =
+            &re_data->relevant_service_monitors,
         .filtered_ports = &re_data->filtered_ports,
         .tracked_ports_remote = &re_data->tracked_ports_remote,
         .announce_routes = &re_data->announce_routes,
@@ -5328,9 +5340,12 @@ en_route_run(struct engine_node *node, void *data)
     tracked_datapaths_clear(r_ctx_out.tracked_re_datapaths);
     sset_clear(r_ctx_out.tracked_ports_local);
     sset_clear(r_ctx_out.tracked_ports_remote);
+    sset_clear(r_ctx_out.health_check_ports);
+    uuidset_clear(r_ctx_out.relevant_service_monitors);
     sset_clear(r_ctx_out.filtered_ports);
 
     route_run(&r_ctx_in, &r_ctx_out);
+
     return EN_UPDATED;
 }
 
@@ -5344,6 +5359,8 @@ en_route_init(struct engine_node *node OVS_UNUSED,
     hmap_init(&data->tracked_route_datapaths);
     sset_init(&data->tracked_ports_local);
     sset_init(&data->tracked_ports_remote);
+    sset_init(&data->health_check_ports);
+    uuidset_init(&data->relevant_service_monitors);
     sset_init(&data->filtered_ports);
     hmap_init(&data->announce_routes);
     data->ovnsb_idl = arg->sb_idl;
@@ -5359,6 +5376,8 @@ en_route_cleanup(void *data)
     tracked_datapaths_destroy(&re_data->tracked_route_datapaths);
     sset_destroy(&re_data->tracked_ports_local);
     sset_destroy(&re_data->tracked_ports_remote);
+    sset_destroy(&re_data->health_check_ports);
+    uuidset_destroy(&re_data->relevant_service_monitors);
     sset_destroy(&re_data->filtered_ports);
     route_cleanup(&re_data->announce_routes);
     hmap_destroy(&re_data->announce_routes);
@@ -5578,6 +5597,11 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
             return EN_UNHANDLED;
         }
 
+        if (sbrec_advertised_route_is_updated(
+                sbrec_route, SBREC_ADVERTISED_ROUTE_COL_EXTERNAL_IDS)) {
+            return EN_UNHANDLED;
+        }
+
         if (sbrec_route->tracked_port) {
             const char *name = sbrec_route->tracked_port->logical_port;
             if (!(sset_contains(&re_data->tracked_ports_local, name) ||
@@ -5629,6 +5653,31 @@ route_sb_datapath_binding_handler(struct engine_node *node,
     return EN_HANDLED_UNCHANGED;
 }
 
+static enum engine_input_handler_result
+route_sb_service_monitor_handler(struct engine_node *node,
+                                 void *data)
+{
+    struct ed_type_route *re_data = data;
+    const struct sbrec_service_monitor_table *sm_table =
+        EN_OVSDB_GET(engine_get_input("SB_service_monitor", node));
+
+    const struct sbrec_service_monitor *sm;
+    SBREC_SERVICE_MONITOR_TABLE_FOR_EACH_TRACKED (sm, sm_table) {
+        if (uuidset_find(&re_data->relevant_service_monitors,
+                         &sm->header_.uuid)) {
+            return EN_UNHANDLED;
+        }
+        if (!sbrec_service_monitor_is_deleted(sm) &&
+            sm->type && !strcmp(sm->type, "load-balancer") &&
+            sset_contains(&re_data->health_check_ports,
+                          sm->logical_port)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 static int
 table_id_cmp(const void *a_, const void *b_)
 {
@@ -5665,7 +5714,6 @@ static enum engine_node_state
 en_route_exchange_run(struct engine_node *node, void *data)
 {
     struct ed_type_route_exchange *re = data;
-
     struct ovsdb_idl_index *sbrec_learned_route_by_datapath =
         engine_ovsdb_node_get_index(
             engine_get_input("SB_learned_route", node),
@@ -5675,7 +5723,6 @@ en_route_exchange_run(struct engine_node *node, void *data)
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_port_binding", node),
                 "name");
-
     struct ed_type_route *route_data =
         engine_get_input_data("route", node);
     struct ed_type_route_table_notify *rt_notify =
@@ -6936,7 +6983,8 @@ evpn_arp_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
     SB_NODE(acl_id) \
     SB_NODE(advertised_route) \
     SB_NODE(learned_route) \
-    SB_NODE(advertised_mac_binding)
+    SB_NODE(advertised_mac_binding) \
+    SB_NODE(service_monitor)
 
 enum sb_engine_node {
 #define SB_NODE(NAME) SB_##NAME,
@@ -7069,6 +7117,8 @@ inc_proc_ovn_controller_init(
                      route_sb_advertised_route_data_handler);
     engine_add_input(&en_route, &en_sb_datapath_binding,
                      route_sb_datapath_binding_handler);
+    engine_add_input(&en_route, &en_sb_service_monitor,
+                     route_sb_service_monitor_handler);
 
     engine_add_input(&en_route_exchange, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_route_exchange, &en_sb_chassis, NULL);
@@ -7380,6 +7430,19 @@ inc_proc_ovn_controller_init(
     engine_ovsdb_node_add_index(&en_sb_datapath_binding, "key",
                                 sbrec_datapath_binding_by_key);
 
+    const struct ovsdb_idl_index_column service_monitor_selector_columns[] = {
+        { .column = &sbrec_service_monitor_col_logical_port },
+        { .column = &sbrec_service_monitor_col_type },
+        { .column = &sbrec_service_monitor_col_protocol },
+        { .column = &sbrec_service_monitor_col_port },
+    };
+    struct ovsdb_idl_index *service_monitor_by_selector =
+        ovsdb_idl_index_create(
+            sb_idl_loop->idl, service_monitor_selector_columns,
+            ARRAY_SIZE(service_monitor_selector_columns));
+    engine_ovsdb_node_add_index(&en_sb_service_monitor, "selector",
+                                service_monitor_by_selector);
+
     struct ovsdb_idl_index *sbrec_fdb_by_dp_key
         = ovsdb_idl_index_create1(sb_idl_loop->idl,
                                   &sbrec_fdb_col_dp_key);
@@ -7408,7 +7471,6 @@ inc_proc_ovn_controller_init(
                                   &sbrec_learned_route_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
                                 sbrec_learned_route_index_by_datapath);
-
     struct ovsdb_idl_index *sbrec_advertised_mac_binding_index_by_dp
         = ovsdb_idl_index_create1(sb_idl_loop->idl,
                                   &sbrec_advertised_mac_binding_col_datapath);
@@ -7656,8 +7718,6 @@ main(int argc, char *argv[])
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_ha_chassis_group_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
-                   &sbrec_advertised_route_col_external_ids);
-    ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_learned_route_col_external_ids);
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_advertised_mac_binding_col_external_ids);
@@ -7679,7 +7739,7 @@ main(int argc, char *argv[])
      * other_config column so we no longer need to monitor it */
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_chassis_col_external_ids);
 
-    /* Do not monitor Chassis_Private external_ids */
+    /* Do not monitor Chassis_Private external_ids. */
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_chassis_private_col_external_ids);
 
@@ -8500,7 +8560,6 @@ loop_done:
                    ? chassis_private_lookup_by_name(
                          sbrec_chassis_private_by_name, chassis_id)
                    : NULL);
-
             /* Run all of the cleanup functions, even if one of them returns
              * false. We're done if all of them return true. */
             done = binding_cleanup(ovnsb_idl_txn, port_binding_table, chassis);

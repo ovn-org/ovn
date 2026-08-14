@@ -22,18 +22,22 @@
 #include <netinet/in.h>
 #include <net/if.h>
 #include "openvswitch/hmap.h"
+#include "vec.h"
 #include "sset.h"
 #include "smap.h"
 
 struct hmap;
 struct ovsdb_idl_index;
+struct uuidset;
 struct route_data;
 struct sbrec_chassis;
 struct sbrec_port_binding;
 struct sbrec_datapath_binding;
+struct sbrec_advertised_route;
 
 struct route_ctx_in {
     const struct sbrec_advertised_route_table *advertised_route_table;
+    struct ovsdb_idl_index *service_monitor_by_selector;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_chassis *chassis;
     const char *dynamic_routing_port_mapping;
@@ -50,6 +54,12 @@ struct route_ctx_out {
     /* Contains the tracked_ports that in the last run were not bound
      * locally. */
     struct sset *tracked_ports_remote;
+
+    /* Contains logical ports referenced by health-gated advertised routes. */
+    struct sset *health_check_ports;
+
+    /* Contains Service_Monitor UUIDs matched during the last route run. */
+    struct uuidset *relevant_service_monitors;
 
     /* Contains all the currently configured dynamic-routing-port-name values
      * on all datapaths.
@@ -70,6 +80,12 @@ struct advertise_datapath_entry {
     struct in6_addr ipv6_nexthop;
 
     struct hmap routes;
+
+    /* Result of the most recent attempt to reconcile 'routes' with the
+     * chassis routing table. */
+    bool routes_synced;
+    int route_error;
+    const char *route_error_description;
 
     /* The name of the port bindings locally bound for this datapath and
      * running route exchange logic.

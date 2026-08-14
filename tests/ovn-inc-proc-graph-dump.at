@@ -453,6 +453,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_chassis -> bfd_chassis [[label=""]];
 	SB_ha_chassis_group -> bfd_chassis [[label=""]];
 	SB_advertised_route [[style=filled, shape=box, fillcolor=white, label="SB_advertised_route"]];
+	SB_service_monitor [[style=filled, shape=box, fillcolor=white, label="SB_service_monitor"]];
 	route [[style=filled, shape=box, fillcolor=white, label="route"]];
 	OVS_open_vswitch -> route [[label=""]];
 	SB_chassis -> route [[label=""]];
@@ -460,6 +461,7 @@ digraph "Incremental-Processing-Engine" {
 	runtime_data -> route [[label="route_runtime_data_handler"]];
 	SB_advertised_route -> route [[label="route_sb_advertised_route_data_handler"]];
 	SB_datapath_binding -> route [[label="route_sb_datapath_binding_handler"]];
+	SB_service_monitor -> route [[label="route_sb_service_monitor_handler"]];
 	SB_learned_route [[style=filled, shape=box, fillcolor=white, label="SB_learned_route"]];
 	route_table_notify [[style=filled, shape=box, fillcolor=white, label="route_table_notify"]];
 	route_exchange_status [[style=filled, shape=box, fillcolor=white, label="route_exchange_status"]];

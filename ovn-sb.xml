@@ -5491,22 +5491,53 @@ tcp.flags = RST;
       See <em>External IDs</em> at the beginning of this document.
 
       <p>
-        <code>ovn-northd</code> sets the following key on routes
-        derived from Load_Balancer VIPs:
+        The following keys control distributed Load_Balancer routes:
       </p>
 
       <dl>
         <dt><code>source</code></dt>
         <dd>
-          Set to <code>lb</code> by <code>ovn-northd</code> on routes
-          derived from Load_Balancer VIPs.  Absent on all other routes.
-          The key identifies the route's origin for consumers that
-          distinguish Load_Balancer-derived routes.
+          <code>ovn-northd</code> sets this to <code>lb</code> on routes
+          derived from Load_Balancer VIPs.  It is absent on other routes.
+          The controller applies LB-specific handling when this key and
+          <code>distributed-lb=true</code> are both present.
         </dd>
+
+        <dt><code>distributed-lb</code></dt>
+        <dd>
+          Set to <code>true</code> by <code>ovn-northd</code> when the route
+          belongs to a Load Balancer whose
+          <ref table="Load_Balancer" column="options"
+          key="distributed" db="OVN_Northbound"/> option is enabled.
+          The health gate, administrative enable flag and status table apply
+          only to routes carrying this key.
+        </dd>
+
+        <dt><code>health-checks</code></dt>
+        <dd>
+          For a health-checked distributed Load_Balancer route,
+          <code>ovn-northd</code> records each relevant backend as
+          <code>protocol,IP,port</code>.  When more than one backend
+          is relevant the tuples are separated by semicolons.
+          <code>ovn-controller</code> looks up matching
+          <ref table="Service_Monitor"/> rows.  When a shared
+          route (same VIP IP and backend LSP) has at least one
+          contributor without a health check, the key is absent so
+          the controller does not gate the route.
+        </dd>
+
+        <dt><code>enabled</code></dt>
+        <dd>
+          Administrative enable flag for routes carrying
+          <code>distributed-lb=true</code>.  A value of <code>false</code>
+          withdraws the route regardless of Service_Monitor health.  An
+          absent key is treated as enabled.  A privileged administrative
+          writer can use this key to withdraw a route.
+        </dd>
+
       </dl>
     </column>
   </table>
-
   <table name="Learned_Route">
     <p>
       Each record represents a route that learned by ovn using some dynamic

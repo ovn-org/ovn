@@ -38,6 +38,10 @@
 
 #define OVN_AR_SOURCE_ID "source"
 #define OVN_AR_DISTRIBUTED_LB_ID "distributed-lb"
+/* Semicolon-delimited "protocol,IP,port" tuples stored in
+ * Advertised_Route.external_ids so the controller can look up
+ * matching Service_Monitor rows. */
+#define OVN_AR_HEALTH_CHECKS_KEY "health-checks"
 
 #define ETH_CRC_LENGTH 4
 #define ETHERNET_OVERHEAD (ETH_HEADER_LEN + ETH_CRC_LENGTH)

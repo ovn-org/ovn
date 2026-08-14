@@ -18,6 +18,8 @@
 #include <config.h>
 
 #include <net/if.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "vswitch-idl.h"
 #include "openvswitch/hmap.h"
@@ -25,6 +27,8 @@
 #include "openvswitch/ofp-parse.h"
 
 #include "lib/ovn-sb-idl.h"
+#include "lib/ovn-util.h"
+#include "lib/uuidset.h"
 
 #include "binding.h"
 #include "ha-chassis.h"
@@ -72,6 +76,214 @@ find_veth_peer(const struct ovsrec_interface *iface)
     }
 
     return xstrdup(peer_ifname);
+}
+
+/* Per-candidate state for an LB-derived Advertised_Route that is eligible for
+ * Service_Monitor gating. */
+struct lb_route_gate {
+    struct hmap_node node;
+    const struct sbrec_advertised_route *route;
+    bool seen_monitor;
+    bool any_online;
+};
+
+static bool
+route_has_health_checks(const struct sbrec_advertised_route *route)
+{
+    return smap_get(&route->external_ids, OVN_AR_HEALTH_CHECKS_KEY) != NULL;
+}
+
+static bool
+route_is_distributed_lb(const struct sbrec_advertised_route *route)
+{
+    const char *source = smap_get(&route->external_ids, OVN_AR_SOURCE_ID);
+    return source && !strcmp(source, "lb") &&
+           smap_get_bool(&route->external_ids,
+                         OVN_AR_DISTRIBUTED_LB_ID, false);
+}
+
+static bool
+route_advertising_port_is_local(
+    const struct sbrec_advertised_route *route,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_chassis *chassis)
+{
+    return lport_is_local(sbrec_port_binding_by_name, chassis,
+                          route->logical_port->logical_port);
+}
+
+static bool
+route_is_local_only_eligible(
+    const struct sbrec_advertised_route *route,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_chassis *chassis, bool *tracked_port_local)
+{
+    if (!route->tracked_port) {
+        *tracked_port_local = false;
+        return true;
+    }
+
+    *tracked_port_local = lport_is_local(
+        sbrec_port_binding_by_name, chassis,
+        route->tracked_port->logical_port);
+    return *tracked_port_local ||
+           !smap_get_bool(&route->logical_port->options,
+                          "dynamic-routing-redistribute-local-only", false);
+}
+
+/* Build gates only for routes that northd annotated with health selectors. */
+static void
+build_lb_route_gates(struct hmap *gates,
+                     const struct sbrec_advertised_route_table *ar_table,
+                     struct hmap *announce_routes,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct sbrec_chassis *chassis,
+                     struct sset *health_check_ports)
+{
+    const struct sbrec_advertised_route *route;
+    SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH (route, ar_table) {
+        struct advertise_datapath_entry *ad =
+            advertise_datapath_find(announce_routes, route->datapath);
+        if (!ad) {
+            continue;
+        }
+        if (!route_is_distributed_lb(route)) {
+            continue;
+        }
+        if (!route->tracked_port || !route_has_health_checks(route)) {
+            continue;
+        }
+        if (!route_advertising_port_is_local(
+                route, sbrec_port_binding_by_name, chassis)) {
+            continue;
+        }
+
+        bool tracked_port_local;
+        if (!route_is_local_only_eligible(
+                route, sbrec_port_binding_by_name, chassis,
+                &tracked_port_local)) {
+            continue;
+        }
+
+        struct lb_route_gate *g = xmalloc(sizeof *g);
+        *g = (struct lb_route_gate) {
+            .route = route,
+            .seen_monitor = false,
+            .any_online = false,
+        };
+        hmap_insert(gates, &g->node, hash_pointer(route, 0));
+        sset_add(health_check_ports, route->tracked_port->logical_port);
+    }
+}
+
+static void
+destroy_lb_route_gates(struct hmap *gates)
+{
+    struct lb_route_gate *g;
+    HMAP_FOR_EACH_POP (g, node, gates) {
+        free(g);
+    }
+    hmap_destroy(gates);
+}
+
+/* Resolve northd-provided protocol,backend-IP,backend-port selectors against
+ * Service_Monitor rows with the same logical port, port and protocol.  IP is
+ * compared separately in binary form so equivalent IPv6 spellings match. */
+static void
+evaluate_lb_route_gates(struct hmap *gates,
+                        struct ovsdb_idl_index *service_monitor_by_selector,
+                        struct uuidset *relevant_service_monitors)
+{
+    struct sbrec_service_monitor *filter =
+        sbrec_service_monitor_index_init_row(service_monitor_by_selector);
+
+    struct lb_route_gate *g;
+    HMAP_FOR_EACH (g, node, gates) {
+        const char *checks = smap_get(&g->route->external_ids,
+                                      OVN_AR_HEALTH_CHECKS_KEY);
+        if (!checks) {
+            continue;
+        }
+
+        char *buf = xstrdup(checks);
+        char *save_ptr = NULL;
+        char *selector;
+        for (selector = strtok_r(buf, ";", &save_ptr);
+             selector; selector = strtok_r(NULL, ";", &save_ptr)) {
+
+            char *protocol = selector;
+            char *backend_ip = strchr(protocol, ',');
+            if (!backend_ip) {
+                continue;
+            }
+            *backend_ip++ = '\0';
+            char *port_s = strchr(backend_ip, ',');
+            if (!port_s) {
+                continue;
+            }
+            *port_s++ = '\0';
+
+            unsigned int backend_port;
+            if (!str_to_uint(port_s, 10, &backend_port) ||
+                backend_port > UINT16_MAX) {
+                continue;
+            }
+
+            struct in6_addr backend_ip_addr;
+            if (!ip46_parse(backend_ip, &backend_ip_addr)) {
+                continue;
+            }
+
+            const char *tracked_lp = g->route->tracked_port->logical_port;
+            sbrec_service_monitor_index_set_logical_port(filter, tracked_lp);
+            sbrec_service_monitor_index_set_type(filter, "load-balancer");
+            sbrec_service_monitor_index_set_protocol(filter, protocol);
+            sbrec_service_monitor_index_set_port(filter, backend_port);
+
+            const struct sbrec_service_monitor *monitor;
+            SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (
+                monitor, filter, service_monitor_by_selector) {
+                struct in6_addr sm_ip;
+                if (!ip46_parse(monitor->ip, &sm_ip) ||
+                    !ipv6_addr_equals(&sm_ip, &backend_ip_addr)) {
+                    continue;
+                }
+
+                uuidset_insert(relevant_service_monitors,
+                               &monitor->header_.uuid);
+                g->seen_monitor = true;
+                g->any_online |= monitor->status &&
+                                 !strcmp(monitor->status, "online");
+            }
+
+            if (g->any_online) {
+                break;
+            }
+        }
+        free(buf);
+    }
+
+    sbrec_service_monitor_index_destroy_row(filter);
+}
+
+/* Look up the gate decision for a specific route. Returns:
+ *  -1 if no gate exists (route is not LB-derived)
+ *   0 if gate says withdraw (seen_monitor && !any_online)
+ *   1 if gate says install */
+static int
+lb_route_gate_decision(const struct hmap *gates,
+                       const struct sbrec_advertised_route *route)
+{
+    const struct lb_route_gate *g;
+    HMAP_FOR_EACH_WITH_HASH (g, node, hash_pointer(route, 0), gates) {
+        if (g->route == route) {
+            if (g->seen_monitor && !g->any_online) {
+                return 0;
+            }
+            return 1;
+        }
+    }
+    return -1;
 }
 
 static bool
@@ -450,6 +662,22 @@ route_run(struct route_ctx_in *r_ctx_in,
         }
     }
 
+    struct hmap lb_route_gates = HMAP_INITIALIZER(&lb_route_gates);
+    if (!hmap_is_empty(r_ctx_out->announce_routes)) {
+        build_lb_route_gates(&lb_route_gates,
+                             r_ctx_in->advertised_route_table,
+                             r_ctx_out->announce_routes,
+                             r_ctx_in->sbrec_port_binding_by_name,
+                             r_ctx_in->chassis,
+                             r_ctx_out->health_check_ports);
+    }
+
+    if (!hmap_is_empty(&lb_route_gates)) {
+        evaluate_lb_route_gates(&lb_route_gates,
+                                r_ctx_in->service_monitor_by_selector,
+                                r_ctx_out->relevant_service_monitors);
+    }
+
     const struct sbrec_advertised_route *route;
     SBREC_ADVERTISED_ROUTE_TABLE_FOR_EACH (route,
                                            r_ctx_in->advertised_route_table) {
@@ -470,9 +698,9 @@ route_run(struct route_ctx_in *r_ctx_in,
             continue;
         }
 
-        if (!lport_is_local(r_ctx_in->sbrec_port_binding_by_name,
-                            r_ctx_in->chassis,
-                            route->logical_port->logical_port)) {
+        if (!route_advertising_port_is_local(
+                route, r_ctx_in->sbrec_port_binding_by_name,
+                r_ctx_in->chassis)) {
             sset_add(r_ctx_out->tracked_ports_remote,
                      route->logical_port->logical_port);
             continue;
@@ -480,27 +708,40 @@ route_run(struct route_ctx_in *r_ctx_in,
         sset_add(r_ctx_out->tracked_ports_local,
                  route->logical_port->logical_port);
 
+        bool distributed_lb = route_is_distributed_lb(route);
+
         unsigned int priority = PRIORITY_DEFAULT;
         if (route->tracked_port) {
-            bool redistribute_local_bound_only =
-                smap_get_bool(&route->logical_port->options,
-                              "dynamic-routing-redistribute-local-only",
-                              false);
-            if (lport_is_local(r_ctx_in->sbrec_port_binding_by_name,
-                               r_ctx_in->chassis,
-                               route->tracked_port->logical_port)) {
+            bool tracked_port_local;
+            bool local_only_eligible = route_is_local_only_eligible(
+                route, r_ctx_in->sbrec_port_binding_by_name,
+                r_ctx_in->chassis, &tracked_port_local);
+            if (tracked_port_local) {
                 priority = PRIORITY_LOCAL_BOUND;
                 sset_add(r_ctx_out->tracked_ports_local,
                          route->tracked_port->logical_port);
             } else {
                 sset_add(r_ctx_out->tracked_ports_remote,
                          route->tracked_port->logical_port);
-                if (redistribute_local_bound_only) {
-                    /* We're not advertising routes whose 'tracked_port' is
-                     * not local, skip this route. */
-                    continue;
-                }
             }
+
+            /* A route not selected for this chassis must not get a
+             * status row: evaluate local-only eligibility before any
+             * administrative or health withdrawal so the documented
+             * "selected for its chassis" meaning holds. */
+            if (!local_only_eligible) {
+                continue;
+            }
+        }
+
+        if (distributed_lb &&
+            !smap_get_bool(&route->external_ids, "enabled", true)) {
+            continue;
+        }
+
+        int gate = lb_route_gate_decision(&lb_route_gates, route);
+        if (gate == 0) {
+            continue;
         }
 
         struct in6_addr nexthop = IN6_IS_ADDR_V4MAPPED(&prefix)
@@ -520,6 +761,8 @@ route_run(struct route_ctx_in *r_ctx_in,
         hmap_insert(&ad->routes, &ar->node,
                     advertise_route_hash(&ar->addr, &ar->nexthop, plen));
     }
+
+    destroy_lb_route_gates(&lb_route_gates);
 
     smap_destroy(&port_mapping);
 }

@@ -18653,7 +18653,8 @@ ovn_start
 # row using the peer LR's gateway LRP. That moves the chassis-locality
 # decision from a chassis-unbound patch port (the peer LRP) to the
 # actual backend port - the controller can then per-chassis install
-# the kernel route via dynamic-routing-redistribute-local-only=true.
+# the kernel route via dynamic-routing-redistribute-local-only=true,
+# and gate it on Service_Monitor.status.
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl set Logical_Router lr0 \
@@ -18773,7 +18774,7 @@ ovn_start
 # A distributed LB attached directly to the advertising LR must use
 # the per-backend path (build_lb_routes_for_lb), not the aggregated
 # lb_ips path, so that Advertised_Route rows carry distributed-lb=true,
-# and the backend LSP as tracked_port.
+# health selectors, and the backend LSP as tracked_port.
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl set Logical_Router lr0 \
@@ -18819,6 +18820,78 @@ AT_CHECK([ovn-sbctl --bare --columns=external_ids \
     find Advertised_Route ip_prefix=172.16.1.10 |
     grep -c 'distributed-lb.*true'], [0], [2
 ])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - ungated listener suppresses health-checks])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When two LB listeners share the same VIP IP and backend LSP, and one
+# has a health check while the other does not, the shared
+# Advertised_Route must NOT carry health-checks.  Otherwise the
+# controller would withdraw the route when the monitored listener's
+# Service_Monitor is offline, making the unmonitored listener
+# unreachable too.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+
+# lb0: VIP:80 with health check.
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1"
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb0
+check_uuid ovn-nbctl --wait=sb \
+    -- --id=@hc create Load_Balancer_Health_Check vip="172.16.1.10\:80" \
+    -- add Load_Balancer lb0 health_check @hc
+
+# lb1: same VIP IP, port :443, no health check.
+check ovn-nbctl \
+    -- lb-add lb1 172.16.1.10:443 192.168.1.10:443 \
+    -- set Load_Balancer lb1 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1"
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+
+# Both listeners map to one row (same VIP IP, same backend LSP).
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_be_vm1
+
+# The row has distributed-lb=true but NO health-checks, because the
+# unmonitored :443 listener is an ungated listener.
+AT_CHECK([ovn-sbctl --bare --columns=external_ids \
+    find Advertised_Route ip_prefix=172.16.1.10 |
+    grep -q 'distributed-lb.*true'])
+AT_CHECK([! ovn-sbctl --bare --columns=external_ids \
+    find Advertised_Route ip_prefix=172.16.1.10 |
+    grep -q 'health-checks'])
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
@@ -19157,7 +19230,8 @@ AT_KEYWORDS([dynamic-routing])
 ovn_start
 
 # Regression test: routes from NAT redistribution must not carry
-# external_ids:source=lb.
+# external_ids:source=lb, so the controller never applies Service_Monitor
+# gating to non-LB routes.
 
 check ovn-nbctl lr-add lr0
 check ovn-nbctl set Logical_Router lr0 \

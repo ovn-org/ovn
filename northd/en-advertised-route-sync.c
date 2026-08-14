@@ -41,7 +41,15 @@ struct ar_entry {
                                           * advertises this route with a
                                           * higher priority. */
     enum route_source source;
+    /* A shared route with a non-LB contributor must remain unconditional. */
+    bool has_non_lb_contributor;
     bool distributed_lb;
+    /* True when at least one contributor to this (VIP IP, backend LSP)
+     * route is a backend without a health check.  If set, the controller
+     * must NOT gate the route on Service_Monitor health, because the
+     * unmonitored listener must remain reachable regardless. */
+    bool has_ungated_lb;
+    struct sset health_checks;
 };
 
 /* Add a new entries to the to-be-advertised routes.
@@ -59,6 +67,8 @@ ar_entry_add_nocopy(struct hmap *routes, const struct ovn_datapath *od,
     route_e->ip_prefix = ip_prefix;
     route_e->tracked_port = tracked_port;
     route_e->source = source;
+    route_e->has_non_lb_contributor = source != ROUTE_SOURCE_LB;
+    sset_init(&route_e->health_checks);
     uint32_t hash = uuid_hash(&od->sdp->sb_dp->header_.uuid);
     hash = hash_string(op->sb->logical_port, hash);
     hash = hash_string(ip_prefix, hash);
@@ -131,13 +141,21 @@ static void
 ar_entry_free(struct ar_entry *route_e)
 {
     free(route_e->ip_prefix);
+    sset_destroy(&route_e->health_checks);
     free(route_e);
 }
 
 static void
 ar_entry_merge_metadata(struct ar_entry *dst, const struct ar_entry *src)
 {
+    dst->has_non_lb_contributor |= src->has_non_lb_contributor;
     dst->distributed_lb |= src->distributed_lb;
+    dst->has_ungated_lb |= src->has_ungated_lb;
+
+    const char *check;
+    SSET_FOR_EACH (check, &src->health_checks) {
+        sset_add(&dst->health_checks, check);
+    }
 }
 
 static void
@@ -147,16 +165,34 @@ ar_entry_sync_external_ids(const struct sbrec_advertised_route *sb_route,
     struct smap ids;
     smap_clone(&ids, &sb_route->external_ids);
 
-    if (route_e->source == ROUTE_SOURCE_LB) {
+    bool lb_owned = route_e->source == ROUTE_SOURCE_LB &&
+                    !route_e->has_non_lb_contributor;
+    if (lb_owned) {
         smap_replace(&ids, OVN_AR_SOURCE_ID, "lb");
     } else {
         smap_remove(&ids, OVN_AR_SOURCE_ID);
     }
 
-    if (route_e->distributed_lb) {
+    /* A NAT or another non-LB contributor can share the complete SB route
+     * key with an LB.  In that case the shared kernel route must remain
+     * unconditional, so do not publish LB-only metadata on the row. */
+    if (lb_owned && route_e->distributed_lb) {
         smap_replace(&ids, OVN_AR_DISTRIBUTED_LB_ID, "true");
     } else {
         smap_remove(&ids, OVN_AR_DISTRIBUTED_LB_ID);
+    }
+
+    /* Selectors are packed into one semicolon-delimited value to avoid
+     * a schema change for data consumed only by the controller.
+     * Suppress health-checks when an ungated listener exists: the
+     * kernel route is per-prefix, so an unmonitored listener sharing
+     * the (VIP IP, backend LSP) must remain reachable regardless of
+     * other listeners' Service_Monitor state. */
+    smap_remove(&ids, OVN_AR_HEALTH_CHECKS_KEY);
+    if (lb_owned && !route_e->has_ungated_lb &&
+        !sset_is_empty(&route_e->health_checks)) {
+        smap_add_nocopy(&ids, xstrdup(OVN_AR_HEALTH_CHECKS_KEY),
+                        sset_join(&route_e->health_checks, ";", ""));
     }
 
     if (!smap_equal(&ids, &sb_route->external_ids)) {
@@ -359,13 +395,16 @@ build_nat_route_for_port(const struct ovn_port *advertising_op,
             ? ovn_port_find(ls_ports, nat->nb->logical_port)
             : nat->l3dgw_port;
 
-        if (!ar_entry_find(routes, advertising_od->sdp->sb_dp,
-                           advertising_op->sb,
-                           nat->nb->external_ip,
-                           tracked_port ? tracked_port->sb : NULL)) {
+        struct ar_entry *route_e = ar_entry_find(
+            routes, advertising_od->sdp->sb_dp, advertising_op->sb,
+            nat->nb->external_ip,
+            tracked_port ? tracked_port->sb : NULL);
+        if (!route_e) {
             ar_entry_add(routes, advertising_od, advertising_op,
                          nat->nb->external_ip, tracked_port,
                          ROUTE_SOURCE_NAT);
+        } else {
+            route_e->has_non_lb_contributor = true;
         }
 
         if (forwarding_port && parsed_routes_out) {
@@ -509,6 +548,8 @@ build_lb_routes_for_lb(const struct ovn_port *advertising_op,
     }
 
     const struct ovn_northd_lb *lb = lb_dps->lb;
+    const char *protocol = lb->nlb->protocol && lb->nlb->protocol[0]
+                           ? lb->nlb->protocol : "tcp";
     for (size_t v = 0; v < lb->n_vips; v++) {
         const struct ovn_lb_vip *vip = &lb->vips[v];
         const struct ovn_northd_lb_vip *vip_nb = &lb->vips_nb[v];
@@ -534,7 +575,11 @@ build_lb_routes_for_lb(const struct ovn_port *advertising_op,
 
         bool emitted_any = false;
         for (size_t b = 0; b < vip_nb->n_backends; b++) {
-            const char *lsp_name = vip_nb->backends_nb[b].logical_port;
+            const struct ovn_northd_lb_backend *backend_nb =
+                &vip_nb->backends_nb[b];
+            const struct ovn_lb_backend *backend =
+                vector_get_ptr(&vip->backends, b);
+            const char *lsp_name = backend_nb->logical_port;
             if (!lsp_name) {
                 continue;
             }
@@ -555,6 +600,14 @@ build_lb_routes_for_lb(const struct ovn_port *advertising_op,
                                        backend_op, ROUTE_SOURCE_LB);
             }
             route_e->distributed_lb = true;
+            if (backend_nb->health_check) {
+                sset_add_and_free(
+                    &route_e->health_checks,
+                    xasprintf("%s,%s,%"PRIu16, protocol, backend->ip_str,
+                              backend->port));
+            } else {
+                route_e->has_ungated_lb = true;
+            }
             emitted_any = true;
         }
         if (!emitted_any) {
@@ -667,8 +720,8 @@ build_lb_connected_routes(const struct ovn_datapath *od,
 
 /* Generate routes for LB VIPs owned by the advertising LR itself.
  * Uses build_lb_lr_routes() so that distributed LBs emit per-backend
- * Advertised_Route rows with backend LSPs as tracked ports, the same as
- * for neighbor-owned LBs.  Forwarding parsed_routes are not needed here
+ * Advertised_Route rows with health selectors, the same as for
+ * neighbor-owned LBs.  Forwarding parsed_routes are not needed here
  * because the advertising LR's own pipeline handles ingress. */
 static void
 build_lb_routes(const struct ovn_datapath *od,
