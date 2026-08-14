@@ -581,6 +581,7 @@ ovn_lb_group_init(struct ovn_lb_group *lb_group,
         lb_group->lbs[i] = ovn_northd_lb_find(lbs, lb_uuid);
         lb_group->has_health_checks |= lb_group->lbs[i]->health_checks;
         lb_group->has_routable_lb |= lb_group->lbs[i]->routable;
+        lb_group->has_distributed_lb |= lb_group->lbs[i]->is_distributed;
     }
 }
 
@@ -604,6 +605,7 @@ ovn_lb_group_cleanup(struct ovn_lb_group *lb_group)
     lb_group->lb_ips = NULL;
     lb_group->has_health_checks = false;
     lb_group->has_routable_lb = false;
+    lb_group->has_distributed_lb = false;
     free(lb_group->lbs);
 }
 

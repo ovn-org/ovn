@@ -95,6 +95,9 @@ struct od_lb_data {
     struct uuidset *lbgrps;
 };
 
+struct od_lb_data *find_od_lb_data(const struct hmap *od_lb_map,
+                                   const struct uuid *od_uuid);
+
 /* struct which maintains the data of the engine node lb_data. */
 struct ed_type_lb_data {
     /* hmap of load balancers.  hmap node is 'struct ovn_northd_lb *' */

@@ -137,6 +137,7 @@ struct ovn_lb_group {
     struct ovn_lb_ip_set *lb_ips;
     bool has_health_checks;
     bool has_routable_lb;
+    bool has_distributed_lb;
 };
 
 struct ovn_lb_group *ovn_lb_group_create(

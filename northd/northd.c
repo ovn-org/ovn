@@ -3775,6 +3775,15 @@ build_lb_datapaths(const struct hmap *lbs, const struct hmap *lb_groups,
             ovn_lb_datapaths_add_lr(lb_dps, vector_len(&lb_group_dps->lr),
                                     vector_get_array(&lb_group_dps->lr),
                                     ods_size(lr_datapaths));
+
+            struct ovn_datapath *grp_od;
+            VECTOR_FOR_EACH (&lb_group_dps->lr, grp_od) {
+                handle_od_lb_datapath_modes(grp_od, lb_dps);
+            }
+
+            VECTOR_FOR_EACH (&lb_group_dps->ls, grp_od) {
+                handle_od_lb_datapath_modes(grp_od, lb_dps);
+            }
         }
     }
 }
@@ -5784,12 +5793,128 @@ northd_handle_sb_port_binding_changes(
  *    the logical switch datapath is added to the load balancer (represented
  *    by 'struct ovn_lb_datapaths') by calling ovn_lb_datapaths_add_ls().
  * */
+
+static void
+lr_distributed_snapshot_add(struct dynamic_bitmap *affected_lrs,
+                            const struct ovn_datapath *od)
+{
+    dynamic_bitmap_set1(affected_lrs, od->sdp->index);
+}
+
+static bool
+lr_has_distributed_lb(const struct od_lb_data *lr_lb,
+                      const struct hmap *lb_datapaths_map,
+                      const struct hmap *lbgrp_datapaths_map)
+{
+    struct uuidset_node *un;
+    UUIDSET_FOR_EACH (un, lr_lb->lbs) {
+        struct ovn_lb_datapaths *lb_dps =
+            ovn_lb_datapaths_find(lb_datapaths_map, &un->uuid);
+        if (lb_dps && lb_dps->lb->is_distributed) {
+            return true;
+        }
+    }
+    UUIDSET_FOR_EACH (un, lr_lb->lbgrps) {
+        struct ovn_lb_group_datapaths *lbgrp_dps =
+            ovn_lb_group_datapaths_find(lbgrp_datapaths_map, &un->uuid);
+        if (lbgrp_dps && lbgrp_dps->lb_group->has_distributed_lb) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+lr_distributed_snapshot_has_transition(
+    const struct dynamic_bitmap *affected_lrs,
+    const struct dynamic_bitmap *distributed_lrs,
+    const struct hmap *lr_lb_map,
+    struct ovn_datapaths *lr_datapaths,
+    struct hmap *lb_datapaths_map,
+    struct hmap *lbgrp_datapaths_map)
+{
+    size_t lr_idx;
+    DYNAMIC_BITMAP_FOR_EACH_1 (lr_idx, affected_lrs) {
+        const struct ovn_datapath *od =
+            sparse_array_get(&lr_datapaths->dps, lr_idx);
+        ovs_assert(od);
+
+        const struct od_lb_data *lr_lb =
+            find_od_lb_data(lr_lb_map, &od->key);
+        bool is_distributed = lr_lb && lr_has_distributed_lb(
+            lr_lb, lb_datapaths_map, lbgrp_datapaths_map);
+
+        if (is_distributed
+            != dynamic_bitmap_is_set(distributed_lrs, lr_idx)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void
+lr_distributed_snapshot_collect(struct dynamic_bitmap *affected_lrs,
+                                struct dynamic_bitmap *distributed_lrs,
+                                struct tracked_lb_data *trk_lb_data,
+                                struct ovn_datapaths *lr_datapaths,
+                                struct hmap *lb_datapaths_map,
+                                struct hmap *lbgrp_datapaths_map)
+{
+    struct crupdated_od_lb_data *codlb;
+    LIST_FOR_EACH (codlb, list_node, &trk_lb_data->crupdated_lr_lbs) {
+        struct ovn_datapath *od = ovn_datapath_find_(
+            &lr_datapaths->datapaths, &codlb->od_uuid);
+        ovs_assert(od);
+        lr_distributed_snapshot_add(affected_lrs, od);
+    }
+
+    struct crupdated_lb *clb;
+    HMAP_FOR_EACH (clb, hmap_node, &trk_lb_data->crupdated_lbs) {
+        struct ovn_lb_datapaths *lb_dps = ovn_lb_datapaths_find(
+            lb_datapaths_map, &clb->lb->nlb->header_.uuid);
+        if (!lb_dps) {
+            continue;
+        }
+        size_t lr_idx;
+        DYNAMIC_BITMAP_FOR_EACH_1 (lr_idx, &lb_dps->nb_lr_map) {
+            dynamic_bitmap_set1(affected_lrs, lr_idx);
+        }
+    }
+
+    struct crupdated_lbgrp *crupdated_lbgrp;
+    HMAP_FOR_EACH (crupdated_lbgrp, hmap_node,
+                   &trk_lb_data->crupdated_lbgrps) {
+        struct ovn_lb_group_datapaths *lbgrp_dps =
+            ovn_lb_group_datapaths_find(lbgrp_datapaths_map,
+                                        &crupdated_lbgrp->lbgrp->uuid);
+        if (!lbgrp_dps) {
+            continue;
+        }
+        struct ovn_datapath *grp_od;
+        VECTOR_FOR_EACH (&lbgrp_dps->lr, grp_od) {
+            lr_distributed_snapshot_add(affected_lrs, grp_od);
+        }
+    }
+
+    size_t lr_idx;
+    DYNAMIC_BITMAP_FOR_EACH_1 (lr_idx, affected_lrs) {
+        const struct ovn_datapath *od =
+            sparse_array_get(&lr_datapaths->dps, lr_idx);
+        ovs_assert(od);
+        if (od->is_distributed) {
+            dynamic_bitmap_set1(distributed_lrs, lr_idx);
+        }
+    }
+}
+
 bool
 northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
                               struct ovn_datapaths *ls_datapaths,
                               struct ovn_datapaths *lr_datapaths,
                               struct hmap *lb_datapaths_map,
                               struct hmap *lbgrp_datapaths_map,
+                              const struct hmap *lr_lb_map,
                               struct northd_tracked_data *nd_changes)
 {
     if (trk_lb_data->has_health_checks) {
@@ -5830,6 +5955,33 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
 
     if (trk_lb_data->has_routable_lb) {
         return false;
+    }
+
+    /* If any deleted LB was distributed, fall back to recompute.
+     * The deleted-lb path removes lb_dps from lb_datapaths_map before
+     * the transition check runs, so the post-check would not see the
+     * removed LB and could miss an is_distributed false transition. */
+    if (trk_lb_data->has_distributed_lb
+        && !hmapx_is_empty(&trk_lb_data->deleted_lbs)) {
+        struct hmapx_node *hmapx_node;
+        HMAPX_FOR_EACH (hmapx_node, &trk_lb_data->deleted_lbs) {
+            struct ovn_northd_lb *lb = hmapx_node->data;
+            if (lb->is_distributed) {
+                return false;
+            }
+        }
+    }
+
+    struct dynamic_bitmap affected_lrs = {0};
+    struct dynamic_bitmap distributed_lrs = {0};
+
+    if (trk_lb_data->has_distributed_lb) {
+        size_t n_lr_datapaths = ods_size(lr_datapaths);
+        dynamic_bitmap_alloc(&affected_lrs, n_lr_datapaths);
+        dynamic_bitmap_alloc(&distributed_lrs, n_lr_datapaths);
+        lr_distributed_snapshot_collect(
+            &affected_lrs, &distributed_lrs, trk_lb_data, lr_datapaths,
+            lb_datapaths_map, lbgrp_datapaths_map);
     }
 
     struct ovn_lb_datapaths *lb_dps;
@@ -5921,6 +6073,7 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
                 ovs_assert(lb_dps);
                 ovn_lb_datapaths_add_ls(lb_dps, 1, &od,
                                         ods_size(ls_datapaths));
+                handle_od_lb_datapath_modes(od, lb_dps);
 
                 /* Add the lb to the northd tracked data. */
                 hmapx_add(&nd_changes->trk_lbs.crupdated, lb_dps);
@@ -5960,6 +6113,7 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
                 ovs_assert(lb_dps);
                 ovn_lb_datapaths_add_lr(lb_dps, 1, &od,
                                         ods_size(lr_datapaths));
+                handle_od_lb_datapath_modes(od, lb_dps);
 
                 /* Add the lb to the northd tracked data. */
                 hmapx_add(&nd_changes->trk_lbs.crupdated, lb_dps);
@@ -6001,11 +6155,13 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
             VECTOR_FOR_EACH (&lbgrp_dps->lr, od) {
                 ovn_lb_datapaths_add_lr(lb_dps, 1, &od,
                                         ods_size(lr_datapaths));
+                handle_od_lb_datapath_modes(od, lb_dps);
             }
 
             VECTOR_FOR_EACH (&lbgrp_dps->ls, od) {
                 ovn_lb_datapaths_add_ls(lb_dps, 1, &od,
                                         ods_size(ls_datapaths));
+                handle_od_lb_datapath_modes(od, lb_dps);
 
                 /* Add the ls datapath to the northd tracked data. */
                 hmapx_add(&nd_changes->ls_with_changed_lbs, od);
@@ -6023,6 +6179,17 @@ northd_handle_lb_data_changes(struct tracked_lb_data *trk_lb_data,
 
     if (!hmapx_is_empty(&nd_changes->ls_with_changed_lbs)) {
         nd_changes->type |= NORTHD_TRACKED_LS_LBS;
+    }
+
+    if (trk_lb_data->has_distributed_lb) {
+        bool transition = lr_distributed_snapshot_has_transition(
+            &affected_lrs, &distributed_lrs, lr_lb_map, lr_datapaths,
+            lb_datapaths_map, lbgrp_datapaths_map);
+        dynamic_bitmap_free(&affected_lrs);
+        dynamic_bitmap_free(&distributed_lrs);
+        if (transition) {
+            return false;
+        }
     }
 
     return true;

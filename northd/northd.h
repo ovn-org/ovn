@@ -1016,6 +1016,7 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    struct ovn_datapaths *lr_datapaths,
                                    struct hmap *lb_datapaths_map,
                                    struct hmap *lbgrp_datapaths_map,
+                                   const struct hmap *lr_lb_map,
                                    struct northd_tracked_data *);
 
 void build_route_policies(struct ovn_datapath *, const struct hmap *,

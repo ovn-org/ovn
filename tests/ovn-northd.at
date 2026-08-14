@@ -19540,6 +19540,415 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard on distributed LB attach/detach])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+# Set gateway_mtu so build_gateway_mtu_flow() emits both the priority-50
+# (unicast, with check_pkt_larger) and priority-55 (ARP) lr_in_admission
+# flows on the LRP. Both code paths gate their is_chassis_resident
+# guard on consider_l3dgw_port_is_centralized().
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl --wait=sb sync
+
+# Create a distributed LB before attaching it to the router.
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl set load_balancer lb1 options:distributed=true
+
+# --- Attach distributed LB to the DGP LR ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+
+# The lb_data handler must handle this incrementally (setting
+# has_distributed_lb in tracked data, not falling back to recompute).
+check_engine_compute lb_data incremental
+# northd recomputes on has_distributed_lb changes because LRP-level
+# lr_in_admission flows need rebuilding.
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+
+# Unicast (priority-50) and ARP (priority-55) admission flows on the
+# DGP LRP must not be gated by is_chassis_resident("cr-lrp1") once a
+# distributed LB is attached.
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# The cr-port's always-redirect option must be off, because
+# has_distributed_lb on the LR's lr_stateful record is now true.
+AT_CHECK([ovn-sbctl --bare --columns options find Port_Binding logical_port=cr-lrp1 | tr ' ' '\n' | sort], [0], [dnl
+distributed-port=lrp1
+])
+
+# --- Detach distributed LB from the DGP LR ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-del lr1 lb1
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+
+# The admission flows must now be gated by is_chassis_resident("cr-lrp1")
+# again, because no distributed LB is attached.
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1") && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# The cr-port's always-redirect option must be back.
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard on distributed LB group attach/detach])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl --wait=sb sync
+
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl set load_balancer lb1 options:distributed=true
+lbg=$(ovn-nbctl create load_balancer_group name=lbg \
+  -- add load_balancer_group lbg load_balancer $(fetch_column nb:load_balancer _uuid name=lb1))
+
+# --- Attach distributed LB group to the DGP LR ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb add logical_router lr1 load_balancer_group $lbg
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+AT_CHECK([ovn-sbctl --bare --columns options find Port_Binding logical_port=cr-lrp1 | tr ' ' '\n' | sort], [0], [dnl
+distributed-port=lrp1
+])
+
+# --- Detach distributed LB group from the DGP LR ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb remove logical_router lr1 load_balancer_group $lbg
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1") && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard toggle on distributed LB option])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+
+# Toggle options:distributed on an already-attached LB.
+
+# --- distributed=true: admission guards must drop ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 options:distributed=true
+
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# cr-port options must clear always-redirect=true.
+AT_CHECK([ovn-sbctl --bare --columns options find Port_Binding logical_port=cr-lrp1 | tr ' ' '\n' | sort], [0], [dnl
+distributed-port=lrp1
+])
+
+# --- distributed=false: admission guards must return ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 options:distributed=false
+
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1") && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# cr-port options must regain always-redirect=true.
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
+
+# --- distributed=true again: admission guards must drop again ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set load_balancer lb1 options:distributed=true
+
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+AT_CHECK([ovn-sbctl --bare --columns options find Port_Binding logical_port=cr-lrp1 | tr ' ' '\n' | sort], [0], [dnl
+distributed-port=lrp1
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard on LB group membership changes])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl --wait=sb sync
+
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl set load_balancer lb1 options:distributed=true
+lbg=$(ovn-nbctl create load_balancer_group name=lbg)
+
+# Attach the empty group, then add the distributed LB to it.
+check ovn-nbctl --wait=sb add logical_router lr1 load_balancer_group $lbg
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb add load_balancer_group $lbg load_balancer $(fetch_column nb:load_balancer _uuid name=lb1)
+
+# Adding an LB to an attached group goes through
+# lb_data_load_balancer_group_handler.  The lb_data engine must handle
+# it incrementally.
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+AT_CHECK([ovn-sbctl --bare --columns options find Port_Binding logical_port=cr-lrp1 | tr ' ' '\n' | sort], [0], [dnl
+distributed-port=lrp1
+])
+
+# Remove the distributed LB from the group. The group is now empty,
+# so is_distributed must flip back to false.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb remove load_balancer_group $lbg load_balancer $(fetch_column nb:load_balancer _uuid name=lb1)
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1") && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard with multiple distributed LBs])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl --wait=sb sync
+
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl set load_balancer lb1 options:distributed=true
+check ovn-nbctl lb-add lb2 2.2.2.2:80 192.168.0.2:8080
+check ovn-nbctl set load_balancer lb2 options:distributed=true
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb2
+
+# Both distributed LBs are attached. Admission guards must be off.
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# Remove lb1. lb2 is still distributed, so is_distributed must remain
+# true and admission guards must stay off.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-del lr1 lb1
+
+# Detach goes through the per-LB lb_data path.  It must stay incremental.
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# lb2 still distributed -- cr-port options must keep always-redirect off.
+AT_CHECK([ovn-sbctl --bare --columns options find Port_Binding logical_port=cr-lrp1 | tr ' ' '\n' | sort], [0], [dnl
+distributed-port=lrp1
+])
+
+# Remove lb2. No distributed LBs remain, so is_distributed must flip
+# back to false and admission guards must return.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-del lr1 lb2
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1") && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard incremental on subsequent distributed LB])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl --wait=sb sync
+
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl set load_balancer lb1 options:distributed=true
+check ovn-nbctl lb-add lb2 1.1.1.2:80 192.168.0.2:8080
+check ovn-nbctl set load_balancer lb2 options:distributed=true
+
+# --- Attach lb1: is_distributed flips false->true.  northd recomputes. ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+# Admission guards must drop (no is_chassis_resident).
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# --- Attach lb2: is_distributed already true, no transition.
+#     northd must stay incremental. ---
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb2
+
+check_engine_compute lb_data incremental
+check_engine_compute northd incremental
+
+# Admission guards must still drop.
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([lr_in_admission cr-port guard on distributed LB delete])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 02:ac:10:01:00:01 172.16.1.1/24
+check ovn-nbctl set logical_router_port lrp1 options:gateway_mtu=1400
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add-router-port ls1 ls1-lrp1 lrp1
+check ovn-nbctl lrp-set-gateway-chassis lrp1 ch1
+check ovn-nbctl --wait=sb sync
+
+check ovn-nbctl lb-add lb1 1.1.1.1:80 192.168.0.1:8080
+check ovn-nbctl set load_balancer lb1 options:distributed=true
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb1
+
+# Admission guards must drop (no is_chassis_resident).
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1"), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+# Delete lb1 entirely. is_distributed must flip back to false,
+# northd must recompute, and the cr-port guard must return.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-del lb1
+
+check_engine_compute lb_data incremental
+check_engine_compute northd recompute
+
+ovn-sbctl lflow-list lr1 > lr1_lflows
+AT_CHECK([grep lr_in_admission lr1_lflows | grep -E 'priority=5[[05]]' | grep '02:ac:10:01:00:01' | grep -v eth.mcast | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1")), action=(reg9[[1]] = check_pkt_larger(1414); xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+  table=??(lr_in_admission    ), priority=55   , match=(eth.dst == 02:ac:10:01:00:01 && inport == "lrp1" && is_chassis_resident("cr-lrp1") && (arp)), action=(xreg0[[0..47]] = 02:ac:10:01:00:01; next;)
+])
+
+wait_row_count Port_Binding 1 logical_port=cr-lrp1 options:always-redirect="true"
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ip_port_mappings validation: IPv6])
 ovn_start
 

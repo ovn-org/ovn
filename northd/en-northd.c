@@ -230,6 +230,7 @@ northd_lb_data_handler(struct engine_node *node, void *data)
                                        &nd->lr_datapaths,
                                        &nd->lb_datapaths_map,
                                        &nd->lb_group_datapaths_map,
+                                       &lb_data->lr_lb_map,
                                        &nd->trk_data)) {
         return EN_UNHANDLED;
     }

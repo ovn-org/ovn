@@ -237,6 +237,8 @@ lr_stateful_lb_data_handler(struct engine_node *node, void *data_)
             }
         }
 
+        lr_stateful_rec->has_distributed_lb = od->is_distributed;
+
         /* Add the lr_stateful_rec rec to the tracking data. */
         hmapx_add(&data->trk_data.crupdated, lr_stateful_rec);
     }
