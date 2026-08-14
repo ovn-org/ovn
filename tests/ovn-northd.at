@@ -15865,6 +15865,17 @@ AT_SETUP([RBAC -- Recover builtin role and permissions])
 ovn_start
 
 wait_row_count RBAC_Role 1 name=ovn-controller
+# Route status has a dedicated chassis-owned table.  Do not grant
+# ovn-controller column-wide access to the northd-owned Advertised_Route map,
+# where administrative keys such as external_ids:enabled live.
+check_row_count RBAC_Permission 0 table=Advertised_Route
+check_column '[chassis_name]' RBAC_Permission authorization \
+    table=Advertised_Route_Status
+check_column true RBAC_Permission insert_delete \
+    table=Advertised_Route_Status
+check_column 'desired_status error operational_status withdrawal_reasons' \
+    RBAC_Permission update \
+    table=Advertised_Route_Status
 RBR_BUILTIN_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]>*//g' | tr -d '=,{}')
 
 declare -A RBR_BUILTIN_PERM

@@ -132,6 +132,10 @@ static const char *rbac_learned_route_auth[] =
     {""};
 static const char *rbac_learned_route_update[] =
     {"datapath", "logical_port", "ip_prefix", "nexthop", "external_ids"};
+static const char *rbac_advertised_route_status_auth[] =
+    {"chassis_name"};
+static const char *rbac_advertised_route_status_update[] =
+    {"desired_status", "withdrawal_reasons", "operational_status", "error"};
 
 static struct rbac_perm_cfg {
     const char *table;
@@ -221,6 +225,14 @@ static struct rbac_perm_cfg {
         .insdel = false,
         .update = rbac_bfd_update,
         .n_update = ARRAY_SIZE(rbac_bfd_update),
+        .row = NULL
+    },{
+        .table = "Advertised_Route_Status",
+        .auth = rbac_advertised_route_status_auth,
+        .n_auth = ARRAY_SIZE(rbac_advertised_route_status_auth),
+        .insdel = true,
+        .update = rbac_advertised_route_status_update,
+        .n_update = ARRAY_SIZE(rbac_advertised_route_status_update),
         .row = NULL
     },{
         .table = "Learned_Route",
@@ -941,6 +953,11 @@ main(int argc, char *argv[])
     /* Omit unused columns. */
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_connections);
     ovsdb_idl_omit(ovnsb_idl_loop.idl, &sbrec_sb_global_col_ssl);
+    for (size_t i = 0;
+         i < SBREC_ADVERTISED_ROUTE_STATUS_N_COLUMNS; i++) {
+        ovsdb_idl_omit(ovnsb_idl_loop.idl,
+                       &sbrec_advertised_route_status_columns[i]);
+    }
 
     /* Disable alerting for pure write-only columns. */
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_sb_global_col_nb_cfg);

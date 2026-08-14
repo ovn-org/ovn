@@ -321,13 +321,19 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
     int error;
 
     CLEAR_ROUTE_EXCHANGE_NL_STATUS();
-    const struct advertise_datapath_entry *ad;
+    struct advertise_datapath_entry *ad;
     HMAP_FOR_EACH (ad, node, r_ctx_in->announce_routes) {
+        ad->routes_synced = false;
+        ad->route_error = 0;
+        ad->route_error_description = NULL;
+
         uint32_t table_id = route_get_table_id(ad->db);
         if (!TABLE_ID_VALID(table_id)) {
             VLOG_WARN_RL(&rl, "Unable to sync routes for datapath "UUID_FMT": "
                          "invalid table id: %"PRIu32,
                          UUID_ARGS(&ad->db->header_.uuid), table_id);
+            ad->route_error = EINVAL;
+            ad->route_error_description = "invalid route table ID";
             continue;
         }
 
@@ -340,6 +346,8 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
                                  UUID_FMT": %s.", ad->vrf_name,
                                  UUID_ARGS(&ad->db->header_.uuid),
                                  ovs_strerror(error));
+                    ad->route_error = error;
+                    ad->route_error_description = "unable to create VRF";
                     SET_ROUTE_EXCHANGE_NL_STATUS(error);
                     continue;
                 }
@@ -363,6 +371,9 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
                                      "routes on routing table %"PRIu32,
                                      table_id);
                         entry->can_sync = false;
+                        ad->route_error = EBUSY;
+                        ad->route_error_description =
+                            "multiple datapaths use the same route table";
                     } else {
                         entry->routes = &ad->routes;
                     }
@@ -383,6 +394,9 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
         }
 
         if (!entry->can_sync) {
+            ad->route_error = EBUSY;
+            ad->route_error_description =
+                "multiple datapaths use the same route table";
             continue;
         }
 
@@ -392,6 +406,7 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
     struct advertised_routes_entry *arte;
     HMAP_FOR_EACH_POP (arte, node, &advertised_routes) {
         maintained_route_table_add(arte->table_id);
+        error = 0;
         if (arte->can_sync) {
             struct vector received_routes =
                 VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
@@ -423,6 +438,27 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
             }
             vector_push(r_ctx_out->route_table_watches, &arte->table_id);
             vector_destroy(&received_routes);
+        }
+
+        struct hmapx_node *dp_node;
+        HMAPX_FOR_EACH (dp_node, &arte->datapaths) {
+            struct advertise_datapath_entry *adpe =
+                advertise_datapath_find(r_ctx_in->announce_routes,
+                                        dp_node->data);
+            if (!adpe) {
+                continue;
+            }
+            if (!arte->can_sync) {
+                adpe->route_error = EBUSY;
+                adpe->route_error_description =
+                    "multiple datapaths use the same route table";
+            } else if (error) {
+                adpe->route_error = error;
+                adpe->route_error_description =
+                    "route table reconciliation failed";
+            } else {
+                adpe->routes_synced = true;
+            }
         }
 
         hmapx_destroy(&arte->datapaths);

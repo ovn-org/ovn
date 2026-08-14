@@ -175,6 +175,7 @@ struct controller_engine_ctx {
     struct if_status_mgr *if_mgr;
     const unsigned int *ovnsb_expected_cond_seqno;
     const bool *sb_monitor_all;
+    const struct sbrec_chassis *chassis;
 };
 
 /* Pending packet to be injected into connected OVS. */
@@ -221,6 +222,7 @@ static char *get_file_system_id(void)
 static unsigned int
 update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
                    const struct sbrec_chassis *chassis,
+                   const char *chassis_id,
                    const struct simap *local_ifaces,
                    const struct shash *local_bindings,
                    struct hmap *local_datapaths,
@@ -241,7 +243,8 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
      *
      * Monitor ECMP_Nexthop for local datapaths.
      *
-     * Monitor Advertised/Learned_Route for local datapaths.
+     * Monitor Advertised/Learned_Route for local datapaths and
+     * Advertised_Route_Status for the local chassis.
      *
      * We always monitor patch ports because they allow us to see the linkages
      * between related logical datapaths.  That way, when we know that we have
@@ -261,6 +264,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
     struct ovsdb_idl_condition tv = OVSDB_IDL_CONDITION_INIT(&tv);
     struct ovsdb_idl_condition nh = OVSDB_IDL_CONDITION_INIT(&nh);
     struct ovsdb_idl_condition ar = OVSDB_IDL_CONDITION_INIT(&ar);
+    struct ovsdb_idl_condition ars = OVSDB_IDL_CONDITION_INIT(&ars);
     struct ovsdb_idl_condition lr = OVSDB_IDL_CONDITION_INIT(&lr);
     struct ovsdb_idl_condition amb = OVSDB_IDL_CONDITION_INIT(&amb);
 
@@ -297,6 +301,7 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         ovsdb_idl_condition_add_clause_true(&tv);
         ovsdb_idl_condition_add_clause_true(&nh);
         ovsdb_idl_condition_add_clause_true(&ar);
+        ovsdb_idl_condition_add_clause_true(&ars);
         ovsdb_idl_condition_add_clause_true(&amb);
         goto out;
     }
@@ -365,6 +370,16 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
          * ones. */
         ovsdb_idl_condition_add_clause_true(&ar);
     }
+
+    /* The configured name is available before the Chassis row and also
+     * matches status rows whose chassis weak reference was cleared when the
+     * Chassis row was deleted. */
+    const char *status_chassis_name = chassis ? chassis->name : chassis_id;
+    if (status_chassis_name) {
+        sbrec_advertised_route_status_add_clause_chassis_name(
+            &ars, OVSDB_F_EQ, status_chassis_name);
+    }
+
     if (local_ifaces) {
         const char *name;
 
@@ -434,6 +449,7 @@ out:;
         sbrec_chassis_template_var_set_condition(ovnsb_idl, &tv),
         sbrec_ecmp_nexthop_set_condition(ovnsb_idl, &nh),
         sbrec_advertised_route_set_condition(ovnsb_idl, &ar),
+        sbrec_advertised_route_status_set_condition(ovnsb_idl, &ars),
         sbrec_learned_route_set_condition(ovnsb_idl, &lr),
         sbrec_advertised_mac_binding_set_condition(ovnsb_idl, &amb),
     };
@@ -457,6 +473,7 @@ out:;
     ovsdb_idl_condition_destroy(&tv);
     ovsdb_idl_condition_destroy(&nh);
     ovsdb_idl_condition_destroy(&ar);
+    ovsdb_idl_condition_destroy(&ars);
     ovsdb_idl_condition_destroy(&lr);
     ovsdb_idl_condition_destroy(&amb);
     return expected_cond_seqno;
@@ -768,7 +785,8 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
          * extra cost. Instead, it is called after the engine execution only
          * when it is necessary. */
         unsigned int next_cond_seqno =
-            update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, NULL, true);
+            update_sb_monitors(ovnsb_idl, NULL, chassis_id,
+                               NULL, NULL, NULL, true);
         if (sb_cond_seqno) {
             *sb_cond_seqno = next_cond_seqno;
         }
@@ -5277,6 +5295,12 @@ struct ed_type_route {
 
     /* Contains struct advertise_datapath_entry */
     struct hmap announce_routes;
+
+    /* Contains struct advertised_route_status recorded by route_run()
+     * and published in Advertised_Route_Status by
+     * route_exchange_run(). */
+    struct vector advertised_route_status;
+
     struct ovsdb_idl *ovnsb_idl;
 };
 
@@ -5334,9 +5358,11 @@ en_route_run(struct engine_node *node, void *data)
         .filtered_ports = &re_data->filtered_ports,
         .tracked_ports_remote = &re_data->tracked_ports_remote,
         .announce_routes = &re_data->announce_routes,
+        .advertised_route_status = &re_data->advertised_route_status,
     };
 
     route_cleanup(&re_data->announce_routes);
+    advertised_route_status_clear(&re_data->advertised_route_status);
     tracked_datapaths_clear(r_ctx_out.tracked_re_datapaths);
     sset_clear(r_ctx_out.tracked_ports_local);
     sset_clear(r_ctx_out.tracked_ports_remote);
@@ -5345,7 +5371,7 @@ en_route_run(struct engine_node *node, void *data)
     sset_clear(r_ctx_out.filtered_ports);
 
     route_run(&r_ctx_in, &r_ctx_out);
-
+    advertised_route_status_sort(&re_data->advertised_route_status);
     return EN_UPDATED;
 }
 
@@ -5363,6 +5389,8 @@ en_route_init(struct engine_node *node OVS_UNUSED,
     uuidset_init(&data->relevant_service_monitors);
     sset_init(&data->filtered_ports);
     hmap_init(&data->announce_routes);
+    data->advertised_route_status =
+        VECTOR_EMPTY_INITIALIZER(struct advertised_route_status);
     data->ovnsb_idl = arg->sb_idl;
 
     return data;
@@ -5381,6 +5409,7 @@ en_route_cleanup(void *data)
     sset_destroy(&re_data->filtered_ports);
     route_cleanup(&re_data->announce_routes);
     hmap_destroy(&re_data->announce_routes);
+    vector_destroy(&re_data->advertised_route_status);
 }
 
 static enum engine_input_handler_result
@@ -5710,10 +5739,113 @@ struct ed_type_route_exchange {
     bool sb_changes_pending;
 };
 
+static void
+advertised_route_get_withdrawal_reasons(
+    const struct advertised_route_status *desired,
+    struct smap *withdrawal_reasons)
+{
+    smap_init(withdrawal_reasons);
+    if (desired->withdrawal_reason) {
+        smap_add(withdrawal_reasons, desired->withdrawal_reason,
+                 desired->withdrawal_reason_value);
+    }
+}
+
+static char *
+advertised_route_get_operational_state(
+    struct ed_type_route *route_data,
+    const struct advertised_route_status *desired,
+    const char **operational_status)
+{
+    struct advertise_datapath_entry *ad =
+        advertise_datapath_find(&route_data->announce_routes,
+                                desired->route->datapath);
+    *operational_status = ad && ad->routes_synced
+        ? (!strcmp(desired->desired_status, "advertised")
+           ? "installed" : "withdrawn")
+        : "unknown";
+
+    if (!ad || !ad->route_error_description) {
+        return NULL;
+    }
+    return ad->route_error
+        ? xasprintf("%s: %s", ad->route_error_description,
+                    ovs_strerror(ad->route_error))
+        : xstrdup(ad->route_error_description);
+}
+
+static enum engine_input_handler_result
+route_exchange_sb_advertised_route_status_handler(
+    struct engine_node *node, void *data OVS_UNUSED)
+{
+    struct controller_engine_ctx *ctrl_ctx =
+        engine_get_context()->client_ctx;
+    if (!ctrl_ctx->chassis) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    struct ed_type_route *route_data =
+        engine_get_input_data("route", node);
+    const struct sbrec_advertised_route_status_table *status_table =
+        EN_OVSDB_GET(engine_get_input("SB_advertised_route_status", node));
+    const struct sbrec_advertised_route_status *sb_status;
+
+    SBREC_ADVERTISED_ROUTE_STATUS_TABLE_FOR_EACH_TRACKED (sb_status,
+                                                          status_table) {
+        if (strcmp(sb_status->chassis_name, ctrl_ctx->chassis->name)) {
+            continue;
+        }
+
+        const struct advertised_route_status *desired =
+            advertised_route_status_find(
+                &route_data->advertised_route_status,
+                sb_status->advertised_route);
+        if (sbrec_advertised_route_status_is_deleted(sb_status)) {
+            if (desired) {
+                return EN_UNHANDLED;
+            }
+            continue;
+        }
+
+        const struct uuid *route_uuid = desired
+            ? &desired->route->header_.uuid : NULL;
+        if (!desired ||
+            sb_status->advertised_route != desired->route ||
+            !uuid_equals(&sb_status->advertised_route_uuid, route_uuid) ||
+            sb_status->chassis != ctrl_ctx->chassis) {
+            return EN_UNHANDLED;
+        }
+
+        const char *operational_status;
+        char *error = advertised_route_get_operational_state(
+            route_data, desired, &operational_status);
+        struct smap withdrawal_reasons;
+        advertised_route_get_withdrawal_reasons(
+            desired, &withdrawal_reasons);
+        bool matches =
+            !strcmp(sb_status->desired_status, desired->desired_status) &&
+            smap_equal(&sb_status->withdrawal_reasons,
+                       &withdrawal_reasons) &&
+            !strcmp(sb_status->operational_status, operational_status) &&
+            nullable_string_is_equal(sb_status->error, error);
+        smap_destroy(&withdrawal_reasons);
+        free(error);
+
+        if (!matches) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 static enum engine_node_state
 en_route_exchange_run(struct engine_node *node, void *data)
 {
     struct ed_type_route_exchange *re = data;
+    struct controller_engine_ctx *ctrl_ctx =
+        engine_get_context()->client_ctx;
+
     struct ovsdb_idl_index *sbrec_learned_route_by_datapath =
         engine_ovsdb_node_get_index(
             engine_get_input("SB_learned_route", node),
@@ -5723,6 +5855,11 @@ en_route_exchange_run(struct engine_node *node, void *data)
         engine_ovsdb_node_get_index(
                 engine_get_input("SB_port_binding", node),
                 "name");
+    struct ovsdb_idl_index *sbrec_advertised_route_status_by_chassis_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_advertised_route_status", node),
+            "chassis_name");
+
     struct ed_type_route *route_data =
         engine_get_input_data("route", node);
     struct ed_type_route_table_notify *rt_notify =
@@ -5762,6 +5899,106 @@ en_route_exchange_run(struct engine_node *node, void *data)
     };
 
     route_exchange_run(&r_ctx_in, &r_ctx_out);
+
+    /* Both references are weak.  chassis_name is used by RBAC and cleanup. */
+    if (r_ctx_in.ovnsb_idl_txn && ctrl_ctx->chassis &&
+        sbrec_server_has_advertised_route_status_table(re->sb_idl)) {
+        struct uuidset published = UUIDSET_INITIALIZER(&published);
+        const struct sbrec_advertised_route_status *sb_status;
+        struct sbrec_advertised_route_status *status_filter =
+            sbrec_advertised_route_status_index_init_row(
+                sbrec_advertised_route_status_by_chassis_name);
+        sbrec_advertised_route_status_index_set_chassis_name(
+            status_filter, ctrl_ctx->chassis->name);
+
+        SBREC_ADVERTISED_ROUTE_STATUS_FOR_EACH_EQUAL (
+            sb_status, status_filter,
+            sbrec_advertised_route_status_by_chassis_name) {
+            const struct advertised_route_status *desired =
+                advertised_route_status_find(
+                    &route_data->advertised_route_status,
+                    sb_status->advertised_route);
+
+            const struct uuid *route_uuid = sb_status->advertised_route
+                ? &sb_status->advertised_route->header_.uuid : NULL;
+            if (!desired ||
+                !uuid_equals(&sb_status->advertised_route_uuid, route_uuid) ||
+                sb_status->chassis != ctrl_ctx->chassis ||
+                (route_uuid && uuidset_contains(&published, route_uuid))) {
+                sbrec_advertised_route_status_delete(sb_status);
+                continue;
+            }
+
+            uuidset_insert(&published, route_uuid);
+            const char *operational_status;
+            char *error = advertised_route_get_operational_state(
+                route_data, desired, &operational_status);
+            struct smap withdrawal_reasons;
+            advertised_route_get_withdrawal_reasons(
+                desired, &withdrawal_reasons);
+
+            if (strcmp(sb_status->desired_status,
+                       desired->desired_status)) {
+                sbrec_advertised_route_status_set_desired_status(
+                    sb_status, desired->desired_status);
+            }
+            if (!smap_equal(&sb_status->withdrawal_reasons,
+                            &withdrawal_reasons)) {
+                sbrec_advertised_route_status_set_withdrawal_reasons(
+                    sb_status, &withdrawal_reasons);
+            }
+            if (strcmp(sb_status->operational_status,
+                       operational_status)) {
+                sbrec_advertised_route_status_set_operational_status(
+                    sb_status, operational_status);
+            }
+            if (!nullable_string_is_equal(sb_status->error, error)) {
+                sbrec_advertised_route_status_set_error(sb_status, error);
+            }
+            smap_destroy(&withdrawal_reasons);
+            free(error);
+        }
+        sbrec_advertised_route_status_index_destroy_row(status_filter);
+
+        struct advertised_route_status *desired;
+        VECTOR_FOR_EACH_PTR (&route_data->advertised_route_status, desired) {
+            const struct uuid *route_uuid = &desired->route->header_.uuid;
+            if (uuidset_contains(&published, route_uuid)) {
+                continue;
+            }
+
+            struct sbrec_advertised_route_status *new_status =
+                sbrec_advertised_route_status_insert(r_ctx_in.ovnsb_idl_txn);
+            sbrec_advertised_route_status_set_advertised_route(
+                new_status, desired->route);
+            sbrec_advertised_route_status_set_advertised_route_uuid(
+                new_status, *route_uuid);
+            sbrec_advertised_route_status_set_chassis(new_status,
+                                                      ctrl_ctx->chassis);
+            sbrec_advertised_route_status_set_chassis_name(
+                new_status, ctrl_ctx->chassis->name);
+            sbrec_advertised_route_status_set_desired_status(
+                new_status, desired->desired_status);
+            struct smap withdrawal_reasons;
+            advertised_route_get_withdrawal_reasons(
+                desired, &withdrawal_reasons);
+            sbrec_advertised_route_status_set_withdrawal_reasons(
+                new_status, &withdrawal_reasons);
+            smap_destroy(&withdrawal_reasons);
+
+            const char *operational_status;
+            char *error = advertised_route_get_operational_state(
+                route_data, desired, &operational_status);
+            sbrec_advertised_route_status_set_operational_status(
+                new_status, operational_status);
+            if (error) {
+                sbrec_advertised_route_status_set_error(new_status, error);
+            }
+            free(error);
+        }
+        uuidset_destroy(&published);
+    }
+
     route_table_notify_update(&rt_notify->watches);
 
     re->sb_changes_pending = r_ctx_out.sb_changes_pending;
@@ -6982,6 +7219,7 @@ evpn_arp_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
     SB_NODE(chassis_template_var) \
     SB_NODE(acl_id) \
     SB_NODE(advertised_route) \
+    SB_NODE(advertised_route_status) \
     SB_NODE(learned_route) \
     SB_NODE(advertised_mac_binding) \
     SB_NODE(service_monitor)
@@ -7127,6 +7365,8 @@ inc_proc_ovn_controller_init(
                      engine_noop_handler);
     engine_add_input(&en_route_exchange, &en_sb_port_binding,
                      engine_noop_handler);
+    engine_add_input(&en_route_exchange, &en_sb_advertised_route_status,
+                     route_exchange_sb_advertised_route_status_handler);
     engine_add_input(&en_route_exchange, &en_route_table_notify, NULL);
     engine_add_input(&en_route_exchange, &en_route_exchange_status, NULL);
     engine_add_input(&en_route_exchange, &en_sb_ro,
@@ -7471,6 +7711,16 @@ inc_proc_ovn_controller_init(
                                   &sbrec_learned_route_col_datapath);
     engine_ovsdb_node_add_index(&en_sb_learned_route, "datapath",
                                 sbrec_learned_route_index_by_datapath);
+
+    struct ovsdb_idl_index
+        *sbrec_advertised_route_status_by_chassis_name =
+        ovsdb_idl_index_create1(
+            sb_idl_loop->idl,
+            &sbrec_advertised_route_status_col_chassis_name);
+    engine_ovsdb_node_add_index(
+        &en_sb_advertised_route_status, "chassis_name",
+        sbrec_advertised_route_status_by_chassis_name);
+
     struct ovsdb_idl_index *sbrec_advertised_mac_binding_index_by_dp
         = ovsdb_idl_index_create1(sb_idl_loop->idl,
                                   &sbrec_advertised_mac_binding_col_datapath);
@@ -7743,7 +7993,8 @@ main(int argc, char *argv[])
     ovsdb_idl_omit(ovnsb_idl_loop.idl,
                    &sbrec_chassis_private_col_external_ids);
 
-    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL, NULL, NULL, false);
+    update_sb_monitors(ovnsb_idl_loop.idl, NULL, NULL,
+                       NULL, NULL, NULL, false);
 
     stopwatch_create(CONTROLLER_LOOP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(OFCTRL_PUT_STOPWATCH_NAME, SW_MS);
@@ -8078,6 +8329,7 @@ main(int argc, char *argv[])
                                       &chassis_private,
                                       sbrec_encaps_index_by_ip_and_type);
             }
+            ctrl_engine_ctx.chassis = chassis;
 
             /* If any OVS feature support changed, force a full recompute.
              * 'br_int_dp' is valid only if an OVS transaction is possible.
@@ -8286,7 +8538,7 @@ main(int argc, char *argv[])
                                                 ovnsb_expected_cond_seqno;
                             ovnsb_expected_cond_seqno =
                                 update_sb_monitors(
-                                    ovnsb_idl_loop.idl, chassis,
+                                    ovnsb_idl_loop.idl, chassis, chassis_id,
                                     &runtime_data->local_lports,
                                     &runtime_data->lbinding_data.bindings,
                                     &runtime_data->local_datapaths,
@@ -8560,11 +8812,19 @@ loop_done:
                    ? chassis_private_lookup_by_name(
                          sbrec_chassis_private_by_name, chassis_id)
                    : NULL);
+            const struct sbrec_advertised_route_status_table *status_table =
+                sbrec_server_has_advertised_route_status_table(
+                    ovnsb_idl_loop.idl)
+                ? sbrec_advertised_route_status_table_get(
+                    ovnsb_idl_loop.idl)
+                : NULL;
+
             /* Run all of the cleanup functions, even if one of them returns
              * false. We're done if all of them return true. */
             done = binding_cleanup(ovnsb_idl_txn, port_binding_table, chassis);
             done = chassis_cleanup(ovs_idl_txn, ovnsb_idl_txn, ovs_table,
-                                   chassis, chassis_private) && done;
+                                   chassis, chassis_private,
+                                   status_table) && done;
             done = encaps_cleanup(ovs_idl_txn, br_int) && done;
             done = igmp_group_cleanup(ovnsb_idl_txn, sbrec_igmp_group, chassis)
                    && done;

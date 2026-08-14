@@ -22725,6 +22725,47 @@ wait_row_count sb:Advertised_Route 1 ip_prefix='"172.16.1.10"'
 lb_ar=$(ovn-sbctl --bare --columns=_uuid find Advertised_Route \
     ip_prefix=172.16.1.10)
 test -n "$lb_ar"
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
+check_column 'service-monitor=no-online-backend' \
+    Advertised_Route_Status withdrawal_reasons \
+    advertised_route=$lb_ar chassis_name=hv1
+
+# The hv1 role can change its status columns.  The checks below reject writes
+# to another chassis, identity columns and Advertised_Route.
+if test -n "$SSL_OVN_SB_DB"; then
+    # Rejected writes are checked below with their expected nonzero status.
+    rbac_hv1_sbctl() {
+        command ovn-sbctl --db=$SSL_OVN_SB_DB \
+            --private-key=$PKIDIR/testpki-hv1-privkey.pem \
+            --certificate=$PKIDIR/testpki-hv1-cert.pem \
+            --ca-cert=$PKIDIR/testpki-cacert.pem "$@"
+    }
+
+    hv1_status=$(ovn-sbctl --bare --columns=_uuid \
+        find Advertised_Route_Status advertised_route=$lb_ar \
+        chassis_name=hv1)
+    hv2_status=$(ovn-sbctl create Advertised_Route_Status \
+        advertised_route=$lb_ar advertised_route_uuid=$lb_ar \
+        chassis_name=hv2 desired_status=advertised \
+        operational_status=unknown)
+
+    AT_CHECK([rbac_hv1_sbctl set Advertised_Route_Status $hv2_status \
+        desired_status=withdrawn], [1], [ignore], [ignore])
+    AT_CHECK([rbac_hv1_sbctl destroy Advertised_Route_Status $hv2_status],
+        [1], [ignore], [ignore])
+    check rbac_hv1_sbctl set Advertised_Route_Status $hv1_status \
+        withdrawal_reasons:rbac-test=allowed
+    AT_CHECK([rbac_hv1_sbctl set Advertised_Route_Status $hv1_status \
+        chassis_name=hv2], [1], [ignore], [ignore])
+    AT_CHECK([rbac_hv1_sbctl set Advertised_Route_Status $hv1_status \
+        advertised_route_uuid=$hv2_status], [1], [ignore], [ignore])
+    AT_CHECK([rbac_hv1_sbctl set Advertised_Route $lb_ar \
+        external_ids:enabled=false], [1], [ignore], [ignore])
+
+    check ovn-sbctl destroy Advertised_Route_Status $hv2_status
+fi
 
 # The offline monitor withdraws the route.
 AT_CHECK([
@@ -22740,6 +22781,7 @@ central_ar=$(ovn-sbctl --bare --columns=_uuid find Advertised_Route \
 test -n "$central_ar"
 AT_CHECK([! ovn-sbctl --bare get Advertised_Route $central_ar external_ids |
     grep -q 'distributed-lb'])
+wait_row_count sb:Advertised_Route_Status 0 chassis_name=hv1
 OVS_WAIT_UNTIL([
     ip route list vrf ovnvrf1339 | grep -q "blackhole 172.16.1.10"])
 
@@ -22756,6 +22798,9 @@ lb_ar=$(ovn-sbctl --bare --columns=_uuid find Advertised_Route \
 test -n "$lb_ar"
 AT_CHECK([ovn-sbctl --bare get Advertised_Route $lb_ar external_ids |
     grep -q 'distributed-lb.*true'])
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
 OVS_WAIT_UNTIL([
     ! ip route list vrf ovnvrf1339 | grep -q "blackhole 172.16.1.10"])
 
@@ -22773,6 +22818,9 @@ check ovn-sbctl chassis-add hv2 geneve 169.0.0.2
 hv2=$(fetch_column Chassis _uuid name=hv2)
 check ovn-sbctl set Port_Binding be0 chassis=$hv2
 wait_row_count Service_Monitor 1 logical_port=be0 status=offline
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
 AT_CHECK([
     ip route list vrf ovnvrf1339 | grep -c "blackhole 172.16.1.10" || true
 ], [0], [0
@@ -22783,6 +22831,7 @@ AT_CHECK([
 # recompute hv1's route node.
 check ovn-nbctl --wait=hv set Logical_Router_Port lr-origin-share \
     options:dynamic-routing-redistribute-local-only=true
+wait_row_count sb:Advertised_Route_Status 0 chassis_name=hv1
 
 sm_v4=$(ovn-sbctl --bare --columns=_uuid find Service_Monitor \
     logical_port=be0 ip='"192.168.0.10"' port=80 protocol=tcp)
@@ -22818,12 +22867,23 @@ OVS_WAIT_UNTIL([
     route_recompute_ct=$(ovn-appctl inc-engine/show-stats route recompute)
     test "$route_recompute_ct" -ne 0
 ])
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
+check_column '' Advertised_Route_Status withdrawal_reasons \
+    advertised_route=$lb_ar chassis_name=hv1
 OVS_WAIT_UNTIL([
     ip route list vrf ovnvrf1339 | grep -q "blackhole 172.16.1.10"])
 
 # Stop the backend and wait for route withdrawal.
 kill `cat $be0_pid_file`
 wait_row_count Service_Monitor 1 logical_port=be0 status=offline
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
+check_column 'service-monitor=no-online-backend' \
+    Advertised_Route_Status withdrawal_reasons \
+    advertised_route=$lb_ar chassis_name=hv1
 OVS_WAIT_UNTIL([
     ! ip route list vrf ovnvrf1339 | grep -q "blackhole 172.16.1.10"])
 
@@ -22887,6 +22947,9 @@ OVS_WAIT_UNTIL([
     route_recompute_ct=$(ovn-appctl inc-engine/show-stats route recompute)
     test "$route_recompute_ct" -ne 0
 ])
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
 OVS_WAIT_UNTIL([
     ! ip route list vrf ovnvrf1339 | grep -q "blackhole 172.16.1.10"])
 check ovn-sbctl destroy Service_Monitor $unrelated_sm
@@ -22920,6 +22983,9 @@ AT_CHECK([
     ip -6 route list vrf ovnvrf1339 | grep -c "blackhole fd00::200" || true
 ], [0], [0
 ])
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar_v6 \
+    advertised_route_uuid=$lb_ar_v6 chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
 
 # Pause northd so it cannot overwrite the monitor ip, then rewrite the
 # ip to its expanded textual form.  A forced recompute makes the
@@ -22944,6 +23010,12 @@ AT_CHECK([
     ip -6 route list vrf ovnvrf1339 | grep -c "blackhole fd00::200" || true
 ], [0], [0
 ])
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar_v6 \
+    advertised_route_uuid=$lb_ar_v6 chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
+check_column 'service-monitor=no-online-backend' \
+    Advertised_Route_Status withdrawal_reasons \
+    advertised_route=$lb_ar_v6 chassis_name=hv1
 # Resume northd.  It repairs the monitor ip back to compressed form.
 check as northd ovn-appctl -t ovn-northd resume
 wait_row_count Service_Monitor 1 logical_port=be0 ip='"fd00::10"' \
@@ -22953,6 +23025,9 @@ wait_row_count Service_Monitor 1 logical_port=be0 ip='"fd00::10"' \
 # unconditional.
 check ovn-nbctl clear Load_Balancer lb0 health_check
 wait_row_count Service_Monitor 0 logical_port=be0
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
 OVS_WAIT_UNTIL([
     ip route list vrf ovnvrf1339 | grep -q "blackhole 172.16.1.10"])
 
@@ -22972,10 +23047,21 @@ check test "$route_recompute_ct" -eq 0
 check ovn-sbctl destroy Service_Monitor $ungated_sm
 check as northd ovn-appctl -t ovn-northd resume
 
+# Add a second VIP so both routes can be deleted in one transaction.
+check ovn-nbctl --wait=hv lb-add lb0 172.16.1.11:80 192.168.0.10:80
+lb_ar2=$(ovn-sbctl --bare --columns=_uuid find Advertised_Route \
+    ip_prefix=172.16.1.11)
+test -n "$lb_ar2"
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar2 \
+    advertised_route_uuid=$lb_ar2 chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
+
 # Remove the routes.
 check ovn-nbctl --wait=hv lr-lb-del lr-target lb0
 wait_row_count sb:Advertised_Route 0 ip_prefix='"172.16.1.10"'
+wait_row_count sb:Advertised_Route 0 ip_prefix='"172.16.1.11"'
 wait_row_count sb:Advertised_Route 0 ip_prefix='"fd00::200"'
+wait_row_count sb:Advertised_Route_Status 0 chassis_name=hv1
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -23432,12 +23518,28 @@ lb_ar=$(ovn-sbctl --columns=_uuid,external_ids find Advertised_Route \
         /source.*lb/ { print uuid; exit }
         ')
 test -n "$lb_ar"
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
+
+# The NAT route has no status row.
+nat_ar=$(ovn-sbctl --columns=_uuid,tracked_port find Advertised_Route \
+        ip_prefix=172.16.1.10 | awk '
+        /_uuid/ { uuid = $3 }
+        /tracked_port/ && length($3) != 36 { print uuid; exit }
+        ')
+test -n "$nat_ar"
+wait_row_count sb:Advertised_Route_Status 0 advertised_route=$nat_ar \
+    chassis_name=hv1
 
 # Start the listener and install the LB route.
 be_pid_file=$(mktemp be0_http.XXX.pid)
 NETNS_DAEMONIZE([be0_ns],
     [[$PYTHON $srcdir/test-l7.py http]], [$be_pid_file])
 wait_row_count Service_Monitor 1 logical_port=be0 status=online
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
 # Both routes are installed at different priorities.
 AT_CHECK([
     ip route list vrf ovnvrf1342 | grep -c "blackhole 172.16.1.10"
@@ -23446,6 +23548,12 @@ AT_CHECK([
 
 # Disable the LB route.  The NAT route remains.
 check ovn-sbctl set Advertised_Route $lb_ar external_ids:enabled=false
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
+check_column 'administrative-policy=disabled' \
+    Advertised_Route_Status withdrawal_reasons \
+    advertised_route=$lb_ar chassis_name=hv1
 AT_CHECK([
     ip route list vrf ovnvrf1342 | grep -c "blackhole 172.16.1.10"
 ], [0], [1
@@ -23453,10 +23561,73 @@ AT_CHECK([
 
 # Re-enable the LB route.
 check ovn-sbctl remove Advertised_Route $lb_ar external_ids enabled
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
+
+# Delete the local status row and wait for the controller to recreate it.
+old_status=$(ovn-sbctl --bare --columns=_uuid \
+    find Advertised_Route_Status advertised_route=$lb_ar chassis_name=hv1)
+check ovn-sbctl destroy Advertised_Route_Status $old_status
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
+repaired_status=$(ovn-sbctl --bare --columns=_uuid \
+    find Advertised_Route_Status advertised_route=$lb_ar chassis_name=hv1)
+AT_CHECK([test "$old_status" != "$repaired_status"])
+
+# Corrupt the status and wait for the controller to restore it.
+check ovn-sbctl set Advertised_Route_Status $repaired_status \
+    desired_status=withdrawn operational_status=unknown \
+    withdrawal_reasons:unexpected=forced-corruption error=forced-corruption
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=advertised operational_status=installed
+check_column '' Advertised_Route_Status withdrawal_reasons \
+    advertised_route=$lb_ar chassis_name=hv1
+OVS_WAIT_UNTIL([
+    test X"`ovn-sbctl --bare --columns=error \
+        find Advertised_Route_Status advertised_route=$lb_ar \
+        chassis_name=hv1`" = X
+])
+
+# The controller removes an unexpected row bearing its chassis name.
+hv1_chassis=$(fetch_column Chassis _uuid name=hv1)
+unexpected_status=$(ovn-sbctl create Advertised_Route_Status \
+    advertised_route_uuid=$hv1_chassis chassis=$hv1_chassis \
+    chassis_name=hv1 desired_status=advertised operational_status=unknown)
+OVS_WAIT_UNTIL([
+    ! ovn-sbctl get Advertised_Route_Status $unexpected_status _uuid \
+        2>/dev/null
+])
+
+# Table 252 (RT_TABLE_COMPAT) is rejected by route exchange.  Check the
+# reported error, then restore the VRF table.
+check ovn-nbctl --wait=hv set Logical_Router lr-origin \
+    options:dynamic-routing-vrf-id=252
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    chassis_name=hv1 desired_status=advertised operational_status=unknown
+OVS_WAIT_UNTIL([
+    ovn-sbctl --bare --columns=error find Advertised_Route_Status \
+        advertised_route=$lb_ar chassis_name=hv1 |
+    grep -q 'invalid route table ID'
+])
+
+check ovn-nbctl --wait=hv set Logical_Router lr-origin \
+    options:dynamic-routing-vrf-id=1342
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    chassis_name=hv1 desired_status=advertised operational_status=installed
+OVS_WAIT_UNTIL([
+    test X"`ovn-sbctl --bare --columns=error find Advertised_Route_Status \
+        advertised_route=$lb_ar chassis_name=hv1`" = X
+])
 
 # Stop the listener and withdraw the LB route.
 kill `cat $be_pid_file`
 wait_row_count Service_Monitor 1 logical_port=be0 status=offline
+wait_row_count sb:Advertised_Route_Status 1 advertised_route=$lb_ar \
+    advertised_route_uuid=$lb_ar chassis_name=hv1 \
+    desired_status=withdrawn operational_status=withdrawn
 # The NAT route remains installed.
 AT_CHECK([
     ip route list vrf ovnvrf1342 | grep -c "blackhole 172.16.1.10"
@@ -23515,6 +23686,8 @@ exact_ar=$(ovn-sbctl --bare --columns=_uuid find Advertised_Route \
 test -n "$exact_ar"
 AT_CHECK([! ovn-sbctl --bare get Advertised_Route $exact_ar external_ids | \
     grep -Eq 'source|distributed-lb|health-checks'])
+wait_row_count sb:Advertised_Route_Status 0 advertised_route=$exact_ar \
+    chassis_name=hv1
 AT_CHECK([
     ip route list vrf ovnvrf1342 | grep -c "blackhole 172.16.1.20"
 ], [0], [1
@@ -23630,6 +23803,12 @@ check ovn-sbctl set Port_Binding be0 chassis=$hv2
 OVS_WAIT_UNTIL([
     ! ip route list vrf ovnvrf1342 | grep -q "blackhole 172.16.1.10"])
 
+# With the backend remote and local-only enabled, hv1 must not
+# publish an Advertised_Route_Status row for the VIP: the route is
+# not selected for this chassis, so no status is recorded.
+wait_row_count sb:Advertised_Route_Status 0 \
+    chassis_name=hv1
+
 # Return the backend to hv1.
 check ovn-sbctl clear Port_Binding be0 chassis
 check ovn-sbctl destroy Chassis $hv2
@@ -23641,6 +23820,11 @@ wait_row_count Port_Binding 1 logical_port=be0 chassis=$hv1_uuid
 # The route reappears now that the backend is local again.
 OVS_WAIT_UNTIL([
     ip route list vrf ovnvrf1342 | grep -q "blackhole 172.16.1.10"])
+
+# With the backend local again, hv1 publishes an Advertised_Route_Status
+# row with desired_status=advertised.
+wait_row_count sb:Advertised_Route_Status 1 \
+    chassis_name=hv1
 
 # Disable local-only.  Even with the backend on a remote chassis the
 # route stays because local-only no longer restricts installation.

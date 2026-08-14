@@ -463,6 +463,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_datapath_binding -> route [[label="route_sb_datapath_binding_handler"]];
 	SB_service_monitor -> route [[label="route_sb_service_monitor_handler"]];
 	SB_learned_route [[style=filled, shape=box, fillcolor=white, label="SB_learned_route"]];
+	SB_advertised_route_status [[style=filled, shape=box, fillcolor=white, label="SB_advertised_route_status"]];
 	route_table_notify [[style=filled, shape=box, fillcolor=white, label="route_table_notify"]];
 	route_exchange_status [[style=filled, shape=box, fillcolor=white, label="route_exchange_status"]];
 	route_exchange [[style=filled, shape=box, fillcolor=white, label="route_exchange"]];
@@ -471,6 +472,7 @@ digraph "Incremental-Processing-Engine" {
 	route -> route_exchange [[label=""]];
 	SB_learned_route -> route_exchange [[label="engine_noop_handler"]];
 	SB_port_binding -> route_exchange [[label="engine_noop_handler"]];
+	SB_advertised_route_status -> route_exchange [[label="route_exchange_sb_advertised_route_status_handler"]];
 	route_table_notify -> route_exchange [[label=""]];
 	route_exchange_status -> route_exchange [[label=""]];
 	sb_ro -> route_exchange [[label="route_exchange_sb_ro_handler"]];

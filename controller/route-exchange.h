@@ -26,8 +26,9 @@ struct route_exchange_ctx_in {
     struct ovsdb_idl_index *sbrec_learned_route_by_datapath;
     const struct sbrec_chassis *chassis;
 
-    /* Contains struct advertise_datapath_entry */
-    const struct hmap *announce_routes;
+    /* Contains struct advertise_datapath_entry.  route_exchange_run() records
+     * the reconciliation result in each entry. */
+    struct hmap *announce_routes;
 };
 
 struct route_exchange_ctx_out {

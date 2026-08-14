@@ -1181,14 +1181,26 @@ chassis_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
                 struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct ovsrec_open_vswitch_table *ovs_table,
                 const struct sbrec_chassis *chassis_rec,
-                const struct sbrec_chassis_private *chassis_private_rec)
+                const struct sbrec_chassis_private *chassis_private_rec,
+                const struct sbrec_advertised_route_status_table *status_table)
 {
+    const char *chassis_name = get_ovs_chassis_id(ovs_table);
+    bool has_route_status = false;
+    if (status_table && chassis_name) {
+        const struct sbrec_advertised_route_status *status;
+        SBREC_ADVERTISED_ROUTE_STATUS_TABLE_FOR_EACH (status, status_table) {
+            if (!strcmp(status->chassis_name, chassis_name)) {
+                has_route_status = true;
+                break;
+            }
+        }
+    }
+
     if (!chassis_rec && !chassis_private_rec &&
-            !is_chassis_idx_stored(ovs_table)) {
+            !is_chassis_idx_stored(ovs_table) && !has_route_status) {
         return true;
     }
 
-    const char *chassis_name = get_ovs_chassis_id(ovs_table);
     if (ovs_idl_txn) {
         ovsdb_idl_txn_add_comment(
             ovs_idl_txn,
@@ -1206,6 +1218,15 @@ chassis_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
         }
         if (chassis_private_rec) {
             sbrec_chassis_private_delete(chassis_private_rec);
+        }
+        if (status_table && chassis_name) {
+            const struct sbrec_advertised_route_status *status;
+            SBREC_ADVERTISED_ROUTE_STATUS_TABLE_FOR_EACH_SAFE (
+                status, status_table) {
+                if (!strcmp(status->chassis_name, chassis_name)) {
+                    sbrec_advertised_route_status_delete(status);
+                }
+            }
         }
     }
     return false;

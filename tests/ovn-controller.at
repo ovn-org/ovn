@@ -3006,6 +3006,65 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - advertised route status schema compatibility])
+AT_KEYWORDS([ovn])
+
+ovn_start
+
+# Connect a new ovn-controller to an SB database without
+# Advertised_Route_Status.
+$PYTHON -c '
+import json
+import sys
+
+with open(sys.argv[[1]], encoding="utf-8") as stream:
+    schema = json.load(stream)
+schema[["tables"]].pop("Advertised_Route_Status")
+schema[["version"]] = "21.10.0"
+schema.pop("cksum", None)
+json.dump(schema, sys.stdout)
+' "$abs_top_srcdir/ovn-sb.ovsschema" > old-sb.ovsschema
+check ovsdb-client convert $OVN_SB_DB old-sb.ovsschema
+OVS_WAIT_UNTIL([
+    test X"`ovsdb-client get-schema-version $OVN_SB_DB OVN_Southbound`" \
+        = X21.10.0
+])
+
+# Restart ovsdb-server so that the _Server database reports the old schema.
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+mv "$ovs_base"/ovn-sb/ovsdb-server.log \
+   "$ovs_base"/ovn-sb/ovsdb-server-before-schema-restart.log
+as ovn-sb start_daemon ovsdb-server \
+    -vjsonrpc \
+    --remote=punix:"$ovs_base"/ovn-sb/ovn-sb.sock \
+    --remote=db:OVN_Southbound,SB_Global,connections \
+    --private-key="$PKIDIR"/testpki-test-privkey.pem \
+    --certificate="$PKIDIR"/testpki-test-cert.pem \
+    --ca-cert="$PKIDIR"/testpki-cacert.pem \
+    "$ovs_base"/ovn-sb/ovn-sb.db
+PARSE_LISTENING_PORT([ovn-sb/ovsdb-server.log], [TCP_PORT])
+SSL_OVN_SB_DB=ssl:127.0.0.1:$TCP_PORT
+export SSL_OVN_SB_DB
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# The controller registers and omits status publication.
+wait_row_count Chassis 1 name=hv1
+OVS_WAIT_FOR_OUTPUT([ovn-appctl -t ovn-controller connection-status],
+                    [0], [connected
+])
+
+OVN_CLEANUP([hv1
+/lacks Advertised_Route_Status table/d])
+AT_CLEANUP
+])
+
 AT_SETUP([ovn-controller - ssl/tls ciphers using command line options])
 AT_KEYWORDS([ovn])
 AT_SKIP_IF([test "$HAVE_OPENSSL" = no])

@@ -322,8 +322,9 @@
       <dt>[<code>--if-exists</code>] <var>chassis-del <var>chassis</var></var></dt>
       <dd>
         <p>
-          Deletes <var>chassis</var> and its <var>encaps</var> and
-          <var>gateway_ports</var>.
+          Deletes <var>chassis</var>, its <var>encaps</var> and
+          <var>gateway_ports</var>, and its
+          <code>Advertised_Route_Status</code> records.
         </p>
 
         <p>
