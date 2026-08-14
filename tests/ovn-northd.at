@@ -18644,6 +18644,547 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute uses backend LSP as tracked_port])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When the LB row's ip_port_mappings populate per-backend LSPs, northd
+# emits one Advertised_Route per (VIP, backend LSP) instead of a single
+# row using the peer LR's gateway LRP. That moves the chassis-locality
+# decision from a chassis-unbound patch port (the peer LRP) to the
+# actual backend port - the controller can then per-chassis install
+# the kernel route via dynamic-routing-redistribute-local-only=true.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+# A backend logical switch hanging off lr1. The two backend LSPs are
+# what we want as tracked_port in Advertised_Route.
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 192.168.1.11"
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+        ip_port_mappings:192.168.1.11="be-vm2:192.168.1.1"
+check ovn-nbctl --wait=sb sync
+check_row_count Advertised_Route 0
+
+# Exercise an association-only change: the LB row, VIPs, mappings and LSPs
+# are unchanged.  Only Logical_Router.load_balancer changes.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-lb-add lr1 lb0
+check_engine_compute dynamic_routes recompute
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+pb_be_vm2=$(fetch_column Port_Binding _uuid logical_port=be-vm2)
+
+# Expect two Advertised_Route rows - one per backend LSP.
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_be_vm1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_be_vm2
+AT_CHECK([ovn-sbctl --bare --columns=external_ids \
+    find Advertised_Route ip_prefix=172.16.1.10 |
+    grep -c 'distributed-lb.*true'], [0], [2
+])
+
+# Forwarding parsed_route is still emitted once - the data-plane
+# decision is independent of backend identity.
+ovn-sbctl lflow-list lr0 > lr0_flows
+AT_CHECK([grep -c 'lr_in_ip_routing.*172.16.1.10/32' lr0_flows], [0], [1
+])
+
+# A centralized LB has one VIP-level route, no distributed-lb key and one
+# forwarding route.
+check ovn-nbctl --wait=sb set Load_Balancer lb0 options:distributed=false
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_lr1_up
+AT_CHECK([! ovn-sbctl --bare --columns=external_ids \
+    find Advertised_Route ip_prefix=172.16.1.10 |
+    grep -q 'distributed-lb'])
+ovn-sbctl lflow-list lr0 > lr0_flows_centralized
+AT_CHECK([grep -c 'lr_in_ip_routing.*172.16.1.10/32' \
+    lr0_flows_centralized], [0], [1
+])
+
+# Setting distributed=true restores the per-backend routes.  The single
+# forwarding route remains.
+check ovn-nbctl --wait=sb set Load_Balancer lb0 options:distributed=true
+check_row_count Advertised_Route 2
+AT_CHECK([ovn-sbctl --bare --columns=external_ids \
+    find Advertised_Route ip_prefix=172.16.1.10 |
+    grep -c 'distributed-lb.*true'], [0], [2
+])
+ovn-sbctl lflow-list lr0 > lr0_flows_distributed
+AT_CHECK([grep -c 'lr_in_ip_routing.*172.16.1.10/32' \
+    lr0_flows_distributed], [0], [1
+])
+
+# Without ip_port_mappings, the fallback path emits one row with
+# tracked_port = peer LRP (covered by the existing test). Re-derive
+# that by clearing ip_port_mappings and re-syncing.
+check ovn-nbctl --wait=sb clear Load_Balancer lb0 ip_port_mappings
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_lr1_up
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - own-LR distributed LB per-backend route emission])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# A distributed LB attached directly to the advertising LR must use
+# the per-backend path (build_lb_routes_for_lb), not the aggregated
+# lb_ips path, so that Advertised_Route rows carry distributed-lb=true,
+# and the backend LSP as tracked_port.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lrp-add lr0 lr0-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr0 lr0-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 192.168.1.11"
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1" \
+        ip_port_mappings:192.168.1.11="be-vm2"
+check ovn-nbctl --wait=sb lr-lb-add lr0 lb0
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+pb_be_vm2=$(fetch_column Port_Binding _uuid logical_port=be-vm2)
+
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_be_vm1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    logical_port=$pb_lr0_up        \
+    tracked_port=$pb_be_vm2
+AT_CHECK([ovn-sbctl --bare --columns=external_ids \
+    find Advertised_Route ip_prefix=172.16.1.10 |
+    grep -c 'distributed-lb.*true'], [0], [2
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute SCTP per-backend route emission])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# SCTP uses the same per-backend Advertised_Route representation as TCP
+# and UDP.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 192.168.1.11"
+
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 sctp \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+        ip_port_mappings:192.168.1.11="be-vm2:192.168.1.1" \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+pb_be_vm2=$(fetch_column Port_Binding _uuid logical_port=be-vm2)
+
+# Expect two Advertised_Route rows - one per backend LSP.
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    tracked_port=$pb_be_vm1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    tracked_port=$pb_be_vm2
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute no ip_port_mappings fallback])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When an LB has no ip_port_mappings at all, the fallback path emits
+# one Advertised_Route per VIP with tracked_port set to the peer LRP.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 192.168.1.11"
+
+# LB with no ip_port_mappings at all.
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_lr0_up=$(fetch_column Port_Binding _uuid logical_port=lr0-up)
+pb_lr1_up=$(fetch_column Port_Binding _uuid logical_port=lr1-up)
+
+# One Advertised_Route row with tracked_port = peer LRP (lr1-up),
+# not a per-backend row.
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0          \
+    logical_port=$pb_lr0_up         \
+    tracked_port=$pb_lr1_up
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute partial ip_port_mappings])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# When only some backends have ip_port_mappings entries, only those
+# backends should produce per-backend Advertised_Route rows.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 192.168.1.11"
+
+# Only map one backend initially.
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+pb_be_vm2=$(fetch_column Port_Binding _uuid logical_port=be-vm2)
+
+# Only one Advertised_Route row - for the mapped backend.
+check_row_count Advertised_Route 1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    tracked_port=$pb_be_vm1
+
+# Add the second mapping and re-sync.
+check ovn-nbctl --wait=sb set Load_Balancer lb0 \
+    ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+    ip_port_mappings:192.168.1.11="be-vm2:192.168.1.1"
+
+# Now expect two rows - both backends mapped.
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    tracked_port=$pb_be_vm1
+check_row_count Advertised_Route 1 \
+    ip_prefix="172.16.1.10"        \
+    datapath=$datapath_lr0         \
+    tracked_port=$pb_be_vm2
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB redistribute IPv6 per-backend route emission])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# IPv6 variant of the per-backend test: one Advertised_Route row
+# is emitted per backend LSP.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 2001:db8::1/64
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 2001:db8:1::1/64
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 2001:db8:1::10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 2001:db8:1::11"
+
+check ovn-nbctl \
+    -- lb-add lb0 [[2001:db8:ffff::10]]:80 [[2001:db8:1::10]]:80,[[2001:db8:1::11]]:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:\"[[2001:db8:1::10]]\"=\"be-vm1:[[2001:db8:1::1]]\" \
+        ip_port_mappings:\"[[2001:db8:1::11]]\"=\"be-vm2:[[2001:db8:1::1]]\" \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+datapath_lr0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+pb_be_vm1=$(fetch_column Port_Binding _uuid logical_port=be-vm1)
+pb_be_vm2=$(fetch_column Port_Binding _uuid logical_port=be-vm2)
+
+# Expect two Advertised_Route rows - one per backend LSP.
+check_row_count Advertised_Route 2
+check_row_count Advertised_Route 1 \
+    ip_prefix="2001\:db8\:ffff\:\:10" \
+    datapath=$datapath_lr0           \
+    tracked_port=$pb_be_vm1
+check_row_count Advertised_Route 1 \
+    ip_prefix="2001\:db8\:ffff\:\:10" \
+    datapath=$datapath_lr0           \
+    tracked_port=$pb_be_vm2
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - LB route external_ids reconciled on existing rows])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Northd sets external_ids:source=lb and external_ids:distributed-lb=true on
+# distributed LB routes.  It also restores missing keys when reconciling
+# existing rows.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=lb
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+check ovn-nbctl lrp-add lr1 lr1-be 00:00:00:00:00:03 192.168.1.1/24
+check ovn-nbctl ls-add be
+check ovn-nbctl lsp-add-router-port be be-lr1 lr1-be
+check ovn-nbctl lsp-add be be-vm1
+check ovn-nbctl lsp-set-addresses be-vm1 "00:00:00:00:01:01 192.168.1.10"
+check ovn-nbctl lsp-add be be-vm2
+check ovn-nbctl lsp-set-addresses be-vm2 "00:00:00:00:01:02 192.168.1.11"
+
+# Start with one mapped backend.
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.1.10:80,192.168.1.11:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+    -- lr-lb-add lr1 lb0
+check ovn-nbctl --wait=sb sync
+
+# Check the initial row.
+check_row_count Advertised_Route 1
+AT_CHECK([ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -q 'source=lb'])
+AT_CHECK([ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -q 'distributed-lb.*true'])
+
+# Add the second backend mapping -- this triggers a northd recompute
+# that reuses the existing row (same tracked_port=be-vm1) and adds
+# a new row for be-vm2.
+check ovn-nbctl --wait=sb set Load_Balancer lb0 \
+    ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+    ip_port_mappings:192.168.1.11="be-vm2:192.168.1.1"
+
+# Check the row added for the second backend.
+check_row_count Advertised_Route 2
+AT_CHECK([ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -c 'source=lb'], [0], [2
+])
+AT_CHECK([ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -c 'distributed-lb.*true'], [0], [2
+])
+
+# Remove the keys and trigger reconciliation to model rows created by an
+# older northd.
+AT_CHECK([
+for uuid in $(ovn-sbctl --columns=_uuid --no-headings --bare find \
+    Advertised_Route ip_prefix=172.16.1.10); do
+    (ovn-sbctl remove Advertised_Route "$uuid" external_ids source \
+        2>/dev/null) || true
+    (ovn-sbctl remove Advertised_Route "$uuid" external_ids distributed-lb \
+        2>/dev/null) || true
+done
+], [0], [ignore], [ignore])
+
+# Confirm that the direct SB update took effect.
+AT_CHECK([! ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -q 'source=lb'])
+AT_CHECK([! ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -q 'distributed-lb'])
+
+# Reuse the same rows with a modified ip_port_mappings value.
+check ovn-nbctl --wait=sb set Load_Balancer lb0 \
+    ip_port_mappings:192.168.1.10="be-vm1:192.168.1.1" \
+    ip_port_mappings:192.168.1.11="be-vm2:192.168.1.2"
+
+# Northd restores both keys.
+AT_CHECK([ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -c 'source=lb'], [0], [2
+])
+AT_CHECK([ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -c 'distributed-lb.*true'], [0], [2
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - non-LB routes do not carry the source=lb key])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+# Regression test: routes from NAT redistribution must not carry
+# external_ids:source=lb.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set Logical_Router lr0 \
+    options:dynamic-routing=true       \
+    options:chassis=hv1
+check ovn-nbctl lrp-add lr0 lr0-up 00:00:00:00:00:01
+check ovn-nbctl lrp-set-options lr0-up dynamic-routing-redistribute=nat
+check ovn-nbctl ls-add up
+check ovn-nbctl lsp-add-router-port up up-lr0 lr0-up
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-up 00:00:00:00:00:02 10.0.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-up hv1
+check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
+check ovn-nbctl --add-route lr-nat-add lr1 dnat_and_snat 172.16.1.10 192.168.1.10
+check ovn-nbctl --wait=sb sync
+
+# NAT-derived row must not have source=lb.
+check_row_count Advertised_Route 1
+AT_CHECK([! ovn-sbctl --columns=external_ids find Advertised_Route \
+    ip_prefix="172.16.1.10" | grep -q 'source=lb'])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([dynamic-routing - LB forwarding route updates on nexthop change])
 AT_KEYWORDS([dynamic-routing])
 ovn_start
@@ -18668,6 +19209,7 @@ check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
 
 check ovn-nbctl \
     -- lb-add lb0 172.16.1.10:80 192.168.1.10:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
     -- lr-lb-add lr1 lb0
 check ovn-nbctl --wait=sb sync
 
@@ -18718,7 +19260,8 @@ check ovn-nbctl lsp-add-router-port up up-lr1 lr1-up
 
 check ovn-nbctl \
     -- lb-add lb0 172.16.1.10:80 192.168.1.10:80 \
-    -- set Load_Balancer lb0 options:dynamic-routing-advertise=false \
+    -- set Load_Balancer lb0 options:distributed=true \
+        options:dynamic-routing-advertise=false \
     -- lr-lb-add lr1 lb0
 check ovn-nbctl --wait=sb sync
 

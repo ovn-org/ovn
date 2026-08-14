@@ -5109,8 +5109,8 @@ tcp.flags = RST;
       </p>
 
       <column name="type">
-        The type of the service. Supported values are "load-balancer" and
-        "network-function".
+        The type of the service. Supported values are "load-balancer",
+        "network-function", and "logical-switch-port".
       </column>
 
       <column name="ip">
@@ -5489,6 +5489,21 @@ tcp.flags = RST;
 
     <column name="external_ids">
       See <em>External IDs</em> at the beginning of this document.
+
+      <p>
+        <code>ovn-northd</code> sets the following key on routes
+        derived from Load_Balancer VIPs:
+      </p>
+
+      <dl>
+        <dt><code>source</code></dt>
+        <dd>
+          Set to <code>lb</code> by <code>ovn-northd</code> on routes
+          derived from Load_Balancer VIPs.  Absent on all other routes.
+          The key identifies the route's origin for consumers that
+          distinguish Load_Balancer-derived routes.
+        </dd>
+      </dl>
     </column>
   </table>
 

@@ -22620,5 +22620,145 @@ as
 OVS_TRAFFIC_VSWITCHD_STOP(["/.*error receiving.*/d
 /failed to query port patch-.*/d
 /.*terminating with signal 15.*/d"])
+
+AT_CLEANUP
+])
+
+AT_SETUP([dynamic-routing - LB redistribute local-only restricts to backend chassis])
+AT_KEYWORDS([dynamic-routing])
+
+VRF_RESERVE([1342])
+
+# With dynamic-routing-redistribute-local-only, the kernel route for a
+# distributed LB VIP appears only on the chassis hosting the backend LSP
+# used as tracked_port.  Moving the backend to another chassis withdraws
+# the route.  Moving it back reinstalls it.
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:system-id=hv1 \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+# Shared LS holding both LR LRPs and the backend LSP.
+check ovn-nbctl ls-add ls-share
+
+# lr-origin: GW with redistribute=lb and local-only on its LRP into ls-share.
+check ovn-nbctl lr-add lr-origin \
+    -- set Logical_Router lr-origin options:chassis=hv1 \
+                                    options:dynamic-routing=true \
+                                    options:dynamic-routing-vrf-id=1342
+check ovn-nbctl lrp-add lr-origin lr-origin-share 00:de:ad:00:00:01 \
+        192.168.0.1/24 \
+    -- set Logical_Router_Port lr-origin-share \
+            options:dynamic-routing-redistribute="lb" \
+            options:dynamic-routing-redistribute-local-only=true \
+            options:dynamic-routing-maintain-vrf=true
+check ovn-nbctl lsp-add ls-share share-lr-origin \
+    -- set Logical_Switch_Port share-lr-origin type=router \
+                                               options:router-port=lr-origin-share \
+    -- lsp-set-addresses share-lr-origin router
+
+# lr-target: GW, owns the LB.
+check ovn-nbctl lr-add lr-target \
+    -- set Logical_Router lr-target options:chassis=hv1
+check ovn-nbctl lrp-add lr-target lr-target-share 00:de:ad:00:00:02 \
+        192.168.0.2/24
+check ovn-nbctl lsp-add ls-share share-lr-target \
+    -- set Logical_Switch_Port share-lr-target type=router \
+                                               options:router-port=lr-target-share \
+    -- lsp-set-addresses share-lr-target router
+
+# Backend LSP on the shared LS.  Veth-backed so it is claimed by hv1.
+check ovn-nbctl lsp-add ls-share be0
+check ovn-nbctl lsp-set-addresses be0 "00:de:ad:00:00:10 192.168.0.10"
+ADD_NAMESPACES(be0_ns)
+ADD_VETH(be0, be0_ns, br-int, "192.168.0.10/24", "00:de:ad:00:00:10")
+
+# Distributed LB with one VIP and one backend.  This test isolates the
+# local-only route-selection mechanism.
+check ovn-nbctl \
+    -- lb-add lb0 172.16.1.10:80 192.168.0.10:80 \
+    -- set Load_Balancer lb0 options:distributed=true \
+        ip_port_mappings:192.168.0.10="be0:192.168.0.2" \
+    -- lr-lb-add lr-target lb0
+
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up
+OVS_CTL_TIMEOUT=30
+
+OVS_WAIT_UNTIL([test -n "`ip vrf show ovnvrf1342 2>/dev/null`"])
+
+# The backend is on hv1, so the route is installed locally.
+wait_row_count sb:Advertised_Route 1 ip_prefix='"172.16.1.10"'
+OVS_WAIT_UNTIL([
+    ip route list vrf ovnvrf1342 | grep -q "blackhole 172.16.1.10"])
+
+# Move the backend to a simulated hv2 by deleting the veth so hv1
+# drops the claim, then bind be0 to hv2.
+check ovs-vsctl del-port br-int ovs-be0
+wait_column "" Port_Binding chassis logical_port=be0
+check ovn-sbctl chassis-add hv2 geneve 169.0.0.2
+hv2=$(fetch_column Chassis _uuid name=hv2)
+check ovn-sbctl set Port_Binding be0 chassis=$hv2
+
+# The backend is no longer on hv1.  With local-only the route must be
+# withdrawn from hv1's kernel.
+OVS_WAIT_UNTIL([
+    ! ip route list vrf ovnvrf1342 | grep -q "blackhole 172.16.1.10"])
+
+# Return the backend to hv1.
+check ovn-sbctl clear Port_Binding be0 chassis
+check ovn-sbctl destroy Chassis $hv2
+check ovs-vsctl add-port br-int ovs-be0 \
+    -- set Interface ovs-be0 external_ids:iface-id=be0
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+wait_row_count Port_Binding 1 logical_port=be0 chassis=$hv1_uuid
+
+# The route reappears now that the backend is local again.
+OVS_WAIT_UNTIL([
+    ip route list vrf ovnvrf1342 | grep -q "blackhole 172.16.1.10"])
+
+# Disable local-only.  Even with the backend on a remote chassis the
+# route stays because local-only no longer restricts installation.
+check ovn-nbctl --wait=hv set Logical_Router_Port lr-origin-share \
+    options:dynamic-routing-redistribute-local-only=false
+
+check ovs-vsctl del-port br-int ovs-be0
+wait_column "" Port_Binding chassis logical_port=be0
+check ovn-sbctl chassis-add hv2 geneve 169.0.0.2
+hv2=$(fetch_column Chassis _uuid name=hv2)
+check ovn-sbctl set Port_Binding be0 chassis=$hv2
+
+# Without local-only, the advertising chassis still installs the route
+# even though the backend is remote.
+OVS_WAIT_UNTIL([
+    ip route list vrf ovnvrf1342 | grep -q "blackhole 172.16.1.10"])
+
+# Cleanup.
+check ovn-sbctl destroy Chassis $hv2
+
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+
+as ovn-sb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as ovn-nb
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+as northd
+OVS_APP_EXIT_AND_WAIT([ovn-northd])
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
 AT_CLEANUP
 ])

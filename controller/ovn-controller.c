@@ -5541,6 +5541,8 @@ static enum engine_input_handler_result
 route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
 {
     struct ed_type_route *re_data = data;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
     const struct sbrec_advertised_route_table *advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
 
@@ -5560,7 +5562,13 @@ route_sb_advertised_route_data_handler(struct engine_node *node, void *data)
             tracked_datapath_find(&re_data->tracked_route_datapaths,
                                   sbrec_route->datapath);
         if (!re_t_dp) {
-            continue;
+            /* Monitor conditions can lag a newly-local datapath.  Check
+             * runtime_data while its route rows become visible. */
+            struct local_datapath *ld = get_local_datapath(
+                &rt_data->local_datapaths, sbrec_route->datapath->tunnel_key);
+            if (!ld || ld->is_switch) {
+                continue;
+            }
         }
 
         if (sbrec_advertised_route_is_new(sbrec_route) ||
