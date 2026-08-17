@@ -52,27 +52,34 @@ mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
 }
 
 /* Update or add an IP-MAC binding for 'logical_port'.
- * Caller should make sure that 'ovnsb_idl_txn' is valid. */
-void
+ * Caller should make sure that 'ovnsb_idl_txn' is valid.
+ * Returns the SB row that was inserted or updated, or NULL
+ * if 'update_only' is true and no existing row was found. */
+const struct sbrec_mac_binding *
 mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
                       struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                       const char *logical_port,
                       const struct sbrec_datapath_binding *dp,
                       struct eth_addr ea, const char *ip,
-                      bool update_only)
+                      bool update_only,
+                      const struct sbrec_mac_binding *sb_mb)
 {
     /* Convert ethernet argument to string form for database. */
     char mac_string[ETH_ADDR_STRLEN + 1];
     snprintf(mac_string, sizeof mac_string, ETH_ADDR_FMT, ETH_ADDR_ARGS(ea));
 
-    const struct sbrec_mac_binding *b =
-            mac_binding_lookup(sbrec_mac_binding_by_lport_ip,
-                               logical_port, ip);
+    const struct sbrec_mac_binding *b = sb_mb
+            ? sb_mb
+            : mac_binding_lookup(sbrec_mac_binding_by_lport_ip,
+                                 logical_port, ip);
     if (!b) {
         if (update_only) {
-            return;
+            return NULL;
         }
-        b = sbrec_mac_binding_insert(ovnsb_idl_txn);
+
+        /* Make sure the uuid persists between txn inserts. */
+        struct uuid uuid = uuid_random();
+        b = sbrec_mac_binding_insert_persist_uuid(ovnsb_idl_txn, &uuid);
         sbrec_mac_binding_set_logical_port(b, logical_port);
         sbrec_mac_binding_set_ip(b, ip);
         sbrec_mac_binding_set_datapath(b, dp);
@@ -91,4 +98,6 @@ mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
             sbrec_mac_binding_set_timestamp(b, time_wall_msec());
         }
     }
+
+    return b;
 }

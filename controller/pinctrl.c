@@ -4918,7 +4918,7 @@ run_put_mac_binding(struct ovsdb_idl_txn *ovnsb_idl_txn,
     ipv6_format_mapped(&mb->data.ip, &ip_s);
     mac_binding_add_to_sb(ovnsb_idl_txn, sbrec_mac_binding_by_lport_ip,
                           pb->logical_port, pb->datapath, mb->data.mac,
-                          ds_cstr(&ip_s), false);
+                          ds_cstr(&ip_s), false, NULL);
     ds_destroy(&ip_s);
 }
 

@@ -104,6 +104,7 @@
 #include "evpn-arp.h"
 #include "evpn-binding.h"
 #include "evpn-fdb.h"
+#include "evpn-mac-binding-sync.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
 
@@ -5141,13 +5142,10 @@ static enum engine_input_handler_result
 pflow_output_arp_handler(struct engine_node *node, void *data)
 {
     struct ed_type_pflow_output *pfo = data;
-    struct ed_type_runtime_data *rt_data =
-        engine_get_input_data("runtime_data", node);
     struct ed_type_evpn_arp *ea_data =
         engine_get_input_data("evpn_arp", node);
 
-    physical_handle_evpn_arp_changes(&rt_data->local_datapaths,
-                                     &pfo->flow_table,
+    physical_handle_evpn_arp_changes(&pfo->flow_table,
                                      &ea_data->updated_arps,
                                      &ea_data->removed_arps);
     return EN_HANDLED_UPDATED;
@@ -5218,6 +5216,14 @@ controller_output_route_exchange_handler(struct engine_node *node OVS_UNUSED,
 static enum engine_input_handler_result
 controller_output_garp_rarp_handler(struct engine_node *node OVS_UNUSED,
                                     void *data OVS_UNUSED)
+{
+    return EN_HANDLED_UPDATED;
+}
+
+static enum engine_input_handler_result
+controller_output_evpn_mac_binding_sync_handler(
+    struct engine_node *node OVS_UNUSED,
+    void *data OVS_UNUSED)
 {
     return EN_HANDLED_UPDATED;
 }
@@ -6958,6 +6964,106 @@ evpn_arp_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
     return EN_UNHANDLED;
 }
 
+/* EVPN MAC binding sync waker: a timer-based input node that
+ * periodically fires EN_UPDATED to trigger the sync node so it
+ * can refresh timestamps on SB MAC_Binding rows. */
+static void *
+en_evpn_mac_binding_sync_waker_init(struct engine_node *node OVS_UNUSED,
+                                    struct engine_arg *arg OVS_UNUSED)
+{
+    struct evpn_mb_sync_waker *waker = xzalloc(sizeof *waker);
+    return waker;
+}
+
+static enum engine_node_state
+en_evpn_mac_binding_sync_waker_run(struct engine_node *node OVS_UNUSED,
+                                   void *data)
+{
+    struct evpn_mb_sync_waker *waker = data;
+
+    if (!waker->should_schedule) {
+        return EN_UNCHANGED;
+    }
+
+    if (time_msec() >= waker->next_wake_msec) {
+        waker->should_schedule = false;
+        return EN_UPDATED;
+    }
+
+    poll_timer_wait_until(waker->next_wake_msec);
+    return EN_UNCHANGED;
+}
+
+static void
+en_evpn_mac_binding_sync_waker_cleanup(void *data OVS_UNUSED)
+{
+}
+
+/* EVPN MAC binding sync node: syncs EVPN-learned MAC bindings
+ * to the SB MAC_Binding table so they are distributed to all
+ * chassis. */
+static void *
+en_evpn_mac_binding_sync_init(struct engine_node *node OVS_UNUSED,
+                              struct engine_arg *arg OVS_UNUSED)
+{
+    struct ed_type_evpn_mac_binding_sync *data = xmalloc(sizeof *data);
+    evpn_mac_binding_sync_init(data);
+    return data;
+}
+
+static enum engine_node_state
+en_evpn_mac_binding_sync_run(struct engine_node *node, void *data_)
+{
+    struct ed_type_evpn_mac_binding_sync *data = data_;
+
+    struct ed_type_evpn_arp *earp_data =
+        engine_get_input_data("evpn_arp", node);
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    struct mac_cache_data *mac_cache_data =
+        engine_get_input_data("mac_cache", node);
+    struct engine_node *sb_mb_node =
+        engine_get_input("SB_mac_binding", node);
+    struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip =
+        engine_ovsdb_node_get_index(sb_mb_node, "lport_ip");
+    const struct sbrec_mac_binding_table *mb_table =
+        EN_OVSDB_GET(sb_mb_node);
+
+    struct evpn_mb_sync_waker *waker =
+        engine_get_input_data("evpn_mac_binding_sync_waker", node);
+
+    data->sb_changes_pending = false;
+
+    evpn_mac_binding_sync_run(engine_get_context()->ovnsb_idl_txn,
+                              sbrec_mac_binding_by_lport_ip,
+                              mb_table,
+                              &rt_data->local_datapaths,
+                              &earp_data->arps,
+                              mac_cache_data,
+                              data, waker);
+
+    return EN_UPDATED;
+}
+
+static void
+en_evpn_mac_binding_sync_cleanup(void *data_)
+{
+    struct ed_type_evpn_mac_binding_sync *data = data_;
+    evpn_mac_binding_sync_cleanup(data);
+}
+
+static enum engine_input_handler_result
+evpn_mac_binding_sync_sb_ro_handler(struct engine_node *node OVS_UNUSED,
+                                    void *data_)
+{
+    struct ed_type_evpn_mac_binding_sync *data = data_;
+    if (data->sb_changes_pending) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 /* Define engine node functions for nodes that represent SB tables.
  *
  * en_sb_<TABLE_NAME>_run()
@@ -7082,6 +7188,8 @@ static ENGINE_NODE(nexthop_exchange);
 static ENGINE_NODE(evpn_vtep_binding, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(evpn_fdb, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(evpn_arp, CLEAR_TRACKED_DATA);
+static ENGINE_NODE(evpn_mac_binding_sync_waker);
+static ENGINE_NODE(evpn_mac_binding_sync, SB_WRITE);
 static ENGINE_NODE(datapaths_updated);
 static ENGINE_NODE(sb_cond_seqno);
 
@@ -7369,6 +7477,21 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_evpn_arp, &en_evpn_vtep_binding,
                      evpn_arp_vtep_binding_handler);
 
+    engine_add_input(&en_evpn_mac_binding_sync,
+                     &en_evpn_mac_binding_sync_waker, NULL);
+    engine_add_input(&en_evpn_mac_binding_sync, &en_evpn_arp, NULL);
+    /* MAC_Binding data is only used via an index for lookups. */
+    engine_add_input(&en_evpn_mac_binding_sync, &en_sb_mac_binding,
+                     engine_noop_handler);
+    /* Runtime data is only used for local_datapaths access. */
+    engine_add_input(&en_evpn_mac_binding_sync, &en_runtime_data,
+                     engine_noop_handler);
+    /* MAC cache data is only used for aging threshold lookup. */
+    engine_add_input(&en_evpn_mac_binding_sync, &en_mac_cache,
+                     engine_noop_handler);
+    engine_add_input(&en_evpn_mac_binding_sync, &en_sb_ro,
+                     evpn_mac_binding_sync_sb_ro_handler);
+
     engine_add_input(&en_pflow_output, &en_evpn_vtep_binding,
                      pflow_output_evpn_binding_handler);
     engine_add_input(&en_pflow_output, &en_evpn_fdb,
@@ -7390,6 +7513,8 @@ inc_proc_ovn_controller_init(
                      controller_output_route_exchange_handler);
     engine_add_input(&en_controller_output, &en_garp_rarp,
                      controller_output_garp_rarp_handler);
+    engine_add_input(&en_controller_output, &en_evpn_mac_binding_sync,
+                     controller_output_evpn_mac_binding_sync_handler);
 
     engine_add_input(&en_acl_id, &en_sb_acl_id, NULL);
     engine_add_input(&en_controller_output, &en_acl_id,
