@@ -14622,6 +14622,8 @@ check ovn-nbctl ls-add ls -- \
 check ovn-nbctl lsp-add ls lsp-bgp -- \
     lsp-set-addresses lsp-bgp unknown
 
+check ovn-nbctl --wait=sb sync
+
 # Function that ensures that no redirect rules are installed.
 check_no_redirect() {
     AT_CHECK([ovn-sbctl dump-flows ls | grep ls_in_l2_lkup  | grep -E "tcp.dst == 179|tcp.src == 179" | wc -l], [0], [0
