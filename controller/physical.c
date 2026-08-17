@@ -58,7 +58,6 @@
 #include "vec.h"
 #include "vswitch-idl.h"
 #include "hmapx.h"
-#include "neighbor-of.h"
 
 VLOG_DEFINE_THIS_MODULE(physical);
 
@@ -3706,28 +3705,11 @@ physical_consider_evpn_fdb(const struct evpn_fdb *fdb,
 }
 
 static void
-physical_consider_evpn_arp(const struct hmap *local_datapaths,
-                           const struct evpn_arp *arp,
+physical_consider_evpn_arp(const struct evpn_arp *arp,
                            struct ofpbuf *ofpacts,
                            struct match *match,
                            struct ovn_desired_flow_table *flow_table)
 {
-    /* Walk connected OVN routers and install neighbor flows for the ARPs
-     * learned on EVPN datapaths.*/
-    const struct peer_ports *peers;
-    VECTOR_FOR_EACH_PTR (&arp->ldp->peer_ports, peers) {
-        const struct sbrec_port_binding *remote_pb = peers->remote;
-        struct local_datapath *peer_ld =
-            get_local_datapath(local_datapaths,
-                               remote_pb->datapath->tunnel_key);
-        if (!peer_ld || peer_ld->is_switch) {
-            continue;
-        }
-
-        consider_neighbor_flow(remote_pb, &arp->flow_uuid, &arp->ip, arp->mac,
-                               flow_table, arp->priority, false);
-    }
-
     /* Install EVPN ARP lookup flows in the dedicated side table for the
      * switch datapath.  These flows are matched by the chk_evpn_arp()
      * action.  On a hit they load the resolved MAC into eth.dst
@@ -3806,8 +3788,7 @@ physical_eval_evpn_flows(const struct physical_ctx *ctx,
 
     const struct evpn_arp *arp;
     HMAP_FOR_EACH (arp, hmap_node, ctx->evpn_arps) {
-        physical_consider_evpn_arp(ctx->local_datapaths, arp, ofpacts,
-                                   &match, flow_table);
+        physical_consider_evpn_arp(arp, ofpacts, &match, flow_table);
     }
 }
 
@@ -4016,8 +3997,7 @@ physical_handle_evpn_fdb_changes(struct ovn_desired_flow_table *flow_table,
 }
 
 void
-physical_handle_evpn_arp_changes(const struct hmap *local_datapaths,
-                                 struct ovn_desired_flow_table *flow_table,
+physical_handle_evpn_arp_changes(struct ovn_desired_flow_table *flow_table,
                                  const struct hmapx *updated_arps,
                                  const struct uuidset *removed_arps)
 {
@@ -4030,8 +4010,7 @@ physical_handle_evpn_arp_changes(const struct hmap *local_datapaths,
         const struct evpn_arp *arp = node->data;
 
         ofctrl_remove_flows(flow_table, &arp->flow_uuid);
-        physical_consider_evpn_arp(local_datapaths, arp, &ofpacts,
-                                   &match, flow_table);
+        physical_consider_evpn_arp(arp, &ofpacts, &match, flow_table);
     }
     ofpbuf_uninit(&ofpacts);
 
