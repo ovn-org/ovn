@@ -4106,6 +4106,14 @@ tcp.flags = RST;
       </li>
     </ol>
 
+    <p>
+      In EVPN deployments, <code>ovn-controller</code> also writes rows to
+      this table for MAC bindings learned through EVPN Type-2 routes (via
+      FRR and the kernel neighbor table).  These entries are keyed by the
+      router port connected to the EVPN logical switch and behave identically
+      to ARP/ND-learned bindings for consumption and aging purposes.
+    </p>
+
     <column name="logical_port">
       The logical port on which the binding was discovered.
     </column>

@@ -27,10 +27,11 @@ const struct sbrec_mac_binding *
 mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                    const char *logical_port, const char *ip);
 
-void mac_binding_add_to_sb(
+const struct sbrec_mac_binding *mac_binding_add_to_sb(
     struct ovsdb_idl_txn *,
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
     const char *logical_port, const struct sbrec_datapath_binding *,
-    struct eth_addr, const char *ip, bool update_only);
+    struct eth_addr, const char *ip, bool update_only,
+    const struct sbrec_mac_binding *sb_mb);
 
 #endif /* lib/mac-binding-index.h */

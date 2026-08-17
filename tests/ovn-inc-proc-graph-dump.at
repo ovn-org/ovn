@@ -413,9 +413,6 @@ digraph "Incremental-Processing-Engine" {
 	evpn_fdb [[style=filled, shape=box, fillcolor=white, label="evpn_fdb"]];
 	neighbor_exchange -> evpn_fdb [[label=""]];
 	evpn_vtep_binding -> evpn_fdb [[label="evpn_fdb_vtep_binding_handler"]];
-	evpn_arp [[style=filled, shape=box, fillcolor=white, label="evpn_arp"]];
-	neighbor_exchange -> evpn_arp [[label=""]];
-	evpn_vtep_binding -> evpn_arp [[label="evpn_arp_vtep_binding_handler"]];
 	pflow_output [[style=filled, shape=box, fillcolor=white, label="pflow_output"]];
 	non_vif_data -> pflow_output [[label=""]];
 	northd_options -> pflow_output [[label=""]];
@@ -435,7 +432,6 @@ digraph "Incremental-Processing-Engine" {
 	SB_sb_global -> pflow_output [[label="pflow_output_debug_handler"]];
 	evpn_vtep_binding -> pflow_output [[label="pflow_output_evpn_binding_handler"]];
 	evpn_fdb -> pflow_output [[label="pflow_output_fdb_handler"]];
-	evpn_arp -> pflow_output [[label="pflow_output_arp_handler"]];
 	mac_cache [[style=filled, shape=box, fillcolor=white, label="mac_cache"]];
 	runtime_data -> mac_cache [[label="mac_cache_runtime_data_handler"]];
 	SB_mac_binding -> mac_cache [[label="mac_cache_sb_mac_binding_handler"]];
@@ -474,6 +470,17 @@ digraph "Incremental-Processing-Engine" {
 	SB_datapath_binding -> garp_rarp [[label="garp_rarp_sb_datapath_binding_handler"]];
 	SB_mac_binding -> garp_rarp [[label="engine_noop_handler"]];
 	runtime_data -> garp_rarp [[label="garp_rarp_runtime_data_handler"]];
+	evpn_mac_binding_sync_waker [[style=filled, shape=box, fillcolor=white, label="evpn_mac_binding_sync_waker"]];
+	evpn_arp [[style=filled, shape=box, fillcolor=white, label="evpn_arp"]];
+	neighbor_exchange -> evpn_arp [[label=""]];
+	evpn_vtep_binding -> evpn_arp [[label="evpn_arp_vtep_binding_handler"]];
+	evpn_mac_binding_sync [[style=filled, shape=box, fillcolor=white, label="evpn_mac_binding_sync"]];
+	evpn_mac_binding_sync_waker -> evpn_mac_binding_sync [[label=""]];
+	evpn_arp -> evpn_mac_binding_sync [[label=""]];
+	SB_mac_binding -> evpn_mac_binding_sync [[label="engine_noop_handler"]];
+	runtime_data -> evpn_mac_binding_sync [[label="engine_noop_handler"]];
+	mac_cache -> evpn_mac_binding_sync [[label="engine_noop_handler"]];
+	sb_ro -> evpn_mac_binding_sync [[label="evpn_mac_binding_sync_sb_ro_handler"]];
 	SB_acl_id [[style=filled, shape=box, fillcolor=white, label="SB_acl_id"]];
 	acl_id [[style=filled, shape=box, fillcolor=white, label="acl_id"]];
 	SB_acl_id -> acl_id [[label=""]];
@@ -485,6 +492,7 @@ digraph "Incremental-Processing-Engine" {
 	bfd_chassis -> controller_output [[label="controller_output_bfd_chassis_handler"]];
 	route_exchange -> controller_output [[label="controller_output_route_exchange_handler"]];
 	garp_rarp -> controller_output [[label="controller_output_garp_rarp_handler"]];
+	evpn_mac_binding_sync -> controller_output [[label="controller_output_evpn_mac_binding_sync_handler"]];
 	acl_id -> controller_output [[label="controller_output_acl_id_handler"]];
 }
 ])

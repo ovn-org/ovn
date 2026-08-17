@@ -365,7 +365,7 @@ send_garp_locally(const struct garp_rarp_ctx_in *r_ctx_in,
         mac_binding_add_to_sb(r_ctx_in->ovnsb_idl_txn,
                               r_ctx_in->sbrec_mac_binding_by_lport_ip,
                               remote->logical_port, remote->datapath,
-                              ea, ds_cstr(&ip_s), update_only);
+                              ea, ds_cstr(&ip_s), update_only, NULL);
         ds_destroy(&ip_s);
     }
 }

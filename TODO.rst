@@ -156,9 +156,6 @@ OVN To-do List
     Otherwise we could try to add duplicated Learned_Routes and the ovnsb
     commit would fail.
 
-  * Add support for EVPN L3, that involves MAC Binding learning and
-    advertisement.
-
 * Datapath sync nodes
 
   * Migrate data stored in the ovn\_datapath structure to

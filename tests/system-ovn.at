@@ -18352,9 +18352,9 @@ rtr_dp_key=$(fetch_column Datapath tunnel_key external_ids:name=lr)
 rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=lr-ls-evpn)
 
 # Simulate remote workload ARPs (type-2 MAC+IP EVPN route).
-# ovn-controller needs to add OF rules for ARP lookup but no rules for
-# MAC_CACHE use.  These entries do not age out automatically, their lifetime
-# is controlled by the BGP-EVPN control plane.
+# EVPN-learned MAC bindings are written to the SB MAC_Binding table and
+# distributed to all chassis.  These entries do not age out automatically,
+# their lifetime is controlled by the BGP-EVPN control plane.
 check ip neigh add dev $BR_NAME 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
 check ip neigh add dev $BR_NAME 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
 check ip neigh add dev $BR_NAME 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
@@ -18372,35 +18372,52 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
  VNI: 10, MAC: f0:00:0f:16:10:70, IP: 172:16::70, dp_key: $dp_key
 ])
 
+dnl Verify EVPN-learned MAC bindings appear in the SB MAC_Binding table.
+wait_row_count MAC_Binding 1 ip=172.16.1.50
+wait_row_count MAC_Binding 1 ip=172.16.1.60
+wait_row_count MAC_Binding 1 ip=172.16.1.70
+wait_row_count MAC_Binding 1 ip="172\:16\:\:50"
+wait_row_count MAC_Binding 1 ip="172\:16\:\:60"
+wait_row_count MAC_Binding 1 ip="172\:16\:\:70"
+
 AS_BOX([Check dynamic-routing-arp-prefer-local=true])
 check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routing-arp-prefer-local=true
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,arp_spa=172.16.1.50,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,arp_spa=172.16.1.60,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,arp_spa=172.16.1.70,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,nw_src=172.16.1.50 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,nw_src=172.16.1.60 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,nw_src=172.16.1.70 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,ipv6_src=172:16::50 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,ipv6_src=172:16::60 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,ipv6_src=172:16::70 actions=drop
 ])
 
 AS_BOX([Check dynamic-routing-arp-prefer-local=false])
@@ -18409,29 +18426,38 @@ check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routin
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,arp_spa=172.16.1.50,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,arp_spa=172.16.1.60,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,arp_spa=172.16.1.70,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,nw_src=172.16.1.50 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,nw_src=172.16.1.60 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,nw_src=172.16.1.70 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,ipv6_src=172:16::50 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,ipv6_src=172:16::60 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,ipv6_src=172:16::70 actions=drop
 ])
 
 # Check that the recompute won't change the UUIDs and flows.
@@ -18495,23 +18521,23 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 check ovn-nbctl --wait=hv lr-del lr
@@ -18889,9 +18915,9 @@ rtr_dp_key=$(fetch_column Datapath tunnel_key external_ids:name=lr)
 rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=lr-ls-evpn)
 
 # Simulate remote workload ARPs (type-2 MAC+IP EVPN route).
-# ovn-controller needs to add OF rules for ARP lookup but no rules for
-# MAC_CACHE use.  These entries do not age out automatically, their lifetime
-# is controlled by the BGP-EVPN control plane.
+# EVPN-learned MAC bindings are written to the SB MAC_Binding table and
+# distributed to all chassis.  These entries do not age out automatically,
+# their lifetime is controlled by the BGP-EVPN control plane.
 check ip neigh add dev $BR_NAME 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
 check ip neigh add dev $BR_NAME 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
 check ip neigh add dev $BR_NAME 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
@@ -18909,35 +18935,52 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
  VNI: 10, MAC: f0:00:0f:16:10:70, IP: 172:16::70, dp_key: $dp_key
 ])
 
+dnl Verify EVPN-learned MAC bindings appear in the SB MAC_Binding table.
+wait_row_count MAC_Binding 1 ip=172.16.1.50
+wait_row_count MAC_Binding 1 ip=172.16.1.60
+wait_row_count MAC_Binding 1 ip=172.16.1.70
+wait_row_count MAC_Binding 1 ip="172\:16\:\:50"
+wait_row_count MAC_Binding 1 ip="172\:16\:\:60"
+wait_row_count MAC_Binding 1 ip="172\:16\:\:70"
+
 AS_BOX([Check dynamic-routing-arp-prefer-local=true])
 check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routing-arp-prefer-local=true
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,arp_spa=172.16.1.50,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,arp_spa=172.16.1.60,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,arp_spa=172.16.1.70,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,nw_src=172.16.1.50 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,nw_src=172.16.1.60 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,nw_src=172.16.1.70 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,ipv6_src=172:16::50 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,ipv6_src=172:16::60 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,ipv6_src=172:16::70 actions=drop
 ])
 
 AS_BOX([Check dynamic-routing-arp-prefer-local=false])
@@ -18946,29 +18989,38 @@ check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routin
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,arp_spa=172.16.1.50,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,arp_spa=172.16.1.60,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,arp_spa=172.16.1.70,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,nw_src=172.16.1.50 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,nw_src=172.16.1.60 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,nw_src=172.16.1.70 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,ipv6_src=172:16::50 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,ipv6_src=172:16::60 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,ipv6_src=172:16::70 actions=drop
 ])
 
 # Check that the recompute won't change the UUIDs and flows.
@@ -18992,6 +19044,14 @@ check ip -6 neigh del dev $BR_NAME 172:16::70
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
 ])
+
+dnl Verify EVPN MAC_Binding rows are deleted from SB.
+wait_row_count MAC_Binding 0 ip=172.16.1.50
+wait_row_count MAC_Binding 0 ip=172.16.1.60
+wait_row_count MAC_Binding 0 ip=172.16.1.70
+wait_row_count MAC_Binding 0 ip="172\:16\:\:50"
+wait_row_count MAC_Binding 0 ip="172\:16\:\:60"
+wait_row_count MAC_Binding 0 ip="172\:16\:\:70"
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
@@ -19032,23 +19092,23 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 check ovn-nbctl --wait=hv lr-del lr
@@ -19472,9 +19532,9 @@ rtr_dp_key=$(fetch_column Datapath tunnel_key external_ids:name=lr)
 rtr_port_key=$(fetch_column Port_Binding tunnel_key logical_port=lr-ls-evpn)
 
 # Simulate remote workload ARPs (type-2 MAC+IP EVPN route).
-# ovn-controller needs to add OF rules for ARP lookup but no rules for
-# MAC_CACHE use.  These entries do not age out automatically, their lifetime
-# is controlled by the BGP-EVPN control plane.
+# EVPN-learned MAC bindings are written to the SB MAC_Binding table and
+# distributed to all chassis.  These entries do not age out automatically,
+# their lifetime is controlled by the BGP-EVPN control plane.
 check ip neigh add dev $BR_NAME 172.16.1.50 lladdr f0:00:0f:16:10:50 nud noarp extern_learn
 check ip neigh add dev $BR_NAME 172.16.1.60 lladdr f0:00:0f:16:10:60 nud noarp extern_learn
 check ip neigh add dev $BR_NAME 172.16.1.70 lladdr f0:00:0f:16:10:70 nud noarp extern_learn
@@ -19492,35 +19552,52 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
  VNI: 10, MAC: f0:00:0f:16:10:70, IP: 172:16::70, dp_key: $dp_key
 ])
 
+dnl Verify EVPN-learned MAC bindings appear in the SB MAC_Binding table.
+wait_row_count MAC_Binding 1 ip=172.16.1.50
+wait_row_count MAC_Binding 1 ip=172.16.1.60
+wait_row_count MAC_Binding 1 ip=172.16.1.70
+wait_row_count MAC_Binding 1 ip="172\:16\:\:50"
+wait_row_count MAC_Binding 1 ip="172\:16\:\:60"
+wait_row_count MAC_Binding 1 ip="172\:16\:\:70"
+
 AS_BOX([Check dynamic-routing-arp-prefer-local=true])
 check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routing-arp-prefer-local=true
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=20,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=20,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,arp_spa=172.16.1.50,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,arp_spa=172.16.1.60,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,arp_spa=172.16.1.70,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,nw_src=172.16.1.50 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,nw_src=172.16.1.60 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,nw_src=172.16.1.70 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,ipv6_src=172:16::50 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,ipv6_src=172:16::60 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,ipv6_src=172:16::70 actions=drop
 ])
 
 AS_BOX([Check dynamic-routing-arp-prefer-local=false])
@@ -19529,29 +19606,38 @@ check ovn-nbctl --wait=hv set Logical_Switch ls-evpn other_config:dynamic-routin
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,arp_spa=172.16.1.10,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,arp_spa=172.16.1.50,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,arp_spa=172.16.1.60,arp_op=2 actions=drop
+priority=100,arp,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,arp_spa=172.16.1.70,arp_op=2 actions=drop
 priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10,nw_src=172.16.1.10 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,nw_src=172.16.1.50 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,nw_src=172.16.1.60 actions=drop
+priority=100,ip,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,nw_src=172.16.1.70 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,ipv6_src=172:16::50 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,ipv6_src=172:16::60 actions=drop
+priority=100,ipv6,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,ipv6_src=172:16::70 actions=drop
 ])
 
 # Check that the recompute won't change the UUIDs and flows.
@@ -19575,6 +19661,14 @@ check ip -6 neigh del dev $BR_NAME 172:16::70
 
 OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | sort], [0], [dnl
 ])
+
+dnl Verify EVPN MAC_Binding rows are deleted from SB.
+wait_row_count MAC_Binding 0 ip=172.16.1.50
+wait_row_count MAC_Binding 0 ip=172.16.1.60
+wait_row_count MAC_Binding 0 ip=172.16.1.70
+wait_row_count MAC_Binding 0 ip="172\:16\:\:50"
+wait_row_count MAC_Binding 0 ip="172\:16\:\:60"
+wait_row_count MAC_Binding 0 ip="172\:16\:\:70"
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
@@ -19615,23 +19709,23 @@ OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovn-appctl evpn/vtep-arp-list | cut -d',' -f2- | s
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,reg0=0xac10010a,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:01:10,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
-priority=200,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100132,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac10013c,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg0=0xac100146,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x50,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:50,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x60,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:60,load:0x1->NXM_NX_REG10[[6]]
+priority=100,reg4=0x1720016,reg5=0,reg6=0,reg7=0x70,reg15=0x$rtr_port_key,metadata=0x$rtr_dp_key actions=mod_dl_dst:f0:00:0f:16:10:70,load:0x1->NXM_NX_REG10[[6]]
 ])
 
 AT_CHECK_UNQUOTED([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_LOOKUP | grep priority | \
                    awk '{print $[7], $[8]}' | sort], [0], [dnl
 priority=100,arp,reg0=0xac10010a,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:01:10 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
-priority=200,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100132,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac10013c,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,arp,reg0=0xac100146,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x50,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:50,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x60,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:60,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
+priority=100,icmp6,reg0=0x1720016,reg1=0,reg2=0,reg3=0x70,reg14=0x$rtr_port_key,metadata=0x$rtr_dp_key,dl_src=f0:00:0f:16:10:70,icmp_code=0 actions=load:0x1->NXM_NX_REG10[[6]]
 ])
 
 check ovn-nbctl --wait=hv lr-del lr
