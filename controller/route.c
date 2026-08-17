@@ -194,9 +194,6 @@ evaluate_lb_route_gates(struct hmap *gates,
                         struct ovsdb_idl_index *service_monitor_by_selector,
                         struct uuidset *relevant_service_monitors)
 {
-    struct sbrec_service_monitor *filter =
-        sbrec_service_monitor_index_init_row(service_monitor_by_selector);
-
     struct lb_route_gate *g;
     HMAP_FOR_EACH (g, node, gates) {
         const char *checks = smap_get(&g->route->external_ids,
@@ -235,6 +232,9 @@ evaluate_lb_route_gates(struct hmap *gates,
             }
 
             const char *tracked_lp = g->route->tracked_port->logical_port;
+            struct sbrec_service_monitor *filter =
+                sbrec_service_monitor_index_init_row(
+                    service_monitor_by_selector);
             sbrec_service_monitor_index_set_logical_port(filter, tracked_lp);
             sbrec_service_monitor_index_set_type(filter, "load-balancer");
             sbrec_service_monitor_index_set_protocol(filter, protocol);
@@ -256,14 +256,14 @@ evaluate_lb_route_gates(struct hmap *gates,
                                  !strcmp(monitor->status, "online");
             }
 
+            sbrec_service_monitor_index_destroy_row(filter);
+
             if (g->any_online) {
                 break;
             }
         }
         free(buf);
     }
-
-    sbrec_service_monitor_index_destroy_row(filter);
 }
 
 /* Look up the gate decision for a specific route. Returns:
