@@ -76,17 +76,6 @@ evpn_arp_run(const struct evpn_arp_ctx_in *arp_ctx_in,
             updated = true;
         }
 
-        enum neigh_of_rule_prio priority =
-            smap_get_bool(&arp->ldp->datapath->external_ids,
-                          "dynamic-routing-arp-prefer-local",
-                          false)
-            ? NEIGH_OF_EVPN_MAC_BINDING_LOW_PRIO
-            : NEIGH_OF_EVPN_MAC_BINDING_HIGH_PRIO;
-        if (arp->priority != priority) {
-            arp->priority = priority;
-            updated = true;
-        }
-
         if (updated) {
             hmapx_add(arp_ctx_out->updated_arps, arp);
         }

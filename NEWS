@@ -9,6 +9,12 @@ OVN v26.03.3 - xx xxx xxxx
     (e.g. via the ovs-delete-transient-ports.service on RHEL/Fedora) will
     automatically remove stale tunnel ports on reboot, preventing them from
     interfering with BFD and HA failover after a gateway chassis reboot.
+  - Dynamic Routing:
+    * Remove the "other_config:dynamic-routing-arp-prefer-local"
+      option from Logical Switches.  EVPN-learned MAC bindings are
+      now written to the SB MAC_Binding table and consumed at the
+      same priority as dynamic entries, making the preference option
+      obsolete.
 
 OVN v26.03.2 - 16 Jun 2026
 --------------------------
