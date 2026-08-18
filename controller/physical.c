@@ -3738,7 +3738,8 @@ physical_consider_evpn_arp(const struct evpn_arp *arp,
     /* Set the EVPN lookup result bit. */
     put_load(1, MFF_LOG_FLAGS, MLF_EVPN_LOOKUP_BIT, 1, ofpacts);
 
-    ofctrl_add_flow(flow_table, OFTABLE_EVPN_ARP_LOOKUP, arp->priority,
+    ofctrl_add_flow(flow_table, OFTABLE_EVPN_ARP_LOOKUP,
+                    NEIGH_OF_DYNAMIC_MAC_BINDING_PRIO,
                     arp->flow_uuid.parts[0], match, ofpacts,
                     &arp->flow_uuid);
 }

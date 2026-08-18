@@ -630,16 +630,18 @@ Southbound FDB table (populated through normal OVN mechanisms) before
 falling back to the locally learned EVPN FDB cache.  By default, the
 EVPN-learned entries take precedence.
 
-Similarly, the ``dynamic-routing-arp-prefer-local`` option controls the
-lookup order for ARP/ND entries: when set to ``true``, the Southbound
-``MAC_Binding`` table is checked before the EVPN-learned neighbor cache.
+EVPN-learned ARP/ND entries (Type-2 MAC+IP routes) are written to
+the Southbound ``MAC_Binding`` table and consumed at the same priority
+as dynamically learned entries through the normal lflow pipeline.
+This ensures all chassis see the same MAC bindings without requiring
+a separate preference option.
 
-Unlike IP route exchange, dynamically learned EVPN information
-(remote VTEPs, FDB entries, and ARP/ND neighbors) is **not** stored
-in the OVN Southbound database.  Each ``ovn-controller`` instance
-processes this information locally, in memory.  This design avoids
-the overhead of synchronizing high-volume, rapidly changing L2/L3
-state through the centralized database.
+Unlike IP route exchange, dynamically learned EVPN L2 information
+(remote VTEPs and FDB entries) is **not** stored in the OVN
+Southbound database.  Each ``ovn-controller`` instance processes
+this information locally, in memory.  This design avoids the
+overhead of synchronizing high-volume, rapidly changing L2 state
+through the centralized database.
 
 Local MAC and IP Advertisement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
