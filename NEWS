@@ -6,6 +6,12 @@ Post v26.09.09
      (e.g. via the ovs-delete-transient-ports.service on RHEL/Fedora) will
      automatically remove stale tunnel ports on reboot, preventing them from
      interfering with BFD and HA failover after a gateway chassis reboot.
+   - Dynamic Routing:
+     * Remove the "other_config:dynamic-routing-arp-prefer-local"
+       option from Logical Switches.  EVPN-learned MAC bindings are
+       now written to the SB MAC_Binding table and consumed at the
+       same priority as dynamic entries, making the preference option
+       obsolete.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------
@@ -71,6 +77,11 @@ OVN v26.09.0 - xxx xx xxxx
        "external_ids:dynamic-routing-port-mapping" for veth-based routing
        daemon integrations.  This feature is Linux-only and requires
        OVS version >= 4.0.
+     * Remove the "other_config:dynamic-routing-arp-prefer-local"
+       option from Logical Switches.  EVPN-learned MAC bindings are
+       now written to the SB MAC_Binding table and consumed at the
+       same priority as dynamic entries, making the preference option
+       obsolete.
    - Added "override-connected" option to Logical Router Static Routes to mark
      static routes as higher-priority than connected routes, which in turn led
      to changes in administrative distance for specific route types. Please see

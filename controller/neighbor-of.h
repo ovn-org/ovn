@@ -21,21 +21,19 @@
 #include "ofctrl.h"
 
 /* Priorities of ovn-controller generated flows for various types of MAC
- * Bindings in different situations.  Valid preference orders, based on
- * the "dynamic-routing-arp-prefer-local" logical switch config and the
- * SB.Static_MAC_Binding.override_dynamic_mac value are:
+ * Bindings.  EVPN-learned MAC bindings are written to the SB MAC_Binding
+ * table and consumed through the normal lflow pipeline at the same
+ * priority as dynamic entries.  The EVPN ARP lookup side table (table 113)
+ * uses the dynamic priority as well.  Valid preference orders based on
+ * the SB.Static_MAC_Binding.override_dynamic_mac value are:
  *
- * - EVPN-learned < static-mac-binding < dynamic-mac-binding
- * - EVPN-learned < dynamic-mac-binding < static-mac-binding
- * - static-mac-binding < dynamic-mac-binding < EVPN-learned
- * - dynamic-mac-binding < static-mac-binding < EVPN-learned
+ * - static-mac-binding < dynamic-mac-binding (+ EVPN)
+ * - dynamic-mac-binding (+ EVPN) < static-mac-binding
  */
 enum neigh_of_rule_prio {
-    NEIGH_OF_EVPN_MAC_BINDING_LOW_PRIO    = 20,
     NEIGH_OF_STATIC_MAC_BINDING_LOW_PRIO  = 50,
     NEIGH_OF_DYNAMIC_MAC_BINDING_PRIO     = 100,
     NEIGH_OF_STATIC_MAC_BINDING_HIGH_PRIO = 150,
-    NEIGH_OF_EVPN_MAC_BINDING_HIGH_PRIO   = 200,
 };
 
 void
