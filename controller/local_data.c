@@ -858,7 +858,7 @@ select_default_encap_ip(const struct sbrec_chassis *chassis,
             default_ip = encap->ip;
         }
 
-        if (smap_get_bool(&encap->options, "default-encap-ip", false)) {
+        if (smap_get_bool(&encap->options, "is_default", false)) {
             default_ip = encap->ip;
             break;  /* Found explicit default */
         }

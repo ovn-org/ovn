@@ -32615,6 +32615,57 @@ AT_CLEANUP
 
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([default encap-ip selection for multicast with flow-based tunnels])
+CHECK_SCAPY
+ovn_start
+net_add n1
+
+check ovn-nbctl ls-add ls1
+
+for i in 1 2; do
+    sim_add hv$i
+    as hv$i
+    ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.${i}1
+    check ovs-vsctl set open . external_ids:ovn-encap-ip=192.168.0.${i}1,192.168.0.${i}2
+    check ovs-vsctl set open . external_ids:ovn-enable-flow-based-tunnels=true
+    check ovs-vsctl set open . external_ids:ovn-encap-ip-default=192.168.0.${i}2
+
+    check ovs-vsctl add-port br-int vif${i}1 -- set Interface vif${i}1 \
+        external_ids:iface-id=lsp$i \
+        options:tx_pcap=hv$i/vif${i}1-tx.pcap \
+        options:rxq_pcap=hv$i/vif${i}1-rx.pcap
+    check ovn-nbctl lsp-add ls1 lsp$i -- \
+        lsp-set-addresses lsp$i "f0:00:00:00:00:${i}1 10.0.0.${i}1"
+done
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Use an unknown target IP so the ARP request is not intercepted by OVN's
+dnl ARP responder and is flooded via the multicast group instead.
+packet=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='f0:00:00:00:00:11') / \
+                  ARP(op=1, hwsrc='f0:00:00:00:00:11', psrc='10.0.0.11', \
+                      hwdst='00:00:00:00:00:00', pdst='10.0.0.99')")
+
+as hv1
+AT_CHECK([ovs-vsctl wait-until interface ovn-geneve 'ofport>0'])
+
+dnl Broadcast ARP for an unknown target triggers the multicast flood path
+dnl which calls fanout_to_chassis_flow_based().  The tunnel endpoints must
+dnl use the configured default encap IPs, not the first ones in the list.
+OVS_WAIT_UNTIL([
+    trace_output=$(ovs-appctl ofproto/trace br-int in_port=vif11 $packet)
+    echo "$trace_output" | grep -q "set_field:192.168.0.22->tun_dst"
+])
+AT_CHECK([echo "$trace_output" | grep -q "set_field:192.168.0.12->tun_src"])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Load Balancer LS hairpin OF flows])
 ovn_start
 
