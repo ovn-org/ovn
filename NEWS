@@ -97,6 +97,8 @@ Post v26.03.0
    - Added a new "ovn-debug lflow-pipeline-oftable-start-list" command that
      prints the starting OpenFlow table number of the logical ingress and
      egress pipelines.
+   - The support for co-hosting multiple controller instances is now
+     considered stable.  Its "experimental" tag has been removed.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------
