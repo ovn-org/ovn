@@ -39,6 +39,12 @@ static int nh_table_parse__(struct ofpbuf *, size_t ofs,
 static void nh_populate_grp_pointers(struct nexthop_entry *, struct hmap *);
 static uint32_t nexthop_entry_hash(uint32_t id);
 
+/* NHA_FDB was added in Linux 5.8 and might be missing in older kernel
+ * headers. */
+#ifndef HAVE_NHA_FDB
+#define NHA_FDB 11
+#endif
+
 /* The following definition should be available in Linux 6.12 and might be
  * missing if we have older headers. */
 #ifndef HAVE_NH_GRP_WEIGHT

@@ -27,6 +27,12 @@
 #include "neighbor-exchange-netlink.h"
 #include "neighbor.h"
 
+/* NDA_NH_ID was added in Linux 5.8 and might be missing in older kernel
+ * headers. */
+#ifndef HAVE_NDA_NH_ID
+#define NDA_NH_ID 13
+#endif
+
 VLOG_DEFINE_THIS_MODULE(neighbor_exchange_netlink);
 
 #define NETNL_REQ_BUFFER_SIZE 128

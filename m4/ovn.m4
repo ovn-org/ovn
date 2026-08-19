@@ -453,6 +453,30 @@ AC_DEFUN([OVS_CHECK_LINUX_NETLINK], [
     [Define to 1 if struct nla_bitfield32 is available.])])
 ])
 
+dnl OVN_CHECK_LINUX_NDA_NH_ID
+dnl
+dnl Configure Linux netlink neighbour NDA_NH_ID compat.
+AC_DEFUN([OVN_CHECK_LINUX_NDA_NH_ID], [
+  AC_COMPILE_IFELSE([
+    AC_LANG_PROGRAM([#include <linux/neighbour.h>], [
+        int x = NDA_NH_ID;
+    ])],
+    [AC_DEFINE([HAVE_NDA_NH_ID], [1],
+    [Define to 1 if NDA_NH_ID is available.])])
+])
+
+dnl OVN_CHECK_LINUX_NHA_FDB
+dnl
+dnl Configure Linux netlink nexthop NHA_FDB compat.
+AC_DEFUN([OVN_CHECK_LINUX_NHA_FDB], [
+  AC_COMPILE_IFELSE([
+    AC_LANG_PROGRAM([#include <linux/nexthop.h>], [
+        int x = NHA_FDB;
+    ])],
+    [AC_DEFINE([HAVE_NHA_FDB], [1],
+    [Define to 1 if NHA_FDB is available.])])
+])
+
 dnl OVN_CHECK_LINUX_NEXTHOP_WEIGHT
 dnl
 dnl Configure Linux netlink nexthop compat.
