@@ -3730,7 +3730,7 @@ en_non_vif_data_run(struct engine_node *node, void *data)
     ed_non_vif_data->use_flow_based_tunnels =
         is_flow_based_tunnels_enabled(ovs_table, chassis);
 
-    local_nonvif_data_run(br_int, chassis,
+    local_nonvif_data_run(br_int, chassis, sbrec_chassis_by_name,
                           &ed_non_vif_data->patch_ofports,
                           &ed_non_vif_data->chassis_tunnels,
                           ed_non_vif_data->flow_tunnels);

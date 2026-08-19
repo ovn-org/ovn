@@ -161,6 +161,7 @@ struct flow_based_tunnel {
 
 void local_nonvif_data_run(const struct ovsrec_bridge *br_int,
                            const struct sbrec_chassis *chassis,
+                           struct ovsdb_idl_index *sbrec_chassis_by_name,
                            struct simap *patch_ofports,
                            struct hmap *chassis_tunnels,
                            struct flow_based_tunnel *flow_tunnels);
