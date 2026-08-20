@@ -2129,6 +2129,25 @@ reg1[[1]] = lookup_fdb(outport, ip4.src);
 reg1[[1]] = lookup_fdb(ip4.src, eth.src);
     Cannot use numeric field ip4.src where string field is required.
 
+# nf_learn_orig_inport / nf_lookup_orig_inport
+nf_learn_orig_inport(ipv6 = false);
+    encodes as learn(table=OFTABLE_NF_ORIG_INPORT_LEARN,idle_timeout=60,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],NXM_OF_IP_DST[[]],NXM_NX_REG15[[]]=NXM_NX_REG14[[0..-1]],load:0x1->NXM_NX_REG10[[26]])
+
+nf_learn_orig_inport(ipv6 = true);
+    encodes as learn(table=OFTABLE_NF_ORIG_INPORT_LEARN,idle_timeout=60,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],NXM_NX_IPV6_DST[[]],NXM_NX_REG15[[]]=NXM_NX_REG14[[0..-1]],load:0x1->NXM_NX_REG10[[26]])
+
+nf_learn_orig_inport();
+    Syntax error at `)' invalid parameter.
+
+nf_learn_orig_inport(ipv6 = maybe);
+    Syntax error at `maybe' expecting true or false.
+
+reg0[[0]] = nf_lookup_orig_inport();
+    encodes as set_field:0/0x4000000->reg10,resubmit(,OFTABLE_NF_ORIG_INPORT_LEARN),move:NXM_NX_REG10[[26]]->NXM_NX_XXREG0[[96]]
+
+reg0 = nf_lookup_orig_inport();
+    Cannot use 32-bit field reg0[[0..31]] where 1-bit field is required.
+
 # check_in_port_sec
 reg0[[0]] = check_in_port_sec();
     encodes as set_field:0/0x1000->reg10,resubmit(,OFTABLE_CHK_IN_PORT_SEC),move:NXM_NX_REG10[[12]]->NXM_NX_XXREG0[[96]]

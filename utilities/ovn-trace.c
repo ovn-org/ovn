@@ -3217,6 +3217,17 @@ execute_ct_save_state(const struct ovnact_result *dl, struct flow *uflow,
 }
 
 static void
+execute_nf_lookup_orig_inport(const struct ovnact_nf_lookup *nf_lookup,
+                              struct flow *uflow, struct ovs_list *super)
+{
+    struct mf_subfield dst = expr_resolve_field(&nf_lookup->dst);
+    union mf_subvalue sv = { .u8_val = 0 };
+    mf_write_subfield_flow(&dst, &sv, uflow);
+    ovntrace_node_append(super, OVNTRACE_NODE_ACTION,
+                         "/* Assumed nf_lookup_orig_inport miss. */");
+}
+
+static void
 execute_ct_orig_tp_dst(const struct ovnact_result *res, struct flow *uflow,
                        struct ovs_list *super)
 {
@@ -3640,6 +3651,13 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_CHK_EVPN_ARP:
             execute_chk_evpn_arp(ovnact_get_CHK_EVPN_ARP(a), dp, uflow,
                                  super);
+            break;
+        case OVNACT_NF_LEARN_ORIG_INPORT:
+            /* Nothing to do for tracing. */
+            break;
+        case OVNACT_NF_LOOKUP_ORIG_INPORT:
+            execute_nf_lookup_orig_inport(
+                ovnact_get_NF_LOOKUP_ORIG_INPORT(a), uflow, super);
             break;
         }
     }

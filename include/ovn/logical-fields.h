@@ -140,6 +140,7 @@ enum mff_log_flags_bits {
     MLF_PKT_SAMPLED_BIT = 23,
     MLF_RECIRC_BIT = 24,
     MLF_EVPN_LOOKUP_BIT = 25,
+    MLF_POST_NF_LOOP_BACK_BIT = 26,
     MLF_NETWORK_ID_START_BIT = 28,
     MLF_NETWORK_ID_END_BIT = 31,
 };
@@ -218,6 +219,9 @@ enum mff_log_flags {
 
     /* Indicate that the lookup in the EVPN ARP table was successful. */
     MLF_EVPN_LOOKUP = (1 << MLF_EVPN_LOOKUP_BIT),
+
+    /* Set on a post-NF packet going back to the original ingress port. */
+    MLF_POST_NF_LOOP_BACK = (1 << MLF_POST_NF_LOOP_BACK_BIT),
 
     /* Assign network ID to packet to choose correct network for snat when
      * lb_force_snat_ip=router_ip. */

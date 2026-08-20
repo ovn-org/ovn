@@ -1832,6 +1832,63 @@
           </p>
         </dd>
 
+        <dt>
+          <code>nf_learn_orig_inport(ipv6 = <var>B</var>);</code>
+        </dt>
+
+        <dd>
+          <p>
+            Records the logical input port that the current IP packet
+            entered the logical switch on by learning a flow.  The learned
+            flow matches a later packet of the same flow (same logical
+            datapath and IP source and destination addresses) when its
+            logical output port equals that input port, that is, when the
+            packet is about to be sent back out of the port it originally
+            arrived on.
+          </p>
+
+          <p>
+            <var>B</var> must be <code>true</code> to learn an IPv6 flow or
+            <code>false</code> to learn an IPv4 flow.  The learned flow has a
+            60 second idle timeout.  This action is used together with
+            <code>nf_lookup_orig_inport()</code> to drop the duplicate
+            copies that a network function (NF) redirection can produce when
+            the destination MAC address is still unknown, which would
+            otherwise cause MAC address flaps or L2 loops.
+          </p>
+
+          <p>
+            <b>Example:</b>
+            <code>nf_learn_orig_inport(ipv6 = false);</code>
+          </p>
+        </dd>
+
+        <dt>
+          <code><var>R</var> = nf_lookup_orig_inport();</code>
+        </dt>
+
+        <dd>
+          <p>
+            <b>Result</b>: stored to a 1-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            Looks up the flow learned by
+            <code>nf_learn_orig_inport()</code>.  Stores <code>1</code> in
+            <var>R</var> if the current packet matches a learned flow, that is,
+            if it is an IP packet that, after network function redirection, is
+            about to be sent back out of the logical input port it originally
+            arrived on.  Otherwise stores <code>0</code>.
+          </p>
+
+          <p>
+            <b>Example:</b>
+            <code>
+              reg0[0] = nf_lookup_orig_inport();
+            </code>
+          </p>
+        </dd>
+
         <dt><code>nd_ns { <var>action</var>; </code>...<code> };</code></dt>
         <dd>
           <p>

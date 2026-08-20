@@ -140,6 +140,8 @@ struct collector_set_ids;
     OVNACT(CT_STATE_SAVE,     ovnact_result)          \
     OVNACT(MIRROR,            ovnact_mirror)          \
     OVNACT(CHK_EVPN_ARP,      ovnact_chk_evpn_arp)    \
+    OVNACT(NF_LEARN_ORIG_INPORT,  ovnact_nf_learn)    \
+    OVNACT(NF_LOOKUP_ORIG_INPORT, ovnact_nf_lookup)   \
 
 /* enum ovnact_type, with a member OVNACT_<ENUM> for each action. */
 enum OVS_PACKED_ENUM ovnact_type {
@@ -510,6 +512,18 @@ struct ovnact_lookup_fdb {
     struct ovnact ovnact;
     struct expr_field mac;     /* 48-bit Ethernet address. */
     struct expr_field port;    /* Logical port name. */
+    struct expr_field dst;     /* 1-bit destination field. */
+};
+
+/* OVNACT_NF_LEARN_ORIG_INPORT. */
+struct ovnact_nf_learn {
+    struct ovnact ovnact;
+    bool ipv6;
+};
+
+/* OVNACT_NF_LOOKUP_ORIG_INPORT. */
+struct ovnact_nf_lookup {
+    struct ovnact ovnact;
     struct expr_field dst;     /* 1-bit destination field. */
 };
 
