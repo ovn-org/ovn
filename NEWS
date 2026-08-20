@@ -100,6 +100,12 @@ OVN v26.09.0 - xxx xx xxxx
      filter the routes learned through the port by route tag.  This supersedes
      "ic-route-filter-tag", which is now deprecated and is ignored when
      "ic-route-learn-tag-rules" is set.
+   - Mark tunnel ports as transient (other_config:transient=true) when the
+     local chassis is a member of an HA chassis group.
+     Systems which invoke ovs-ctl --delete-transient-ports during OVS startup
+     (e.g. via the ovs-delete-transient-ports.service on RHEL/Fedora) will
+     automatically remove stale tunnel ports on reboot, preventing them from
+     interfering with BFD and HA failover after a gateway chassis reboot.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

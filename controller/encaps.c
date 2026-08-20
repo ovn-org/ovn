@@ -39,6 +39,7 @@ encaps_register_ovs_idl(struct ovsdb_idl *ovs_idl)
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_interfaces);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_port_col_external_ids);
+    ovsdb_idl_add_column(ovs_idl, &ovsrec_port_col_other_config);
     ovsdb_idl_add_table(ovs_idl, &ovsrec_table_interface);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_name);
     ovsdb_idl_track_add_column(ovs_idl, &ovsrec_interface_col_type);
@@ -62,6 +63,7 @@ struct tunnel_ctx {
     const struct ovsrec_open_vswitch_table *ovs_table;
     const struct ovsrec_bridge *br_int;
     const struct sbrec_chassis *this_chassis;
+    bool is_ha_chassis_member;
 };
 
 struct tunnel_node {
@@ -285,9 +287,9 @@ tunnel_add(struct tunnel_ctx *tc,
     }
 
     /* If there's an existing tunnel record that does not need any change,
-     * keep it.  Otherwise, create a new record (if there was an existing
-     * record, the new record will supplant it and encaps_run() will delete
-     * it). */
+     * (except maybe the transient flag) keep it.  Otherwise, create a new
+     * record (if there was an existing record, the new record will
+     * supplant it and encaps_run() will delete it). */
     struct tunnel_node *tunnel = shash_find_data(&tc->tunnel,
                                                  tunnel_entry_id);
     bool old_id_format = false;
@@ -295,10 +297,18 @@ tunnel_add(struct tunnel_ctx *tc,
         tunnel = shash_find_data(&tc->tunnel, tunnel_entry_id_old);
         old_id_format = true;
     }
+
     if (tunnel
         && tunnel->port->n_interfaces == 1
         && !strcmp(tunnel->port->interfaces[0]->type, encap->type)
         && smap_equal(&tunnel->port->interfaces[0]->options, &options)) {
+        if (tc->is_ha_chassis_member) {
+            ovsrec_port_update_other_config_setkey(tunnel->port, "transient",
+                                                   "true");
+        } else if (smap_get(&tunnel->port->other_config, "transient")) {
+            ovsrec_port_update_other_config_delkey(tunnel->port, "transient");
+        }
+
         if (old_id_format) {
             /* We must be upgrading from an older version. We can reuse the
              * existing tunnel, but needs to update the tunnel's ID to the new
@@ -337,6 +347,13 @@ tunnel_add(struct tunnel_ctx *tc,
     ovsrec_port_set_interfaces(port, &iface, 1);
     const struct smap id = SMAP_CONST1(&id, OVN_TUNNEL_ID, tunnel_entry_id);
     ovsrec_port_set_external_ids(port, &id);
+
+    if (tc->is_ha_chassis_member) {
+        const struct smap port_other_config = SMAP_CONST1(&port_other_config,
+                                                          "transient",
+                                                          "true");
+        ovsrec_port_set_other_config(port, &port_other_config);
+    }
 
     ovsrec_bridge_update_ports_addvalue(tc->br_int, port);
 
@@ -725,7 +742,8 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
            const struct sbrec_sb_global *sbg,
            const struct ovsrec_open_vswitch_table *ovs_table,
            const struct sset *transport_zones,
-           const struct ovsrec_bridge_table *bridge_table)
+           const struct ovsrec_bridge_table *bridge_table,
+           bool is_ha_chassis_member)
 {
     if (!ovs_idl_txn || !ovnsb_idl_txn || !br_int) {
         return;
@@ -772,6 +790,7 @@ encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
         .br_int = br_int,
         .this_chassis = this_chassis,
         .ovs_table = ovs_table,
+        .is_ha_chassis_member = is_ha_chassis_member,
     };
 
     tc.ovs_txn = ovs_idl_txn;
