@@ -946,11 +946,15 @@ refer to either the parent or child ports as applicable to this logical switch.
   table.
 
 - In inline: For each active network function with *id* that is referenced in a
-  network function group, a priority-99 flow matches ``reg8[21] == 1 &&
-  reg8[22] == 1 && reg0[22..29] == id`` and sets ``outport=P; output;`` where
-  *P* is the ``inport`` of that network function. This redirects request
-  packets for flows matching ``from-lport`` ACLs with network_function_group
-  to the specific network function selected by the Pre Network Function stage.
+  network function group, priority-99 flows match ``ip4 && reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and ``ip6 && reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and set
+  ``nf_learn_orig_inport(ipv6 = false|true); outport=P; output;``
+  where *P* is the ``inport`` of that network function. This redirects request
+  packets for flows matching ``from-lport`` ACLs with
+  network_function_group to the specific network function selected by the Pre
+  Network Function stage. It also learns the original inport before
+  redirection.
 
 - In vtap mode: For each active network function with *id*, a priority-99
   forward flow matches ``reg8[21] == 1 && reg8[22] == 1 && reg0[22..29] == id``
@@ -964,6 +968,12 @@ refer to either the parent or child ports as applicable to this logical switch.
   reg8[22] == 0 && ct_label.nf_id == id`` and takes identical action as above.
   This redirects response and related packets for ``to-lport`` ACLs to the
   same network function that handled the request.
+
+- In inline (overlay logical switches only), two priority-50 flows match
+  ``ip4 && reg8[21] == 0`` and ``ip6 && reg8[21] == 0`` and set
+  ``nf_learn_orig_inport(ipv6 = false|true); next;``. This learns on the
+  packet's ingress node even when redirection happens on a different node,
+  so the learn stays co-located with the lookup.
 
 - In vtap mode: A priority-99 reverse flow matches ``reg8[21] == 1 && reg8[22]
   == 0 && ct_label.nf_id == id`` and sets ``clone { outport = P; output; };
@@ -1645,13 +1655,17 @@ peer of a logical router port. This flow is added to skip the connection
 tracking of packets which will be entering logical router datapath from logical
 switch datapath for routing.
 
-This table also has a priority-110 flow for each network_function ``inport`` *P*
-that matches ``inport == P``. The action is to skip all the egress tables up to
-the :ref:`Network Function <ls-out-13>` table and advance the packet directly to
-the table after that. This is for the case where packet redirection happens in
-egress :ref:`Network Function <ls-out-13>` table. The same packet when it comes
-out of the other port of network function, they should not be processed again by
-the same egress stages, specially they should skip the conntrack processing.
+This table also has a priority-115 flow for each network_function ``inport``
+*P*
+that matches ``inport == P`` and applies
+``reg8[24] = nf_lookup_orig_inport(); next(pipeline=egress, table=T);`` where
+*T* is the table immediately following :ref:`Network Function <ls-out-13>`.
+This is for the case where packet redirection happens in egress
+:ref:`Network Function <ls-out-13>` table. When the packet comes back from the
+other NF port, it should not be processed again by the same egress stages,
+specifically conntrack processing should be skipped. This flow also performs
+``nf_lookup_orig_inport()`` before continuing so post-NF loopback copies can
+be detected and dropped.
 
 .. _ls-out-3:
 
@@ -1886,13 +1900,15 @@ in ``ct_label.nf_id`` during request processing.
   table.
 
 - In inline: For each active network function with *id* that is referenced in a
-  network function group, a priority-99 flow matches ``reg8[21] == 1 &&
-  reg8[22] == 1 && reg0[22..29] == id`` and sets ``outport=P; reg8[23] = 1;
-  next(pipeline=ingress, table=T)`` where *P* is the ``outport`` of
-  that network function and *T* is the ingress table :ref:`Destination Lookup
-  <ls-in-33>`. This redirects request packets matching ``to-lport`` ACLs with
-  network_function_group to the specific network function selected by the Pre
-  Network Function stage.
+  network function group, priority-99 flows match ``ip4 && reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and ``ip6 && reg8[21] == 1 &&
+  reg8[22] == 1 && reg0[22..29] == id`` and set
+  ``nf_learn_orig_inport(ipv6 = false|true); outport=P; reg8[23] = 1;
+  next(pipeline=ingress, table=T);`` where *P* is the NF outport and *T* is
+  the ingress :ref:`Destination Lookup <ls-in-33>` table. This redirects
+  request packets matching ``to-lport`` ACLs with network_function_group to the
+  specific network function selected by the Pre Network Function stage, and
+  learns the original inport before redirection.
 
 - In vtap mode: For each active network function with *id*, a priority-99
   forward flow matches ``reg8[21] == 1 && reg8[22] == 1 && reg0[22..29] == id``
@@ -1922,6 +1938,10 @@ in ``ct_label.nf_id`` during request processing.
   port) and advances to the next table so packets to the NF are not mirrored
   again.
 
+- In inline: A priority-2 flow matches ``inport == P`` where *P* is the NF
+  ``outport`` and sets ``reg8[24] = nf_lookup_orig_inport(); next;``.  This
+  captures post-NF packets that re-enter egress from ingress recirculation.
+
 - In vtap mode: In egress Pre ACL table, a priority-110 flow matches ``ip &&
   outport == P`` with action ``ct_clear; next;`` for the vtap NF port so
   packets toward the NF are not committed to conntrack.
@@ -1943,6 +1963,9 @@ Egress Table 14: Egress Port Security - check
 This is similar to the port security logic in table :ref:`Ingress Port Security
 check <ls-in-0>` except that action ``check_out_port_sec`` is used to check the
 port security rules.  This table adds the below logical flows.
+
+- A priority-110 flow matching ``reg8[24] == 1`` with action ``drop;``.  This
+  drops post-NF loopback copies detected by ``nf_lookup_orig_inport()``.
 
 - A priority 100 flow which matches on the multicast traffic and applies the
   action ``REGBIT_PORT_SEC_DROP" = 0; next;"`` to skip the out port security

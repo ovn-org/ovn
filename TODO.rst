@@ -177,6 +177,16 @@ OVN To-do List
   * Geneve tunnel is used for supporting this feature for VLAN network.
     Extend the support over VxLAN tunnel as well.
 
+  * Inline-NF loop prevention has limitations in topologies where
+    a post-NF flood copy may reach the same logical inport from a
+    different node than the packet's original ingress node.  In that
+    case, the lookup runs on a different node than where the inport
+    was learned, so loopback copies are not identified.
+    Known example: OVN-IC L2 stretch with the NF and IC gateway on
+    different chassis.  With ``unknown``-addressed ports, the post-NF
+    packet can be flooded across AZs and come back to the source AZ via
+    another node, so the lookup does not hit the original learn entry.
+
 * CI
 
   * ovn-kubernetes: Only a subset of the ovn-kubernetes features is currently

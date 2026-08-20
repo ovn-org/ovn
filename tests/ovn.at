@@ -45217,6 +45217,113 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Network function -- inline post-NF re-flood loop prevention])
+AT_KEYWORDS([ovn])
+ovn_start
+
+# When an LS has ports with "unknown" addresses, a packet redirected to
+# an inline NF can be re-flooded back out its original inport after NF
+# processing.  End-to-end check: sw0-p1 sends to an unknown MAC and the
+# post-NF re-flood copy heading back out sw0-p1 is dropped, while sw0-p2
+# still receives it.
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1 -- \
+    lsp-set-addresses sw0-p1 "f0:00:00:00:00:01 192.168.0.11" "unknown"
+check ovn-nbctl lsp-add sw0 sw0-p2 -- \
+    lsp-set-addresses sw0-p2 "f0:00:00:00:00:02 192.168.0.12" "unknown"
+for i in 1 2; do
+    check ovn-nbctl lsp-add sw0 sw0-nf-p$i -- \
+        lsp-set-addresses sw0-nf-p$i "f0:00:00:00:01:0$i"
+done
+check ovn-nbctl set logical_switch_port sw0-nf-p1 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw0-nf-p2
+check ovn-nbctl set logical_switch_port sw0-nf-p2 \
+    options:receive_multicast=false options:lsp_learn_mac=false \
+    options:is-nf=true options:nf-linked-port=sw0-nf-p1
+check ovn-nbctl nf-add nf0 1 sw0-nf-p1 sw0-nf-p2
+check ovn-nbctl nfg-add nfg0 1 inline nf0
+check ovn-nbctl acl-add sw0 to-lport 1002 'outport == "sw0-p2" && ip4' \
+    allow-related nfg0
+
+# VLAN-backed: add a localnet port.
+check ovn-nbctl lsp-add-localnet-port sw0 ln0 phys
+check ovn-nbctl set logical_switch_port ln0 tag_request=100
+
+net_add n
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n br-phys 192.168.1.1
+
+check ovs-vsctl add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
+check ovs-vsctl add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap options:rxq_pcap=hv1/vif2-rx.pcap
+for i in 1 2; do
+    check ovs-vsctl add-port br-int vif-nf$i -- \
+        set interface vif-nf$i external-ids:iface-id=sw0-nf-p$i \
+        options:tx_pcap=hv1/vif-nf$i-tx.pcap \
+        options:rxq_pcap=hv1/vif-nf$i-rx.pcap
+done
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Match the test packet in the pcaps (src IP 192.168.0.11 followed by dst IP
+# 192.168.0.12).
+src_ip=$(ip_to_hex 192 168 0 11)
+dst_ip=$(ip_to_hex 192 168 0 12)
+icmp_pkt_filter="${src_ip}${dst_ip}"
+
+# sw0-p1 sends to an unknown destination MAC.  The flooded copy destined to
+# sw0-p2 is redirected to the NF output port (sw0-nf-p2);
+packet="inport==\"sw0-p1\" && eth.src==f0:00:00:00:00:01 &&
+        eth.dst==00:00:00:00:00:99 && ip.ttl==64 && ip4.src==192.168.0.11 &&
+        ip4.dst==192.168.0.12 && icmp4.type==8 && icmp4.code==0"
+check as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([
+    pkts=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif-nf2-tx.pcap | grep ${icmp_pkt_filter} -c`
+    test $pkts -ge 1
+])
+
+# The NF returns the packet on sw0-nf-p1 with an unknown dst MAC, triggering
+# a re-flood. Loop prevention drops the copy returning to sw0-p1 (original
+# inport), while sw0-p2 receives its copy.
+packet="inport==\"sw0-nf-p1\" && eth.src==f0:00:00:00:00:01 &&
+        eth.dst==00:00:00:00:00:99 && ip.ttl==64 && ip4.src==192.168.0.11 &&
+        ip4.dst==192.168.0.12 && icmp4.type==8 && icmp4.code==0"
+check as hv1 ovs-appctl -t ovn-controller inject-pkt "$packet"
+OVS_WAIT_UNTIL([
+    pkts=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif2-tx.pcap | grep ${icmp_pkt_filter} -c`
+    test $pkts -ge 1
+])
+
+# The original inport must not receive the looped-back copy.
+AT_CHECK([
+    pkts=`$PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | grep ${icmp_pkt_filter} -c`
+    test 0 -eq $pkts
+])
+
+# The loop-prevention drop flow that has REGBIT_NF_LOOKUP_HIT (reg8=0x1000000)
+# bit set must have hit at least once.
+OVS_WAIT_UNTIL([
+    hits=`as hv1 ovs-ofctl dump-flows br-int | grep "reg8=0x1000000" | \
+          grep -v n_packets=0 | wc -l`
+    test $hits -ge 1
+])
+
+OVN_CLEANUP([hv1
+ignored_tables=OFTABLE_GET_FDB,OFTABLE_LOOKUP_FDB])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([Unicast ARP when proxy ARP is configured])
 CHECK_SCAPY
 ovn_start

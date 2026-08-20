@@ -6760,6 +6760,19 @@ or
       as down, the fallback method is applied.
     </p>
 
+    <p>
+      <b>Known limitation (inline mode)</b>: in topologies where a
+      post-NF flood copy may reach the same logical inport from a
+      different node than the packet's original ingress node,
+      the lookup runs on a different node than where the inport
+      was learned, so loopback copies are not identified.
+      For example: OVN-IC L2 stretch with the NF and IC gateway on
+      different chassis.  With <code>unknown</code>-addressed ports, the
+      post-NF packet can be flooded across AZs and come back to the
+      source AZ via another node, so the lookup does not hit the
+      original learn entry.
+    </p>
+
     <column name="name">
       Name of the <ref table="Network_Function_Group"/>. Name should be unique.
     </column>
