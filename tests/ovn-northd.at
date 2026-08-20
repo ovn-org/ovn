@@ -24052,3 +24052,97 @@ AT_CHECK([as northd ovn-appctl -t ovn-northd inc-engine/enable-stopwatch nonexis
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Datapath group reuse after an lflow loses a datapath])
+ovn_start
+
+# All four switches have ACLs, so the logical flows that only depend on
+# "the switch has ACLs" are shared by the four of them.  ls1 and ls2 use
+# tier 0 while ls3 and ls4 use tier 1, which changes the actions of the
+# egress "acl action" flows.  Hence three datapath groups are expected:
+# {ls1, ls2}, {ls3, ls4} and {ls1, ls2, ls3, ls4}.
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls3
+check ovn-nbctl ls-add ls4
+check ovn-nbctl acl-add ls1 to-lport 1000 ip4 allow
+check ovn-nbctl acl-add ls2 to-lport 1000 ip6 allow
+check ovn-nbctl --tier=1 acl-add ls3 to-lport 1000 tcp allow
+check ovn-nbctl --wait=sb --tier=1 acl-add ls4 to-lport 1000 udp allow
+
+acl1=$(fetch_column nb:ACL _uuid match=ip4)
+check_row_count Logical_DP_Group 3
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+# Move ls1's ACL to tier 1.  ls1 stops generating the egress "acl action"
+# flows it shared with ls2, so those flows are left with a single datapath
+# and the {ls1, ls2} datapath group becomes unused and is deleted.  northd
+# has to drop the reference it holds to that group, otherwise the group is
+# leaked in the in-memory dp group table, still pointing to the SB row that
+# has just been deleted.
+check ovn-nbctl --wait=sb set ACL $acl1 tier=1
+check_engine_stats lflow norecompute compute
+check_row_count Logical_DP_Group 2
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+# Move ls1's ACL back to tier 0.  The {ls1, ls2} datapath group is needed
+# again: a leaked group would be picked up here and northd would complain
+# about its dangling SB reference.
+check ovn-nbctl --wait=sb set ACL $acl1 tier=0
+check_engine_stats lflow norecompute compute
+check_row_count Logical_DP_Group 3
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AT_CHECK([grep -q "logical_dp_group column is not set" \
+          northd/ovn-northd.log], [1])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Datapath group SB row reuse when an lflow loses a datapath])
+ovn_start
+
+# ls1, ls2 and ls3 have tier 0 ACLs, ls4 has a tier 1 ACL.  The flows that
+# only depend on "the switch has ACLs" are shared by the four of them, and
+# the egress "acl action" flows of tier 0 are shared by ls1, ls2 and ls3.
+# ls4 is the only user of the tier 1 flows, so those are synced with a
+# single datapath.  Hence two datapath groups: {ls1, ls2, ls3} and
+# {ls1, ls2, ls3, ls4}.
+check ovn-nbctl ls-add ls1
+check ovn-nbctl ls-add ls2
+check ovn-nbctl ls-add ls3
+check ovn-nbctl ls-add ls4
+check ovn-nbctl acl-add ls1 to-lport 1000 ip4 allow
+check ovn-nbctl acl-add ls2 to-lport 1000 ip6 allow
+check ovn-nbctl acl-add ls3 to-lport 1000 tcp allow
+check ovn-nbctl --wait=sb --tier=1 acl-add ls4 to-lport 1000 udp allow
+
+acl3=$(fetch_column nb:ACL _uuid match=tcp)
+check_row_count Logical_DP_Group 2
+ovn-sbctl --bare --columns _uuid list Logical_DP_Group | sort > dpg_uuids
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+
+# Move ls3's ACL to tier 1.  The tier 0 "acl action" flows are left with
+# {ls1, ls2}: they are not generated again (ls1 and ls2 didn't change), they
+# are only unlinked from ls3's lflow_ref.  The {ls1, ls2, ls3} group becomes
+# unused, so its SB row is free and northd is expected to modify it in place
+# instead of inserting a new row and deleting this one.
+check ovn-nbctl --wait=sb set ACL $acl3 tier=1
+check_engine_stats lflow norecompute compute
+check_row_count Logical_DP_Group 3
+
+ovn-sbctl --bare --columns _uuid list Logical_DP_Group | sort > dpg_uuids2
+AT_CHECK([comm -23 dpg_uuids dpg_uuids2], [0], [])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+

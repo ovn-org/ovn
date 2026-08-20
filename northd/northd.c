@@ -21112,7 +21112,7 @@ lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsb_txn,
     HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->crupdated) {
         struct ovn_datapath *od = hmapx_node->data;
 
-        lflow_ref_unlink_lflows(od->datapath_lflows);
+        lflow_ref_unlink_lflows(od->datapath_lflows, lflows);
         build_lswitch_and_lrouter_iterate_by_lr(od, &lsi);
     }
 
@@ -21167,7 +21167,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         /* Make sure 'op' is an lsp and not lrp. */
         ovs_assert(op->nbsp);
         /* Clear old lflows. */
-        lflow_ref_unlink_lflows(op->lflow_ref);
+        lflow_ref_unlink_lflows(op->lflow_ref, lflows);
 
         /* Generate new lflows. */
         struct ds match = DS_EMPTY_INITIALIZER;
@@ -21187,7 +21187,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         if (handled) {
             /* Now regenerate the stateful lflows for 'op' */
             /* Clear old lflows. */
-            lflow_ref_unlink_lflows(op->stateful_lflow_ref);
+            lflow_ref_unlink_lflows(op->stateful_lflow_ref, lflows);
             build_lbnat_lflows_iterate_by_lsp(op,
                                               lflow_input->lr_stateful_table,
                                               &match, &actions, lflows);
@@ -21279,7 +21279,7 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
         lb_dps = hmapx_node->data;
 
         /* unlink old lflows. */
-        lflow_ref_unlink_lflows(lb_dps->lflow_ref);
+        lflow_ref_unlink_lflows(lb_dps->lflow_ref, lflows);
 
         /* Generate new lflows. */
         struct ds match = DS_EMPTY_INITIALIZER;
@@ -21335,7 +21335,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
     HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
         lr_stateful_rec = hmapx_node->data;
         /* Unlink old lflows. */
-        lflow_ref_unlink_lflows(lr_stateful_rec->lflow_ref);
+        lflow_ref_unlink_lflows(lr_stateful_rec->lflow_ref, lflows);
 
         /* Generate new lflows. */
         build_lr_stateful_flows(lr_stateful_rec, lflow_input->lr_datapaths,
@@ -21360,7 +21360,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                         lr_stateful_rec->lr_index);
         struct ovn_port *op;
         HMAP_FOR_EACH (op, dp_node, &od->ports) {
-            lflow_ref_unlink_lflows(op->stateful_lflow_ref);
+            lflow_ref_unlink_lflows(op->stateful_lflow_ref, lflows);
 
             build_lbnat_lflows_iterate_by_lrp(op,
                                               lflow_input->lr_stateful_table,
@@ -21380,7 +21380,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             if (op->peer && op->peer->nbsp) {
-                lflow_ref_unlink_lflows(op->peer->stateful_lflow_ref);
+                lflow_ref_unlink_lflows(op->peer->stateful_lflow_ref, lflows);
 
                 build_lbnat_lflows_iterate_by_lsp(
                     op->peer, lflow_input->lr_stateful_table, &match, &actions,
@@ -21422,7 +21422,7 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
         ovs_assert(od->nbs && uuid_equals(&od->nbs->header_.uuid,
                                           &ls_stateful_rec->nbs_uuid));
 
-        lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref);
+        lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref, lflows);
 
         /* Generate new lflows. */
         build_ls_stateful_flows(ls_stateful_rec, od,
