@@ -3388,6 +3388,7 @@ en_mac_cache_cleanup(void *data)
 
 struct ed_type_bfd_chassis {
     struct sset bfd_chassis;
+    bool is_computed;
 };
 
 static void *
@@ -3418,6 +3419,7 @@ en_bfd_chassis_run(struct engine_node *node, void *data OVS_UNUSED)
     sset_clear(&bfd_chassis->bfd_chassis);
     bfd_calculate_chassis(chassis, ha_chassis_grp_table,
                           &bfd_chassis->bfd_chassis);
+    bfd_chassis->is_computed = true;
     return EN_UPDATED;
 }
 
@@ -7718,13 +7720,29 @@ main(int argc, char *argv[])
                 const struct sbrec_sb_global *sbg =
                     sbrec_sb_global_first(ovnsb_idl_loop.idl);
                 if (chassis && sbg && ovs_feature_set_discovered()) {
+                    bool is_ha_chassis_member;
+                    if (bfd_chassis_data && bfd_chassis_data->is_computed) {
+                        is_ha_chassis_member = sset_contains(
+                            &bfd_chassis_data->bfd_chassis,
+                            chassis->name);
+                    } else {
+                        struct sset tmp = SSET_INITIALIZER(&tmp);
+                        bfd_calculate_chassis(
+                             chassis, sbrec_ha_chassis_group_table_get(
+                                  ovnsb_idl_loop.idl),
+                             &tmp);
+                        is_ha_chassis_member = sset_contains(&tmp,
+                                                             chassis->name);
+                        sset_destroy(&tmp);
+                    }
                     encaps_run(ovs_idl_txn, ovnsb_idl_txn, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
                                sbg,
                                ovs_table,
                                &transport_zones,
-                               bridge_table);
+                               bridge_table,
+                               is_ha_chassis_member);
 
                     struct ed_type_route_table_notify *rtn =
                         engine_get_internal_data(&en_route_table_notify);

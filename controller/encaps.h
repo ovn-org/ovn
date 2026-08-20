@@ -49,7 +49,8 @@ void encaps_run(struct ovsdb_idl_txn *ovs_idl_txn,
                 const struct sbrec_sb_global *,
                 const struct ovsrec_open_vswitch_table *,
                 const struct sset *transport_zones,
-                const struct ovsrec_bridge_table *bridge_table);
+                const struct ovsrec_bridge_table *bridge_table,
+                bool is_ha_chassis_member);
 
 bool is_flow_based_tunnels_enabled(
     const struct ovsrec_open_vswitch_table *ovs_table,

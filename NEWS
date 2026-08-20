@@ -3,6 +3,12 @@ OVN v26.03.3 - xx xxx xxxx
   - Reverted fix for Load_Balancer health check replies for baremetal
     pool members whose backend LSP is type=external.  This was causing
     a packet loop.
+  - Mark tunnel ports as transient (other_config:transient=true) when the
+    local chassis is a member of an HA chassis group.
+    Systems which invoke ovs-ctl --delete-transient-ports during OVS startup
+    (e.g. via the ovs-delete-transient-ports.service on RHEL/Fedora) will
+    automatically remove stale tunnel ports on reboot, preventing them from
+    interfering with BFD and HA failover after a gateway chassis reboot.
 
 OVN v26.03.2 - 16 Jun 2026
 --------------------------
