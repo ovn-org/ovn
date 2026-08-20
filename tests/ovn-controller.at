@@ -4239,3 +4239,60 @@ done
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - transient flag for HA chassis])
+AT_KEYWORDS([ovn])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add ls1 ls1-lr1 -- lsp-set-type ls1-lr1 router \
+    -- lsp-set-addresses ls1-lr1 router -- lsp-set-options ls1-lr1 router-port=lr1-ls1
+
+OVS_WAIT_UNTIL([as hv1 ovs-vsctl get interface ovn-hv2-0 type])
+OVS_WAIT_UNTIL([as hv2 ovs-vsctl get interface ovn-hv1-0 type])
+
+# Verify tunnel ports do not have transient flag set.
+AT_CHECK([as hv1 ovs-vsctl --bare get port ovn-hv2-0 other_config], [0], [dnl
+{}
+])
+AT_CHECK([as hv2 ovs-vsctl --bare get port ovn-hv1-0 other_config], [0], [dnl
+{}
+])
+
+check ovn-nbctl ha-chassis-group-add hagrp
+check ovn-nbctl ha-chassis-group-add-chassis hagrp hv1 10
+check ovn-nbctl ha-chassis-group-add-chassis hagrp hv2 20
+
+hagrp_uuid=$(ovn-nbctl --bare --columns _uuid find ha_chassis_group name=hagrp)
+check ovn-nbctl set logical_router_port lr1-ls1 ha_chassis_group=$hagrp_uuid
+
+wait_row_count HA_Chassis_Group 1 name=hagrp
+wait_row_count HA_Chassis 2
+
+# Verify tunnel ports now have transient=true.
+OVS_WAIT_UNTIL([test "$(as hv1 ovs-vsctl get port ovn-hv2-0 other_config:transient)" = '"true"'])
+OVS_WAIT_UNTIL([test "$(as hv2 ovs-vsctl get port ovn-hv1-0 other_config:transient)" = '"true"'])
+
+check ovn-nbctl ha-chassis-group-remove-chassis hagrp hv2
+
+# Verify transient flag is cleared on both HVs.
+OVS_WAIT_UNTIL([test "$(as hv1 ovs-vsctl --bare get port ovn-hv2-0 other_config)" = '{}'])
+OVS_WAIT_UNTIL([test "$(as hv2 ovs-vsctl --bare get port ovn-hv1-0 other_config)" = '{}'])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])

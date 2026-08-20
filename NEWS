@@ -1,5 +1,11 @@
 Post v26.09.09
 --------------
+   - Mark tunnel ports as transient (other_config:transient=true) when the
+     local chassis is a member of an HA chassis group.
+     Systems which invoke ovs-ctl --delete-transient-ports during OVS startup
+     (e.g. via the ovs-delete-transient-ports.service on RHEL/Fedora) will
+     automatically remove stale tunnel ports on reboot, preventing them from
+     interfering with BFD and HA failover after a gateway chassis reboot.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

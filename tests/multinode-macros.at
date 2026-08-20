@@ -510,6 +510,30 @@ m_is_fedora() {
     m_central_as grep -qi fedora /etc/os-release
 }
 
+# Run ovs-vsctl using Host socket
+host_ovs_vsctl() {
+    # Discover host OVS socket on first call
+    if [[ -z "$HOST_OVS_SOCK" ]]; then
+        for sock in /run/openvswitch/db.sock /var/run/openvswitch/db.sock /usr/local/var/run/openvswitch/db.sock; do
+            if [[ -S "$sock" ]]; then
+                HOST_OVS_SOCK=$sock
+                break
+            fi
+        done
+        # Fallback on unusual prefix: discover from running process
+        if [[ -z "$HOST_OVS_SOCK" ]]; then
+            HOST_OVS_SOCK=$(ps aux | grep '[o]vsdb-server' | grep -oP 'punix:\K[^, ]+' | while read s; do
+                [[ -S "$s" ]] && [[ "$s" != *"$OVS_RUNDIR"* ]] && echo "$s" && break
+            done)
+        fi
+        if [[ -z "$HOST_OVS_SOCK" ]]; then
+            echo "ERROR: Could not find host OVS socket" >&2
+            AT_FAIL_IF([:])
+        fi
+    fi
+    ovs-vsctl --db=unix:$HOST_OVS_SOCK "$@"
+}
+
 # M_START_L4_SERVER([fake_node], [namespace], [ip_addr], [port], [reply_string], [pidfile])
 #
 # Helper to properly start l4 server in inside 'fake_node''s namespace'.
