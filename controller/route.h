@@ -69,21 +69,6 @@ struct route_ctx_out {
 
     /* Contains struct advertise_datapath_entry */
     struct hmap *announce_routes;
-
-    /* Contains struct advertised_route_status entries recorded by
-     * route_run(), sorted by Advertised_Route UUID for publication in
-     * Advertised_Route_Status by route_exchange_run(). */
-    struct vector *advertised_route_status;
-};
-
-/* Per-route advertisement decision recorded by route_run() so that
- * route_exchange_run() (which holds a writable SB txn) can publish it for the
- * local chassis in Advertised_Route_Status. */
-struct advertised_route_status {
-    const struct sbrec_advertised_route *route;
-    const char *desired_status;
-    const char *withdrawal_reason;
-    const char *withdrawal_reason_value;
 };
 
 struct advertise_datapath_entry {
@@ -96,12 +81,6 @@ struct advertise_datapath_entry {
     struct in6_addr ipv6_nexthop;
 
     struct hmap routes;
-
-    /* Result of the most recent attempt to reconcile 'routes' with the
-     * chassis routing table. */
-    bool routes_synced;
-    int route_error;
-    const char *route_error_description;
 
     /* The name of the port bindings locally bound for this datapath and
      * running route exchange logic.
@@ -132,11 +111,6 @@ struct advertise_route_entry
 advertise_route_from_route_data(const struct route_data *);
 void route_run(struct route_ctx_in *, struct route_ctx_out *);
 void route_cleanup(struct hmap *announce_routes);
-void advertised_route_status_clear(struct vector *statuses);
-void advertised_route_status_sort(struct vector *statuses);
-const struct advertised_route_status *advertised_route_status_find(
-    const struct vector *statuses,
-    const struct sbrec_advertised_route *route);
 uint32_t route_get_table_id(const struct sbrec_datapath_binding *);
 struct advertise_route_entry *
 advertise_route_find(unsigned int priority, const struct in6_addr *prefix,

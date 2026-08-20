@@ -29,7 +29,6 @@ struct ovsrec_open_vswitch_table;
 struct sbrec_chassis;
 struct sbrec_chassis_table;
 struct sbrec_chassis_private_table;
-struct sbrec_advertised_route_status_table;
 struct sset;
 struct eth_addr;
 struct smap;
@@ -51,8 +50,7 @@ bool chassis_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
                      struct ovsdb_idl_txn *ovnsb_idl_txn,
                      const struct ovsrec_open_vswitch_table *,
                      const struct sbrec_chassis *,
-                     const struct sbrec_chassis_private *,
-                     const struct sbrec_advertised_route_status_table *);
+                     const struct sbrec_chassis_private *);
 bool chassis_get_mac(const struct sbrec_chassis *chassis,
                      const char *bridge_mapping,
                      struct eth_addr *chassis_mac);

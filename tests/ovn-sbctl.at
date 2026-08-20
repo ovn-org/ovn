@@ -96,11 +96,6 @@ ch2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find chassis name=ch2
 check_uuid ovn-sbctl create Chassis_Private name=ch2 chassis=$ch2_uuid
 check_row_count Chassis_Private 1
 
-check_uuid ovn-sbctl create Advertised_Route_Status \
-    advertised_route_uuid=$ch2_uuid chassis=$ch2_uuid chassis_name=ch2 \
-    desired_status=advertised operational_status=installed
-check_row_count Advertised_Route_Status 1 chassis_name=ch2
-
 AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | sort],
          [0], [dnl
 1.2.3.5,geneve
@@ -115,7 +110,6 @@ AT_CHECK([ovn-sbctl -f csv -d bare --no-headings --columns ip,type list encap | 
 1.2.3.5,vxlan
 ])
 check_row_count Chassis_Private 0
-check_row_count Advertised_Route_Status 0 chassis_name=ch2
 
 as ovn-sb
 OVS_APP_EXIT_AND_WAIT([ovsdb-server])

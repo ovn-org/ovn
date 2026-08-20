@@ -360,9 +360,6 @@ pre_get_info(struct ctl_context *ctx)
 
     ovsdb_idl_add_column(ctx->idl, &sbrec_chassis_private_col_name);
 
-    ovsdb_idl_add_column(ctx->idl,
-                         &sbrec_advertised_route_status_col_chassis_name);
-
     ovsdb_idl_add_column(ctx->idl, &sbrec_encap_col_type);
     ovsdb_idl_add_column(ctx->idl, &sbrec_encap_col_ip);
 
@@ -511,20 +508,6 @@ cmd_chassis_del(struct ctl_context *ctx)
                 shash_find_and_delete(&sbctl_ctx->chassis_private,
                                       ctx->argv[1]);
                 free(sbctl_ch_priv);
-            }
-
-            if (sbrec_server_has_advertised_route_status_table(ctx->idl)) {
-                const struct sbrec_advertised_route_status_table
-                    *status_table =
-                    sbrec_advertised_route_status_table_get(ctx->idl);
-                const struct sbrec_advertised_route_status *status;
-                SBREC_ADVERTISED_ROUTE_STATUS_TABLE_FOR_EACH_SAFE (
-                    status, status_table) {
-                    if (!strcmp(status->chassis_name,
-                                sbctl_ch->ch_cfg->name)) {
-                        sbrec_advertised_route_status_delete(status);
-                    }
-                }
             }
 
             sbrec_chassis_delete(sbctl_ch->ch_cfg);

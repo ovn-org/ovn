@@ -637,58 +637,6 @@ advertised_datapath_alloc(const struct sbrec_datapath_binding *datapath)
     return ad;
 }
 
-static void
-route_record_status(struct route_ctx_out *r_ctx_out,
-                    const struct sbrec_advertised_route *route,
-                    const char *desired_status,
-                    const char *withdrawal_reason,
-                    const char *withdrawal_reason_value)
-{
-    struct advertised_route_status status = {
-        .route = route,
-        .desired_status = desired_status,
-        .withdrawal_reason = withdrawal_reason,
-        .withdrawal_reason_value = withdrawal_reason_value,
-    };
-    vector_push(r_ctx_out->advertised_route_status, &status);
-}
-
-void
-advertised_route_status_clear(struct vector *statuses)
-{
-    vector_clear(statuses);
-}
-
-static int
-advertised_route_status_cmp(const void *a_, const void *b_)
-{
-    const struct advertised_route_status *a = a_;
-    const struct advertised_route_status *b = b_;
-
-    return uuid_compare_3way(&a->route->header_.uuid,
-                             &b->route->header_.uuid);
-}
-
-void
-advertised_route_status_sort(struct vector *statuses)
-{
-    vector_qsort(statuses, advertised_route_status_cmp);
-}
-
-const struct advertised_route_status *
-advertised_route_status_find(const struct vector *statuses,
-                             const struct sbrec_advertised_route *route)
-{
-    if (!route) {
-        return NULL;
-    }
-
-    const struct advertised_route_status key = {
-        .route = route,
-    };
-    return vector_bsearch(statuses, &key, advertised_route_status_cmp);
-}
-
 void
 route_run(struct route_ctx_in *r_ctx_in,
           struct route_ctx_out *r_ctx_out)
@@ -847,23 +795,12 @@ route_run(struct route_ctx_in *r_ctx_in,
 
         if (distributed_lb &&
             !smap_get_bool(&route->external_ids, "enabled", true)) {
-            route_record_status(r_ctx_out, route, "withdrawn",
-                                "administrative-policy", "disabled");
             continue;
         }
 
         int gate = lb_route_gate_decision(&lb_route_gates, route);
         if (gate == 0) {
-            if (distributed_lb) {
-                route_record_status(r_ctx_out, route,
-                                    "withdrawn", "service-monitor",
-                                    "no-online-backend");
-            }
             continue;
-        }
-
-        if (distributed_lb) {
-            route_record_status(r_ctx_out, route, "advertised", NULL, NULL);
         }
 
         struct in6_addr nexthop = IN6_IS_ADDR_V4MAPPED(&prefix)
