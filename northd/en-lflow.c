@@ -294,7 +294,8 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
     HMAPX_FOR_EACH (hmapx_node,
                     &group_ecmp_route_data->trk_data.deleted_datapath_routes) {
         route_node = hmapx_node->data;
-        lflow_ref_unlink_lflows(route_node->lflow_ref);
+        lflow_ref_unlink_lflows(route_node->lflow_ref,
+                                lflow_data->lflow_table);
 
         bool handled = lflow_ref_sync_lflows(
             route_node->lflow_ref, lflow_data->lflow_table,
@@ -312,7 +313,8 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
         &group_ecmp_route_data->trk_data.crupdated_datapath_routes;
     HMAPX_FOR_EACH (hmapx_node, crupdated_datapath_routes) {
         route_node = hmapx_node->data;
-        lflow_ref_unlink_lflows(route_node->lflow_ref);
+        lflow_ref_unlink_lflows(route_node->lflow_ref,
+                                lflow_data->lflow_table);
         build_route_data_flows_for_lrouter(
             route_node->od, lflow_data->lflow_table,
             route_node, lflow_input.bfd_ports);

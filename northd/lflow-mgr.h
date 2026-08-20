@@ -57,7 +57,7 @@ struct lflow_ref;
 struct lflow_ref *lflow_ref_create(void);
 void lflow_ref_destroy(struct lflow_ref *);
 void lflow_ref_clear(struct lflow_ref *lflow_ref);
-void lflow_ref_unlink_lflows(struct lflow_ref *);
+void lflow_ref_unlink_lflows(struct lflow_ref *, struct lflow_table *);
 bool lflow_ref_resync_flows(struct lflow_ref *,
                             struct lflow_table *lflow_table,
                             struct ovsdb_idl_txn *ovnsb_txn,

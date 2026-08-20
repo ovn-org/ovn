@@ -657,24 +657,51 @@ lflow_ref_destroy(struct lflow_ref *lflow_ref)
  * from the lrn->lflow's dpg bitmap
  */
 void
-lflow_ref_unlink_lflows(struct lflow_ref *lflow_ref)
+lflow_ref_unlink_lflows(struct lflow_ref *lflow_ref,
+                        struct lflow_table *lflow_table)
 {
     struct lflow_ref_node *lrn;
 
     HMAP_FOR_EACH (lrn, ref_node, &lflow_ref->lflow_ref_nodes) {
+        struct ovn_lflow *lflow = lrn->lflow;
+        bool dpg_bitmap_changed = false;
+
         if (lrn->dpgrp_lflow) {
             size_t index;
             BITMAP_FOR_EACH_1 (index, lrn->dpgrp_bitmap_len,
                                lrn->dpgrp_bitmap) {
-                if (dp_refcnt_release(&lrn->lflow->dp_refcnts_map, index)) {
-                    dynamic_bitmap_set0(&lrn->lflow->dpg_bitmap, index);
+                if (dp_refcnt_release(&lflow->dp_refcnts_map, index)) {
+                    dynamic_bitmap_set0(&lflow->dpg_bitmap, index);
+                    dpg_bitmap_changed = true;
                 }
             }
         } else {
-            if (dp_refcnt_release(&lrn->lflow->dp_refcnts_map,
+            if (dp_refcnt_release(&lflow->dp_refcnts_map,
                                   lrn->dp_index)) {
-                dynamic_bitmap_set0(&lrn->lflow->dpg_bitmap, lrn->dp_index);
+                dynamic_bitmap_set0(&lflow->dpg_bitmap, lrn->dp_index);
+                dpg_bitmap_changed = true;
             }
+        }
+
+        /* The lflow doesn't apply to the same set of datapaths anymore, so
+         * the dp group it is referencing is not the one it will be synced
+         * with.  Drop the reference now, before any lflow of this round is
+         * synced: as long as the group is still referenced it stays in
+         * 'dp_groups' and ovn_dp_group_create() refuses to modify its SB
+         * row, inserting a new Logical_DP_Group row and deleting the one
+         * that just became free instead of reusing it.
+         *
+         * This is the counterpart of the release done by
+         * do_ovn_lflow_add(), which covers the lflows that are generated
+         * again.  An lflow that is only unlinked from one of its lflow_refs
+         * and survives because other lflow_refs still reference it never
+         * goes through do_ovn_lflow_add(). */
+        if (dpg_bitmap_changed && lflow->dpg) {
+            enum ovn_datapath_type dp_type =
+                ovn_stage_to_datapath_type(lflow->stage);
+            ovn_dp_group_release(&lflow_table->dp_groups[dp_type],
+                                 lflow->dpg);
+            lflow->dpg = NULL;
         }
 
         lrn->linked = false;
@@ -690,7 +717,7 @@ lflow_ref_resync_flows(struct lflow_ref *lflow_ref,
                        const struct sbrec_logical_flow_table *sbflow_table,
                        const struct sbrec_logical_dp_group_table *dpgrp_table)
 {
-    lflow_ref_unlink_lflows(lflow_ref);
+    lflow_ref_unlink_lflows(lflow_ref, lflow_table);
     return lflow_ref_sync_lflows__(lflow_ref, lflow_table, ovnsb_txn,
                                    dps,
                                    ovn_internal_version_changed, sbflow_table,
