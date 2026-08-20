@@ -34,10 +34,11 @@ struct sbrec_chassis;
 struct sbrec_port_binding;
 struct sbrec_datapath_binding;
 struct sbrec_advertised_route;
+struct sbrec_service_monitor_table;
 
 struct route_ctx_in {
     const struct sbrec_advertised_route_table *advertised_route_table;
-    struct ovsdb_idl_index *service_monitor_by_selector;
+    const struct sbrec_service_monitor_table *service_monitor_table;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_chassis *chassis;
     const char *dynamic_routing_port_mapping;

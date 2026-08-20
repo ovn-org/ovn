@@ -5331,9 +5331,8 @@ en_route_run(struct engine_node *node, void *data)
 
     const struct sbrec_advertised_route_table *advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
-    struct ovsdb_idl_index *service_monitor_by_selector =
-        engine_ovsdb_node_get_index(
-            engine_get_input("SB_service_monitor", node), "selector");
+    const struct sbrec_service_monitor_table *service_monitor_table =
+        EN_OVSDB_GET(engine_get_input("SB_service_monitor", node));
     const struct ovsrec_open_vswitch *cfg
         = ovsrec_open_vswitch_table_first(ovs_table);
     const char *dynamic_routing_port_mapping =
@@ -5341,7 +5340,7 @@ en_route_run(struct engine_node *node, void *data)
 
     struct route_ctx_in r_ctx_in = {
         .advertised_route_table = advertised_route_table,
-        .service_monitor_by_selector = service_monitor_by_selector,
+        .service_monitor_table = service_monitor_table,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .chassis = chassis,
         .dynamic_routing_port_mapping = dynamic_routing_port_mapping,
@@ -5687,6 +5686,11 @@ route_sb_service_monitor_handler(struct engine_node *node,
                                  void *data)
 {
     struct ed_type_route *re_data = data;
+    if (uuidset_is_empty(&re_data->relevant_service_monitors) &&
+        sset_is_empty(&re_data->health_check_ports)) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
     const struct sbrec_service_monitor_table *sm_table =
         EN_OVSDB_GET(engine_get_input("SB_service_monitor", node));
 
@@ -7669,19 +7673,6 @@ inc_proc_ovn_controller_init(
 
     engine_ovsdb_node_add_index(&en_sb_datapath_binding, "key",
                                 sbrec_datapath_binding_by_key);
-
-    const struct ovsdb_idl_index_column service_monitor_selector_columns[] = {
-        { .column = &sbrec_service_monitor_col_logical_port },
-        { .column = &sbrec_service_monitor_col_type },
-        { .column = &sbrec_service_monitor_col_protocol },
-        { .column = &sbrec_service_monitor_col_port },
-    };
-    struct ovsdb_idl_index *service_monitor_by_selector =
-        ovsdb_idl_index_create(
-            sb_idl_loop->idl, service_monitor_selector_columns,
-            ARRAY_SIZE(service_monitor_selector_columns));
-    engine_ovsdb_node_add_index(&en_sb_service_monitor, "selector",
-                                service_monitor_by_selector);
 
     struct ovsdb_idl_index *sbrec_fdb_by_dp_key
         = ovsdb_idl_index_create1(sb_idl_loop->idl,

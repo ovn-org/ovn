@@ -87,6 +87,15 @@ struct lb_route_gate {
     bool any_online;
 };
 
+/* A parsed health-check selector and the route gate that uses it. */
+struct lb_route_selector {
+    struct hmap_node node;
+    struct lb_route_gate *gate;
+    struct in6_addr backend_ip;
+    char *protocol;
+    uint16_t port;
+};
+
 static bool
 route_has_health_checks(const struct sbrec_advertised_route *route)
 {
@@ -186,13 +195,25 @@ destroy_lb_route_gates(struct hmap *gates)
     hmap_destroy(gates);
 }
 
-/* Resolve northd-provided protocol,backend-IP,backend-port selectors against
- * Service_Monitor rows with the same logical port, port and protocol.  IP is
- * compared separately in binary form so equivalent IPv6 spellings match. */
+/* Hash the four fields that identify the Service_Monitor row a selector
+ * refers to.  The address is hashed in binary form so equivalent IPv6
+ * spellings produce the same value. */
+static uint32_t
+lb_route_selector_hash(const char *logical_port, const char *protocol,
+                       uint16_t port, const struct in6_addr *backend_ip)
+{
+    uint32_t hash = hash_string(logical_port, 0);
+    hash = hash_string(protocol, hash);
+    hash = hash_add_in6_addr(hash, backend_ip);
+    return hash_int(port, hash);
+}
+
+/* Parse the "protocol,backend-IP,backend-port" health-check selectors of
+ * active route gates into 'selectors'.  The hash map lives only for the
+ * duration of route evaluation, so ordinary Service_Monitor updates do not
+ * maintain a persistent index. */
 static void
-evaluate_lb_route_gates(struct hmap *gates,
-                        struct ovsdb_idl_index *service_monitor_by_selector,
-                        struct uuidset *relevant_service_monitors)
+build_lb_route_selectors(struct hmap *selectors, struct hmap *gates)
 {
     struct lb_route_gate *g;
     HMAP_FOR_EACH (g, node, gates) {
@@ -231,39 +252,77 @@ evaluate_lb_route_gates(struct hmap *gates,
                 continue;
             }
 
-            const char *tracked_lp = g->route->tracked_port->logical_port;
-            struct sbrec_service_monitor *filter =
-                sbrec_service_monitor_index_init_row(
-                    service_monitor_by_selector);
-            sbrec_service_monitor_index_set_logical_port(filter, tracked_lp);
-            sbrec_service_monitor_index_set_type(filter, "load-balancer");
-            sbrec_service_monitor_index_set_protocol(filter, protocol);
-            sbrec_service_monitor_index_set_port(filter, backend_port);
-
-            const struct sbrec_service_monitor *monitor;
-            SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (
-                monitor, filter, service_monitor_by_selector) {
-                struct in6_addr sm_ip;
-                if (!ip46_parse(monitor->ip, &sm_ip) ||
-                    !ipv6_addr_equals(&sm_ip, &backend_ip_addr)) {
-                    continue;
-                }
-
-                uuidset_insert(relevant_service_monitors,
-                               &monitor->header_.uuid);
-                g->seen_monitor = true;
-                g->any_online |= monitor->status &&
-                                 !strcmp(monitor->status, "online");
-            }
-
-            sbrec_service_monitor_index_destroy_row(filter);
-
-            if (g->any_online) {
-                break;
-            }
+            struct lb_route_selector *s = xmalloc(sizeof *s);
+            *s = (struct lb_route_selector) {
+                .gate = g,
+                .backend_ip = backend_ip_addr,
+                .protocol = xstrdup(protocol),
+                .port = backend_port,
+            };
+            const char *logical_port =
+                g->route->tracked_port->logical_port;
+            hmap_insert(selectors, &s->node,
+                        lb_route_selector_hash(logical_port, protocol,
+                                               backend_port,
+                                               &backend_ip_addr));
         }
         free(buf);
     }
+}
+
+/* Match the parsed selectors to Service_Monitor rows with a single scan of
+ * the monitored table.  Record every match in 'relevant_service_monitors'
+ * so that changes to those rows trigger recompute. */
+static void
+evaluate_lb_route_gates(
+    struct hmap *gates,
+    const struct sbrec_service_monitor_table *service_monitor_table,
+    struct uuidset *relevant_service_monitors)
+{
+    struct hmap selectors = HMAP_INITIALIZER(&selectors);
+    build_lb_route_selectors(&selectors, gates);
+
+    const struct sbrec_service_monitor *monitor;
+    SBREC_SERVICE_MONITOR_TABLE_FOR_EACH (monitor, service_monitor_table) {
+        if (!monitor->type || strcmp(monitor->type, "load-balancer") ||
+            !monitor->protocol || monitor->port < 0 ||
+            monitor->port > UINT16_MAX) {
+            continue;
+        }
+
+        struct in6_addr monitor_ip;
+        if (!ip46_parse(monitor->ip, &monitor_ip)) {
+            continue;
+        }
+
+        uint32_t hash = lb_route_selector_hash(
+            monitor->logical_port, monitor->protocol, monitor->port,
+            &monitor_ip);
+        struct lb_route_selector *s;
+        HMAP_FOR_EACH_WITH_HASH (s, node, hash, &selectors) {
+            const char *logical_port =
+                s->gate->route->tracked_port->logical_port;
+            if (s->port != monitor->port ||
+                strcmp(s->protocol, monitor->protocol) ||
+                strcmp(logical_port, monitor->logical_port) ||
+                !ipv6_addr_equals(&s->backend_ip, &monitor_ip)) {
+                continue;
+            }
+
+            uuidset_insert(relevant_service_monitors,
+                           &monitor->header_.uuid);
+            s->gate->seen_monitor = true;
+            s->gate->any_online |= monitor->status &&
+                                   !strcmp(monitor->status, "online");
+        }
+    }
+
+    struct lb_route_selector *s;
+    HMAP_FOR_EACH_POP (s, node, &selectors) {
+        free(s->protocol);
+        free(s);
+    }
+    hmap_destroy(&selectors);
 }
 
 /* Look up the gate decision for a specific route. Returns:
@@ -726,7 +785,7 @@ route_run(struct route_ctx_in *r_ctx_in,
 
     if (!hmap_is_empty(&lb_route_gates)) {
         evaluate_lb_route_gates(&lb_route_gates,
-                                r_ctx_in->service_monitor_by_selector,
+                                r_ctx_in->service_monitor_table,
                                 r_ctx_out->relevant_service_monitors);
     }
 
