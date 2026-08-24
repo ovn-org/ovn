@@ -1869,9 +1869,7 @@ get_nexthop_from_lport_addresses(bool is_v4_prefix,
         return true;
     }
 
-    /* ipv6 link local */
-    in6_generate_lla(laddr->ea, nexthop);
-    return true;
+    return false;
 }
 
 static bool
@@ -2213,7 +2211,7 @@ add_lb_vip_to_routes_ad(struct hmap *routes_ad, const char *vip_key,
                                           route_ipv4_next_hop_ipv6(nb_lr,
                                                                    ts_lrp),
                                           &nexthop)) {
-        VLOG_WARN_RL(&rl, "Route ad: failed to get nexthop for lb vip");
+        VLOG_DBG("Route ad: failed to get nexthop for lb vip %s", vip_key);
         goto out;
     }
 
