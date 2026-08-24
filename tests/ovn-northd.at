@@ -1806,6 +1806,122 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
+AT_SETUP([Load balancer health check reply lflows for type=external backends])
+ovn_start
+
+# Topology:
+#
+#   lr0 --(lr0-sw0)-- sw0 (tenant LS, no localnet)
+#                      `-- vm-port      (regular VIF backend)
+#
+#   lr0 --(lr0-prov)-- prov (provider LS with a localnet port)
+#                       |-- prov-localnet (type=localnet)
+#                       |-- bm-tcp        (type=external, TCP pool member)
+#                       |-- bm-udp        (type=external, UDP pool member)
+#                       `-- prov-vm       (regular VIF backend)
+#
+# A type=external LSP has no VIF of its own, so the health check reply from
+# the baremetal member re-enters br-int through the localnet port and
+# MFF_LOG_INPORT carries the localnet port, not the backend.  Every external
+# backend therefore gets an extra copy of the reply lflow per localnet port
+# that restores the backend's inport before punting to the controller.
+# Backends that are not type=external keep a single lflow even when the
+# switch does have a localnet port.
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:01:01 10.0.0.1/24
+check ovn-nbctl lrp-add lr0 lr0-prov 00:00:00:00:02:01 10.0.50.1/24
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-lr0 \
+  -- lsp-set-type sw0-lr0 router \
+  -- lsp-set-options sw0-lr0 router-port=lr0-sw0 \
+  -- lsp-set-addresses sw0-lr0 router
+check ovn-nbctl --wait=sb lsp-add sw0 vm-port \
+  -- lsp-set-addresses vm-port "00:00:00:00:01:02 10.0.0.10"
+
+check ovn-nbctl ls-add prov
+check ovn-nbctl --wait=sb lsp-add prov prov-lr0 \
+  -- lsp-set-type prov-lr0 router \
+  -- lsp-set-options prov-lr0 router-port=lr0-prov \
+  -- lsp-set-addresses prov-lr0 router
+check ovn-nbctl --wait=sb lsp-add prov prov-localnet \
+  -- lsp-set-type prov-localnet localnet \
+  -- lsp-set-options prov-localnet network_name=physnet1 \
+  -- lsp-set-addresses prov-localnet unknown
+check ovn-nbctl --wait=sb lsp-add prov bm-tcp \
+  -- lsp-set-type bm-tcp external \
+  -- lsp-set-addresses bm-tcp "00:00:00:00:02:0a 10.0.50.10"
+check ovn-nbctl --wait=sb lsp-add prov bm-udp \
+  -- lsp-set-type bm-udp external \
+  -- lsp-set-addresses bm-udp "00:00:00:00:02:0b 10.0.50.20"
+check ovn-nbctl --wait=sb lsp-add prov prov-vm \
+  -- lsp-set-addresses prov-vm "00:00:00:00:02:0c 10.0.50.30"
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl lsp-bind vm-port hv1
+check ovn-sbctl lsp-bind bm-tcp hv1
+check ovn-sbctl lsp-bind bm-udp hv1
+check ovn-sbctl lsp-bind prov-vm hv1
+
+# TCP LB: one regular backend on sw0, one external and one regular backend
+# on the provider switch.
+check ovn-nbctl lb-add lb1 192.168.0.10:80 \
+  10.0.0.10:80,10.0.50.10:80,10.0.50.30:80 tcp
+check ovn-nbctl --wait=sb set load_balancer lb1 \
+  ip_port_mappings:10.0.0.10=vm-port:10.0.0.1
+check ovn-nbctl --wait=sb set load_balancer lb1 \
+  ip_port_mappings:10.0.50.10=bm-tcp:10.0.50.1
+check ovn-nbctl --wait=sb set load_balancer lb1 \
+  ip_port_mappings:10.0.50.30=prov-vm:10.0.50.1
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create Load_Balancer_Health_Check \
+  vip="192.168.0.10\:80" -- add Load_Balancer lb1 health_check @hc
+
+# UDP LB with an external backend.  A UDP monitor is only ever moved to
+# offline by the ICMP unreachable punted through this lflow.
+check ovn-nbctl lb-add lb2 192.168.0.20:80 10.0.50.20:80 udp
+check ovn-nbctl --wait=sb set load_balancer lb2 \
+  ip_port_mappings:10.0.50.20=bm-udp:10.0.50.1
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create Load_Balancer_Health_Check \
+  vip="192.168.0.20\:80" -- add Load_Balancer lb2 health_check @hc
+
+check ovn-nbctl lr-lb-add lr0 lb1
+check ovn-nbctl lr-lb-add lr0 lb2
+check ovn-nbctl ls-lb-add sw0 lb1
+check ovn-nbctl ls-lb-add prov lb1
+check ovn-nbctl --wait=sb ls-lb-add prov lb2
+
+AS_BOX([Regular VIF backend on a switch without a localnet port.])
+AT_CAPTURE_FILE([sw0_lflows])
+AT_CHECK([ovn-sbctl dump-flows sw0 | tee sw0_lflows | grep ls_in_l2_lkup dnl
+ | grep handle_svc_check | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(inport == "vm-port" && ip4.dst == 10.0.0.1 && ip4.src == 10.0.0.10 && eth.dst == 00:00:00:00:01:01 && tcp.src == 80), action=(handle_svc_check(inport);)
+])
+
+AS_BOX([External backends get a localnet copy, the regular one does not.])
+AT_CAPTURE_FILE([prov_lflows])
+AT_CHECK([ovn-sbctl dump-flows prov | tee prov_lflows | grep ls_in_l2_lkup dnl
+ | grep handle_svc_check | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(inport == "bm-tcp" && ip4.dst == 10.0.50.1 && ip4.src == 10.0.50.10 && eth.dst == 00:00:00:00:02:01 && tcp.src == 80), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(inport == "bm-udp" && ip4.dst == 10.0.50.1 && ip4.src == 10.0.50.20 && eth.dst == 00:00:00:00:02:01 && icmp4.type == 3), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(inport == "prov-localnet" && ip4.dst == 10.0.50.1 && ip4.src == 10.0.50.10 && eth.dst == 00:00:00:00:02:01 && tcp.src == 80), action=(inport = "bm-tcp"; handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(inport == "prov-localnet" && ip4.dst == 10.0.50.1 && ip4.src == 10.0.50.20 && eth.dst == 00:00:00:00:02:01 && icmp4.type == 3), action=(inport = "bm-udp"; handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(inport == "prov-vm" && ip4.dst == 10.0.50.1 && ip4.src == 10.0.50.30 && eth.dst == 00:00:00:00:02:01 && tcp.src == 80), action=(handle_svc_check(inport);)
+])
+
+AS_BOX([Removing the localnet port removes the extra lflows.])
+check ovn-nbctl --wait=sb lsp-del prov-localnet
+AT_CHECK([ovn-sbctl dump-flows prov | grep ls_in_l2_lkup dnl
+ | grep 'inport = ' | wc -l | tr -d ' '], [0], [0
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load balancer VIP in NAT entries])
 AT_SKIP_IF([test $HAVE_PYTHON = no])

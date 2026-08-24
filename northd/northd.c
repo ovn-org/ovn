@@ -9220,6 +9220,7 @@ build_lb_health_check_response_lflows(
     const struct ovn_northd_lb_vip *lb_vip_nb,
     const struct ovn_lb_datapaths *lb_dps,
     const struct ovn_datapaths *lr_datapaths,
+    const struct hmap *ls_ports,
     const struct shash *meter_groups,
     struct ds *match,
     struct ds *action)
@@ -9228,6 +9229,7 @@ build_lb_health_check_response_lflows(
      * to a real LRP, install rule that punts service check replies to the
      * controller. */
     const struct ovn_lb_backend *backend;
+    struct ds probe_match = DS_EMPTY_INITIALIZER;
     size_t j = 0;
 
     VECTOR_FOR_EACH_PTR (&lb_vip->backends, backend) {
@@ -9242,6 +9244,14 @@ build_lb_health_check_response_lflows(
         if (!protocol || !protocol[0]) {
             protocol = "tcp";
         }
+
+        /* A type=external backend has no VIF of its own.  Its replies reach
+         * br-int through one of the switch's localnet ports, so they need
+         * additional lflows, see below. */
+        const struct ovn_port *backend_op =
+            ovn_port_find(ls_ports, backend_nb->logical_port);
+        bool external_backend = backend_op && backend_op->nbsp &&
+                                lsp_is_external(backend_op->nbsp);
 
         size_t index;
         DYNAMIC_BITMAP_FOR_EACH_1 (index, &lb_dps->nb_lr_map) {
@@ -9270,32 +9280,36 @@ build_lb_health_check_response_lflows(
 
             ds_clear(match);
             ds_clear(action);
+            ds_clear(&probe_match);
 
-            /* icmp6 type 1 and icmp4 type 3 are included in the match, because
+            /* Everything but the inport is identical for every copy of the
+             * lflow, so build that part once.
+             *
+             * icmp6 type 1 and icmp4 type 3 are included in the match, because
              * the controller is using them to detect unreachable ports. */
             if (addr_is_ipv6(backend_nb->svc_mon_src_ip)) {
-                ds_put_format(match, "inport == \"%s\" && ip6.dst == %s && "
+                ds_put_format(&probe_match, "ip6.dst == %s && "
                               "ip6.src == %s && eth.dst == %s && ",
-                              backend_nb->logical_port,
                               backend_nb->svc_mon_src_ip,
                               backend->ip_str,
                               backend_nb->svc_mon_lrp->lrp_networks.ea_s);
                 if (!strcmp(protocol, "tcp")) {
-                    ds_put_format(match, "tcp.src == %s", backend->port_str);
+                    ds_put_format(&probe_match, "tcp.src == %s",
+                                  backend->port_str);
                 } else {
-                    ds_put_cstr(match, "icmp6.type == 1");
+                    ds_put_cstr(&probe_match, "icmp6.type == 1");
                 }
             } else {
-                ds_put_format(match, "inport == \"%s\" && ip4.dst == %s && "
+                ds_put_format(&probe_match, "ip4.dst == %s && "
                               "ip4.src == %s && eth.dst == %s && ",
-                              backend_nb->logical_port,
                               backend_nb->svc_mon_src_ip,
                               backend->ip_str,
                               backend_nb->svc_mon_lrp->lrp_networks.ea_s);
                 if (!strcmp(protocol, "tcp")) {
-                    ds_put_format(match, "tcp.src == %s", backend->port_str);
+                    ds_put_format(&probe_match, "tcp.src == %s",
+                                  backend->port_str);
                 } else {
-                    ds_put_cstr(match, "icmp4.type == 3");
+                    ds_put_cstr(&probe_match, "icmp4.type == 3");
                 }
             }
 
@@ -9305,11 +9319,40 @@ build_lb_health_check_response_lflows(
             const char *meter = copp_meter_get(COPP_SVC_MONITOR,
                                                peer_switch_od->nbs->copp,
                                                meter_groups);
+            ds_put_format(match, "inport == \"%s\" && %s",
+                          backend_nb->logical_port, ds_cstr(&probe_match));
             ovn_lflow_add(lflows, peer_switch_od, S_SWITCH_IN_L2_LKUP, 110,
                           ds_cstr(match), "handle_svc_check(inport);",
                           lb_dps->lflow_ref, WITH_CTRL_METER(meter));
+
+            if (!external_backend) {
+                continue;
+            }
+
+            /* The reply from a type=external backend enters br-int through a
+             * localnet port, so 'inport' is equal to that port and the lflow
+             * above never matches.
+             *
+             * For these ports add a copy of the lflow that restores the
+             * backend's inport before punting.  The rewrite is confined to
+             * this lflow, the action list ends with handle_svc_check() and
+             * carries no next;, so no later table can observe it. */
+            ds_put_format(action, "inport = \"%s\"; handle_svc_check(inport);",
+                          backend_nb->logical_port);
+
+            struct ovn_port *lp;
+            VECTOR_FOR_EACH (&peer_switch_od->localnet_ports, lp) {
+                ds_clear(match);
+                ds_put_format(match, "inport == %s && %s",
+                              lp->json_key, ds_cstr(&probe_match));
+                ovn_lflow_add(lflows, peer_switch_od, S_SWITCH_IN_L2_LKUP, 110,
+                              ds_cstr(match), ds_cstr(action),
+                              lb_dps->lflow_ref, WITH_CTRL_METER(meter));
+            }
         }
     }
+
+    ds_destroy(&probe_match);
 }
 
 static void
@@ -14140,6 +14183,7 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
                            const struct shash *meter_groups,
                            const struct ovn_datapaths *lr_datapaths,
                            const struct lr_stateful_table *lr_stateful_table,
+                           const struct hmap *ls_ports,
                            const struct svc_monitors_map_data *svc_mons_data,
                            struct ds *match, struct ds *action)
 {
@@ -14163,7 +14207,7 @@ build_lrouter_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
 
         build_lb_health_check_response_lflows(
             lflows, lb, lb_vip, &lb->vips_nb[i], lb_dps, lr_datapaths,
-            meter_groups, match, action);
+            ls_ports, meter_groups, match, action);
 
         if (!build_empty_lb_event_flow(lb_vip, lb, match, action)) {
             continue;
@@ -20641,6 +20685,7 @@ build_lflows_thread(void *arg)
                                                lsi->meter_groups,
                                                lsi->lr_datapaths,
                                                lsi->lr_stateful_table,
+                                               lsi->ls_ports,
                                                &svc_mons_data,
                                                &lsi->match, &lsi->actions);
                     build_lswitch_flows_for_lb(lb_dps, lsi->lflows,
@@ -20884,7 +20929,7 @@ build_lswitch_and_lrouter_flows(
                                               lsi.lr_datapaths, &lsi.match);
             build_lrouter_flows_for_lb(lb_dps, lsi.lflows, lsi.meter_groups,
                                        lsi.lr_datapaths, lsi.lr_stateful_table,
-                                       svc_mons_data,
+                                       lsi.ls_ports, svc_mons_data,
                                        &lsi.match, &lsi.actions);
             build_lswitch_flows_for_lb(lb_dps, lsi.lflows, lsi.meter_groups,
                                        lsi.ls_datapaths,
@@ -21295,6 +21340,7 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                    lflow_input->meter_groups,
                                    lflow_input->lr_datapaths,
                                    lflow_input->lr_stateful_table,
+                                   lflow_input->ls_ports,
                                    &svc_mons_data,
                                    &match, &actions);
         build_lswitch_flows_for_lb(lb_dps, lflows,

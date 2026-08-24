@@ -1438,6 +1438,19 @@ This table implements switching behavior.  It contains these logical flows:
   the service monitor mac defined in the ``options:svc_monitor_mac`` column of
   ``NB_Global`` table.
 
+- For each load balancer backend that is health checked from an address
+  belonging to a logical router port, a priority-110 flow matching the probe
+  reply on ``inport == B`` and applying ``handle_svc_check(inport)``, where
+  *B* is the backend's logical switch port.
+
+  A ``type=external`` port has no VIF of its own, so its replies reach the
+  switch through a localnet port and the flow above cannot match.  For such a
+  backend an additional copy of the flow is added for each localnet port *L*
+  on the switch, matching ``inport == L`` instead and applying ``inport = B;
+  handle_svc_check(inport);`` so that ``ovn-controller`` can tell which
+  service monitor the reply belongs to.  The action list ends there, so the
+  assigned ``inport`` is not visible to any later table.
+
 - A priority-100 flow that punts all IGMP/MLD packets to ``ovn-controller`` if
   multicast snooping is enabled on the logical switch.
 
