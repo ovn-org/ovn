@@ -5810,7 +5810,98 @@ OVS_WAIT_FOR_OUTPUT([ovn_as az1 ovn-nbctl lr-route-list lr11 | grep 192.168 |
 ])
 
 OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([interconnection - LLA])
+AT_KEYWORDS([LLA])
+# Logical network:
+#┌──────────────────────────────────────────────────┬────────────────────────────────────────────────────┐
+#│                       AZ1                        │                         AZ2                        │
+#├──────────────────────────────────────────────────┼────────────────────────────────────────────────────┤
+#│ LS11-LR11 (fd11::254) - LR11 - (2001:db8::1) ── TS1 ── (2001:db8::2) - LR12 - (fd12::254) - LR12-LS12 │
+#│ LS21-LR21 (fd21::254) - LR21 - (fe80:10::1) ─────┼──── (fe80:10::2)  - LR22 - (fd22::254) - LR22-LS22 │
+#└──────────────────────────────────────────────────┴────────────────────────────────────────────────────┘
+# LR11/LR12: trigger nexthop filtering: they have a global IPv6 address on the TS port that gets removed,
+#            causing their stub subnet (fd1x::/64), static route (fd99::/64), and lb vip (fd31::100)
+#            to have no valid nexthop and not be advertised to IC-SB.
+# LR21/LR22: verify non-EUI-64 LLA nexthops (fe80:10::x) work correctly; their subnets (fd2x::/64) are advertised and learned.
+
+ovn_init_ic_db
+net_add n1
+
+for i in 1 2; do
+    ovn_start az$i
+    sim_add hv$i
+    as hv$i
+    check ovs-vsctl add-br br-phys
+    ovn_az_attach az$i n1 br-phys 192.168.$i.1 16
+    ovn_as az$i
+    check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    check ovn-nbctl set nb_global . options:ic-route-learn-lb=true
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-adv-lb=true
+done
+
+check ovn-ic-nbctl ts-add ts1
+check ovn_as az1 ovn-nbctl wait-until logical_switch ts1
+check ovn_as az2 ovn-nbctl wait-until logical_switch ts1
+
+for i in 1 2; do
+    ovn_as az$i
+    check ovn-nbctl lr-add lr1$i \
+                 -- lrp-add lr1$i lr1$i-ts1 00:aa:aa:aa:aa:1$i 2001:db8::$i/64 \
+                 -- lrp-add lr1$i lr1$i-ls1$i 00:00:00:00:0$i:fe fd1$i::254/64 \
+                 -- lsp-add-router-port ts1 ts1-lr1$i lr1$i-ts1
+    check ovn-nbctl lr-add lr2$i \
+                 -- lrp-add lr2$i lr2$i-ts1 aa:aa:aa:aa:aa:2$i fe80:10::$i/64 \
+                 -- lsp-add-router-port ts1 ts1-lr2$i lr2$i-ts1
+
+    check ovn-nbctl --wait=sb lrp-add lr2$i lr2$i-ls2$i 00:00:00:00:0$i:0$i fd2$i::254/64
+
+done
+
+wait_for_ports_up
+check ovn-ic-nbctl --wait=sb sync
+check ovn_as az1 ovn-nbctl --wait=hv sync
+check ovn_as az2 ovn-nbctl --wait=hv sync
+
+# Non-EUI-64 LLA nexthops must be advertised to IC-SB and learned normally.
+OVS_WAIT_UNTIL([ovn_as az1 ovn-nbctl lr-route-list lr21 | grep learned | \
+                grep fd22::])
+AT_CHECK([ovn_as az1 ovn-nbctl lr-route-list lr21 | awk '/learned/{print $1, $2}'], [0], [dnl
+fd22::/64 fe80:10::2
+])
+OVS_WAIT_UNTIL([ovn_as az2 ovn-nbctl lr-route-list lr22 | grep learned | \
+                grep fd21::])
+AT_CHECK([ovn_as az2 ovn-nbctl lr-route-list lr22 | awk '/learned/{print $1, $2}'], [0], [dnl
+fd21::/64 fe80:10::1
+])
+
+check ovn_as az1 ovn-nbctl remove logical_router_port lr11-ts1 networks "2001\:db8\:\:1/64"
+
+check ovn_as az1 ovn-nbctl lr-route-add lr11 fd99::/64 2001:db8::2
+
+check ovn_as az1 ovn-nbctl lb-add lb_v6 [[fd31::100]]:80 "[[fd31::1]]:80"
+check ovn_as az1 ovn-nbctl lr-lb-add lr11 lb_v6
+
+check ovn-ic-nbctl --wait=sb sync
+
+# ic-sb route should not contain lla next hops.
+# Such routes used to be created and deleted in ic-sb.
+# Do not use OVS_WAIT_WHILE or WAIT_UNTIL as the wrong (lla) route appears and disappears.
+for i in $(seq 1 50); do
+    AT_CHECK([ovn-ic-sbctl list route | grep "fe80:" | sort], [0], [dnl
+nexthop             : "fe80:10::1"
+nexthop             : "fe80:10::2"
+])
+done
+
+OVN_CLEANUP_SBOX([hv1])
+OVN_CLEANUP_SBOX([hv2])
+OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP
 ])
 
