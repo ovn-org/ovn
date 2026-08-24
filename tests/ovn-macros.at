@@ -189,6 +189,39 @@ m4_define([OVN_WAIT_REMOTE_OUTPUT_FLOWS],
 m4_define([OVN_WAIT_REMOTE_INPUT_FLOWS],
   [ovn_wait_remote_input_flows "$1" "$2" "__file__:__line__"])
 
+# CHECK_UNEXPECTED_DB_CHANGES()
+# Check whether there is a significant number of changes
+# in any db used by the test.
+m4_define([CHECK_UNEXPECTED_DB_CHANGES],[
+    # List dbs and number of lines in those dbs.
+    find "$ovs_base" -name "*.db" | sort | while read db; do
+        printf '%d %s\n' "$(wc -l < "$db")" "$db"
+    done > db.txt
+
+    # First pass: check if there is any db change.
+    diff=0
+    while read before_count db; do
+        after_count=$(wc -l < "$db")
+        diff=$((after_count - before_count))
+        if [[ "$diff" -ne 0 ]]; then
+            break
+        fi
+    done < db.txt
+
+    # Second pass: if there is any db change, rerun check and ignore small number of changes.
+    if [[ "$diff" -ne 0 ]]; then
+        sleep 1
+        while read before_count db; do
+            after_count=$(wc -l < "$db")
+            diff=$((after_count - before_count))
+            if [[ "$diff" -ge "50" ]]; then
+                printf 'Got %d changes in %s\n' "$diff" "$db"
+                AT_CHECK([test "$diff" -lt "50"])
+            fi
+        done < db.txt
+    fi
+])
+
 # OVN_CLEANUP_DBS
 #
 # Gracefully terminate NB, SB OVN daemons.
@@ -204,6 +237,7 @@ m4_define([OVN_CLEANUP_DBS],[
 #
 # Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
 m4_define([OVN_CLEANUP_NORTHD],[
+    CHECK_UNEXPECTED_DB_CHANGES
     OVN_CLEANUP_DBS
 
     as northd
@@ -456,6 +490,7 @@ m4_define([OVN_CLEANUP_SBOX],[
 # Gracefully terminate all OVN daemons, including those in the
 # specified sandbox instances.
 m4_define([OVN_CLEANUP],[
+    CHECK_UNEXPECTED_DB_CHANGES
     m4_foreach([sbox_and_error], [$@], [
         sbox=$(echo "sbox_and_error" |sed -n '1p')
         error=$(echo "sbox_and_error"  | grep '/')
@@ -519,6 +554,7 @@ m4_define([OVN_CLEANUP_AZ],[
 # Gracefully terminate all interconnection DBs, and daemons in the
 # specified AZs, if any.
 m4_define([OVN_CLEANUP_IC],[
+    CHECK_UNEXPECTED_DB_CHANGES
     m4_foreach([az], [$@], [
         OVN_CLEANUP_AZ([az])
     ])
