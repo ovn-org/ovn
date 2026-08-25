@@ -4971,6 +4971,82 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
+AT_SETUP([Load Balancers and lb_force_snat_ip for routers with distributed gateway ports])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+
+# Create a logical router with a distributed gateway port.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
+check ovn-nbctl lrp-set-gateway-chassis lr0-public ch1
+
+check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.4:8080
+check ovn-nbctl lr-lb-add lr0 lb1
+
+# A plain subnet SNAT entry.  On a router with a distributed gateway port
+# the NAT priorities are shifted up by NAT_PRIORITY_DGP_OFFSET, so this
+# entry outranks an unshifted force SNAT flow.  Keep it in the test to make
+# sure the force SNAT consumer stays above it.
+check ovn-nbctl lr-nat-add lr0 snat 172.168.0.100 10.0.0.0/24
+
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+
+# Without lb_force_snat_ip there should be no force SNAT flows.
+AT_CHECK([grep "lr_out_snat" lr0flows | grep force_snat_for_lb | ovn_strip_lflows], [0], [dnl
+])
+
+check ovn-nbctl --wait=sb set logical_router lr0 options:lb_force_snat_ip="172.168.0.4 aef0::4"
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+
+AT_CHECK([grep "lr_in_unsnat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_unsnat       ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.168.0.100 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=110  , match=(ip4 && ip4.dst == 172.168.0.4 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+  table=??(lr_in_unsnat       ), priority=110  , match=(ip6 && ip6.dst == aef0::4 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat;)
+])
+
+# The force SNAT flows must sit above the subnet SNAT entry, otherwise the
+# latter would SNAT the load balanced traffic first and lb_force_snat_ip
+# would still be ignored.
+AT_CHECK([grep "lr_out_snat" lr0flows | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_snat        ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_snat        ), priority=120  , match=(nd_ns), action=(next;)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.dst == 10.0.0.0/24 && inport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat;)
+  table=??(lr_out_snat        ), priority=153  , match=(ip && ip4.src == 10.0.0.0/24 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.168.0.100);)
+  table=??(lr_out_snat        ), priority=228  , match=(flags.force_snat_for_lb == 1 && ip4 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(172.168.0.4);)
+  table=??(lr_out_snat        ), priority=228  , match=(flags.force_snat_for_lb == 1 && ip6 && outport == "lr0-public" && is_chassis_resident("cr-lr0-public")), action=(ct_snat(aef0::4);)
+])
+
+# The producer and the consumer must both be present: the load balancer
+# DNAT flows on the gateway chassis set flags.force_snat_for_lb, and the
+# flows above consume it.
+AT_CHECK([grep "lr_in_dnat" lr0flows | grep -q "force_snat"], [0], [])
+
+# Removing the option removes the flows.
+check ovn-nbctl --wait=sb remove logical_router lr0 options lb_force_snat_ip
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+
+AT_CHECK([grep "lr_out_snat" lr0flows | grep force_snat_for_lb | ovn_strip_lflows], [0], [dnl
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([HA chassis group cleanup for external port ])
 ovn_start
