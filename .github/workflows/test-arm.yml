@@ -22,6 +22,8 @@ jobs:
       TEST_RANGE:  ${{ matrix.cfg.test_range }}
       SANITIZERS:  ${{ matrix.cfg.sanitizers }}
       UNSTABLE:    ${{ matrix.cfg.unstable }}
+      DEPENDENCIES:
+      PREINSTALLED_DEPENDENCIES: podman
 
     name: linux ${{ join(matrix.cfg.*, ' ') }}
     if: (github.repository_owner == 'ovn-org' && github.event_name == 'schedule' && github.ref_name == 'main') || github.event_name == 'workflow_dispatch'
@@ -57,10 +59,21 @@ jobs:
           - { compiler: clang, testsuite: system-test, sanitizers: sanitizers, test_range: "201-", unstable: unstable }
 
     steps:
+      - name: Update APT cache
+        run: sudo apt update
+
+      - name: Ensure pre-installed dependencies
+        run: which ${{ env.PREINSTALLED_DEPENDENCIES }}
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ env.DEPENDENCIES }}" ]; then
+            sudo apt install -y ${{ env.DEPENDENCIES }}
+          fi
+
       - name: system-level-dependencies
         if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}
         run: |
-          sudo apt update
           sudo apt -y install linux-modules-extra-$(uname -r)
 
       - name: checkout

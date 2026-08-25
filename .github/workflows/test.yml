@@ -23,7 +23,8 @@ jobs:
     # | !main |  Builds - Ubuntu  | xxxxxxxxxxxxxxxxx |
     # +-------+-------------------+-------------------+
     env:
-      DEPENDENCIES: podman
+      DEPENDENCIES:
+      PREINSTALLED_DEPENDENCIES: podman
     name: Prepare container
     if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
     runs-on: ubuntu-24.04
@@ -34,8 +35,14 @@ jobs:
       - name: Update APT cache
         run: sudo apt update
 
+      - name: Ensure pre-installed dependencies
+        run: which ${{ env.PREINSTALLED_DEPENDENCIES }}
+
       - name: Install dependencies
-        run: sudo apt install -y ${{ env.DEPENDENCIES }}
+        run: |
+          if [ -n "${{ env.DEPENDENCIES }}" ]; then
+            sudo apt install -y ${{ env.DEPENDENCIES }}
+          fi
 
       - name: Fix /etc/hosts file
         run: |
