@@ -203,8 +203,8 @@ __regex_if_macros = re.compile(r'^ +(%s) \([\S]([\s\S]+[\S])*\) { +\\' %
 __regex_nonascii_characters = re.compile("[^\u0000-\u007f]")
 __regex_efgrep = re.compile(r'.*[ef]grep.*$')
 __regex_hardcoded_table = re.compile(r'.*(table=[0-9]+)|.*(resubmit\(,[0-9]+\))')
-__regex_ovn_nbctl = re.compile(r'^\s*ovn-nbctl ')
-__regex_ovn_sbctl = re.compile(r'^\s*ovn-sbctl ')
+__regex_ovn_nbctl = re.compile(r'^\s*(?:ovn_as\s+\S+\s+)?ovn-nbctl\b')
+__regex_ovn_sbctl = re.compile(r'^\s*(?:ovn_as\s+\S+\s+)?ovn-sbctl\b')
 
 skip_leading_whitespace_check = False
 skip_trailing_whitespace_check = False
