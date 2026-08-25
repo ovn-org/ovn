@@ -656,6 +656,15 @@ try_checkpatch \
     ovn-nbctl lsp-add ls
 "
 
+try_checkpatch \
+   "COMMON_PATCH_HEADER([tests/something.at])
+    +ovn_as az1 ovn-nbctl lsp-add ls
+    " \
+    "WARNING: ovn-nbctl return should be checked Consider adding check or check_uuid in front.
+    #8 FILE: tests/something.at:1:
+    ovn_as az1 ovn-nbctl lsp-add ls
+"
+
 # Verify that existing check makes checkpatch happy.
 try_checkpatch \
    "COMMON_PATCH_HEADER([tests/something.at])
