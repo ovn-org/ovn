@@ -21,6 +21,8 @@ jobs:
         - { repo: "${{ github.repository }}", branch: "${{ github.ref_name }}" }
         - { repo: ovn-org/ovn, branch: "branch-24.03" }
     env:
+      DEPENDENCIES:
+      PREINSTALLED_DEPENDENCIES: podman
       RUNC_CMD: podman
       OS_IMAGE: "fedora:42"
       # https://github.com/actions/runner-images/issues/6282
@@ -51,10 +53,17 @@ jobs:
         repository: ${{ matrix.cfg.repo }}
         ref: ${{ matrix.cfg.branch }}
 
+    - name: Update APT cache
+      run: sudo apt update
+
+    - name: Ensure pre-installed dependencies
+      run: which ${{ env.PREINSTALLED_DEPENDENCIES }}
+
     - name: Install dependencies
       run: |
-        sudo apt update || true
-        sudo apt-get install -y podman
+        if [ -n "${{ env.DEPENDENCIES }}" ]; then
+          sudo apt install -y ${{ env.DEPENDENCIES }}
+        fi
 
     - name: Fix /etc/hosts file
       run: |
@@ -110,22 +119,30 @@ jobs:
       ENABLE_SSL: no
       CC: gcc
       OPTS: "--disable-ssl"
-      dependencies: |
+      DEPENDENCIES: |
         automake libtool gcc bc libjemalloc2 libjemalloc-dev    \
         libssl-dev llvm-dev libelf-dev libnuma-dev libpcap-dev  \
         selinux-policy-dev ncat python3-scapy isc-dhcp-server \
-        podman openvswitch-switch libunbound-dev libunwind-dev
+        openvswitch-switch libunbound-dev libunwind-dev
       # https://github.com/actions/runner-images/issues/6282
+      PREINSTALLED_DEPENDENCIES: podman
       XDG_RUNTIME_DIR: ''
 
     steps:
     - name: Check out ovn
       uses: actions/checkout@v6
 
-    - name: install required dependencies
-      run:  |
-        sudo apt update || true
-        sudo apt install -y ${{ env.dependencies }}
+    - name: Update APT cache
+      run: sudo apt update
+
+    - name: Ensure pre-installed dependencies
+      run: which ${{ env.PREINSTALLED_DEPENDENCIES }}
+
+    - name: Install dependencies
+      run: |
+        if [ -n "${{ env.DEPENDENCIES }}" ]; then
+          sudo apt install -y ${{ env.DEPENDENCIES }}
+        fi
         sudo apt install -y linux-modules-extra-$(uname -r)
 
     - name: Fix /etc/hosts file
