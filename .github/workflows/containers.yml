@@ -11,7 +11,8 @@ env:
   IMAGE_NAMESPACE: ovn-org
   IMAGE_NAME: ovn-tests
   CONTAINERS_PATH: ./utilities/containers
-  DEPENDENCIES: podman
+  DEPENDENCIES:
+  PREINSTALLED_DEPENDENCIES: podman
 
 jobs:
   container:
@@ -26,8 +27,14 @@ jobs:
       - name: Update APT cache
         run: sudo apt update
 
+      - name: Ensure pre-installed dependencies
+        run: which ${{ env.PREINSTALLED_DEPENDENCIES }}
+
       - name: Install dependencies
-        run: sudo apt install -y ${{ env.DEPENDENCIES }}
+        run: |
+          if [ -n "${{ env.DEPENDENCIES }}" ]; then
+            sudo apt install -y ${{ env.DEPENDENCIES }}
+          fi
 
       - name: Fix /etc/hosts file
         run: |
