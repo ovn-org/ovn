@@ -1786,6 +1786,30 @@
           <p><b>Example:</b> <code>outport = get_fdb(eth.src);</code></p>
         </dd>
 
+        <dt><code><var>P</var> = get_remote_fdb(<var>A</var>);
+        </code></dt>
+
+        <dd>
+          <p>
+            <b>Parameters</b>: 48-bit MAC address field <var>A</var>.
+          </p>
+
+          <p>
+            <b>Result</b>: stored to a logical port field <var>P</var>.
+          </p>
+
+          <p>
+            Looks up <var>A</var> in the remote <ref table="FDB"/> table. If an
+            entry is found, store the logical port key to the out parameter
+            <code>P</code>.  This is similar to <code>get_fdb</code>
+            but looks up remote <ref table="FDB"/> entries learned from other
+            chassis.
+          </p>
+
+          <p><b>Example:</b> <code>outport = get_remote_fdb(eth.dst);
+          </code></p>
+        </dd>
+
         <dt>
           <code>put_fdb(<var>P</var>, <var>A</var>);</code>
         </dt>
@@ -2597,6 +2621,19 @@ tcp.flags = RST;
           <p><b>Prerequisite:</b> <code>tcp</code></p>
         </dd>
 
+        <dt><code>sctp_abort { <var>action</var>; </code>...<code> };
+        </code></dt>
+        <dd>
+          <p>
+            This action transforms the current SCTP packet into an
+            ABORT chunk.  The nested actions, such as
+            <code>output</code>, are executed on the resulting ABORT
+            packet.
+          </p>
+
+          <p><b>Prerequisite:</b> <code>sctp</code></p>
+        </dd>
+
         <dt><code>reject { <var>action</var>; </code>...<code> };</code></dt>
         <dd>
           <p>
@@ -2691,6 +2728,38 @@ tcp.flags = RST;
             <ref table="Port_Binding" column="options"/> table for each
             prefix received from the delegation server
           </p>
+        </dd>
+
+        <dt><code>handle_bfd_msg();</code></dt>
+        <dd>
+          <p>
+            This action sends BFD packets to
+            <code>ovn-controller</code> for processing.
+            <code>ovn-controller</code> handles BFD protocol messages
+            received on tunnel or logical ports.
+          </p>
+        </dd>
+
+        <dt><code>flood_remote;</code></dt>
+        <dd>
+          <p>
+            This action floods the packet to all remote ports, i.e.,
+            ports that reside on other chassis.
+          </p>
+        </dd>
+
+        <dt><code><var>R</var> = ct_proto();</code></dt>
+        <dd>
+          <p>
+            <b>Result</b>: stored to an 8-bit subfield <var>R</var>.
+          </p>
+
+          <p>
+            This action returns the IP protocol of the conntrack
+            original-direction tuple.
+          </p>
+
+          <p><b>Example:</b> <code>reg1[16..23] = ct_proto();</code></p>
         </dd>
 
         <dt><code><var>R</var> = select(<var>N1</var>[=<var>W1</var>], <var>N2</var>[=<var>W2</var>], ...);</code></dt>
