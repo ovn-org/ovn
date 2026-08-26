@@ -151,7 +151,10 @@ VLOG_DEFINE_THIS_MODULE(pinctrl);
  *                    contents and stores them in mcast_query_list.
  *
  *                    pinctrl_handler thread sends the periodic IGMP queries
- *                    by walking the mcast_query_list.
+ *                    by walking the mcast_query_list.  Locally generated
+ *                    queries are injected with outport MC_FLOOD_L2 so they
+ *                    stay in the L2 broadcast domain (RFC 4541) and are
+ *                    not flooded towards logical router ports.
  *
  * Notification between pinctrl_handler() and pinctrl_run()
  * -------------------------------------------------------
@@ -6211,12 +6214,16 @@ ip_mcast_querier_send_igmp(struct rconn *swconn, struct ip_mcast_snoop *ip_ms)
     uint8_t qqic = max_response;
     packet_set_igmp3_query(&packet, max_response, 0, false, 0, qqic);
 
-    /* Inject multicast query. */
+    /* Inject multicast query.  Use MC_FLOOD_L2 rather than MC_FLOOD so the
+     * query is not flooded to connected logical routers.  Flooding to every
+     * local port (including router patch ports) can exceed the OVS 4096
+     * resubmit limit in scaled topologies.  Snooped queries already use
+     * MC_FLOOD_L2 via ip_mcast_forward_query(). */
     uint64_t ofpacts_stub[4096 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     enum ofp_version version = rconn_get_version(swconn);
     put_load(ip_ms->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    put_load(OVN_MCAST_FLOOD_TUNNEL_KEY, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(OVN_MCAST_FLOOD_L2_TUNNEL_KEY, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY, 1, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
@@ -6261,12 +6268,12 @@ ip_mcast_querier_send_mld(struct rconn *swconn, struct ip_mcast_snoop *ip_ms)
     struct in6_addr unspecified = { { { 0 } } };
     packet_set_mld_query(&packet, max_response, &unspecified, false, 0, qqic);
 
-    /* Inject multicast query. */
+    /* Inject multicast query.  See ip_mcast_querier_send_igmp(). */
     uint64_t ofpacts_stub[4096 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     enum ofp_version version = rconn_get_version(swconn);
     put_load(ip_ms->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    put_load(OVN_MCAST_FLOOD_TUNNEL_KEY, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(OVN_MCAST_FLOOD_L2_TUNNEL_KEY, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY, 1, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;

@@ -24633,8 +24633,11 @@ check ovn-nbctl set Logical_Switch sw2 \
     other_config:mcast_ip4_src="20.0.0.254"
 
 AS_BOX([IGMP traffic test 4])
-# Check that multiple queries are generated over time.
+# Check that multiple queries are generated over time and stay in the
+# L2 domain (MC_FLOOD_L2): they must reach sw2 VIFs and must not be
+# flooded towards the router onto sw1/sw3.
 > expected
+> expected_empty
 store_igmp_v3_query 0000000002fe $(ip_to_hex 20 0 0 254) 84dd expected
 store_igmp_v3_query 0000000002fe $(ip_to_hex 20 0 0 254) 84dd expected
 
@@ -24650,7 +24653,13 @@ for count in 1 2 3; do
     OVS_WAIT_UNTIL(
       [check_packets --uniq \
                      'hv1/vif3-tx.pcap expected' \
-                     'hv2/vif3-tx.pcap expected'],
+                     'hv2/vif3-tx.pcap expected' \
+                     'hv1/vif1-tx.pcap expected_empty' \
+                     'hv1/vif2-tx.pcap expected_empty' \
+                     'hv1/vif4-tx.pcap expected_empty' \
+                     'hv2/vif1-tx.pcap expected_empty' \
+                     'hv2/vif2-tx.pcap expected_empty' \
+                     'hv2/vif4-tx.pcap expected_empty'],
       [$at_diff -F'^---' exp rcv])
 done
 
@@ -25364,8 +25373,11 @@ check ovn-nbctl --wait=hv set Logical_Switch sw2 \
 AT_CAPTURE_FILE([sbflows4])
 ovn-sbctl dump-flows > sbflows4
 
-# Check that multiple queries are generated over time.
+# Check that multiple queries are generated over time and stay in the
+# L2 domain (MC_FLOOD_L2): they must reach sw2 VIFs and must not be
+# flooded towards the router onto sw1/sw3.
 > expected
+> expected_empty
 store_mld_query 0000000002fe fe8000000000000000000000000000fe expected
 store_mld_query 0000000002fe fe8000000000000000000000000000fe expected
 for count in 1 2 3; do
@@ -25380,7 +25392,13 @@ for count in 1 2 3; do
     OVS_WAIT_UNTIL(
       [check_packets --uniq \
                      'hv1/vif3-tx.pcap expected' \
-                     'hv2/vif3-tx.pcap expected'],
+                     'hv2/vif3-tx.pcap expected' \
+                     'hv1/vif1-tx.pcap expected_empty' \
+                     'hv1/vif2-tx.pcap expected_empty' \
+                     'hv1/vif4-tx.pcap expected_empty' \
+                     'hv2/vif1-tx.pcap expected_empty' \
+                     'hv2/vif2-tx.pcap expected_empty' \
+                     'hv2/vif4-tx.pcap expected_empty'],
       [$at_diff -F'^---' exp rcv])
 done
 

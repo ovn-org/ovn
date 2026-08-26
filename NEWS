@@ -1,5 +1,10 @@
 Post v26.09.09
 --------------
+   - ovn-controller now injects locally generated IGMP/MLD membership
+     queries using the MC_FLOOD_L2 group (L2 ports only) instead of
+     MC_FLOOD.  This matches snooped-query forwarding (RFC 4541) and
+     avoids exceeding the OVS 4096 resubmit limit when a logical switch
+     has many local ports or connected logical routers.
    - Mark tunnel ports as transient (other_config:transient=true) when the
      local chassis is a member of an HA chassis group.
      Systems which invoke ovs-ctl --delete-transient-ports during OVS startup
