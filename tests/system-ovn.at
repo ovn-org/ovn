@@ -17341,6 +17341,105 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([dynamic-routing - multiple LRs sharing a VRF])
+AT_KEYWORDS([dynamic-routing])
+
+VRF_RESERVE([1337])
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+
+ADD_BR([br-int])
+check ovs-vsctl                                                                     \
+    -- set Open_vSwitch . external-ids:system-id=hv1                                \
+    -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    -- set Open_vSwitch . external-ids:ovn-encap-type=geneve                        \
+    -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1                       \
+    -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+dnl Two independent logical routers configured with the same
+dnl dynamic-routing-vrf-id. Each redistributes a distinct connected subnet
+dnl plus a static route for the same shared prefix. Only lr1 maintains the
+dnl VRF device, but both must export their routes to it.
+check ovn-nbctl                                                               \
+    -- lr-add lr1                                                             \
+      -- set logical_router lr1 options:dynamic-routing=true                  \
+                                options:dynamic-routing-vrf-id=1337           \
+      -- lrp-add lr1 lr1-gw 00:00:00:01:00:10 42.10.10.12/24                  \
+        -- lrp-set-gateway-chassis lr1-gw hv1 10                              \
+        -- lrp-set-options lr1-gw dynamic-routing-maintain-vrf=true           \
+      -- lrp-add lr1 lr1-int 00:00:00:00:01:02 30.0.1.1/24                    \
+        -- lrp-set-options lr1-int                                            \
+             dynamic-routing-redistribute=connected,static                    \
+    -- lr-add lr2                                                             \
+      -- set logical_router lr2 options:dynamic-routing=true                  \
+                                options:dynamic-routing-vrf-id=1337           \
+      -- lrp-add lr2 lr2-gw 00:00:00:02:00:10 42.20.10.22/24                  \
+        -- lrp-set-gateway-chassis lr2-gw hv1 10                              \
+      -- lrp-add lr2 lr2-int 00:00:00:00:02:02 30.0.2.1/24                    \
+        -- lrp-set-options lr2-int                                            \
+             dynamic-routing-redistribute=connected,static                    \
+    -- ls-add ls1                                                             \
+      -- lsp-add-router-port ls1 ls1-lr1-gw lr1-gw                            \
+    -- ls-add ls2                                                             \
+      -- lsp-add-router-port ls2 ls2-lr2-gw lr2-gw                            \
+    -- ls-add ls-int1                                                         \
+      -- lsp-add-router-port ls-int1 ls-int1-lr lr1-int                       \
+      -- lsp-add ls-int1 w1                                                   \
+        -- lsp-set-addresses w1 "00:00:00:00:00:01 30.0.1.11"                 \
+    -- ls-add ls-int2                                                         \
+      -- lsp-add-router-port ls-int2 ls-int2-lr lr2-int                       \
+      -- lsp-add ls-int2 w2                                                   \
+        -- lsp-set-addresses w2 "00:00:00:00:00:02 30.0.2.11"
+
+dnl Both routers advertise a static route for the same prefix.
+check ovn-nbctl lr-route-add lr1 203.0.113.0/24 30.0.1.11
+check ovn-nbctl lr-route-add lr2 203.0.113.0/24 30.0.2.11
+
+check ovs-vsctl add-port br-int w1 \
+    -- set interface w1 type=internal external_ids:iface-id=w1
+check ovs-vsctl add-port br-int w2 \
+    -- set interface w2 type=internal external_ids:iface-id=w2
+check ovn-nbctl --wait=hv sync
+wait_for_ports_up w1 w2
+
+AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
+ovnvrf1337 1337
+])
+
+dnl Both routers must have their connected routes installed in the shared VRF.
+dnl The shared static prefix is advertised by both routers but must be
+dnl installed only once.
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 30.0.2.0/24 proto ovn metric 1000
+blackhole 203.0.113.0/24 proto ovn metric 1000])
+
+dnl Removing one router must not disturb the remaining router's routes,
+dnl including the shared prefix it still advertises.
+check ovn-nbctl --wait=hv lr-del lr2
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 30.0.1.0/24 proto ovn metric 1000
+blackhole 203.0.113.0/24 proto ovn metric 1000])
+
+dnl Removing the last router must clean up the routes and the VRF device.
+check ovn-nbctl --wait=hv lr-del lr1
+OVS_WAIT_WHILE([ip link show dev ovnvrf1337])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([dynamic-routing - multiple DGP with same priority])
 
 VRF_RESERVE([1337])

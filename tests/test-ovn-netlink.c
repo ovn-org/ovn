@@ -231,8 +231,14 @@ test_route_sync(struct ovs_cmdl_context *ctx)
                     advertise_route_hash(&ar->addr, &ar->nexthop, ar->plen));
     }
 
-    ovs_assert(re_nl_sync_routes(table_id, &routes_to_advertise,
+    struct vector route_tables =
+        VECTOR_EMPTY_INITIALIZER(const struct hmap *);
+    const struct hmap *routes = &routes_to_advertise;
+    vector_push(&route_tables, &routes);
+
+    ovs_assert(re_nl_sync_routes(table_id, &route_tables,
                                  &received_routes) == 0);
+    vector_destroy(&route_tables);
 
     struct ds msg = DS_EMPTY_INITIALIZER;
 
