@@ -2680,7 +2680,8 @@ tcp.flags = RST;
         <dd>
           <p>
             Handle DHCPv6 prefix delegation advertisements/replies from
-            a IPv6 delegation server. <code>ovn-controller</code> will
+            an IPv6 delegation server and manage the prefix delegation state
+            machine. <code>ovn-controller</code> will
             add an entry <code>ipv6_ra_pd_list</code> in the
             <ref table="Port_Binding" column="options"/> table for each
             prefix received from the delegation server
@@ -2727,14 +2728,6 @@ tcp.flags = RST;
           <p>
             <b>Example:</b> <code>reg8[16..31] = select(1=20, 2=30, 3=50);</code>
             <b>Example:</b> <code>reg8[16..31] = select(values=(1=20, 2=30, 3=50); hash_fields="ip_proto,src_ip,dst_ip");</code>
-          </p>
-        </dd>
-
-        <dt><code>handle_dhcpv6_reply;</code></dt>
-        <dd>
-          <p>
-            This action is used to parse DHCPv6 replies from IPv6
-            Delegation Router and managed IPv6 Prefix delegation state machine
           </p>
         </dd>
 
