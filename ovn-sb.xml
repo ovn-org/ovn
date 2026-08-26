@@ -2613,7 +2613,8 @@ tcp.flags = RST;
           </p>
         </dd>
 
-        <dt><code>trigger_event;</code></dt>
+        <dt><code>trigger_event(event = "<var>event_type</var>", ...);
+        </code></dt>
         <dd>
           <p>
             This action is used to allow ovs-vswitchd to report CMS related
