@@ -4099,6 +4099,59 @@ tcp.flags = RST;
     </group>
 
     <group title="Dynamic Routing">
+      <column name="options" key="dynamic-routing"
+              type='{"type": "boolean"}'>
+        Set to <code>true</code> by <code>ovn-northd</code> on
+        <code>chassisredirect</code> and <code>l3gateway</code>
+        port bindings when the parent logical router has dynamic
+        routing enabled.  This enables <code>ovn-controller</code>
+        to advertise and learn routes for this port.
+      </column>
+
+      <column name="options" key="dynamic-routing-maintain-vrf"
+              type='{"type": "boolean"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          When set to <code>true</code>, <code>ovn-controller</code>
+          creates and maintains a VRF for this port's routing protocol
+          session.  Copied from the
+          <ref table="Logical_Router_Port" db="OVN_Northbound"/>
+          <code>options:dynamic-routing-maintain-vrf</code> option.
+        </p>
+      </column>
+
+      <column name="options" key="dynamic-routing-vrf-name">
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          The VRF name to use for this port's routing protocol session.
+          Copied from the
+          <ref table="Logical_Router" db="OVN_Northbound"/>
+          <code>options:dynamic-routing-vrf-name</code> option.
+        </p>
+      </column>
+
+      <column name="options" key="dynamic-routing-port-name">
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          The port name within the VRF for this port's routing protocol
+          session.  Copied from the
+          <ref table="Logical_Router_Port" db="OVN_Northbound"/>
+          <code>options:dynamic-routing-port-name</code> option.
+        </p>
+      </column>
+
       <column name="options"
           key="dynamic-routing-redistribute-local-only"
           type='{"type": "boolean"}'>
