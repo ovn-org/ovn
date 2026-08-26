@@ -4200,7 +4200,7 @@ tcp.flags = RST;
         </p>
 
         <p>
-          For a logical switch port, <code>ovn-northd</code> does not currently
+          For a logical router port, <code>ovn-northd</code> does not currently
           set this key.
         </p>
       </column>
