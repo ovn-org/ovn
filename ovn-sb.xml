@@ -2751,7 +2751,7 @@ tcp.flags = RST;
           </p>
         </dd>
 
-        <dt><code><var>R</var> = ct_snat_to_vip;</code></dt>
+        <dt><code>ct_snat_to_vip;</code></dt>
         <dd>
           <p>
             This action sends the packet through the SNAT zone to change the
