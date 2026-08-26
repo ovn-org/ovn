@@ -3551,6 +3551,40 @@ tcp.flags = RST;
             This is populated by <code>ovn-controller</code> based on the value
             of the <code>options:l2gateway-chassis</code> column in this table.
           </dd>
+
+          <dt>external</dt>
+            <dd>
+              A logical port representing an externally connected entity.
+              An <code>external</code> port requires a
+              <ref column="ha_chassis_group"/> and a
+              <code>localnet</code> port on the same logical switch to be
+              functional. <code>ovn-northd</code> syncs the HA chassis group
+              from the corresponding
+              <ref table="Logical_Switch_Port" db="OVN_Northbound"/>
+              and generates logical flows that direct traffic through the
+              <code>localnet</code> port on the bound chassis. Without a
+              <ref column="ha_chassis_group"/>, no logical flows are
+              generated for the port.
+            </dd>
+
+            <dt>remote</dt>
+            <dd>
+              A logical router port whose peer resides on a remote chassis
+              (one whose <ref column="other_config"
+              table="Chassis"/>:<code>is-remote</code> is
+              <code>true</code>).  This type is set instead of
+              <code>patch</code> when <code>ovn-northd</code> determines
+              that the requested chassis is remote.
+            </dd>
+
+            <dt>mirror</dt>
+            <dd>
+              A synthetic port binding created for lport-level mirroring.
+              It acts similarly to a container port (without VLAN tagging)
+              and has its <ref column="mirror_port"
+              table="Port_Binding"/> column set to point to the mirror
+              target port.
+            </dd>
         </dl>
 
       </column>
@@ -3576,11 +3610,20 @@ tcp.flags = RST;
 
       <column name="ha_chassis_group">
         <p>
-          This should only be populated for ports with
-          <ref column="type"/> set to <code>chassisredirect</code>.
-          This column defines the HA chassis group with a list of
-          HA chassis used as gateways where traffic will be redirected
-          through.
+          A list of HA chassis for this port binding. It is populated
+          for ports with <ref column="type"/> set to
+          <code>chassisredirect</code> or <code>external</code>.
+        </p>
+
+        <p>
+          For <code>chassisredirect</code> ports, the HA chassis are used
+          as gateways where traffic will be redirected through.
+        </p>
+
+        <p>
+          For <code>external</code> ports, the HA chassis group determines
+          which chassis binds the port and handles its traffic through a
+          <code>localnet</code> port on the same logical switch.
         </p>
       </column>
 
