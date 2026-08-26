@@ -18,6 +18,7 @@
 
 #include "openvswitch/hmap.h"
 #include "openvswitch/uuid.h"
+#include "uuidset.h"
 
 struct mac_cache_data;
 struct ovsdb_idl_index;
@@ -40,6 +41,9 @@ struct ed_type_evpn_mac_binding_sync {
     /* Contains 'struct evpn_mb_synced_entry'.  Tracks which
      * (logical_port, ip) pairs we have written to SB. */
     struct hmap synced_entries;
+
+    /* Contains LSP UUIDs belonging to synced entries peers. */
+    struct uuidset lsp_peers;
 
     /* True when an SB write was skipped because ovnsb_idl_txn was NULL. */
     bool sb_changes_pending;

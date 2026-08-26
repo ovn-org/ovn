@@ -7032,6 +7032,7 @@ en_evpn_mac_binding_sync_run(struct engine_node *node, void *data_)
     struct evpn_mb_sync_waker *waker =
         engine_get_input_data("evpn_mac_binding_sync_waker", node);
 
+    uuidset_clear(&data->lsp_peers);
     data->sb_changes_pending = false;
 
     evpn_mac_binding_sync_run(engine_get_context()->ovnsb_idl_txn,
@@ -7058,6 +7059,75 @@ evpn_mac_binding_sync_sb_ro_handler(struct engine_node *node OVS_UNUSED,
 {
     struct ed_type_evpn_mac_binding_sync *data = data_;
     if (data->sb_changes_pending) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+static enum engine_input_handler_result
+evpn_mac_binding_sync_sb_port_binding_handler(struct engine_node *node,
+                                              void *data_)
+{
+    struct ed_type_evpn_mac_binding_sync *data = data_;
+    struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+    const struct sbrec_port_binding_table *port_binding_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
+    struct ovsdb_idl_index *sbrec_port_binding_by_name =
+        engine_ovsdb_node_get_index(
+                engine_get_input("SB_port_binding", node),
+                "name");
+
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, port_binding_table) {
+        if (sbrec_port_binding_is_deleted(pb) &&
+            uuidset_contains(&data->lsp_peers, &pb->header_.uuid)) {
+            return EN_UNHANDLED;
+        }
+
+        if (!sbrec_port_binding_is_new(pb) &&
+            uuidset_contains(&data->lsp_peers, &pb->header_.uuid) &&
+            (sbrec_port_binding_is_updated(pb,
+                                           SBREC_PORT_BINDING_COL_OPTIONS) ||
+            sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_TYPE))) {
+            return EN_UNHANDLED;
+        }
+
+        if (!sbrec_port_binding_is_new(pb)) {
+            continue;
+        }
+
+        struct local_datapath *ld = get_local_datapath(
+            &rt_data->local_datapaths, pb->datapath->tunnel_key);
+        if (!ld || !ld->is_switch) {
+            continue;
+        }
+
+        int64_t vni = ovn_smap_get_llong(&ld->datapath->external_ids,
+                                         "dynamic-routing-vni", -1);
+        if (!ovn_is_valid_vni(vni)) {
+            continue;
+        }
+
+        enum en_lport_type type = get_lport_type(pb);
+        if (type != LP_L3GATEWAY && type != LP_PATCH) {
+            continue;
+        }
+
+        const struct sbrec_port_binding *peer =
+            lport_get_peer(pb, sbrec_port_binding_by_name);
+        if (!peer) {
+            continue;
+        }
+
+        struct local_datapath *peer_ld =
+            get_local_datapath(&rt_data->local_datapaths,
+                               peer->datapath->tunnel_key);
+        if (!peer_ld || peer_ld->is_switch) {
+            continue;
+        }
+
         return EN_UNHANDLED;
     }
 
@@ -7491,6 +7561,8 @@ inc_proc_ovn_controller_init(
                      engine_noop_handler);
     engine_add_input(&en_evpn_mac_binding_sync, &en_sb_ro,
                      evpn_mac_binding_sync_sb_ro_handler);
+    engine_add_input(&en_evpn_mac_binding_sync, &en_sb_port_binding,
+                     evpn_mac_binding_sync_sb_port_binding_handler);
 
     engine_add_input(&en_pflow_output, &en_evpn_vtep_binding,
                      pflow_output_evpn_binding_handler);
