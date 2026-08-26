@@ -481,6 +481,7 @@ digraph "Incremental-Processing-Engine" {
 	runtime_data -> evpn_mac_binding_sync [[label="engine_noop_handler"]];
 	mac_cache -> evpn_mac_binding_sync [[label="engine_noop_handler"]];
 	sb_ro -> evpn_mac_binding_sync [[label="evpn_mac_binding_sync_sb_ro_handler"]];
+	SB_port_binding -> evpn_mac_binding_sync [[label="evpn_mac_binding_sync_sb_port_binding_handler"]];
 	SB_acl_id [[style=filled, shape=box, fillcolor=white, label="SB_acl_id"]];
 	acl_id [[style=filled, shape=box, fillcolor=white, label="acl_id"]];
 	SB_acl_id -> acl_id [[label=""]];
