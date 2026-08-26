@@ -4578,6 +4578,23 @@ tcp.flags = RST;
             put_dhcpv6_opts(..., server_id = 01:02:03:04:05:06,...)
           </p>
         </dd>
+
+        <dt><code>value: domain</code></dt>
+        <dd>
+          <p>
+            This indicates that the value of the DHCPv6 option is a
+            domain name encoded in DNS wire format (RFC 1035), where
+            each label is preceded by its length.
+          </p>
+
+          <p>
+            Example. "name=fqdn", "code=39", "type=domain".
+          </p>
+
+          <p>
+            put_dhcpv6_opts(..., fqdn = host.example.com,...)
+          </p>
+        </dd>
       </dl>
     </column>
   </table>
