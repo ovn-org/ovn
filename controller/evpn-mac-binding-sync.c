@@ -186,6 +186,8 @@ evpn_mac_binding_sync_run(
                 continue;
             }
 
+            uuidset_insert(&data->lsp_peers, &peers->local->header_.uuid);
+
             int64_t remaining =
                 sync_evpn_mb_for_router_port(ovnsb_idl_txn,
                                              sbrec_mac_binding_by_lport_ip,
@@ -225,6 +227,7 @@ void
 evpn_mac_binding_sync_init(struct ed_type_evpn_mac_binding_sync *data)
 {
     hmap_init(&data->synced_entries);
+    uuidset_init(&data->lsp_peers);
     data->sb_changes_pending = false;
 }
 
@@ -238,4 +241,5 @@ evpn_mac_binding_sync_cleanup(struct ed_type_evpn_mac_binding_sync *data)
         free(entry);
     }
     hmap_destroy(&data->synced_entries);
+    uuidset_destroy(&data->lsp_peers);
 }
