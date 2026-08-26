@@ -218,7 +218,9 @@
           BFD option <code>mult</code> value to use when configuring BFD on
           tunnel interfaces.
         </column>
+      </group>
 
+      <group title="Options for debug drop sampling">
         <column name="options" key="debug_drop_domain_id">
           <p>
             If set to a 8-bit number and if
