@@ -2568,7 +2568,8 @@
           <p><b>Prerequisite:</b> <code>ip6</code></p>
         </dd>
 
-        <dt><code>tcp_reset;</code></dt>
+        <dt><code>tcp_reset { <var>action</var>; </code>...<code> };
+        </code></dt>
         <dd>
           <p>
             This action transforms the current TCP packet according to the
@@ -2588,6 +2589,7 @@ tcp.flags = RST;
           <p>
             Then, the action drops all TCP options and payload data, and
             updates the TCP checksum. IP ttl is set to 255.
+            The nested actions are executed on the resulting RST packet.
           </p>
 
           <p><b>Prerequisite:</b> <code>tcp</code></p>
