@@ -1800,7 +1800,7 @@
             fdb table, setting its logical port key to <var>P</var>.
           </p>
 
-          <p><b>Example:</b> <code>put_fdb(inport, arp.spa);</code></p>
+          <p><b>Example:</b> <code>put_fdb(inport, eth.src);</code></p>
         </dd>
 
         <dt>
