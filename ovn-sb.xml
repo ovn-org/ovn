@@ -5476,6 +5476,11 @@ tcp.flags = RST;
           <code>offline</code>.
        </p>
 
+        <p>
+          The value <code>error</code> is also valid but is not
+          currently set by <code>ovn-controller</code>.
+        </p>
+
       </column>
     </group>
 
