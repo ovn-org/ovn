@@ -570,7 +570,7 @@
     </column>
 
     <column name="ip">
-      The IPv4 address of the encapsulation tunnel endpoint.
+      The IPv4 or IPv6 address of the encapsulation tunnel endpoint.
     </column>
     <column name="chassis_name">
       The name of the chassis that created this encap.
