@@ -1811,8 +1811,8 @@
 
         <dd>
           <p>
-            <b>Parameters</b>: 48-bit MAC address field <var>M</var>,
-            logical port string field <var>P</var>.
+            <b>Parameters</b>: logical port string field <var>P</var>,
+            48-bit MAC address field <var>A</var>.
           </p>
 
           <p>
