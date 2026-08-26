@@ -2788,7 +2788,7 @@ tcp.flags = RST;
 
           </p>
           <p>
-            <b>Example:</b> <code>reg8[0..7] = check_in_port_sec();</code>
+            <b>Example:</b> <code>reg0[15] = check_in_port_sec();</code>
           </p>
         </dd>
 
@@ -2808,7 +2808,7 @@ tcp.flags = RST;
 
           </p>
           <p>
-            <b>Example:</b> <code>reg8[0..7] = check_out_port_sec();</code>
+            <b>Example:</b> <code>reg0[15] = check_out_port_sec();</code>
           </p>
         </dd>
 
