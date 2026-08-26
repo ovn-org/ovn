@@ -11955,21 +11955,51 @@ bfd_get_connection_status(const struct nbrec_bfd *nb_bt,
     return bfd_rp ? bfd_rp->status : bfd_sr->status;
 }
 
+/* Returns true if 'chassis' is an eligible member of 'pb''s HA chassis
+ * group.  A Port_Binding without an HA chassis group has no additional
+ * eligibility constraint. */
+static bool
+bfd_chassis_is_eligible(const struct sbrec_port_binding *pb,
+                        const struct sbrec_chassis *chassis)
+{
+    if (!pb->ha_chassis_group) {
+        return true;
+    }
+
+    for (size_t i = 0; i < pb->ha_chassis_group->n_ha_chassis; i++) {
+        if (pb->ha_chassis_group->ha_chassis[i]->chassis == chassis) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /* Returns the chassis that runs the BFD session for the logical router
  * port 'op', mirroring the ownership rule implemented by bfd_monitor_run()
  * in controller/pinctrl.c: ovn-controller runs the session if the
  * chassisredirect twin of 'op' is bound to the chassis or if 'op' itself
- * (an "l3gateway" port) is bound to the chassis.  Returns NULL if there is
- * no currently bound BFD owner. */
+ * (an "l3gateway" port) is bound to the chassis.  A bound chassis is
+ * not a valid owner when it is no longer a member of the Port_Binding's HA
+ * chassis group.  Returns NULL if there is no currently bound eligible
+ * owner. */
 static const struct sbrec_chassis *
 bfd_get_session_chassis(const struct ovn_port *op)
 {
+    const struct sbrec_port_binding *pb = NULL;
+
     if (op->cr_port && op->cr_port->sb) {
-        return op->cr_port->sb->chassis;
+        pb = op->cr_port->sb;
+    } else if (op->sb && !strcmp(op->sb->type, "l3gateway")) {
+        pb = op->sb;
     }
 
-    return (op->sb && !strcmp(op->sb->type, "l3gateway"))
-           ? op->sb->chassis : NULL;
+    if (!pb || !pb->chassis ||
+        !bfd_chassis_is_eligible(pb, pb->chassis)) {
+        return NULL;
+    }
+
+    return pb->chassis;
 }
 
 void

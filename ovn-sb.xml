@@ -5413,7 +5413,9 @@ tcp.flags = RST;
       <column name="chassis_name">
         The name of the chassis running the BFD session.  For a
         distributed gateway port this is the chassis its chassisredirect
-        port is bound to.  Empty when there is no currently bound owner.
+        port is bound to.  Empty when there is no currently bound eligible
+        owner, including when the bound chassis is not a member of the port's
+        HA chassis group.
       </column>
 
       <column name="options">

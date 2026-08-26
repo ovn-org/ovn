@@ -8437,6 +8437,89 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - live HA eligibility transition with RBAC])
+AT_KEYWORDS([bfd concept-c rbac])
+ovn_start
+
+net_add n1
+for hv in hv1 hv2; do
+    sim_add $hv
+    as $hv
+    check ovs-vsctl add-br br-phys
+done
+as hv1 ovn_attach n1 br-phys 192.168.0.1
+as hv2 ovn_attach n1 br-phys 192.168.0.2
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add public
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+    type=router options:router-port=rp-sw0 -- lsp-set-addresses sw0-rp router
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port \
+    public-rp type=router options:router-port=rp-public \
+    -- lsp-set-addresses public-rp router
+
+check ovn-nbctl ha-chassis-group-add hagrp
+check ovn-nbctl ha-chassis-group-add-chassis hagrp hv1 20
+check ovn-nbctl ha-chassis-group-add-chassis hagrp hv2 10
+hagrp_uuid=$(fetch_column nb:ha_chassis_group _uuid name=hagrp)
+check ovn-nbctl --wait=hv set logical_router_port rp-public \
+    ha_chassis_group=$hagrp_uuid
+
+# Both controllers are live.  The higher-priority member claims the redirect
+# binding and owns the BFD session.
+OVS_WAIT_UNTIL([
+    hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+    cr_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-rp-public)
+    test -n "$hv1_uuid" && test "$cr_ch" = "$hv1_uuid"
+])
+
+# The peer never answers, so each live owner has local state "down".  This
+# makes it possible to prove controller reconciliation through the
+# ovn-controller RBAC connection without synthesizing a BFD peer.
+check ovn-nbctl --bfd lr-route-add R1 100.0.0.0/8 172.16.1.50 rp-public
+wait_column hv1 bfd chassis_name logical_port=rp-public
+wait_column down bfd status logical_port=rp-public
+check ovn-sbctl set bfd . status=up
+wait_column down bfd status logical_port=rp-public
+
+# Excluding the current owner makes hv1 release the binding and hv2 claim it.
+# The BFD row must follow the new eligible owner, and hv2 must be able to
+# reconcile status through RBAC without persistent writer churn.
+check ovn-nbctl --wait=hv ha-chassis-group-remove-chassis hagrp hv1
+OVS_WAIT_UNTIL([
+    hv2_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv2)
+    cr_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-rp-public)
+    test -n "$hv2_uuid" && test "$cr_ch" = "$hv2_uuid"
+])
+wait_column hv2 bfd chassis_name logical_port=rp-public
+check ovn-sbctl set bfd . status=up
+wait_column down bfd status logical_port=rp-public
+
+# Re-add hv1, then exclude hv2 to exercise recovery and a second live owner
+# transition.  Northd restores attribution; the controller remains the only
+# component that repairs the operational status for an eligible owner.
+check ovn-nbctl ha-chassis-group-add-chassis hagrp hv1 20
+check ovn-nbctl --wait=hv ha-chassis-group-remove-chassis hagrp hv2
+OVS_WAIT_UNTIL([
+    hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+    cr_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-rp-public)
+    test -n "$hv1_uuid" && test "$cr_ch" = "$hv1_uuid"
+])
+wait_column hv1 bfd chassis_name logical_port=rp-public
+check ovn-sbctl set bfd . status=up
+wait_column down bfd status logical_port=rp-public
+
+AT_CHECK([grep -E "not authorized|RBAC.*denied" hv1/ovn-controller.log \
+          hv2/ovn-controller.log], [1], [], [ignore])
+
+OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([spine-leaf: 3 HVs, 3 LSs, connected via distributed spine switch])
 AT_KEYWORDS([spine leaf])
 CHECK_SCAPY
