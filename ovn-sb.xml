@@ -2820,22 +2820,23 @@ tcp.flags = RST;
 
           <p>
             This action translates to an openflow "learn" action that inserts
-            two new flows in tables 76 and 77.
+            two new flows in tables referenced by table 100 and 101.
           </p>
 
           <ul>
             <li>
               Match on the 5-tuple and the expected next-hop mac address
-              in table 76: <code>nw_src=ip0</code>, <code>nw_dst=ip1</code>,
+              in table 100:
+              <code>nw_src=ip0</code>, <code>nw_dst=ip1</code>,
               <code>ip_proto</code>,<code>tp_src=l4_port0</code>,
               <code>tp_dst=l4_port1</code>,<code>dl_src=ethaddr</code> and
               set <code>reg9[5]</code>.
             </li>
             <li>
-              Match on the 5-tuple in table 77: <code>nw_src=ip1</code>,
-              <code>nw_dst=ip0</code>, <code>ip_proto</code>,
-              <code>tp_src=l4_port1</code>, <code>tp_dst=l4_port0</code>
-              and set <code>reg9[5]</code> to 1
+              Match on the 5-tuple in table 101:
+              <code>nw_src=ip1</code>, <code>nw_dst=ip0</code>,
+              <code>ip_proto</code>, <code>tp_src=l4_port1</code>,
+              <code>tp_dst=l4_port0</code> and set <code>reg9[5]</code> to 1
             </li>
           </ul>
 
@@ -2848,8 +2849,8 @@ tcp.flags = RST;
         <dt><code><var>R</var> = chk_ecmp_nh_mac();</code></dt>
         <dd>
           <p>
-            This action checks if the packet under consideration matches
-            any flow in table 76. If it is so, then the 1-bit destination
+            This action checks if the packet under consideration matches any
+            flow in table 100. If it is so, then the 1-bit destination
             register <var>R</var> is set to 1.
           </p>
         </dd>
@@ -2857,8 +2858,8 @@ tcp.flags = RST;
         <dt><code><var>R</var> = chk_ecmp_nh();</code></dt>
         <dd>
           <p>
-            This action checks if the packet under consideration matches
-            any flow in table 77. If it is so, then the 1-bit destination
+            This action checks if the packet under consideration matches any
+            flow in table 101. If it is so, then the 1-bit destination
             register <var>R</var> is set to 1.
           </p>
         </dd>
@@ -2878,17 +2879,17 @@ tcp.flags = RST;
 
           <p>
             This action translates to an openflow "learn" action that inserts
-            a new flow in table 78.
+            a new flow in table 102.
           </p>
 
           <ul>
             <li>
-              Match on the 4-tuple in table 78: <code>nw_src=ip client</code>,
-              <code>nw_dst=vip ip</code>, <code>ip_proto</code>,
-              <code>tp_dst=vip port</code> and set <code>reg9[6]</code> to 1,
-              <code>reg4</code> and <code>reg8</code> to backend ip and port
-              respectively. For IPv6 register <code>xxreg1</code> is used to
-              store the backend ip.
+              Match on the 4-tuple in table 102:
+              <code>nw_src=ip client</code>, <code>nw_dst=vip ip</code>,
+              <code>ip_proto</code>, <code>tp_dst=vip port</code> and set
+              <code>reg9[6]</code> to 1, <code>reg4</code> and
+              <code>reg8</code> to backend ip and port respectively. For IPv6
+              register <code>xxreg1</code> is used to store the backend ip.
             </li>
           </ul>
 
@@ -2902,7 +2903,7 @@ tcp.flags = RST;
         <dd>
           <p>
             This action checks if the packet under consideration matches any
-            flow in table 78. If it is so, then the 1-bit destination
+            flow in table 102. If it is so, then the 1-bit destination
             register <var>R</var> is set to 1.
           </p>
         </dd>
