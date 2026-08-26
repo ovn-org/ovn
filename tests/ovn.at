@@ -47044,3 +47044,81 @@ AT_CHECK([grep "skipping output to input port" \
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - reconcile SB status with local session state])
+AT_KEYWORDS([bfd])
+ovn_start
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl lr-add R1
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add public
+
+check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
+check ovn-nbctl lrp-add R1 rp-public 00:00:02:01:02:03 172.16.1.1/24
+check ovn-nbctl lrp-set-gateway-chassis rp-public hv1
+
+check ovn-nbctl lsp-add sw0 sw0-rp -- set Logical_Switch_Port sw0-rp \
+    type=router options:router-port=rp-sw0 -- lsp-set-addresses sw0-rp router
+
+check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port \
+    public-rp type=router options:router-port=rp-public \
+    -- lsp-set-addresses public-rp router
+
+# Wait for the distributed gateway port to be claimed by hv1.
+OVS_WAIT_UNTIL([
+    hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+    cr_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-rp-public)
+    test -n "$hv1_uuid" && test "$cr_ch" = "$hv1_uuid"
+])
+
+# Create a BFD session towards a peer that never answers: the local
+# session on hv1 stays down.
+check ovn-nbctl --bfd lr-route-add R1 100.0.0.0/8 172.16.1.50 rp-public
+check ovn-nbctl --wait=sb sync
+wait_row_count bfd 1
+
+# ovn-northd only fills in chassis_name when the logical port is bound,
+# which never happens for a distributed gateway port, and the SB RBAC
+# permissions for the BFD table (used when the sandbox connects the
+# chassis over SSL) authorize status updates through chassis_name.
+# Attribute the session to hv1 the way an l3gateway row would be.
+check ovn-sbctl set bfd . chassis_name=hv1
+
+wait_column "down" bfd status logical_port=rp-public
+
+# Scenario 1: externally rewrite the status of the SB row while the
+# local session state does not change.  Since no state machine
+# transition happens, only the reconciliation logic in ovn-controller
+# can repair the row.
+check ovn-sbctl set bfd . status=up
+wait_column "down" bfd status logical_port=rp-public
+
+check ovn-sbctl set bfd . status=init
+wait_column "down" bfd status logical_port=rp-public
+
+# Scenario 2: a session (re)created while the SB row holds a stale
+# status.  Stop ovn-controller, fake a stale "up" left over from a
+# previous incarnation, then restart the controller: the fresh session
+# never establishes (no peer), so without reconciliation the bogus "up"
+# would persist forever.
+check as hv1 ovn-appctl -t ovn-controller exit
+check ovn-sbctl set bfd . status=up
+
+as hv1 start_daemon ovn-controller
+OVS_WAIT_UNTIL([
+    hv1_uuid=$(ovn-sbctl --bare --columns _uuid list chassis hv1)
+    cr_ch=$(ovn-sbctl --bare --columns chassis list port_binding cr-rp-public)
+    test -n "$hv1_uuid" && test "$cr_ch" = "$hv1_uuid"
+])
+wait_column "down" bfd status logical_port=rp-public
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
