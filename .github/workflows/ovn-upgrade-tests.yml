@@ -30,6 +30,8 @@ jobs:
         - { base_version: "origin/branch-26.03", test_range: "-100" }
         - { base_version: "origin/branch-26.03", test_range: "101-200" }
         - { base_version: "origin/branch-26.03", test_range: "201-", unstable: unstable }
+        - { base_version: "origin/branch-26.09", test_range: "101-200" }
+        - { base_version: "origin/branch-26.09", test_range: "201-", unstable: unstable }
 
     env:
       CC: gcc
