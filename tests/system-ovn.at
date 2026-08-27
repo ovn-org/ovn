@@ -22314,6 +22314,116 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ICMP Redirect drop on logical router])
+CHECK_SCAPY
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+check ovs-vsctl \
+        -- set Open_vSwitch . external-ids:system-id=hv1 \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1 \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+dnl Topology: client (sw0) -- lr0 -- (sw1) server
+check ovn-nbctl lr-add lr0
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:00:01 10.0.0.1/24 fd01::1/64
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lrp-add lr0 lr0-sw1 00:00:00:00:00:02 20.0.0.1/24 fd02::1/64
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr0 lr0-sw1
+
+check ovn-nbctl lsp-add sw0 client \
+    -- lsp-set-addresses client "f0:00:00:00:00:01 10.0.0.10 fd01::10"
+check ovn-nbctl lsp-add sw1 server \
+    -- lsp-set-addresses server "f0:00:00:00:00:02 20.0.0.10 fd02::10"
+
+ADD_NAMESPACES(client, server)
+ADD_VETH(client, client, br-int, "fd01::10/64", "f0:00:00:00:00:01", \
+         "fd01::1", "nodad", "10.0.0.10/24", "10.0.0.1")
+ADD_VETH(server, server, br-int, "fd02::10/64", "f0:00:00:00:00:02", \
+         "fd02::1", "nodad", "20.0.0.10/24", "20.0.0.1")
+
+dnl Capture any ICMP/ICMPv6 traffic arriving at the server.
+NETNS_START_TCPDUMP([server], [-nnne -i server icmp or icmp6], [server])
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl Verify the router is functional: ping the router port from the client.
+NS_CHECK_EXEC([client], [ping -q -c 1 -w 3 10.0.0.1], [0], [ignore])
+
+dnl Send an ICMP Redirect (type 5, code 1 = redirect for host) from the
+dnl client toward the router's own IP.  The router must silently drop it.
+ip netns exec client scapy -H <<-EOF
+p = Ether(dst='00:00:00:00:00:01', src='f0:00:00:00:00:01') / \
+    IP(src='10.0.0.10', dst='10.0.0.1', ttl=64) / \
+    ICMP(type=5, code=1, gw='10.0.0.254') / \
+    IP(src='10.0.0.1', dst='20.0.0.10', ttl=64) / \
+    Raw(load=b'\x00' * 8)
+sendp(p, iface='client', loop=0, verbose=0, count=3)
+EOF
+
+dnl Send another ICMP Redirect with a transit destination (20.0.0.10).
+dnl Even though the destination is not a router IP, the router must drop it.
+ip netns exec client scapy -H <<-EOF
+p = Ether(dst='00:00:00:00:00:01', src='f0:00:00:00:00:01') / \
+    IP(src='10.0.0.10', dst='20.0.0.10', ttl=64) / \
+    ICMP(type=5, code=1, gw='10.0.0.254') / \
+    IP(src='20.0.0.10', dst='10.0.0.10', ttl=64) / \
+    Raw(load=b'\x00' * 8)
+sendp(p, iface='client', loop=0, verbose=0, count=3)
+EOF
+
+dnl Send an ICMPv6 Redirect (type 137) toward the router's own IPv6.
+ip netns exec client scapy -H <<-EOF
+p = Ether(dst='00:00:00:00:00:01', src='f0:00:00:00:00:01') / \
+    IPv6(src='fd01::10', dst='fd01::1', hlim=64) / \
+    ICMPv6ND_Redirect(tgt='fd01::fe', dst='fd02::10')
+sendp(p, iface='client', loop=0, verbose=0, count=3)
+EOF
+
+dnl Send an ICMPv6 Redirect with a transit destination (fd02::10).
+ip netns exec client scapy -H <<-EOF
+p = Ether(dst='00:00:00:00:00:01', src='f0:00:00:00:00:01') / \
+    IPv6(src='fd01::10', dst='fd02::10', hlim=64) / \
+    ICMPv6ND_Redirect(tgt='fd01::fe', dst='fd01::10')
+sendp(p, iface='client', loop=0, verbose=0, count=3)
+EOF
+
+dnl Send regular pings (IPv4 + IPv6) from client to server as barriers.
+NS_CHECK_EXEC([client], [ping -q -c 1 -w 3 20.0.0.10], [0], [ignore])
+NS_CHECK_EXEC([client], [ping -6 -q -c 1 -w 3 fd02::10], [0], [ignore])
+
+dnl The barrier pings should arrive at the server.
+dnl No ICMP Redirect packets should have been forwarded.
+OVS_WAIT_UNTIL([
+    test "$(grep -c 'echo request' server.tcpdump)" -ge 2
+])
+AT_CHECK([grep -c 'redirect' server.tcpdump], [1], [0
+])
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([DHCPv6 - Options heap overread])
 CHECK_SCAPY
 

@@ -17044,6 +17044,17 @@ build_misc_local_traffic_drop_flows_for_lrouter(
                   debug_drop_action(),
                   lflow_ref);
 
+    /* Drop ICMP Redirect packets (priority 110).
+     * OVN routers silently discard any received ICMP Redirect.
+     * Drop before conntrack stages so they don't cause ct
+     * failures or get forwarded. */
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 110,
+                  "icmp4.type == 5", debug_drop_action(),
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_INPUT, 110,
+                  "icmp6.type == 137", debug_drop_action(),
+                  lflow_ref);
+
     /* Drop ARP packets (priority 85). ARP request packets for router's own
      * IPs are handled with priority-90 flows.
      * Drop IPv6 ND packets (priority 85). ND NA packets for router's own

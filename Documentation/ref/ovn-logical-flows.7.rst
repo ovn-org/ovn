@@ -2377,6 +2377,14 @@ contains the following flows to implement very basic IP host functionality.
       flags.loopback = 1;
       next;
 
+- ICMP Redirect drop.  OVN logical routers don't have a reason to forward
+  redirect packets; they also can't really use the redirect information
+  to change the routing decision so they just silently discard any
+  received ICMP Redirect.  A priority-110 flow matches ``icmp4.type == 5``
+  and another matches ``icmp6.type == 137``, both with action ``drop``.
+  These flows are installed before the conntrack stages, so Redirect
+  packets are neither run through ``ct()`` nor forwarded.
+
 - Reply to ARP requests.
 
   These flows reply to ARP requests for the router's own IP address. The ARP
