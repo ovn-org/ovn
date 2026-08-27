@@ -1766,6 +1766,48 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer VIP in force-SNAT addresses])
+ovn_start
+
+check ovn-nbctl ls-add public
+check ovn-nbctl lr-add lr0
+check ovn-nbctl set logical_router lr0 options:chassis=ch1
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:00:00:00:01 \
+    192.0.2.1/24
+check ovn-nbctl lsp-add-router-port public public-lr0 lr0-public
+
+check ovn-nbctl lb-add lb0 192.0.2.1:30663 198.51.100.10:5201
+check ovn-nbctl lb-add lb1 192.0.2.1 198.51.100.11
+check ovn-nbctl lr-lb-add lr0 lb0
+check ovn-nbctl lr-lb-add lr0 lb1
+check ovn-nbctl lr-nat-add lr0 snat 169.254.0.47 198.51.100.0/24
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows lr0 > sbflows
+AT_CAPTURE_FILE([sbflows])
+AT_CHECK([grep "lr_in_unsnat.*priority=120" sbflows], [1])
+
+check ovn-nbctl --wait=sb set logical_router lr0 \
+    options:lb_force_snat_ip=192.0.2.1
+
+AT_CHECK([ovn-sbctl dump-flows lr0 | \
+    grep "lr_in_unsnat.*priority=120" | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.0.2.1 && tcp && tcp.dst == 30663), action=(next;)
+])
+
+check ovn-nbctl --wait=sb set logical_router lr0 \
+    options:lb_force_snat_ip=router_ip
+
+AT_CHECK([ovn-sbctl dump-flows lr0 | \
+    grep "lr_in_unsnat.*priority=120" | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_unsnat       ), priority=120  , match=(ip4 && ip4.dst == 192.0.2.1 && tcp && tcp.dst == 30663), action=(next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LRP same IP as VIP or SNAT])
 ovn_start
 
