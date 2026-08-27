@@ -13761,6 +13761,28 @@ build_gw_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
     bitmap_free(dp_non_meter);
 }
 
+static bool
+lrouter_lb_vip_is_unsnat_ip(const struct ovn_datapath *od,
+                            const struct lr_nat_record *lrnat_rec,
+                            const struct ovn_lb_vip *lb_vip)
+{
+    const char *vip = lb_vip->vip_str;
+
+    if (sset_contains(&lrnat_rec->external_ips, vip)) {
+        return true;
+    }
+
+    /* A port-less bypass would also match replies sent to a force-SNAT
+     * address and prevent them from reaching the UNSNAT flow. */
+    return lb_vip->port_str
+           && (lport_addresses_contains_ip(
+                   &lrnat_rec->dnat_force_snat_addrs, 1, vip)
+               || lport_addresses_contains_ip(
+                      &lrnat_rec->lb_force_snat_addrs, 1, vip)
+               || (lrnat_rec->lb_force_snat_router_ip
+                   && sset_contains(&od->router_ips, vip)));
+}
+
 static void
 build_lrouter_nat_flows_for_lb(
     struct ovn_lb_vip *lb_vip,
@@ -13910,16 +13932,15 @@ build_lrouter_nat_flows_for_lb(
             bitmap_set1(aff_dp_bitmap[type], index);
         }
 
-        if (sset_contains(&lrnat_rec->external_ips, lb_vip->vip_str)) {
-            /* The load balancer vip is also present in the NAT entries.
-             * So add a high priority lflow to advance the the packet
-             * destined to the vip (and the vip port if defined)
-             * in the S_ROUTER_IN_UNSNAT stage.
+        if (lrouter_lb_vip_is_unsnat_ip(od, lrnat_rec, lb_vip)) {
+            /* The load balancer VIP is also present in an UNSNAT flow.
+             * Add a high priority lflow to advance packets destined to the
+             * VIP (and the VIP port if defined) in S_ROUTER_IN_UNSNAT.
              * There seems to be an issue with ovs-vswitchd. When the new
-             * connection packet destined for the lb vip is received,
-             * it is dnat'ed in the S_ROUTER_IN_DNAT stage in the dnat
+             * connection packet destined for the LB VIP is received,
+             * it is DNATed in the S_ROUTER_IN_DNAT stage in the DNAT
              * conntrack zone. For the next packet, if it goes through
-             * unsnat stage, the conntrack flags are not set properly, and
+             * UNSNAT stage, the conntrack flags are not set properly, and
              * it doesn't hit the established state flows in
              * S_ROUTER_IN_DNAT stage. */
             ovn_lflow_add(lflows, od, S_ROUTER_IN_UNSNAT, 120,
