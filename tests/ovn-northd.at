@@ -12234,6 +12234,53 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([SB DNS incremental processing])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+dns_uuid=$(ovn-nbctl create DNS records={})
+check ovn-nbctl set DNS $dns_uuid records:vm1.ovn.org="10.0.0.4"
+check ovn-nbctl set Logical_Switch sw0 dns_records="$dns_uuid"
+check ovn-nbctl --wait=sb sync
+
+# ovn-northd syncs the NB DNS record to the SB DNS table.
+wait_row_count sb:DNS 1
+sb_dns_uuid=$(fetch_column sb:DNS _uuid)
+AT_CHECK([ovn-sbctl get DNS $sb_dns_uuid records:vm1.ovn.org], [0], [dnl
+"10.0.0.4"
+])
+
+# ovn-northd is the only writer of the SB DNS table and disables IDL
+# alerting for all of its columns, so changes to that table never wake
+# ovn-northd up - not even the write-back of its own transaction.  A direct
+# SB write is therefore not noticed at all: the northd node neither
+# recomputes nor computes.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl set DNS $sb_dns_uuid records:vm2.ovn.org="10.0.0.5"
+check ovn-nbctl --wait=sb sync
+check_engine_stats northd norecompute nocompute
+check_engine_stats lflow norecompute nocompute
+
+# The externally added record is consequently still there.
+AT_CHECK([ovn-sbctl get DNS $sb_dns_uuid records:vm2.ovn.org], [0], [dnl
+"10.0.0.5"
+])
+
+# sync_dns_entries() rewrites the records column from the NB contents, so a
+# recompute drops the stale entry without changing anything else.
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+wait_row_count sb:DNS 0 records:vm2.ovn.org='"10.0.0.5"'
+wait_row_count sb:DNS 1 records:vm1.ovn.org='"10.0.0.4"'
+
+# Dropping the NB record removes the SB one as well.
+check ovn-nbctl clear Logical_Switch sw0 dns_records
+check ovn-nbctl --wait=sb sync
+wait_row_count sb:DNS 0
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL/Meter incremental processing - no northd recompute])
 ovn_start
 
