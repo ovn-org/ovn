@@ -3279,7 +3279,9 @@ icmp6_error {
           </li>
           <li>
             <code>ip4.src</code> is the broadcast address of any IP network
-            known to the router.
+            known to the router.  Point-to-point (<code>/31</code>, RFC 3021)
+            networks have no broadcast address and are excluded, so that
+            traffic from a <code>/31</code> peer is not dropped.
           </li>
         </ul>
       </li>
