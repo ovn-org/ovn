@@ -1,4 +1,4 @@
-Post v26.09.09
+Post v26.09.0
 --------------
    - Mark tunnel ports as transient (other_config:transient=true) when the
      local chassis is a member of an HA chassis group.
