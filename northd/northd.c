@@ -12857,9 +12857,13 @@ op_put_v4_networks(struct ds *ds, const struct ovn_port *op, bool add_bcast)
     }
 
     ds_put_cstr(ds, "{");
-    for (int i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
+    for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
         ds_put_format(ds, "%s, ", op->lrp_networks.ipv4_addrs[i].addr_s);
-        if (add_bcast) {
+        /* A /31 point-to-point link (RFC 3021) has no broadcast address:
+         * both addresses in the range are usable hosts.  Including the
+         * computed "broadcast" here would drop legitimate traffic from the
+         * /31 peer, so skip it for /31 networks. */
+        if (add_bcast && op->lrp_networks.ipv4_addrs[i].plen != 31) {
             ds_put_format(ds, "%s, ", op->lrp_networks.ipv4_addrs[i].bcast_s);
         }
     }
