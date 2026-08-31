@@ -2342,6 +2342,8 @@ contains the following flows to implement very basic IP host functionality.
     ``REGBIT_EGRESS_LOOPBACK``.
 
   - ``ip4.src`` is the broadcast address of any IP network known to the router.
+    Point-to-point (``/31``, RFC 3021) networks have no broadcast address and
+    are excluded, so that traffic from a ``/31`` peer is not dropped.
 
 - A priority-100 flow parses DHCPv6 replies from IPv6 prefix delegation routers
   (``udp.src == 547 && udp.dst == 546``). The ``handle_dhcpv6_reply`` is used to

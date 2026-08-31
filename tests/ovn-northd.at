@@ -2403,6 +2403,33 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([router LRP /31 L3 admission control])
+ovn_start
+
+# A /31 point-to-point link (RFC 3021) has no broadcast address; both
+# addresses of the /31 are usable hosts.  The L3 admission control flow must
+# therefore not drop the computed "broadcast" address, otherwise traffic from
+# the /31 peer is dropped.
+check ovn-nbctl lr-add lr
+check ovn-nbctl lrp-add lr lrp31 00:00:00:00:00:01 10.0.0.0/31
+check ovn-nbctl lrp-add lr lrp24 00:00:00:00:00:03 10.0.2.1/24
+
+check ovn-nbctl --wait=sb sync
+ovn-sbctl dump-flows lr > lrflows
+AT_CAPTURE_FILE([lrflows])
+
+# The /31 peer (10.0.0.1) must not appear as a dropped broadcast source;
+# only the wider /24 network keeps its broadcast address.
+AT_CHECK([grep "lr_in_ip_input" lrflows | grep "priority=100" | grep "reg9" | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {10.0.0.0} && reg9[[0]] == 0), action=(drop;)
+  table=??(lr_in_ip_input     ), priority=100  , match=(ip4.src == {10.0.2.1, 10.0.2.255} && reg9[[0]] == 0), action=(drop;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 # This test case tests that when a logical switch has load balancers associated
 # (with VIPs configured), the below logical flow is added by ovn-northd.
 # table=ls_out_pre_lb, priority=100, match=(ip), action=(reg0[[0]] = 1; next;)

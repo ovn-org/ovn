@@ -14272,6 +14272,96 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([/31 router port (RFC 3021)])
+CHECK_SCAPY
+ovn_start
+
+# Logical network:
+# 2 LS 'sw0' and 'sw1' connected via router R1.
+# R1 connects to 'sw0' with a /31 point-to-point network (RFC 3021).  The
+# host 'sw0p1' uses 10.0.0.1, which is the address that OVN previously
+# computed as the /31 "broadcast" and dropped in the L3 admission control.
+# This test verifies that traffic sourced from the /31 peer is forwarded.
+
+check ovn-nbctl lr-add R1
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+
+# Connect sw0 to R1 with a /31 network.  The router owns 10.0.0.0/31.
+check ovn-nbctl lrp-add R1 sw0 00:00:00:01:02:03 10.0.0.0/31
+check ovn-nbctl lsp-add sw0 rp-sw0 -- set Logical_Switch_Port rp-sw0 \
+          type=router options:router-port=sw0 addresses=\"00:00:00:01:02:03\"
+
+# Connect sw1 to R1.
+check ovn-nbctl lrp-add R1 sw1 00:00:00:01:02:04 20.0.0.1/24
+check ovn-nbctl lsp-add sw1 rp-sw1 -- set Logical_Switch_Port rp-sw1 \
+          type=router options:router-port=sw1 addresses=\"00:00:00:01:02:04\"
+
+# Create logical port sw0p1 in sw0.  Its IP (10.0.0.1) is the /31 peer of
+# the router port and equals the address OVN treated as the broadcast.
+check ovn-nbctl lsp-add sw0 sw0p1 \
+-- lsp-set-addresses sw0p1 "f0:00:00:01:02:03 10.0.0.1"
+
+# Create logical port sw1p1 in sw1.
+check ovn-nbctl lsp-add sw1 sw1p1 \
+-- lsp-set-addresses sw1p1 "f0:00:00:01:02:04 20.0.0.2"
+
+# Create two hypervisors and OVS ports corresponding to logical ports.
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap \
+    ofport-request=1
+
+sim_add hv2
+as hv2
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.2
+check ovs-vsctl -- add-port br-int hv2-vif1 -- \
+    set interface hv2-vif1 external-ids:iface-id=sw1p1 \
+    options:tx_pcap=hv2/vif1-tx.pcap \
+    options:rxq_pcap=hv2/vif1-rx.pcap \
+    ofport-request=1
+
+# Pre-populate the hypervisors' ARP tables so that we don't lose any
+# packets for ARP resolution (native tunneling doesn't queue packets
+# for ARP resolution).
+OVN_POPULATE_ARP
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Send an IP packet from sw0p1 (10.0.0.1, the /31 peer) to sw1p1 (20.0.0.2).
+# Before the /31 fix this packet was dropped by the L3 admission control,
+# which treated 10.0.0.1 as the broadcast address of the 10.0.0.0/31 network.
+packet=$(fmt_pkt "Ether(dst='00:00:00:01:02:03', \
+                        src='f0:00:00:01:02:03') / \
+                  IP(src='10.0.0.1', dst='20.0.0.2', ttl=64) / \
+                  UDP(sport=53, dport=4369)")
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+
+# Packet to expect at 'sw1p1'.
+packet=$(fmt_pkt "Ether(dst='f0:00:00:01:02:04', \
+                        src='00:00:00:01:02:04') / \
+                  IP(src='10.0.0.1', dst='20.0.0.2', ttl=63) / \
+                  UDP(sport=53, dport=4369)")
+echo $packet > expected
+
+OVN_CHECK_PACKETS([hv2/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1],[hv2])
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([2 HVs, 1 lport/HV, localport ports])
 ovn_start
 
