@@ -34,6 +34,7 @@ VLOG_DEFINE_THIS_MODULE(mac_cache);
 #define BUFFER_QUEUE_DEPTH          4
 #define BUFFERED_PACKETS_TIMEOUT_MS 10000
 #define BUFFERED_PACKETS_LOOKUP_MS  100
+#define PROBE_MULICAST_THRESHOLD     2
 
 static uint32_t
 mac_binding_data_hash(const struct mac_binding_data *mb_data);
@@ -178,6 +179,7 @@ mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
     mb->data = mb_data;
     mb->sbrec = smb;
     mb->timestamp = timestamp;
+    mb->arp_attempts = 0;
     mac_binding_update_log("Added", &mb_data, false, NULL, 0, 0);
 }
 
@@ -908,6 +910,7 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
                     "Not sending ARP/ND request for recently updated",
                     &mb->data, true, threshold, stats->idle_age_ms,
                     since_updated_ms);
+            mb->arp_attempts = 0;
             continue;
         }
 
@@ -954,6 +957,11 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
         }
 
         if (!ipv6_addr_equals(&local, &in6addr_any)) {
+            struct eth_addr eth_dst =
+                mb->arp_attempts < PROBE_MULICAST_THRESHOLD
+                ? mb->data.mac
+                : eth_addr_zero;
+
             mac_binding_update_log("Sending ARP/ND request for active",
                                    &mb->data, true, threshold,
                                    stats->idle_age_ms, since_updated_ms);
@@ -961,9 +969,10 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
             send_self_originated_neigh_packet(probe_data->swconn,
                                               sbrec->datapath->tunnel_key,
                                               pb->tunnel_key, laddr.ea,
-                                              mb->data.mac, &local,
+                                              eth_dst, &local,
                                               &mb->data.ip,
                                               OFTABLE_LOCAL_OUTPUT);
+            mb->arp_attempts++;
         }
 
         destroy_lport_addresses(&laddr);

@@ -78,6 +78,8 @@ struct mac_binding {
     const struct sbrec_mac_binding *sbrec;
     /* User specified timestamp (in ms) */
     long long timestamp;
+    /* Number of re-ARP attempts for given entry. */
+    size_t arp_attempts;
 };
 
 struct fdb_data {
