@@ -415,9 +415,10 @@ chassis_tunnel_add(const struct sbrec_chassis *chassis_rec,
         return tuncnt;
     }
 
-    uint32_t pref_type = get_tunnel_type(encap->type);
+    enum chassis_tunnel_type pref_type = get_tunnel_type(encap->type);
     for (int i = 0; i < chassis_rec->n_encaps; i++) {
-        uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
+        enum chassis_tunnel_type tun_type =
+            get_tunnel_type(chassis_rec->encaps[i]->type);
         if (tun_type != pref_type) {
             continue;
         }
