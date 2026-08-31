@@ -2881,58 +2881,6 @@ tcp.flags = RST;
           </p>
         </dd>
 
-        <dt><code>commit_ecmp_nh(<var>ipv6</var>);</code></dt>
-        <dd>
-          <p>
-              <b>Parameters</b>: IPv4/IPv6 traffic.
-          </p>
-
-          <p>
-            This action translates to an openflow "learn" action that inserts
-            two new flows in tables referenced by table 100 and 101.
-          </p>
-
-          <ul>
-            <li>
-              Match on the 5-tuple and the expected next-hop mac address
-              in table 100:
-              <code>nw_src=ip0</code>, <code>nw_dst=ip1</code>,
-              <code>ip_proto</code>,<code>tp_src=l4_port0</code>,
-              <code>tp_dst=l4_port1</code>,<code>dl_src=ethaddr</code> and
-              set <code>reg9[5]</code>.
-            </li>
-            <li>
-              Match on the 5-tuple in table 101:
-              <code>nw_src=ip1</code>, <code>nw_dst=ip0</code>,
-              <code>ip_proto</code>, <code>tp_src=l4_port1</code>,
-              <code>tp_dst=l4_port0</code> and set <code>reg9[5]</code> to 1
-            </li>
-          </ul>
-
-          <p>
-            This action is applied if the packet arrives via ECMP route or
-            if it is routed via an ECMP route
-          </p>
-        </dd>
-
-        <dt><code><var>R</var> = chk_ecmp_nh_mac();</code></dt>
-        <dd>
-          <p>
-            This action checks if the packet under consideration matches any
-            flow in table 100. If it is so, then the 1-bit destination
-            register <var>R</var> is set to 1.
-          </p>
-        </dd>
-
-        <dt><code><var>R</var> = chk_ecmp_nh();</code></dt>
-        <dd>
-          <p>
-            This action checks if the packet under consideration matches any
-            flow in table 101. If it is so, then the 1-bit destination
-            register <var>R</var> is set to 1.
-          </p>
-        </dd>
-
         <dt>
           <code>
             commit_lb_aff(<var>vip</var>, <var>backend</var>,

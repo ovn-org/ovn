@@ -127,7 +127,10 @@ enum mff_log_flags_bits {
     MLF_LOCALPORT_BIT = 10,
     MLF_USE_SNAT_ZONE = 11,
     MLF_CHECK_PORT_SEC_BIT = 12,
-    MLF_LOOKUP_COMMIT_ECMP_NH_BIT = 13,
+    /* Gap at 13, formerly used for COMMIT_ECMP_NH_BIT.
+     * This gap needs to be maintained for compatibility
+     * purposes between older and new OVN versions.
+     */
     MLF_USE_LB_AFF_SESSION_BIT = 14,
     MLF_LOCALNET_BIT = 15,
     MLF_RX_FROM_TUNNEL_BIT = 16,
@@ -186,8 +189,6 @@ enum mff_log_flags {
 
     /* Indicate the packet has been received from a localport */
     MLF_LOCALPORT = (1 << MLF_LOCALPORT_BIT),
-
-    MLF_LOOKUP_COMMIT_ECMP_NH = (1 << MLF_LOOKUP_COMMIT_ECMP_NH_BIT),
 
     MLF_USE_LB_AFF_SESSION = (1 << MLF_USE_LB_AFF_SESSION_BIT),
 

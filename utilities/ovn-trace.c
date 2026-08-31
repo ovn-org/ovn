@@ -3617,12 +3617,6 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
             execute_mirror(ovnact_get_MIRROR(a), dp, uflow, super);
             break;
 
-        case OVNACT_COMMIT_ECMP_NH:
-            break;
-        case OVNACT_CHK_ECMP_NH_MAC:
-            break;
-        case OVNACT_CHK_ECMP_NH:
-            break;
         case OVNACT_COMMIT_LB_AFF:
             break;
         case OVNACT_CHK_LB_AFF:

@@ -209,6 +209,11 @@ but it will still be parsed and processed. There should be also clearly stated
 when the feature/action will move from ``Deprecated`` to ``Removed``.
 ``Removed`` will print a warning and won't be processed further.
 
+* 27.03 Removed
+  * ``chk_ecmp_nh`` logical flow action.
+  * ``chk_ecmp_nh_mac`` logical flow action.
+  * ``commit_ecmp_nh`` logical flow action.
+
 * 26.09 Removed
 
   * ``OVN_FEATURE_PORT_UP_NOTIF`` feature.

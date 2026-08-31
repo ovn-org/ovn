@@ -1,5 +1,7 @@
 Post v26.09.0
 --------------
+   - Removed implementations of the commit_ecmp_nh, chk_ecmp_nh, and
+     chk_ecmp_nh_mac actions from the code.
    - Mark tunnel ports as transient (other_config:transient=true) when the
      local chassis is a member of an HA chassis group.
      Systems which invoke ovs-ctl --delete-transient-ports during OVS startup

@@ -91,21 +91,19 @@ struct uuid;
 #define OFTABLE_CHK_IN_PORT_SEC            97
 #define OFTABLE_CHK_IN_PORT_SEC_ND         98
 #define OFTABLE_CHK_OUT_PORT_SEC           99
-#define OFTABLE_ECMP_NH_MAC               100
-#define OFTABLE_ECMP_NH                   101
-#define OFTABLE_CHK_LB_AFFINITY           102
-#define OFTABLE_MAC_CACHE_USE             103
-#define OFTABLE_CT_ZONE_LOOKUP            104
-#define OFTABLE_CT_ORIG_NW_DST_LOAD       105
-#define OFTABLE_CT_ORIG_IP6_DST_LOAD      106
-#define OFTABLE_CT_ORIG_TP_DST_LOAD       107
-#define OFTABLE_FLOOD_REMOTE_CHASSIS      108
-#define OFTABLE_CT_STATE_SAVE             109
-#define OFTABLE_CT_ORIG_PROTO_LOAD        110
-#define OFTABLE_GET_REMOTE_FDB            111
-#define OFTABLE_LEARN_REMOTE_FDB          112
-#define OFTABLE_EVPN_ARP_LOOKUP           113
-#define OFTABLE_NF_ORIG_INPORT_LEARN      114
+#define OFTABLE_CHK_LB_AFFINITY           100
+#define OFTABLE_MAC_CACHE_USE             101
+#define OFTABLE_CT_ZONE_LOOKUP            102
+#define OFTABLE_CT_ORIG_NW_DST_LOAD       103
+#define OFTABLE_CT_ORIG_IP6_DST_LOAD      104
+#define OFTABLE_CT_ORIG_TP_DST_LOAD       105
+#define OFTABLE_FLOOD_REMOTE_CHASSIS      106
+#define OFTABLE_CT_STATE_SAVE             107
+#define OFTABLE_CT_ORIG_PROTO_LOAD        108
+#define OFTABLE_GET_REMOTE_FDB            109
+#define OFTABLE_LEARN_REMOTE_FDB          110
+#define OFTABLE_EVPN_ARP_LOOKUP           111
+#define OFTABLE_NF_ORIG_INPORT_LEARN      112
 
 /* Verify that table regions do not overlap. */
 BUILD_ASSERT_DECL(OFTABLE_LOG_INGRESS_PIPELINE + LOG_PIPELINE_INGRESS_LEN

@@ -125,9 +125,6 @@ struct collector_set_ids;
     OVNACT(LOOKUP_FDB,        ovnact_lookup_fdb)      \
     OVNACT(CHECK_IN_PORT_SEC,  ovnact_result)         \
     OVNACT(CHECK_OUT_PORT_SEC, ovnact_result)         \
-    OVNACT(COMMIT_ECMP_NH,    ovnact_commit_ecmp_nh)  \
-    OVNACT(CHK_ECMP_NH_MAC,   ovnact_result)          \
-    OVNACT(CHK_ECMP_NH,       ovnact_result)          \
     OVNACT(COMMIT_LB_AFF,     ovnact_commit_lb_aff)   \
     OVNACT(CHK_LB_AFF,        ovnact_result)          \
     OVNACT(SAMPLE,            ovnact_sample)          \
@@ -539,13 +536,6 @@ struct ovnact_sample {
     struct expr_field obs_point_id_src; /* observation point id source reg */
     uint32_t obs_point_id;              /* observation point id */
     bool use_cookie;                    /* use cookie as obs_point_id */
-};
-
-/* OVNACT_COMMIT_ECMP_NH. */
-struct ovnact_commit_ecmp_nh {
-    struct ovnact ovnact;
-    bool ipv6;
-    uint8_t proto;
 };
 
 /* OVNACT_COMMIT_LB_AFF. */

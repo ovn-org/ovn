@@ -2180,26 +2180,6 @@ reg0[[0]] = check_out_port_sec(foo);
 check_out_port_sec;
     Syntax error at `check_out_port_sec' expecting action.
 
-# commit_ecmp_nh
-commit_ecmp_nh(ipv6 = "false", proto = tcp);
-    formats as commit_ecmp_nh(ipv6 = false, proto = tcp);
-    encodes as learn(table=OFTABLE_ECMP_NH_MAC,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_SRC[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],NXM_OF_IP_DST[[]],nw_proto=6,NXM_OF_TCP_SRC[[]],NXM_OF_TCP_DST[[]],load:0x1->NXM_NX_REG10[[13]]),learn(table=OFTABLE_ECMP_NH,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]]=NXM_OF_IP_DST[[0..-1]],NXM_OF_IP_DST[[]]=NXM_OF_IP_SRC[[0..-1]],nw_proto=6,NXM_OF_TCP_SRC[[]]=NXM_OF_TCP_DST[[0..-1]],NXM_OF_TCP_DST[[]]=NXM_OF_TCP_SRC[[0..-1]],load:0x1->NXM_NX_REG10[[13]])
-
-commit_ecmp_nh(ipv6 = "true", proto = udp);
-    formats as commit_ecmp_nh(ipv6 = true, proto = udp);
-    encodes as learn(table=OFTABLE_ECMP_NH_MAC,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],NXM_OF_ETH_SRC[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]],NXM_NX_IPV6_DST[[]],nw_proto=17,NXM_OF_UDP_SRC[[]],NXM_OF_UDP_DST[[]],load:0x1->NXM_NX_REG10[[13]]),learn(table=OFTABLE_ECMP_NH,idle_timeout=20,hard_timeout=30,delete_learned,OXM_OF_METADATA[[]],eth_type=0x86dd,NXM_NX_IPV6_SRC[[]]=NXM_NX_IPV6_DST[[0..-1]],NXM_NX_IPV6_DST[[]]=NXM_NX_IPV6_SRC[[0..-1]],nw_proto=17,NXM_OF_UDP_SRC[[]]=NXM_OF_UDP_DST[[0..-1]],NXM_OF_UDP_DST[[]]=NXM_OF_UDP_SRC[[0..-1]],load:0x1->NXM_NX_REG10[[13]])
-
-commit_ecmp_nh(proto = sctp);
-    Syntax error at `proto' invalid parameter.
-
-# chk_ecmp_nh_mac
-reg9[[5]] = chk_ecmp_nh_mac();
-    encodes as set_field:0/0x2000->reg10,resubmit(,OFTABLE_ECMP_NH_MAC),move:NXM_NX_REG10[[13]]->OXM_OF_PKT_REG4[[5]]
-
-# chk_ecmp_nh
-reg9[[5]] = chk_ecmp_nh();
-    encodes as set_field:0/0x2000->reg10,resubmit(,OFTABLE_ECMP_NH),move:NXM_NX_REG10[[13]]->OXM_OF_PKT_REG4[[5]]
-
 # commit_lb_aff
 commit_lb_aff(vip = "172.16.0.123:8080", backend = "10.0.0.3:8080", proto = tcp, timeout = 30);
     encodes as learn(table=OFTABLE_CHK_LB_AFFINITY,idle_timeout=30,delete_learned,cookie=0xaaaaaaaa,OXM_OF_METADATA[[]],eth_type=0x800,NXM_OF_IP_SRC[[]],ip_dst=172.16.0.123,nw_proto=6,tcp_dst=8080,load:0x1->NXM_NX_REG10[[14]],load:0xa000003->NXM_NX_REG4[[]],load:0x1f90->NXM_NX_REG2[[0..15]])
