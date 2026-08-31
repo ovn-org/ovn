@@ -270,9 +270,9 @@ chassis_parse_ovs_encap_type(const char *encap_type,
     const char *type;
 
     SSET_FOR_EACH (type, encap_type_set) {
-        uint32_t tun_type = get_tunnel_type(type);
+        enum chassis_tunnel_type tun_type = get_tunnel_type(type);
 
-        if (!tun_type) {
+        if (tun_type == TUNNEL_TYPE_INVALID) {
             VLOG_INFO_RL(&rl, "Unknown tunnel type: %s", type);
         }
     }
