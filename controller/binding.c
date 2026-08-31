@@ -554,12 +554,13 @@ sbrec_get_port_encap(const struct sbrec_chassis *chassis_rec,
     }
 
     struct sbrec_encap *best_encap = NULL;
-    uint32_t best_type = 0;
+    enum chassis_tunnel_type best_type = TUNNEL_TYPE_INVALID;
     for (int i = 0; i < chassis_rec->n_encaps; i++) {
         if ((encap_ip && !strcmp(chassis_rec->encaps[i]->ip, encap_ip)) ||
             (!encap_ip && smap_get_bool(&chassis_rec->encaps[i]->options,
                                         "is_default", false))) {
-            uint32_t tun_type = get_tunnel_type(chassis_rec->encaps[i]->type);
+            enum chassis_tunnel_type tun_type =
+                get_tunnel_type(chassis_rec->encaps[i]->type);
             if (tun_type > best_type) {
                 best_type = tun_type;
                 best_encap = chassis_rec->encaps[i];
