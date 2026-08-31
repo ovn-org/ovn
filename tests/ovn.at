@@ -37564,6 +37564,113 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - probing unicast to broadcast transition])
+CHECK_SCAPY
+ovn_start
+
+aging_th=5
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+
+check ovn-nbctl                                                             \
+    -- ls-add ls1                                                           \
+    -- lr-add lr                                                            \
+    -- set logical_router lr options:mac_binding_age_threshold=$aging_th    \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 10.10.10.1/24 42.42.42.1/24     \
+       fd11::1/64 fd12::1/64                                                \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                                \
+    -- lsp-add ls1 vif1                                                     \
+    -- lsp-set-addresses vif1 "unknown"
+
+check ovs-vsctl                                                             \
+    -- add-port br-int vif1                                                 \
+    -- set interface vif1 external-ids:iface-id=vif1                        \
+    options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Wait for pinctrl thread to be connected.
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
+
+# Create one IPv4 and one IPv6 MAC binding.
+send_garp hv1 vif1 2 00:00:00:00:10:1a ff:ff:ff:ff:ff:ff 10.10.10.100 10.10.10.100
+wait_row_count mac_binding 1 ip="10.10.10.100" logical_port="lr-ls1"
+
+send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1
+wait_row_count mac_binding 1 ip=\"fd11::64\" logical_port=\"lr-ls1\"
+
+# The first 2 probes are unicast (arp_attempts 0-1); the entry then falls
+# back to broadcast ARP / multicast NS.
+dump_arp 1 00:00:00:00:10:00 ff:ff:ff:ff:ff:ff 10.10.10.1 10.10.10.100 00:00:00:00:00:00 > expected_bcast
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_bcast])
+
+dump_ns 33:33:ff:00:00:64 00:00:00:00:10:00 ff02::1:ff00:64 fd11::1 fd11::64 > expected_mcast
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_mcast])
+
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1a 10.10.10.1 10.10.10.100 00:00:00:00:10:1a > expected_ucast_v4
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_ucast_v4])
+
+dump_ns 00:00:00:00:10:1a 00:00:00:00:10:00 fd11::64 fd11::1 fd11::64 > expected_ucast_v6
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_ucast_v6])
+
+# Verify the reset-to-zero mechanism using a distinct pair of neighbours
+# kept alive (never re-created) for the whole check.  A single entry emits
+# at most ARP_BROADCAST_THRESHOLD (2) unicast probes before falling back to
+# broadcast, so a 4th unicast probe proves arp_attempts was reset.
+send_garp hv1 vif1 2 00:00:00:00:10:1b ff:ff:ff:ff:ff:ff 10.10.10.101 10.10.10.101
+wait_row_count mac_binding 1 ip="10.10.10.101" logical_port="lr-ls1"
+v4_uuid=$(fetch_column Mac_Binding _uuid ip=10.10.10.101)
+
+send_na hv1 vif1 00:00:00:00:10:1b 00:00:00:00:10:00 fd11::65 fd11::1
+wait_row_count mac_binding 1 ip=\"fd11::65\" logical_port=\"lr-ls1\"
+v6_uuid=$(fetch_column Mac_Binding _uuid ip=\"fd11::65\")
+
+# Keep the entries active (Tx towards them) and let a couple of unicast
+# probes go out (arp_attempts reaches 1, below the broadcast threshold).
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 10.10.10.101 42.42.42.100
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd11::65 fd12::100
+
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1b 10.10.10.1 10.10.10.101 00:00:00:00:10:1b > ucast_v4_101.pkt
+dump_ns 00:00:00:00:10:1b 00:00:00:00:10:00 fd11::65 fd11::1 fd11::65 > ucast_v6_65.pkt
+OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+                grep -Fc "$(cat ucast_v4_101.pkt)") -ge 2])
+OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+                grep -Fc "$(cat ucast_v6_65.pkt)") -ge 2])
+
+# The neighbours answer, refreshing the rows in place (resetting
+# arp_attempts).  Confirm the timestamps advanced.
+v4_ts=$(fetch_column Mac_Binding timestamp ip=10.10.10.101)
+v6_ts=$(fetch_column Mac_Binding timestamp ip=\"fd11::65\")
+send_garp hv1 vif1 2 00:00:00:00:10:1b 00:00:00:00:10:00 10.10.10.101 10.10.10.1
+send_na hv1 vif1 00:00:00:00:10:1b 00:00:00:00:10:00 fd11::65 fd11::1
+OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp ip=10.10.10.101) -gt $v4_ts])
+OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp ip=\"fd11::65\") -gt $v6_ts])
+
+# Probing must restart from unicast: wait for a 4th unicast ARP/NS probe
+# while the rows are still the original ones (same UUID, never re-created).
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1b 10.10.10.1 10.10.10.101 00:00:00:00:10:1b > ucast_v4.pkt
+dump_ns 00:00:00:00:10:1b 00:00:00:00:10:00 fd11::65 fd11::1 fd11::65 > ucast_v6.pkt
+OVS_WAIT_UNTIL([
+    send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 10.10.10.101 42.42.42.100
+    send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd11::65 fd12::100
+    test "$(fetch_column Mac_Binding _uuid ip=10.10.10.101)" = "$v4_uuid" && \
+    test "$(fetch_column Mac_Binding _uuid ip=\"fd11::65\")" = "$v6_uuid" && \
+    test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+           grep -Fc "$(cat ucast_v4.pkt)") -ge 4 && \
+    test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
+           grep -Fc "$(cat ucast_v6.pkt)") -ge 4])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing distributed GW router])
 CHECK_SCAPY
 ovn_start
