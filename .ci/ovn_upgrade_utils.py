@@ -393,11 +393,51 @@ def ovn_upgrade_checkout_base(config):
         return True
 
 
+def _append_removed_defines(src_file, old_defines, new_defines, fmt_func):
+    """Append compat defines to src_file for symbols removed in new code.
+
+    Any OFTABLE_* (or m4) define present in old_defines but absent from
+    new_defines gets a non-conflicting ID above the highest new value and
+    is appended to src_file so that the subsequent replace_block_in_file()
+    includes it in one shot.
+    """
+    removed = set(old_defines.keys()) - set(new_defines.keys())
+    if not removed:
+        return
+
+    max_new = max(new_defines.values())
+
+    with open(src_file, 'a', encoding='utf-8') as f:
+        for i, name in enumerate(sorted(removed), start=1):
+            table_id = max_new + i
+            f.write(fmt_func(name, table_id))
+            log(f"  Compat define: {name} = {table_id} "
+                f"(was {old_defines[name]})")
+
+    log(f"  Added {len(removed)} compat define(s) for removed tables")
+
+
 def ovn_upgrade_patch_for_ovn_debug(config):
-    return replace_block_in_file(
-        Path('controller/lflow.h'),
-        config.file.ofctl_defines,
-        '#define OFTABLE_')
+    lflow_h = Path('controller/lflow.h')
+
+    if not lflow_h.exists() or not config.file.ofctl_defines.exists():
+        return False
+
+    # Parse old defines from the base lflow.h before overwriting.
+    with open(lflow_h, encoding='utf-8') as f:
+        old_defines = _parse_oftable_defines(f.readlines())
+
+    # Parse new defines and append compat entries for any that were
+    # removed, so old source files (e.g. lib/actions.c) still compile.
+    with open(config.file.ofctl_defines, encoding='utf-8') as f:
+        new_defines = _parse_oftable_defines(f.readlines())
+
+    _append_removed_defines(
+        config.file.ofctl_defines, old_defines, new_defines,
+        lambda name, tid: f'#define {name:<40s}{tid}\n')
+
+    return replace_block_in_file(lflow_h, config.file.ofctl_defines,
+                                 '#define OFTABLE_')
 
 
 def ovn_upgrade_save_ovn_debug(binaries_dir):
@@ -553,11 +593,34 @@ def ovn_upgrade_schema_in_macros_patch():
     return True
 
 
+def _parse_m4_oftable_defines(lines):
+    """Return {name: int_value} for all m4_define([OFTABLE_*] lines."""
+    result = {}
+    for line in lines:
+        m = re.match(r"m4_define\(\[(OFTABLE_\w+)\],\s*\[(\d+)\]\)", line)
+        if m:
+            result[m.group(1)] = int(m.group(2))
+    return result
+
+
 def ovn_upgrade_oftable_ovn_macro_patch(config):
-    return replace_block_in_file(
-        Path('tests/ovn-macros.at'),
-        config.file.m4_defines,
-        'm4_define([OFTABLE_')
+    macros_at = Path('tests/ovn-macros.at')
+
+    if not macros_at.exists() or not config.file.m4_defines.exists():
+        return False
+
+    with open(macros_at, encoding='utf-8') as f:
+        old_m4 = _parse_m4_oftable_defines(f.readlines())
+
+    with open(config.file.m4_defines, encoding='utf-8') as f:
+        new_m4 = _parse_m4_oftable_defines(f.readlines())
+
+    _append_removed_defines(
+        config.file.m4_defines, old_m4, new_m4,
+        lambda name, tid: f'm4_define([{name}], [{tid}])\n')
+
+    return replace_block_in_file(macros_at, config.file.m4_defines,
+                                 'm4_define([OFTABLE_')
 
 
 def ovn_upgrade_apply_tests_patches(config):
