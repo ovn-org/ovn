@@ -131,6 +131,8 @@ noinst_PROGRAMS =
 noinst_SCRIPTS =
 OVSIDL_BUILT =
 pkgdata_DATA =
+tmpfiles_DATA =
+sysusers_DATA =
 sbin_SCRIPTS =
 scripts_SCRIPTS =
 completion_SCRIPTS =
@@ -148,6 +150,8 @@ endif
 scriptsdir = $(pkgdatadir)/scripts
 completiondir = $(sysconfdir)/bash_completion.d
 pkgconfigdir = $(libdir)/pkgconfig
+tmpfilesdir = @TMPFILESDIR@
+sysusersdir = @SYSUSERSDIR@
 
 # This ensures that files added to EXTRA_DIST are always distributed,
 # even if they are inside an Automake if...endif conditional block that is
@@ -166,6 +170,11 @@ SUFFIXES += .in
 	  sed \
 	    -e 's,[@]PKIDIR[@],$(PKIDIR),g' \
 	    -e 's,[@]LOGDIR[@],$(LOGDIR),g' \
+	    -e 's,[@]LOGUSER[@],$(LOGUSER),g' \
+	    -e 's,[@]LOGGROUP[@],$(LOGGROUP),g' \
+	    -e 's,[@]OVN_CHOWN_LOGDIR[@],$(OVN_CHOWN_LOGDIR),g' \
+	    -e 's,[@]SYSUSERS_GROUP_LINE[@],$(SYSUSERS_GROUP_LINE),g' \
+	    -e 's,[@]SYSUSERS_USER_LINE[@],$(SYSUSERS_USER_LINE),g' \
 	    -e 's,[@]DBDIR[@],$(DBDIR),g' \
 	    -e 's,[@]PYTHON3[@],$(PYTHON3),g' \
 	    -e 's,[@]OVN_RUNDIR[@],$(OVN_RUNDIR),g' \
