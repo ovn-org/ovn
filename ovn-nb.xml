@@ -1777,6 +1777,20 @@
         </column>
       </group>
 
+      <group title="Options for remote ports representing routers">
+        <column name="options" key="is_router"
+                type='{"type": "boolean"}'>
+          If set to <code>true</code> on a port whose <ref column="type"/> is
+          <code>remote</code>, treat the port as a router port (equivalent to
+          <code>type=router</code>).  CMS may set this on
+          <code>remote</code> LSPs that back LRPs in another OVN
+          interconnection zone.  Such ports are omitted from the
+          <code>_MC_flood_l2</code> multicast group so IP multicast is not
+          flooded toward them.  Ignored unless <ref column="type"/> is
+          <code>remote</code>.  Default: <code>false</code>.
+        </column>
+      </group>
+
     </group>
 
     <group title="Containers">

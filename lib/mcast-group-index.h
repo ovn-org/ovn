@@ -43,7 +43,9 @@ enum ovn_mcast_tunnel_keys {
                                           */
     OVN_MCAST_FLOOD_L2_TUNNEL_KEY,       /* Logical switch broadcast domain
                                           * excluding ports towards logical
-                                          * routers.
+                                          * routers (type=router, or
+                                          * type=remote with
+                                          * options:is_router=true).
                                           */
     OVN_MIN_IP_MULTICAST,
     OVN_MAX_IP_MULTICAST = OVN_MAX_MULTICAST,

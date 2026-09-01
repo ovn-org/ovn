@@ -1143,7 +1143,11 @@ lsp_is_enabled(const struct nbrec_logical_switch_port *lsp)
 static inline bool
 lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
 {
-    return !strcmp(nbsp->type, "router");
+    /* type=router, or a type=remote LSP that CMS marked as representing a
+     * remote LRP (e.g. ovn-ic transit switch ports). */
+    return !strcmp(nbsp->type, "router")
+           || (!strcmp(nbsp->type, "remote")
+               && smap_get_bool(&nbsp->options, "is_router", false));
 }
 
 static inline bool

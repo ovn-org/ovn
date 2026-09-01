@@ -1470,7 +1470,8 @@ This table implements switching behavior.  It contains these logical flows:
 - Priority-90 flows for each IPv4 address/VIP/NAT address owned by a router
   port connected to the switch. These flows match GARP packets for the specific
   IP addresses. Matched packets are forwarded to the ``MC_FLOOD_L2`` multicast
-  group which contains all non-router logical ports.
+  group which contains all non-router logical ports (excluding ports of type
+  ``router`` and ``remote`` ports with ``options:is_router=true``).
 
 - Priority-90 flows for transit switches that forward registered IP multicast
   traffic to their corresponding multicast group , which ``ovn-northd`` creates
@@ -1485,7 +1486,8 @@ This table implements switching behavior.  It contains these logical flows:
 
 - A priority-85 flow that forwards all IP multicast traffic destined to
   224.0.0.X to the ``MC_FLOOD_L2`` multicast group, which ``ovn-northd``
-  populates with all non-router logical ports.
+  populates with all non-router logical ports (excluding ports of type
+  ``router`` and ``remote`` ports with ``options:is_router=true``).
 
 - A priority-85 flow that forwards all IP multicast traffic destined to reserved
   multicast IPv6 addresses (RFC 4291, 2.7.1, e.g., Solicited-Node multicast) to
@@ -1513,7 +1515,9 @@ This table implements switching behavior.  It contains these logical flows:
 
 - Priority-75 flows for each port connected to a logical router matching self
   originated ARP request/RARP request/ND packets.  These packets are flooded to
-  the ``MC_FLOOD_L2`` which contains all non-router logical ports.
+  the ``MC_FLOOD_L2`` which contains all non-router logical ports (excluding
+  ports of type ``router`` and ``remote`` ports with
+  ``options:is_router=true``).
 
 - A priority-72 flow that outputs all ND NA (Neighbor Advertisement), ND RS
   (Router Solicitation) and ND RA (Router Advertisement) packets with an

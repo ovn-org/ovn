@@ -122,6 +122,10 @@ OVN v26.09.0 - xxx xx xxxx
      filter the routes learned through the port by route tag.  This supersedes
      "ic-route-filter-tag", which is now deprecated and is ignored when
      "ic-route-learn-tag-rules" is set.
+   - Add Logical_Switch_Port option "is_router" for type=remote ports that
+     represent a logical router port (e.g. ovn-ic transit switch LSPs).
+     Such ports are treated like type=router, including omission from
+     _MC_flood_l2.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

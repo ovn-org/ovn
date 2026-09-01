@@ -8819,6 +8819,80 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LSP type=remote options:is_router excludes from MC_FLOOD_L2])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 vif1
+check ovn-nbctl lsp-set-addresses vif1 "00:00:00:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-add ls1 remote1
+check ovn-nbctl lsp-set-type remote1 remote
+check ovn-nbctl lsp-set-addresses remote1 "00:00:00:00:00:02"
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-ls1 00:00:00:00:00:03 10.0.0.254/24
+check ovn-nbctl lsp-add ls1 ls1-lr1
+check ovn-nbctl lsp-set-type ls1-lr1 router
+check ovn-nbctl lsp-set-addresses ls1-lr1 router
+check ovn-nbctl lsp-set-options ls1-lr1 router-port=lr1-ls1
+check ovn-nbctl --wait=sb sync
+
+vif1_uuid=$(fetch_column Port_Binding _uuid logical_port=vif1)
+remote1_uuid=$(fetch_column Port_Binding _uuid logical_port=remote1)
+lr1_uuid=$(fetch_column Port_Binding _uuid logical_port=ls1-lr1)
+
+dnl type=router is never in _MC_flood_l2.
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$lr1_uuid"], [1], [dnl
+0
+])
+
+dnl remote LSP is in _MC_flood_l2 by default (looks like a normal L2 port).
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$remote1_uuid"], [0], [dnl
+1
+])
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$vif1_uuid"], [0], [dnl
+1
+])
+
+dnl Mark remote LSP as router-facing: omit from _MC_flood_l2.
+check ovn-nbctl --wait=sb set Logical_Switch_Port remote1 options:is_router=true
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$remote1_uuid"], [1], [dnl
+0
+])
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$vif1_uuid"], [0], [dnl
+1
+])
+
+dnl Still a member of _MC_flood (ARP/ND flood domain).
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood | grep -c "$remote1_uuid"], [0], [dnl
+1
+])
+
+dnl Clearing the option restores _MC_flood_l2 membership.
+check ovn-nbctl --wait=sb remove Logical_Switch_Port remote1 options is_router
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$remote1_uuid"], [0], [dnl
+1
+])
+
+dnl The option is ignored unless type is remote.
+check ovn-nbctl lsp-set-type remote1 ""
+check ovn-nbctl --wait=sb set Logical_Switch_Port remote1 options:is_router=true
+AT_CHECK([ovn-sbctl --bare --columns=ports find Multicast_Group \
+          name=_MC_flood_l2 | grep -c "$remote1_uuid"], [0], [dnl
+1
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([ACLs after lb])
 AT_KEYWORDS([acl])
