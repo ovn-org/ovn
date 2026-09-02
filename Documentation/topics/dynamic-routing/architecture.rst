@@ -346,8 +346,11 @@ routing daemons.  This monitoring is performed via Netlink route
 notifications (``RTNLGRP_IPV4_ROUTE`` and ``RTNLGRP_IPV6_ROUTE``).
 
 When a route change is detected in a watched VRF table,
-``ovn-controller`` dumps the table contents and processes each route.
-The following filtering rules apply:
+``ovn-controller`` applies it to the routes it already knows about in that
+table and updates the ``Learned_Route`` records that follow from them.  The
+table itself is read in full only when ``ovn-controller`` starts watching it,
+when the configuration of the logical routers using it changes, or when a
+notification was missed.  The following filtering rules apply:
 
 - Routes with protocol ``RTPROT_OVN`` are **skipped** because they were
   installed by ``ovn-controller`` itself (advertised routes).

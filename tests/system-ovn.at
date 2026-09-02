@@ -21045,6 +21045,45 @@ ip_prefix           : "10.10.3.1"
 ip_prefix           : "10.10.4.1"
 ])
 
+AS_BOX([$(date +%H:%M:%S.%03N) Learned routes follow the notifications])
+
+# How many times ovn-controller rebuilt the routes it learns.  A sync
+# completes only after it ran the engine, and it reads the notifications right
+# before running it, so a sync after a change to a routing table tells us what
+# it decided to do about that change.
+route_recomputes() {
+    ovn-appctl -t ovn-controller inc-engine/show-stats route_exchange recompute
+}
+
+# The steps above leave work behind that would otherwise land in the middle of
+# the checks below, wait for it to finish first.
+check ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([settled=$(route_recomputes); sleep 2;
+                test "$settled" = "$(route_recomputes)"])
+
+# A route appearing in the table, or leaving it, is picked up from the
+# notification about it rather than by reading the table again.
+re_recompute=$(route_recomputes)
+check ip route add 10.10.6.1 via 20.0.0.25 vrf vrf-$vni proto zebra
+wait_row_count Learned_Route 1 ip_prefix=10.10.6.1 nexthop=20.0.0.25
+AT_CHECK_UNQUOTED([route_recomputes], [0], [$re_recompute
+])
+
+re_recompute=$(route_recomputes)
+check ip route del 10.10.6.1 vrf vrf-$vni
+wait_row_count Learned_Route 0 ip_prefix=10.10.6.1
+AT_CHECK_UNQUOTED([route_recomputes], [0], [$re_recompute
+])
+
+# A route OVN does not learn from does not even reach the tables it keeps.
+re_recompute=$(route_recomputes)
+check ip route add 10.10.7.1 via 20.0.0.25 vrf vrf-$vni
+check ovn-nbctl --wait=hv sync
+check_row_count Learned_Route 0 ip_prefix=10.10.7.1
+AT_CHECK_UNQUOTED([route_recomputes], [0], [$re_recompute
+])
+check ip route del 10.10.7.1 vrf vrf-$vni
+
 # Verify that we can have one router read and another write from the same
 # vrf table.
 #

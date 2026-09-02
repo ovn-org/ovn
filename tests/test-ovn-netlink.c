@@ -369,6 +369,80 @@ test_nexthop_table_notify(struct ovs_cmdl_context *ctx)
     ovn_netlink_notifiers_destroy();
 }
 
+/* Reports the routes of 'table_id' OVN learns from after applying the changes
+ * caused by running 'shell_command' to them.  Unlike "route-sync", which reads
+ * the whole table, this goes through the incremental update path. */
+static void
+test_route_table_update(struct ovs_cmdl_context *ctx)
+{
+    static const enum ovn_netlink_notifier_type types[] = {
+        OVN_NL_NOTIFIER_ROUTE_V4, OVN_NL_NOTIFIER_ROUTE_V6,
+    };
+    unsigned int shift = 1;
+
+    unsigned int table_id;
+    if (!test_read_uint_value(ctx, shift++, "table id", &table_id)) {
+        return;
+    }
+
+    const char *cmd = test_read_value(ctx, shift++, "shell_command");
+    if (!cmd) {
+        return;
+    }
+
+    struct hmap routes_to_advertise = HMAP_INITIALIZER(&routes_to_advertise);
+    struct hmap learned_routes = HMAP_INITIALIZER(&learned_routes);
+    struct vector route_tables =
+        VECTOR_EMPTY_INITIALIZER(const struct hmap *);
+    struct ds ds = DS_EMPTY_INITIALIZER;
+
+    const struct hmap *routes = &routes_to_advertise;
+    vector_push(&route_tables, &routes);
+
+    for (size_t i = 0; i < ARRAY_SIZE(types); i++) {
+        ovn_netlink_update_notifier(types[i], true);
+    }
+    ovs_assert(re_nl_sync_routes(table_id, &route_tables,
+                                 &learned_routes) == 0);
+    vector_destroy(&route_tables);
+    /* The routes are up to date, anything reported so far is among them. */
+    for (size_t i = 0; i < ARRAY_SIZE(types); i++) {
+        ovn_netlink_notifier_flush(types[i]);
+    }
+
+    run_command_under_notifier(cmd);
+
+    for (size_t i = 0; i < ARRAY_SIZE(types); i++) {
+        struct vector *msgs = ovn_netlink_get_msgs(types[i]);
+        struct ovn_route_msg *msg;
+
+        VECTOR_FOR_EACH (msgs, msg) {
+            if (msg->table_id != table_id) {
+                continue;
+            }
+
+            printf("%s route %s\n",
+                   re_nl_cached_routes_apply(&learned_routes, msg)
+                   ? "Applied" : "Ignored",
+                   msg->nlmsg_type == RTM_NEWROUTE ? "add" : "delete");
+        }
+        ovn_netlink_notifier_flush(types[i]);
+    }
+
+    const struct re_nl_cached_route *cr;
+    HMAP_FOR_EACH (cr, node, &learned_routes) {
+        ds_clear(&ds);
+        ovn_route_msg_format(&ds, cr->msg);
+        printf("Route %s\n", ds_cstr(&ds));
+    }
+
+    ds_destroy(&ds);
+    re_nl_cached_routes_clear(&learned_routes);
+    hmap_destroy(&learned_routes);
+    hmap_destroy(&routes_to_advertise);
+    ovn_netlink_notifiers_destroy();
+}
+
 /* Dumps the nexthop table after applying the changes caused by running
  * 'shell_command' to it.  Unlike "nexthop-sync", which builds the table from
  * scratch, this goes through the incremental update path. */
@@ -421,6 +495,8 @@ test_ovn_netlink(int argc, char *argv[])
         {"route-sync", NULL, 1, INT_MAX, test_route_sync, OVS_RO},
         {"route-table-notify", NULL, 1, 1,
          test_route_table_notify, OVS_RO},
+        {"route-table-update", NULL, 2, 2,
+         test_route_table_update, OVS_RO},
         {"nexthop-sync", NULL, 0, 0, test_nexthop_sync, OVS_RO},
         {"nexthop-table-notify", NULL, 1, 1,
          test_nexthop_table_notify, OVS_RO},

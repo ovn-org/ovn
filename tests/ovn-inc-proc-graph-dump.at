@@ -471,7 +471,7 @@ digraph "Incremental-Processing-Engine" {
 	route -> route_exchange [[label=""]];
 	SB_learned_route -> route_exchange [[label="engine_noop_handler"]];
 	SB_port_binding -> route_exchange [[label="engine_noop_handler"]];
-	route_table_notify -> route_exchange [[label=""]];
+	route_table_notify -> route_exchange [[label="route_exchange_route_table_handler"]];
 	route_exchange_status -> route_exchange [[label=""]];
 	sb_ro -> route_exchange [[label="route_exchange_sb_ro_handler"]];
 	garp_rarp [[style=filled, shape=box, fillcolor=white, label="garp_rarp"]];

@@ -617,6 +617,80 @@ AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
 
 AT_CLEANUP
 
+AT_SETUP([sync netlink routes - table update])
+AT_KEYWORDS([netlink-routes])
+CHECK_VRF()
+
+table_id=100
+
+check ip link add vrf-$table_id type vrf table $table_id
+on_exit 'ip link del vrf-$table_id'
+check ip link set dev vrf-$table_id up
+
+check ip link add lo-test type dummy
+on_exit 'ip link del lo-test'
+check ip link set lo-test master vrf-$table_id
+check ip addr add 20.0.0.10/24 dev lo-test
+check ip link set up lo-test
+
+dnl A route installed by a dynamic routing protocol is there from the start.
+check ip route add 10.10.10.0/24 via 20.0.0.1 vrf vrf-$table_id proto zebra
+
+dnl A route added to the table joins the ones we know of.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-update $table_id \
+    "ip route add 10.10.11.0/24 via 20.0.0.2 vrf vrf-$table_id proto zebra" \
+    | sort], [0], [dnl
+Applied route add
+Route table_id=$table_id dst=10.10.10.0 plen=24 proto=11 priority=0 nexthop=20.0.0.1,dev=lo-test
+Route table_id=$table_id dst=10.10.11.0 plen=24 proto=11 priority=0 nexthop=20.0.0.2,dev=lo-test
+])
+
+dnl A route removed from the table leaves them.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-update $table_id \
+    "ip route del 10.10.11.0/24 vrf vrf-$table_id" | sort], [0], [dnl
+Applied route delete
+Route table_id=$table_id dst=10.10.10.0 plen=24 proto=11 priority=0 nexthop=20.0.0.1,dev=lo-test
+])
+
+dnl Sending a route somewhere else replaces the one we know of.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-update $table_id \
+    "ip route replace 10.10.10.0/24 via 20.0.0.3 vrf vrf-$table_id proto zebra" \
+    | sort], [0], [dnl
+Applied route add
+Route table_id=$table_id dst=10.10.10.0 plen=24 proto=11 priority=0 nexthop=20.0.0.3,dev=lo-test
+])
+
+dnl A route OVN does not learn, here one configured by a user, is left out.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-update $table_id \
+    "ip route add 10.10.12.0/24 via 20.0.0.4 vrf vrf-$table_id proto static" \
+    | sort], [0], [dnl
+Ignored route add
+Route table_id=$table_id dst=10.10.10.0 plen=24 proto=11 priority=0 nexthop=20.0.0.3,dev=lo-test
+])
+
+dnl The kernel keeps several routes to one prefix that differ only by their
+dnl metric, so the metric is part of what tells them apart.
+check ip route add 10.10.13.0/24 via 20.0.0.5 metric 100 vrf vrf-$table_id \
+    proto zebra
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-update $table_id \
+    "ip route add 10.10.13.0/24 via 20.0.0.6 metric 200 vrf vrf-$table_id proto zebra" \
+    | sort], [0], [dnl
+Applied route add
+Route table_id=$table_id dst=10.10.10.0 plen=24 proto=11 priority=0 nexthop=20.0.0.3,dev=lo-test
+Route table_id=$table_id dst=10.10.13.0 plen=24 proto=11 priority=100 nexthop=20.0.0.5,dev=lo-test
+Route table_id=$table_id dst=10.10.13.0 plen=24 proto=11 priority=200 nexthop=20.0.0.6,dev=lo-test
+])
+
+dnl Removing one of them keeps the other.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-update $table_id \
+    "ip route del 10.10.13.0/24 metric 100 vrf vrf-$table_id" | sort], [0], [dnl
+Applied route delete
+Route table_id=$table_id dst=10.10.10.0 plen=24 proto=11 priority=0 nexthop=20.0.0.3,dev=lo-test
+Route table_id=$table_id dst=10.10.13.0 plen=24 proto=11 priority=200 nexthop=20.0.0.6,dev=lo-test
+])
+
+AT_CLEANUP
+
 AT_SETUP([sync netlink nexthops - learn nexthops])
 AT_KEYWORDS([netlink-nexthops])
 

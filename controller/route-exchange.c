@@ -31,6 +31,7 @@
 #include "binding.h"
 #include "ha-chassis.h"
 #include "local_data.h"
+#include "nexthop-exchange.h"
 #include "route.h"
 #include "route-exchange.h"
 #include "route-exchange-netlink.h"
@@ -41,6 +42,19 @@ static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
 struct maintained_route_table_entry {
     struct hmap_node node;
     uint32_t table_id;
+};
+
+/* What route_exchange knows about one kernel routing table it syncs. */
+struct route_table_state {
+    struct hmap_node node;
+    uint32_t table_id;
+    /* Routes of the table OVN learns from (struct re_nl_cached_route). */
+    struct hmap learned_routes;
+};
+
+struct route_exchange_state {
+    /* Contains 'struct route_table_state', by table id. */
+    struct hmap tables;
 };
 
 static struct hmap _maintained_route_tables =
@@ -84,6 +98,69 @@ maintained_route_table_add(uint32_t table_id)
     struct maintained_route_table_entry *mrt = xmalloc(sizeof *mrt);
     mrt->table_id = table_id;
     hmap_insert(&_maintained_route_tables, &mrt->node, hash);
+}
+
+static struct route_table_state *
+route_table_state_find(const struct route_exchange_state *state,
+                       uint32_t table_id)
+{
+    struct route_table_state *rt;
+    HMAP_FOR_EACH_WITH_HASH (rt, node, maintained_route_table_hash(table_id),
+                             &state->tables) {
+        if (rt->table_id == table_id) {
+            return rt;
+        }
+    }
+
+    return NULL;
+}
+
+static struct route_table_state *
+route_table_state_get(struct route_exchange_state *state, uint32_t table_id)
+{
+    struct route_table_state *rt = route_table_state_find(state, table_id);
+    if (rt) {
+        return rt;
+    }
+
+    rt = xmalloc(sizeof *rt);
+    rt->table_id = table_id;
+    hmap_init(&rt->learned_routes);
+    hmap_insert(&state->tables, &rt->node,
+                maintained_route_table_hash(table_id));
+
+    return rt;
+}
+
+static void
+route_table_state_destroy(struct route_exchange_state *state,
+                          struct route_table_state *rt)
+{
+    hmap_remove(&state->tables, &rt->node);
+    re_nl_cached_routes_clear(&rt->learned_routes);
+    hmap_destroy(&rt->learned_routes);
+    free(rt);
+}
+
+struct route_exchange_state *
+route_exchange_state_create(void)
+{
+    struct route_exchange_state *state = xmalloc(sizeof *state);
+
+    hmap_init(&state->tables);
+    return state;
+}
+
+void
+route_exchange_state_destroy(struct route_exchange_state *state)
+{
+    struct route_table_state *rt;
+    HMAP_FOR_EACH_SAFE (rt, node, &state->tables) {
+        route_table_state_destroy(state, rt);
+    }
+
+    hmap_destroy(&state->tables);
+    free(state);
 }
 
 static struct route_entry *
@@ -353,6 +430,37 @@ advertised_routes_tables(const struct hmapx *datapaths,
     }
 }
 
+static struct advertised_routes_entry *
+advertised_routes_find(const struct hmap *advertised_routes, uint32_t table_id)
+{
+    struct advertised_routes_entry *arte;
+    HMAP_FOR_EACH_WITH_HASH (arte, node,
+                             maintained_route_table_hash(table_id),
+                             advertised_routes) {
+        if (arte->table_id == table_id) {
+            return arte;
+        }
+    }
+
+    return NULL;
+}
+
+/* Maps every routing table OVN distributes routes into to the datapaths that
+ * do so. */
+static void
+advertised_routes_build(struct hmap *advertised_routes,
+                        const struct hmap *announce_routes)
+{
+    const struct advertise_datapath_entry *ad;
+    HMAP_FOR_EACH (ad, node, announce_routes) {
+        uint32_t table_id = route_get_table_id(ad->db);
+
+        if (TABLE_ID_VALID(table_id)) {
+            advertised_routes_add(advertised_routes, ad, table_id);
+        }
+    }
+}
+
 static void
 advertised_routes_destroy(struct hmap *advertised_routes)
 {
@@ -364,12 +472,11 @@ advertised_routes_destroy(struct hmap *advertised_routes)
     hmap_destroy(advertised_routes);
 }
 
-/* Turns 'learned_routes', the routes of a kernel routing table OVN may learn
- * from, into Learned_Route rows of every datapath in 'datapaths' ('struct
- * advertise_datapath_entry *'). */
+/* Turns the routes OVN learns from the table 'rt' into Learned_Route rows of
+ * every datapath in 'datapaths' ('struct advertise_datapath_entry *'). */
 static void
-resolve_and_sync_learned_routes(
-    const struct hmap *learned_routes, const struct hmapx *datapaths,
+route_table_resolve_and_sync(
+    struct route_table_state *rt, const struct hmapx *datapaths,
     const struct route_exchange_ctx_in *r_ctx_in,
     struct route_exchange_ctx_out *r_ctx_out)
 {
@@ -377,7 +484,7 @@ resolve_and_sync_learned_routes(
         VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
 
     const struct re_nl_cached_route *cr;
-    HMAP_FOR_EACH (cr, node, learned_routes) {
+    HMAP_FOR_EACH (cr, node, &rt->learned_routes) {
         re_nl_resolve_route(cr->msg, &received_routes);
     }
 
@@ -397,8 +504,87 @@ resolve_and_sync_learned_routes(
     vector_destroy(&received_routes);
 }
 
+/* Redoes the Learned_Route rows of every table in 'changed_tables' ('struct
+ * route_table_state'). */
+static enum route_exchange_handled
+resync_changed_tables(const struct hmapx *changed_tables,
+                      const struct route_exchange_ctx_in *r_ctx_in,
+                      struct route_exchange_ctx_out *r_ctx_out)
+{
+    if (hmapx_is_empty(changed_tables)) {
+        return ROUTE_EXCHANGE_UNCHANGED;
+    }
+
+    if (!r_ctx_in->ovnsb_idl_txn) {
+        /* Without a transaction we could only record that there are changes
+         * left to write, which a full run does better. */
+        return ROUTE_EXCHANGE_UNHANDLED;
+    }
+
+    struct hmap advertised_routes = HMAP_INITIALIZER(&advertised_routes);
+    enum route_exchange_handled handled = ROUTE_EXCHANGE_UPDATED;
+
+    advertised_routes_build(&advertised_routes, r_ctx_in->announce_routes);
+
+    struct hmapx_node *hn;
+    HMAPX_FOR_EACH (hn, changed_tables) {
+        struct route_table_state *rt = hn->data;
+        const struct advertised_routes_entry *arte =
+            advertised_routes_find(&advertised_routes, rt->table_id);
+
+        if (!arte) {
+            /* The datapaths distributing routes into the table are not the
+             * ones it was synced for. */
+            handled = ROUTE_EXCHANGE_UNHANDLED;
+            break;
+        }
+
+        route_table_resolve_and_sync(rt, &arte->datapaths, r_ctx_in,
+                                     r_ctx_out);
+    }
+
+    advertised_routes_destroy(&advertised_routes);
+
+    return handled;
+}
+
+enum route_exchange_handled
+route_exchange_handle_route_changes(
+    struct route_exchange_state *state,
+    const struct route_exchange_ctx_in *r_ctx_in,
+    struct route_exchange_ctx_out *r_ctx_out,
+    const struct vector *changed_routes)
+{
+    struct hmapx changed_tables = HMAPX_INITIALIZER(&changed_tables);
+    enum route_exchange_handled handled;
+
+    const struct ovn_route_msg *msg;
+    VECTOR_FOR_EACH (changed_routes, msg) {
+        struct route_table_state *rt =
+            route_table_state_find(state, msg->table_id);
+        if (!rt) {
+            /* A table we have not read, so we do not know the rest of it
+             * either. */
+            handled = ROUTE_EXCHANGE_UNHANDLED;
+            goto out;
+        }
+
+        if (re_nl_cached_routes_apply(&rt->learned_routes, msg)) {
+            hmapx_add(&changed_tables, rt);
+        }
+    }
+
+    handled = resync_changed_tables(&changed_tables, r_ctx_in, r_ctx_out);
+
+out:
+    hmapx_destroy(&changed_tables);
+
+    return handled;
+}
+
 void
-route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
+route_exchange_run(struct route_exchange_state *state,
+                   const struct route_exchange_ctx_in *r_ctx_in,
                    struct route_exchange_ctx_out *r_ctx_out)
 {
     struct hmap advertised_routes = HMAP_INITIALIZER(&advertised_routes);
@@ -444,26 +630,33 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
         advertised_routes_add(&advertised_routes, ad, table_id);
     }
 
-    struct hmap learned_routes = HMAP_INITIALIZER(&learned_routes);
     struct advertised_routes_entry *arte;
     HMAP_FOR_EACH (arte, node, &advertised_routes) {
         maintained_route_table_add(arte->table_id);
 
+        struct route_table_state *rt = route_table_state_get(state,
+                                                             arte->table_id);
         struct vector route_tables =
             VECTOR_EMPTY_INITIALIZER(const struct hmap *);
         advertised_routes_tables(&arte->datapaths, &route_tables);
 
         error = re_nl_sync_routes(arte->table_id, &route_tables,
-                                  &learned_routes);
+                                  &rt->learned_routes);
         SET_ROUTE_EXCHANGE_NL_STATUS(error);
         vector_destroy(&route_tables);
 
-        resolve_and_sync_learned_routes(&learned_routes, &arte->datapaths,
-                                        r_ctx_in, r_ctx_out);
+        route_table_resolve_and_sync(rt, &arte->datapaths, r_ctx_in,
+                                     r_ctx_out);
         vector_push(r_ctx_out->route_table_watches, &arte->table_id);
     }
-    re_nl_cached_routes_clear(&learned_routes);
-    hmap_destroy(&learned_routes);
+
+    /* Forget the tables we do not sync anymore. */
+    struct route_table_state *rt;
+    HMAP_FOR_EACH_SAFE (rt, node, &state->tables) {
+        if (!advertised_routes_find(&advertised_routes, rt->table_id)) {
+            route_table_state_destroy(state, rt);
+        }
+    }
 
     /* Remove routes in tables previously maintained by us. */
     struct maintained_route_table_entry *mrt;
