@@ -590,13 +590,19 @@ check ip link set up lo-test
 dnl Should notify if an IPv4 route is added to a table monitored by OVN.
 AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
     "ip route add 10.10.10.0/24 via 20.0.0.1 vrf vrf-$table_id"], [0], [dnl
-Notification v4 table_id=$table_id
+Notification v4 add route table_id=$table_id dst=10.10.10.0 plen=24 proto=3 priority=0 nexthop=20.0.0.1,dev=lo-test
 ])
 
 dnl Should notify if an IPv6 route is added to a table monitored by OVN.
 AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
     "ip -6 route add fd10::/64 via fd20::1 vrf vrf-$table_id"], [0], [dnl
-Notification v6 table_id=$table_id
+Notification v6 add route table_id=$table_id dst=fd10:: plen=64 proto=3 priority=1024 nexthop=fd20::1,dev=lo-test
+])
+
+dnl Should report which route was removed, not just that something changed.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-table-notify \
+    "ip route del 10.10.10.0/24 via 20.0.0.1 vrf vrf-$table_id"], [0], [dnl
+Notification v4 delete route table_id=$table_id dst=10.10.10.0 plen=24 proto=3 priority=0 nexthop=20.0.0.1,dev=lo-test
 ])
 
 dnl Should NOT notify if a route with proto ovn is added.

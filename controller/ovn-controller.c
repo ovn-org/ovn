@@ -5712,7 +5712,20 @@ route_table_notify_update(struct vector *watches)
 struct ed_type_route_table_notify {
     /* Vector of ordered 'uint32_t' representing table_ids. */
     struct vector watches;
+    /* Routes ('struct ovn_route_msg *', owned) the last run was told about,
+     * limited to the tables in 'watches'. */
+    struct vector changed_routes;
 };
+
+static void
+route_table_notify_clear_changes(struct ed_type_route_table_notify *rtn)
+{
+    struct ovn_route_msg *msg;
+    VECTOR_FOR_EACH (&rtn->changed_routes, msg) {
+        free(msg);
+    }
+    vector_clear(&rtn->changed_routes);
+}
 
 struct ed_type_route_exchange {
     /* We need the idl to check if the Learned_Route table exists. */
@@ -5816,38 +5829,33 @@ en_route_exchange_cleanup(void *data OVS_UNUSED)
 static enum engine_node_state
 en_route_table_notify_run(struct engine_node *node OVS_UNUSED, void *data)
 {
+    static const enum ovn_netlink_notifier_type route_notifiers[] = {
+        OVN_NL_NOTIFIER_ROUTE_V4, OVN_NL_NOTIFIER_ROUTE_V6,
+    };
     enum engine_node_state state = EN_UNCHANGED;
     struct ed_type_route_table_notify *rtn = data;
-    struct vector *msgs;
-    uint32_t *table_id;
 
-    if (ovn_netlink_notifier_lost(OVN_NL_NOTIFIER_ROUTE_V4) ||
-        ovn_netlink_notifier_lost(OVN_NL_NOTIFIER_ROUTE_V6)) {
-        state = EN_UPDATED;
-    }
+    route_table_notify_clear_changes(rtn);
 
-    if (state != EN_UPDATED) {
-        msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V4);
-        VECTOR_FOR_EACH_PTR (msgs, table_id) {
-            if (vector_bsearch(&rtn->watches, table_id, table_id_cmp)) {
-                state = EN_UPDATED;
-                break;
-            }
+    for (size_t i = 0; i < ARRAY_SIZE(route_notifiers); i++) {
+        if (ovn_netlink_notifier_lost(route_notifiers[i])) {
+            state = EN_UPDATED;
         }
-    }
 
-    if (state != EN_UPDATED) {
-        msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V6);
-        VECTOR_FOR_EACH_PTR (msgs, table_id) {
-            if (vector_bsearch(&rtn->watches, table_id, table_id_cmp)) {
-                state = EN_UPDATED;
-                break;
+        struct vector *msgs = ovn_netlink_get_msgs(route_notifiers[i]);
+        struct ovn_route_msg *msg;
+        VECTOR_FOR_EACH (msgs, msg) {
+            if (!vector_bsearch(&rtn->watches, &msg->table_id, table_id_cmp)) {
+                continue;
             }
-        }
-    }
 
-    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_ROUTE_V4);
-    ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_ROUTE_V6);
+            struct ovn_route_msg *changed_route = ovn_route_msg_clone(msg);
+            vector_push(&rtn->changed_routes, &changed_route);
+            state = EN_UPDATED;
+        }
+
+        ovn_netlink_notifier_flush(route_notifiers[i]);
+    }
 
     return state;
 }
@@ -5861,6 +5869,7 @@ en_route_table_notify_init(struct engine_node *node OVS_UNUSED,
 
     *rtn = (struct ed_type_route_table_notify) {
         .watches = VECTOR_EMPTY_INITIALIZER(uint32_t),
+        .changed_routes = VECTOR_EMPTY_INITIALIZER(struct ovn_route_msg *),
     };
     return rtn;
 }
@@ -5869,6 +5878,8 @@ static void
 en_route_table_notify_cleanup(void *data)
 {
     struct ed_type_route_table_notify *rtn = data;
+    route_table_notify_clear_changes(rtn);
+    vector_destroy(&rtn->changed_routes);
     vector_destroy(&rtn->watches);
 }
 

@@ -18,7 +18,53 @@
 #ifndef ROUTE_EXCHANGE_H
 #define ROUTE_EXCHANGE_H 1
 
+#include <net/if.h>
+#include <netinet/in.h>
+#include <stdint.h>
+
 #include "openvswitch/hmap.h"
+#include "util.h"
+
+/* One of the next hops of a route as reported by the kernel. */
+struct ovn_route_nexthop {
+    struct in6_addr addr;
+    /* Adding 1 to this to be sure we actually have a terminating '\0' */
+    char ifname[IFNAMSIZ + 1];
+};
+
+/* A digested version of a route message sent down by the kernel to indicate
+ * that a route has changed.  Unlike 'struct route_data', which points into
+ * itself to describe the next hops, this is self contained, so it stays valid
+ * after the message it was built from is gone. */
+struct ovn_route_msg {
+    /* E.g. RTM_NEWROUTE, RTM_DELROUTE. */
+    uint16_t nlmsg_type;
+    /* Routing table the route belongs to. */
+    uint32_t table_id;
+    /* Prefix the route is for. */
+    struct in6_addr prefix;
+    unsigned int plen;
+    /* Routing protocol that installed the route, e.g. RTPROT_BGP. */
+    unsigned char protocol;
+    /* Metric of the route.  The kernel allows several routes for one prefix
+     * that differ only by this, so it is part of a route's identity. */
+    uint32_t priority;
+    /* Number of next hops described by the route itself. */
+    size_t n_nexthops;
+    struct ovn_route_nexthop nexthops[];
+};
+
+static inline size_t
+ovn_route_msg_size(const struct ovn_route_msg *msg)
+{
+    return sizeof *msg + msg->n_nexthops * sizeof msg->nexthops[0];
+}
+
+static inline struct ovn_route_msg *
+ovn_route_msg_clone(const struct ovn_route_msg *msg)
+{
+    return xmemdup(msg, ovn_route_msg_size(msg));
+}
 
 struct route_exchange_ctx_in {
     struct ovsdb_idl_txn *ovnsb_idl_txn;

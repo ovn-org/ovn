@@ -273,18 +273,26 @@ test_route_table_notify(struct ovs_cmdl_context *ctx)
     ovn_netlink_update_notifier(OVN_NL_NOTIFIER_ROUTE_V6, true);
     run_command_under_notifier(cmd);
 
-    uint32_t table_id;
+    static const char *families[] = {"v4", "v6"};
+    static const enum ovn_netlink_notifier_type types[] = {
+        OVN_NL_NOTIFIER_ROUTE_V4, OVN_NL_NOTIFIER_ROUTE_V6,
+    };
+    struct ds ds = DS_EMPTY_INITIALIZER;
 
-    struct vector *msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V4);
-    VECTOR_FOR_EACH (msgs, table_id) {
-        printf("Notification v4 table_id=%"PRIu32"\n", table_id);
+    for (size_t i = 0; i < ARRAY_SIZE(types); i++) {
+        struct vector *msgs = ovn_netlink_get_msgs(types[i]);
+        struct ovn_route_msg *msg;
+
+        VECTOR_FOR_EACH (msgs, msg) {
+            ds_clear(&ds);
+            ovn_route_msg_format(&ds, msg);
+            printf("Notification %s %s route %s\n", families[i],
+                   msg->nlmsg_type == RTM_NEWROUTE ? "add" : "delete",
+                   ds_cstr(&ds));
+        }
     }
 
-    msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_ROUTE_V6);
-    VECTOR_FOR_EACH (msgs, table_id) {
-        printf("Notification v6 table_id=%"PRIu32"\n", table_id);
-    }
-
+    ds_destroy(&ds);
     ovn_netlink_notifiers_destroy();
 }
 

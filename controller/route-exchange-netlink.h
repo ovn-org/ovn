@@ -23,6 +23,8 @@
 #include <netinet/in.h>
 #include <net/if.h>
 
+#include "route-exchange.h"
+
 /* The following definition should be available in Linux 6.15 and might be
  * missing if we have older headers. */
 #ifndef RTPROT_OVN
@@ -36,8 +38,13 @@
 
 struct in6_addr;
 struct hmap;
+struct route_data;
 struct vector;
 struct advertise_route_entry;
+
+struct ovn_route_msg *ovn_route_msg_from_route_data(
+    uint16_t nlmsg_type, const struct route_data *);
+void ovn_route_msg_format(struct ds *, const struct ovn_route_msg *);
 
 struct re_nl_received_route_node {
     struct in6_addr prefix;

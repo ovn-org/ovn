@@ -66,13 +66,13 @@ static void ovn_netlink_notifier_report_lost(struct ovn_netlink_notifier *);
 static struct ovn_netlink_notifier notifiers[OVN_NL_NOTIFIER_MAX] = {
     [OVN_NL_NOTIFIER_ROUTE_V4] = {
         .group = RTNLGRP_IPV4_ROUTE,
-        .msgs = VECTOR_EMPTY_INITIALIZER(uint32_t),
+        .msgs = VECTOR_EMPTY_INITIALIZER(struct ovn_route_msg *),
         .change_handler = ovn_netlink_route_change_handler,
         .name = "route-ipv4",
     },
     [OVN_NL_NOTIFIER_ROUTE_V6] = {
         .group = RTNLGRP_IPV6_ROUTE,
-        .msgs = VECTOR_EMPTY_INITIALIZER(uint32_t),
+        .msgs = VECTOR_EMPTY_INITIALIZER(struct ovn_route_msg *),
         .change_handler = ovn_netlink_route_change_handler,
         .name = "route-ipv6",
     },
@@ -149,9 +149,9 @@ ovn_netlink_route_change_handler(const void *change_, void *aux)
 
     struct route_data *rd = &change->route.rd;
     if (rd->rtm_protocol != RTPROT_OVN) {
-        /* We just cannot copy the whole route_data because it has reference
-         * to self for the nexthop list. */
-        vector_push(&notifier->msgs, &rd->rta_table_id);
+        struct ovn_route_msg *msg =
+            ovn_route_msg_from_route_data(change->route.nlmsg_type, rd);
+        vector_push(&notifier->msgs, &msg);
     }
 
     route_data_destroy(rd);
@@ -288,7 +288,13 @@ ovn_netlink_notifier_flush(enum ovn_netlink_notifier_type type)
         break;
     }
     case OVN_NL_NOTIFIER_ROUTE_V4:
-    case OVN_NL_NOTIFIER_ROUTE_V6:
+    case OVN_NL_NOTIFIER_ROUTE_V6: {
+        struct ovn_route_msg *msg;
+        VECTOR_FOR_EACH (&notifier->msgs, msg) {
+            free(msg);
+        }
+        break;
+    }
     case OVN_NL_NOTIFIER_NEIGHBOR:
     case OVN_NL_NOTIFIER_MAX:
         break;

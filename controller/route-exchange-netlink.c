@@ -199,6 +199,56 @@ re_nl_delete_route(uint32_t table_id, const struct advertise_route_entry *re)
     return modify_route(RTM_DELROUTE, 0, table_id, re);
 }
 
+/* Returns a self contained copy of the route 'rd' reported by a message of
+ * type 'nlmsg_type'.  The caller takes ownership of it. */
+struct ovn_route_msg *
+ovn_route_msg_from_route_data(uint16_t nlmsg_type,
+                              const struct route_data *rd)
+{
+    size_t n_nexthops = ovs_list_size(&rd->nexthops);
+    struct ovn_route_msg *msg =
+        xzalloc(sizeof *msg + n_nexthops * sizeof msg->nexthops[0]);
+
+    *msg = (struct ovn_route_msg) {
+        .nlmsg_type = nlmsg_type,
+        .table_id = rd->rta_table_id,
+        .prefix = rd->rta_dst,
+        .plen = rd->rtm_dst_len,
+        .protocol = rd->rtm_protocol,
+        .priority = rd->rta_priority,
+        .n_nexthops = n_nexthops,
+    };
+
+    struct ovn_route_nexthop *nh = msg->nexthops;
+    const struct route_data_nexthop *rdnh;
+    LIST_FOR_EACH (rdnh, nexthop_node, &rd->nexthops) {
+        nh->addr = rdnh->addr;
+        memcpy(nh->ifname, rdnh->ifname, IFNAMSIZ);
+        nh++;
+    }
+
+    return msg;
+}
+
+void
+ovn_route_msg_format(struct ds *ds, const struct ovn_route_msg *msg)
+{
+    ds_put_format(ds, "table_id=%"PRIu32" dst=", msg->table_id);
+    ipv6_format_mapped(&msg->prefix, ds);
+    ds_put_format(ds, " plen=%u proto=%u priority=%"PRIu32,
+                  msg->plen, msg->protocol, msg->priority);
+
+    for (size_t i = 0; i < msg->n_nexthops; i++) {
+        const struct ovn_route_nexthop *nh = &msg->nexthops[i];
+
+        ds_put_cstr(ds, " nexthop=");
+        ipv6_format_mapped(&nh->addr, ds);
+        if (nh->ifname[0]) {
+            ds_put_format(ds, ",dev=%s", nh->ifname);
+        }
+    }
+}
+
 struct route_msg_handle_data {
     struct hmapx *routes_to_advertise;
     struct vector *learned_routes;
