@@ -4488,8 +4488,15 @@ wait_row_count bfd 5
 
 # Simulate BFD up in Southbound for an automatically created entry.
 # This entry is referenced so the state in the Northbound should also
-# become "up".
+# become "up".  A BFD session can only be up if some chassis runs it, so
+# turn r0-sw2 into a gateway port and bind its chassisredirect port
+# first, like ovn-controller would do.
 wait_column down nb:bfd status logical_port=r0-sw2
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis r0-sw2 hv1 10
+hv1_uuid=$(fetch_column chassis _uuid name=hv1)
+check ovn-sbctl set port_binding cr-r0-sw2 chassis=$hv1_uuid
+wait_column hv1 bfd chassis_name logical_port=r0-sw2
 bfd2_uuid=$(fetch_column bfd _uuid logical_port=r0-sw2)
 check ovn-sbctl set bfd $bfd2_uuid status=up
 wait_column up nb:bfd status logical_port=r0-sw2
@@ -4532,6 +4539,234 @@ AT_CHECK([ovn-nbctl list logical_router_policy | sed s/,//g | grep -q "$bfd_rout
 # recompute does not crash northd.
 check ovn-nbctl --wait=sb lrp-del r0-sw2
 check ovn-nbctl --wait=sb sync
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([BFD sessions marked down when no chassis can run them])
+AT_KEYWORDS([northd-bfd])
+ovn_start
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl lrp-add r0 r0-public 00:00:20:20:12:13 172.16.0.1/24
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add-router-port public public-r0 r0-public
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis r0-public hv1 10
+
+bfd_uuid=$(ovn-nbctl create bfd logical_port=r0-public dst_ip=172.16.0.50)
+check test -n "$bfd_uuid"
+check ovn-nbctl --bfd=$bfd_uuid lr-route-add r0 100.0.0.0/8 172.16.0.50
+
+# The gateway port is not bound to any chassis yet, so no chassis runs
+# the BFD session: both NB and SB status must be "down".
+wait_column down nb:bfd status logical_port=r0-public
+wait_column down bfd status logical_port=r0-public
+check_column "" bfd chassis_name logical_port=r0-public
+
+# Simulate hv1 claiming the chassisredirect port and the BFD session
+# coming up, like ovn-controller would do.
+hv1_uuid=$(fetch_column chassis _uuid name=hv1)
+check ovn-sbctl set port_binding cr-r0-public chassis=$hv1_uuid
+wait_column hv1 bfd chassis_name logical_port=r0-public
+
+sb_bfd_uuid=$(fetch_column bfd _uuid logical_port=r0-public)
+check ovn-sbctl set bfd $sb_bfd_uuid status=up
+wait_column up nb:bfd status logical_port=r0-public
+
+# The BFD monitored route is programmed while the session is up.
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+# Release the chassisredirect binding while leaving the Chassis row intact.
+# This specifically exercises the incremental Port_Binding.chassis input.
+# The session must be marked "down" in both databases and the BFD monitored
+# route must be withdrawn.
+check ovn-sbctl clear port_binding cr-r0-public chassis
+wait_column down nb:bfd status logical_port=r0-public
+wait_column down bfd status logical_port=r0-public
+check_column "" bfd chassis_name logical_port=r0-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& ! grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+# Give the session an owner again: northd must track the owning chassis
+# but must not flip the status to "up" on its own; that is up to
+# ovn-controller's BFD negotiation.
+check ovn-sbctl set port_binding cr-r0-public chassis=$hv1_uuid
+wait_column hv1 bfd chassis_name logical_port=r0-public
+check ovn-nbctl --wait=sb sync
+check_column down nb:bfd status logical_port=r0-public
+check_column down bfd status logical_port=r0-public
+
+# Once "ovn-controller" reports the session up again, the status must
+# propagate to the Northbound as usual.
+check ovn-sbctl set bfd $sb_bfd_uuid status=up
+wait_column up nb:bfd status logical_port=r0-public
+
+# An "admin_down" session must be left untouched when it loses its
+# owner.
+route_uuid=$(fetch_column nb:logical_router_static_route _uuid \
+             ip_prefix="100.0.0.0/8")
+check ovn-nbctl clear logical_router_static_route $route_uuid bfd
+wait_column admin_down nb:bfd status logical_port=r0-public
+wait_column admin_down bfd status logical_port=r0-public
+check ovn-sbctl clear port_binding cr-r0-public chassis
+check ovn-nbctl --wait=sb sync
+check_column admin_down nb:bfd status logical_port=r0-public
+check_column admin_down bfd status logical_port=r0-public
+check_column "" bfd chassis_name logical_port=r0-public
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([BFD ownership on an l3gateway port])
+AT_KEYWORDS([northd-bfd])
+ovn_start
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+hv1_uuid=$(fetch_column chassis _uuid name=hv1)
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl set logical_router r0 options:chassis=hv1
+check ovn-nbctl lrp-add r0 r0-public 00:00:20:20:12:13 172.16.0.1/24
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add-router-port public public-r0 r0-public
+
+bfd_uuid=$(ovn-nbctl create bfd logical_port=r0-public dst_ip=172.16.0.50)
+check test -n "$bfd_uuid"
+check ovn-nbctl --bfd=$bfd_uuid lr-route-add r0 100.0.0.0/8 172.16.0.50
+
+wait_column l3gateway port_binding type logical_port=r0-public
+check ovn-sbctl set port_binding r0-public chassis=$hv1_uuid
+wait_column hv1 bfd chassis_name logical_port=r0-public
+
+sb_bfd_uuid=$(fetch_column bfd _uuid logical_port=r0-public)
+check ovn-sbctl set bfd $sb_bfd_uuid status=up
+wait_column up nb:bfd status logical_port=r0-public
+
+# The direct l3gateway binding is the owner.  Releasing it must invalidate
+# the stale status through the same incremental Port_Binding input.
+check ovn-sbctl clear port_binding r0-public chassis
+wait_column down nb:bfd status logical_port=r0-public
+wait_column down bfd status logical_port=r0-public
+check_column "" bfd chassis_name logical_port=r0-public
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([BFD owner must remain eligible in its HA chassis group])
+AT_KEYWORDS([northd-bfd concept-c])
+ovn_start
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl lrp-add r0 r0-public 00:00:20:20:12:13 172.16.0.1/24
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add-router-port public public-r0 r0-public
+check ovn-nbctl ha-chassis-group-add hagrp
+check ovn-nbctl ha-chassis-group-add-chassis hagrp hv1 10
+hagrp_uuid=$(fetch_column nb:ha_chassis_group _uuid name=hagrp)
+check ovn-nbctl --wait=sb set logical_router_port r0-public \
+    ha_chassis_group=$hagrp_uuid
+
+bfd_uuid=$(ovn-nbctl create bfd logical_port=r0-public dst_ip=172.16.0.50)
+check test -n "$bfd_uuid"
+check ovn-nbctl --bfd=$bfd_uuid lr-route-add r0 100.0.0.0/8 172.16.0.50
+
+hv1_uuid=$(fetch_column chassis _uuid name=hv1)
+check ovn-sbctl set port_binding cr-r0-public chassis=$hv1_uuid
+wait_column hv1 bfd chassis_name logical_port=r0-public
+
+sb_bfd_uuid=$(fetch_column bfd _uuid logical_port=r0-public)
+check ovn-sbctl set bfd $sb_bfd_uuid status=up
+wait_column up nb:bfd status logical_port=r0-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+# Removing hv1 from the group expresses that it is no longer eligible, but
+# deliberately leave its Chassis row and stale Port_Binding ownership in SB.
+# Northd must distrust the stale binding, mark BFD down, and withdraw the
+# route without requiring a chassis deletion or a binding update.
+check ovn-nbctl --wait=sb ha-chassis-group-remove-chassis hagrp hv1
+wait_column down nb:bfd status logical_port=r0-public
+wait_column down bfd status logical_port=r0-public
+check_column "" bfd chassis_name logical_port=r0-public
+check_row_count chassis 1 name=hv1
+check_column $hv1_uuid port_binding chassis logical_port=cr-r0-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& ! grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+# Re-adding hv1 makes the still-bound chassis eligible again.  Northd restores
+# chassis_name but never invents an operational up state; the controller must
+# report that after BFD negotiation.
+check ovn-nbctl --wait=sb ha-chassis-group-add-chassis hagrp hv1 10
+wait_column hv1 bfd chassis_name logical_port=r0-public
+check_column down nb:bfd status logical_port=r0-public
+check_column down bfd status logical_port=r0-public
+check ovn-sbctl set bfd $sb_bfd_uuid status=up
+wait_column up nb:bfd status logical_port=r0-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([BFD owner must remain eligible in legacy Gateway_Chassis])
+AT_KEYWORDS([northd-bfd concept-c gateway-chassis])
+ovn_start
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl chassis-add hv2 geneve 127.0.0.2
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl lrp-add r0 r0-public 00:00:20:20:12:13 172.16.0.1/24
+check ovn-nbctl ls-add public
+check ovn-nbctl lsp-add-router-port public public-r0 r0-public
+check ovn-nbctl lrp-set-gateway-chassis r0-public hv1 20
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis r0-public hv2 10
+
+bfd_uuid=$(ovn-nbctl create bfd logical_port=r0-public dst_ip=172.16.0.50)
+check test -n "$bfd_uuid"
+check ovn-nbctl --bfd=$bfd_uuid lr-route-add r0 100.0.0.0/8 172.16.0.50
+
+hv1_uuid=$(fetch_column chassis _uuid name=hv1)
+check ovn-sbctl set port_binding cr-r0-public chassis=$hv1_uuid
+wait_column hv1 bfd chassis_name logical_port=r0-public
+
+sb_bfd_uuid=$(fetch_column bfd _uuid logical_port=r0-public)
+check ovn-sbctl set bfd $sb_bfd_uuid status=up
+wait_column up nb:bfd status logical_port=r0-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+# Northd materializes legacy Gateway_Chassis rows as an SB HA chassis group.
+# Remove the bound owner from the legacy list while hv2 keeps the cr-port and
+# its synthesized group alive.  Deliberately retain the stale hv1 binding:
+# hv1 is no longer eligible and therefore must not remain the BFD owner.
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis r0-public hv1
+wait_column down nb:bfd status logical_port=r0-public
+wait_column down bfd status logical_port=r0-public
+check_column "" bfd chassis_name logical_port=r0-public
+check_column $hv1_uuid port_binding chassis logical_port=cr-r0-public
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows r0 > r0flows dnl
+&& ! grep -q "ip4.dst == 100.0.0.0/8" r0flows])
+
+# Re-adding the still-bound chassis restores eligibility and attribution, but
+# northd must leave the operational status down until a controller reports it.
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis r0-public hv1 20
+wait_column hv1 bfd chassis_name logical_port=r0-public
+check_column down nb:bfd status logical_port=r0-public
+check_column down bfd status logical_port=r0-public
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
