@@ -11955,6 +11955,23 @@ bfd_get_connection_status(const struct nbrec_bfd *nb_bt,
     return bfd_rp ? bfd_rp->status : bfd_sr->status;
 }
 
+/* Returns the chassis that runs the BFD session for the logical router
+ * port 'op', mirroring the ownership rule implemented by bfd_monitor_run()
+ * in controller/pinctrl.c: ovn-controller runs the session if the
+ * chassisredirect twin of 'op' is bound to the chassis or if 'op' itself
+ * (an "l3gateway" port) is bound to the chassis.  Returns NULL if there is
+ * no currently bound BFD owner. */
+static const struct sbrec_chassis *
+bfd_get_session_chassis(const struct ovn_port *op)
+{
+    if (op->cr_port && op->cr_port->sb) {
+        return op->cr_port->sb->chassis;
+    }
+
+    return (op->sb && !strcmp(op->sb->type, "l3gateway"))
+           ? op->sb->chassis : NULL;
+}
+
 void
 bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
                const struct nbrec_bfd_table *nbrec_bfd_table,
@@ -11996,10 +12013,24 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             continue;
         }
 
+        const struct sbrec_chassis *chassis = bfd_get_session_chassis(op);
+
         nbrec_bfd_set_status(nb_bt,
                              bfd_get_connection_status(nb_bt,
                                                        rp_bfd_connections,
                                                        sr_bfd_connections));
+
+        if (!chassis && strcmp(nb_bt->status, "admin_down") &&
+            strcmp(nb_bt->status, "down")) {
+            /* No chassis currently owns the BFD session for this port, e.g.
+             * the chassis that was running it disappeared and no other
+             * chassis took the port over.  ovn-controller is the only writer of
+             * the SB BFD status, so mark the session down from here;
+             * otherwise a stale "up" status would keep BFD-monitored
+             * static routes pointing at a dead next hop. */
+            nbrec_bfd_set_status(nb_bt, "down");
+        }
+
         if (!bfd_e->sb_bt) {
             int udp_src = bfd_get_unused_port(bfd_src_ports);
             if (udp_src < 0) {
@@ -12013,8 +12044,8 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_bfd_set_disc(sb_bt, 1 + random_uint32());
             sbrec_bfd_set_src_port(sb_bt, udp_src);
             sbrec_bfd_set_status(sb_bt, nb_bt->status);
-            if (op->sb->chassis) {
-                sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
+            if (chassis) {
+                sbrec_bfd_set_chassis_name(sb_bt, chassis->name);
             }
 
             int min_tx = nb_bt->n_min_tx ? nb_bt->min_tx[0] : BFD_DEF_MINTX;
@@ -12025,7 +12056,14 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
                                               : BFD_DEF_DETECT_MULT;
             sbrec_bfd_set_detect_mult(sb_bt, d_mult);
         } else {
-            if (strcmp(bfd_e->sb_bt->status, nb_bt->status)) {
+            if (!chassis && strcmp(nb_bt->status, "admin_down")) {
+                /* NB status has already been set to "down" above; make
+                 * the SB status follow it instead of syncing the stale
+                 * SB status back into the NB. */
+                if (strcmp(bfd_e->sb_bt->status, "down")) {
+                    sbrec_bfd_set_status(bfd_e->sb_bt, "down");
+                }
+            } else if (strcmp(bfd_e->sb_bt->status, nb_bt->status)) {
                 if (!strcmp(nb_bt->status, "admin_down") ||
                     !strcmp(bfd_e->sb_bt->status, "admin_down")) {
                     sbrec_bfd_set_status(bfd_e->sb_bt, nb_bt->status);
@@ -12035,10 +12073,10 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
-            if (op->sb->chassis && !strcmp(op->sb->chassis->name,
-                                           bfd_e->sb_bt->chassis_name)) {
-                sbrec_bfd_set_chassis_name(bfd_e->sb_bt,
-                                           op->sb->chassis->name);
+
+            const char *chassis_name = chassis ? chassis->name : "";
+            if (strcmp(chassis_name, bfd_e->sb_bt->chassis_name)) {
+                sbrec_bfd_set_chassis_name(bfd_e->sb_bt, chassis_name);
             }
         }
 
@@ -12087,6 +12125,50 @@ build_bfd_map(const struct nbrec_bfd_table *nbrec_bfd_table,
         }
         bfd_e->nb_bt = nb_bt;
     }
+}
+
+/* Returns false if a tracked SB Port_Binding change modified the chassis
+ * a BFD session runs on, i.e. the "chassis" column of a Port_Binding
+ * whose logical port (or, for a chassisredirect port, whose distributed
+ * port) has a BFD session changed.  bfd_table_sync() then needs to run
+ * again to reevaluate the session ownership: e.g. the chassis running
+ * the session went away and the binding was released, in which case the
+ * NB/SB BFD status must be marked "down".  Returns true if none of the
+ * tracked changes are relevant to BFD. */
+bool
+bfd_sync_handle_sb_port_binding_changes(
+    const struct sbrec_port_binding_table *sbrec_port_binding_table,
+    const struct hmap *lr_ports, const struct sset *bfd_ports)
+{
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb,
+                                               sbrec_port_binding_table) {
+        if (sbrec_port_binding_is_new(pb) ||
+            sbrec_port_binding_is_deleted(pb)) {
+            continue;
+        }
+
+        if (!sbrec_port_binding_is_updated(pb,
+                                           SBREC_PORT_BINDING_COL_CHASSIS)) {
+            continue;
+        }
+
+        const struct ovn_port *op = ovn_port_find(lr_ports,
+                                                  pb->logical_port);
+        if (!op) {
+            continue;
+        }
+
+        if (op->primary_port) {
+            op = op->primary_port;
+        }
+
+        if (bfd_is_port_running(bfd_ports, op->key)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void
