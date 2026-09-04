@@ -2,6 +2,11 @@ Post v26.09.0
 --------------
    - Removed implementations of the commit_ecmp_nh, chk_ecmp_nh, and
      chk_ecmp_nh_mac actions from the code.
+   - ovn-controller now answers a DNS query for an "ovn-owned" name that has
+     no record of the requested type (e.g. AAAA for an IPv4-only name) with
+     NODATA (RCODE 0, empty answer) instead of REFUSED (RCODE 5).  Resolvers
+     that send A and AAAA in parallel, such as musl, treated REFUSED as no
+     reply and failed the whole lookup after a timeout.
    - Mark tunnel ports as transient (other_config:transient=true) when the
      local chassis is a member of an HA chassis group.
      Systems which invoke ovs-ctl --delete-transient-ports during OVS startup

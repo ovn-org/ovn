@@ -3444,7 +3444,6 @@ dns_build_ptr_answer(
     free(encoded);
 }
 
-#define DNS_RCODE_SERVER_REFUSE 0x5
 #define DNS_QUERY_TYPE_CLASS_LEN (2 * sizeof(ovs_be16))
 
 /* Called with in the pinctrl_handler thread context. */
@@ -3459,7 +3458,7 @@ pinctrl_handle_dns_lookup(
     enum ofputil_protocol proto = ofputil_protocol_from_ofp_version(version);
     struct dp_packet *pkt_out_ptr = NULL;
     uint32_t success = 0;
-    bool send_refuse = false;
+    bool send_nodata = false;
 
     /* Track total DNS queries received */
     COVERAGE_INC(dns_query_total);
@@ -3635,22 +3634,30 @@ pinctrl_handle_dns_lookup(
         free(ipv4_order);
         free(ipv6_order);
 
-        /* DNS is configured with a record for this domain with
-         * an IPv4/IPV6 only, so instead of ignoring this A/AAAA query,
-         * we can reply with  RCODE = 5 (server refuses) and that
-         * will speed up the DNS process by not letting the customer
-         * wait for a timeout.
+        /* DNS is configured with a record for this name with addresses of
+         * one family only, so a query for the other family has to be
+         * answered rather than ignored, or the client waits for a timeout.
+         *
+         * The answer is NODATA (RFC 2308, section 2.2): RCODE 0 with an
+         * empty answer section, which is what an authoritative server says
+         * for a name that exists but has no record of the requested type.
+         * It used to be RCODE 5 (REFUSED), which resolvers do not treat as
+         * an answer: musl ignores REFUSED and keeps waiting on that query,
+         * so a getaddrinfo() that sent A and AAAA in parallel failed after
+         * the full timeout even though the A query was answered at once.
+         * NODATA is accepted by every resolver as "no addresses of this
+         * type", and the other query's answer is used.
          */
         if (ovn_owned && (query_type == DNS_QUERY_TYPE_AAAA ||
             query_type == DNS_QUERY_TYPE_A) && !ancount) {
-            send_refuse = true;
+            send_nodata = true;
             COVERAGE_INC(dns_unsupported_ovn_owned);
         }
 
         destroy_lport_addresses(&ip_addrs);
     }
 
-    if (!ancount && !send_refuse) {
+    if (!ancount && !send_nodata) {
         ofpbuf_uninit(&dns_answer);
         goto exit;
     }
@@ -3685,10 +3692,6 @@ pinctrl_handle_dns_lookup(
 
     /* Set the answer RRs. */
     out_dns_header->ancount = htons(ancount);
-    if (send_refuse) {
-        /* set RCODE = 5 (server refuses). */
-        out_dns_header->hi_flag |= DNS_RCODE_SERVER_REFUSE;
-    }
     out_dns_header->arcount = 0;
 
     /* Copy the Query section. */
