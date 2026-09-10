@@ -190,6 +190,33 @@ test_host_if_monitor(struct ovs_cmdl_context *ctx)
     sset_destroy(&if_names);
 }
 
+/* Syncs the routes OVN advertises in 'table_id' and resolves the routes it
+ * learns from it into 'received_routes', as route_exchange does. */
+static int
+sync_and_resolve_routes(uint32_t table_id,
+                        const struct hmap *routes_to_advertise,
+                        struct vector *received_routes)
+{
+    struct hmap learned_routes = HMAP_INITIALIZER(&learned_routes);
+    struct vector route_tables =
+        VECTOR_EMPTY_INITIALIZER(const struct hmap *);
+
+    vector_push(&route_tables, &routes_to_advertise);
+
+    int err = re_nl_sync_routes(table_id, &route_tables, &learned_routes);
+    vector_destroy(&route_tables);
+
+    const struct re_nl_cached_route *cr;
+    HMAP_FOR_EACH (cr, node, &learned_routes) {
+        re_nl_resolve_route(cr->msg, received_routes);
+    }
+
+    re_nl_cached_routes_clear(&learned_routes);
+    hmap_destroy(&learned_routes);
+
+    return err;
+}
+
 static void
 test_route_sync(struct ovs_cmdl_context *ctx)
 {
@@ -231,14 +258,8 @@ test_route_sync(struct ovs_cmdl_context *ctx)
                     advertise_route_hash(&ar->addr, &ar->nexthop, ar->plen));
     }
 
-    struct vector route_tables =
-        VECTOR_EMPTY_INITIALIZER(const struct hmap *);
-    const struct hmap *routes = &routes_to_advertise;
-    vector_push(&route_tables, &routes);
-
-    ovs_assert(re_nl_sync_routes(table_id, &route_tables,
-                                 &received_routes) == 0);
-    vector_destroy(&route_tables);
+    ovs_assert(sync_and_resolve_routes(table_id, &routes_to_advertise,
+                                       &received_routes) == 0);
 
     struct ds msg = DS_EMPTY_INITIALIZER;
 

@@ -46,6 +46,18 @@ struct ovn_route_msg *ovn_route_msg_from_route_data(
     uint16_t nlmsg_type, const struct route_data *);
 void ovn_route_msg_format(struct ds *, const struct ovn_route_msg *);
 
+/* A route of a kernel routing table OVN may learn from, kept as the kernel
+ * reported it so that it can be resolved again without reading the table
+ * anew. */
+struct re_nl_cached_route {
+    struct hmap_node node;
+    struct ovn_route_msg *msg;
+};
+
+bool re_nl_cached_routes_apply(struct hmap *routes,
+                               const struct ovn_route_msg *);
+void re_nl_cached_routes_clear(struct hmap *routes);
+
 struct re_nl_received_route_node {
     struct in6_addr prefix;
     unsigned int plen;
@@ -53,6 +65,11 @@ struct re_nl_received_route_node {
     /* Adding 1 to this to be sure we actually have a terminating '\0' */
     char ifname[IFNAMSIZ + 1];
 };
+
+/* Turns the route 'msg' into the routes OVN learns from it, appending them to
+ * 'learned_routes'. */
+void re_nl_resolve_route(const struct ovn_route_msg *,
+                         struct vector *learned_routes);
 
 int re_nl_create_vrf(const char *ifname, uint32_t table_id);
 int re_nl_delete_vrf(const char *ifname);
@@ -64,8 +81,11 @@ void re_route_format(struct ds *, uint32_t table_id,
                      const struct in6_addr *dst, unsigned int plen,
                      const struct in6_addr *nexthop, int err);
 
+/* Syncs the routes OVN advertises in 'table_id' with the kernel and, unless
+ * 'learned_routes' is NULL, rebuilds it from the routes of the table OVN may
+ * learn from (struct re_nl_cached_route). */
 int re_nl_sync_routes(uint32_t table_id, const struct vector *route_tables,
-                      struct vector *learned_routes);
+                      struct hmap *learned_routes);
 
 int re_nl_cleanup_routes(uint32_t table_id);
 

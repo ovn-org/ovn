@@ -309,6 +309,94 @@ struct advertised_routes_entry {
     uint32_t table_id;
 };
 
+/* Records that 'ad' distributes routes into the table 'table_id', creating the
+ * entry for the table in 'advertised_routes' if it is the first datapath to do
+ * so. */
+static void
+advertised_routes_add(struct hmap *advertised_routes,
+                      const struct advertise_datapath_entry *ad,
+                      uint32_t table_id)
+{
+    struct advertised_routes_entry *entry = NULL;
+    uint32_t hash = maintained_route_table_hash(table_id);
+    HMAP_FOR_EACH_WITH_HASH (entry, node, hash, advertised_routes) {
+        if (entry->table_id == table_id) {
+            break;
+        }
+    }
+
+    if (entry == NULL) {
+        entry = xmalloc(sizeof *entry);
+        *entry = (struct advertised_routes_entry) {
+            .datapaths = HMAPX_INITIALIZER(&entry->datapaths),
+            .table_id = table_id,
+        };
+        hmap_insert(advertised_routes, &entry->node, hash);
+    }
+
+    hmapx_add(&entry->datapaths, CONST_CAST(void *, ad));
+}
+
+/* Collects the route tables of all datapaths in 'datapaths' ('struct
+ * advertise_datapath_entry *') into 'route_tables', so that a routing table
+ * shared by several of them is synced as a single authoritative set. */
+static void
+advertised_routes_tables(const struct hmapx *datapaths,
+                         struct vector *route_tables)
+{
+    struct hmapx_node *dp_node;
+    HMAPX_FOR_EACH (dp_node, datapaths) {
+        const struct advertise_datapath_entry *adpe = dp_node->data;
+        const struct hmap *routes = &adpe->routes;
+
+        vector_push(route_tables, &routes);
+    }
+}
+
+static void
+advertised_routes_destroy(struct hmap *advertised_routes)
+{
+    struct advertised_routes_entry *arte;
+    HMAP_FOR_EACH_POP (arte, node, advertised_routes) {
+        hmapx_destroy(&arte->datapaths);
+        free(arte);
+    }
+    hmap_destroy(advertised_routes);
+}
+
+/* Turns 'learned_routes', the routes of a kernel routing table OVN may learn
+ * from, into Learned_Route rows of every datapath in 'datapaths' ('struct
+ * advertise_datapath_entry *'). */
+static void
+resolve_and_sync_learned_routes(
+    const struct hmap *learned_routes, const struct hmapx *datapaths,
+    const struct route_exchange_ctx_in *r_ctx_in,
+    struct route_exchange_ctx_out *r_ctx_out)
+{
+    struct vector received_routes =
+        VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
+
+    const struct re_nl_cached_route *cr;
+    HMAP_FOR_EACH (cr, node, learned_routes) {
+        re_nl_resolve_route(cr->msg, &received_routes);
+    }
+
+    struct hmapx_node *dp_node;
+    HMAPX_FOR_EACH (dp_node, datapaths) {
+        const struct advertise_datapath_entry *adpe = dp_node->data;
+
+        sb_sync_learned_routes(&received_routes, adpe->db,
+                               &adpe->bound_ports,
+                               r_ctx_in->ovnsb_idl_txn,
+                               r_ctx_in->sbrec_port_binding_by_name,
+                               r_ctx_in->sbrec_learned_route_by_datapath,
+                               &r_ctx_out->sb_changes_pending,
+                               r_ctx_in->chassis);
+    }
+
+    vector_destroy(&received_routes);
+}
+
 void
 route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
                    struct route_exchange_ctx_out *r_ctx_out)
@@ -353,67 +441,29 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
             sset_find_and_delete(&old_maintained_vrfs, ad->vrf_name);
         }
 
-        struct advertised_routes_entry *entry = NULL;
-        uint32_t hash = maintained_route_table_hash(table_id);
-        HMAP_FOR_EACH_WITH_HASH (entry, node, hash, &advertised_routes) {
-            if (entry->table_id == table_id) {
-                break;
-            }
-        }
-
-        if (entry == NULL) {
-            entry = xmalloc(sizeof *entry);
-            *entry = (struct advertised_routes_entry) {
-                .datapaths = HMAPX_INITIALIZER(&entry->datapaths),
-                .table_id = table_id,
-            };
-            hmap_insert(&advertised_routes, &entry->node, hash);
-        }
-
-        hmapx_add(&entry->datapaths, CONST_CAST(void *, ad));
+        advertised_routes_add(&advertised_routes, ad, table_id);
     }
 
+    struct hmap learned_routes = HMAP_INITIALIZER(&learned_routes);
     struct advertised_routes_entry *arte;
-    HMAP_FOR_EACH_POP (arte, node, &advertised_routes) {
+    HMAP_FOR_EACH (arte, node, &advertised_routes) {
         maintained_route_table_add(arte->table_id);
 
-        struct hmapx_node *dp_node;
-
-        /* Collect the route tables of all datapaths sharing this routing
-         * table so they are synced together as a single authoritative set. */
         struct vector route_tables =
             VECTOR_EMPTY_INITIALIZER(const struct hmap *);
-        HMAPX_FOR_EACH (dp_node, &arte->datapaths) {
-            const struct advertise_datapath_entry *adpe = dp_node->data;
-            const struct hmap *routes = &adpe->routes;
-            vector_push(&route_tables, &routes);
-        }
+        advertised_routes_tables(&arte->datapaths, &route_tables);
 
-        struct vector received_routes =
-            VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
         error = re_nl_sync_routes(arte->table_id, &route_tables,
-                                  &received_routes);
+                                  &learned_routes);
         SET_ROUTE_EXCHANGE_NL_STATUS(error);
         vector_destroy(&route_tables);
 
-        struct ovsdb_idl_index *sbrec_learned_route_by_datapath =
-            r_ctx_in->sbrec_learned_route_by_datapath;
-        HMAPX_FOR_EACH (dp_node, &arte->datapaths) {
-            const struct advertise_datapath_entry *adpe = dp_node->data;
-            sb_sync_learned_routes(&received_routes, adpe->db,
-                                   &adpe->bound_ports,
-                                   r_ctx_in->ovnsb_idl_txn,
-                                   r_ctx_in->sbrec_port_binding_by_name,
-                                   sbrec_learned_route_by_datapath,
-                                   &r_ctx_out->sb_changes_pending,
-                                   r_ctx_in->chassis);
-        }
+        resolve_and_sync_learned_routes(&learned_routes, &arte->datapaths,
+                                        r_ctx_in, r_ctx_out);
         vector_push(r_ctx_out->route_table_watches, &arte->table_id);
-        vector_destroy(&received_routes);
-
-        hmapx_destroy(&arte->datapaths);
-        free(arte);
     }
+    re_nl_cached_routes_clear(&learned_routes);
+    hmap_destroy(&learned_routes);
 
     /* Remove routes in tables previously maintained by us. */
     struct maintained_route_table_entry *mrt;
@@ -444,7 +494,7 @@ route_exchange_run(const struct route_exchange_ctx_in *r_ctx_in,
         sset_delete(&old_maintained_vrfs, SSET_NODE_FROM_NAME(vrf_name));
     }
     sset_destroy(&old_maintained_vrfs);
-    hmap_destroy(&advertised_routes);
+    advertised_routes_destroy(&advertised_routes);
 }
 
 void
