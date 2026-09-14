@@ -290,10 +290,6 @@
     described below.
   </p>
 
-  <p>
-    
-  </p>
-
   <dl>
     <dt><code>trace</code> [<var>options</var>] [<var>datapath</var>] <var>microflow</var></dt>
     <dd>
