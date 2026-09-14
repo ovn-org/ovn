@@ -231,36 +231,46 @@
     </dd>
 
     <dt><code>ct_dnat</code> (without an argument)</dt>
+    <dt><code>ct_dnat_in_czone</code> (without an argument)</dt>
     <dd>
       Forks the pipeline.  In one fork, advances to the next table as if
       <code>next;</code> were executed.  The packet is not changed, on the
       assumption that no NAT state was available.  In the other fork, the
-      pipeline continues without change after the <code>ct_dnat</code> action.
+      pipeline continues without change after the <code>ct_dnat</code> (or
+      <code>ct_dnat_in_czone</code>) action.
     </dd>
 
     <dt><code>ct_snat</code> (without an argument)</dt>
+    <dt><code>ct_snat_in_czone</code> (without an argument)</dt>
     <dd>
       This action distinguishes between gateway routers and distributed
       routers.  A gateway router is defined as a logical datapath that contains
       an <code>l3gateway</code> port; any other logical datapath is a
       distributed router.  On a gateway router, <code>ct_snat;</code> is
       treated as a no-op.  On a distributed router, it is treated the same way
-      as <code>ct_dnat;</code>.
+      as <code>ct_dnat;</code>.  <code>ct_snat_in_czone;</code> is handled the
+      same way as <code>ct_snat;</code>.
     </dd>
 
     <dt><code>ct_dnat(<var>ip</var>)</code></dt>
     <dt><code>ct_snat(<var>ip</var>)</code></dt>
+    <dt><code>ct_dnat_in_czone(<var>ip</var>)</code></dt>
+    <dt><code>ct_snat_in_czone(<var>ip</var>)</code></dt>
     <dd>
       Forks the pipeline.  In one fork, sets <code>ip4.dst</code> (or
       <code>ip4.src</code>) to <var>ip</var> and <code>ct.dnat</code> (or
       <code>ct.snat</code>) to 1 and advances to the next table as if
       <code>next;</code> were executed.  In the other fork, the pipeline
       continues without change after the <code>ct_dnat</code> (or
-      <code>ct_snat</code>) action.
+      <code>ct_snat</code>) action.  The <code>ct_dnat_in_czone</code> and
+      <code>ct_snat_in_czone</code> actions are handled the same way as
+      <code>ct_dnat</code> and <code>ct_snat</code>.
     </dd>
 
     <dt><code>ct_lb_mark;</code></dt>
     <dt><code>ct_lb_mark(<var>ip</var></code>[<code>:<var>port</var></code>]...<code>);</code></dt>
+    <dt><code>ct_lb_mark_local;</code></dt>
+    <dt><code>ct_lb_mark_local(<var>ip</var></code>[<code>:<var>port</var></code>]...<code>);</code></dt>
     <dd>
       Forks the pipeline. In one fork, sets <code>ip4.dst</code> (or
       <code>ip6.dst</code>) to one of the load-balancer addresses and the
@@ -269,7 +279,8 @@
       to the address specified on <code>--lb-dst</code>, if any; without
       arguments, uses the address and port specified on <code>--lb-dst</code>.
       In the other fork, the pipeline continues without change after the
-      <code>ct_lb_mark</code> action.
+      <code>ct_lb_mark</code> action.  <code>ct_lb_mark_local</code> is handled
+      the same way as <code>ct_lb_mark</code>.
     </dd>
 
     <dt><code>ct_commit</code></dt>
@@ -277,6 +288,39 @@
     <dt><code>put_nd</code></dt>
     <dd>
       These actions are treated as no-ops.
+    </dd>
+
+    <dt><code>ct_commit_to_zone</code></dt>
+    <dt><code>ct_commit_nat</code></dt>
+    <dd>
+      Forks the pipeline into the next table as if <code>next;</code> were
+      executed, treating the flow as tracked.  The packet is not changed, on
+      the assumption that no NAT state was available.  In the other fork, the
+      pipeline continues without change after the action.
+    </dd>
+
+    <dt><code>ct_clear</code></dt>
+    <dd>
+      Clears the connection tracking state of the traced packet, so that
+      later actions that depend on connection tracking (such as
+      <code>ct_next</code>) see an untracked flow.
+    </dd>
+
+    <dt><code>select</code></dt>
+    <dd>
+      Selects one of the destinations listed in the action.  By default, one
+      is chosen at random; use the <code>--select-id</code> option to select
+      a specific one.  <code>ovn-trace</code> forks the pipeline into the next
+      table, with the selected id written to the action's result field.
+    </dd>
+
+    <dt><code>ct_snat_to_vip</code></dt>
+    <dd>
+      Looks up the load-balancer virtual IP addresses in the southbound
+      database.  If the packet's connection-tracked destination IP matches a
+      virtual IP address, <code>ovn-trace</code> notes that the source address
+      is translated to that virtual IP address; otherwise the packet is not
+      changed.
     </dd>
   </dl>
 
