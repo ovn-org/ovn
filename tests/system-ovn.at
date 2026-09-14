@@ -23611,6 +23611,8 @@ be_pid_file=$(mktemp be0_http.XXX.pid)
 NETNS_DAEMONIZE([be0_ns],
     [[$PYTHON $srcdir/test-l7.py http]], [$be_pid_file])
 wait_row_count Service_Monitor 1 logical_port=be0 status=online
+# Wait for ovn-controller to handle the change.
+check ovn-nbctl --wait=hv sync
 # Both routes are installed at different priorities.
 AT_CHECK([
     ip route list vrf ovnvrf1342 | grep -c "blackhole 172.16.1.10"
@@ -23630,6 +23632,8 @@ check ovn-sbctl remove Advertised_Route $lb_ar external_ids enabled
 # Stop the listener and withdraw the LB route.
 kill `cat $be_pid_file`
 wait_row_count Service_Monitor 1 logical_port=be0 status=offline
+# Wait for ovn-controller to handle the change.
+check ovn-nbctl --wait=hv sync
 # The NAT route remains installed.
 AT_CHECK([
     ip route list vrf ovnvrf1342 | grep -c "blackhole 172.16.1.10"
