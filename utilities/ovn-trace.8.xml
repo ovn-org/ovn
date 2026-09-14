@@ -14,7 +14,7 @@
     originates at a logical port, what will happen to it and where will it
     ultimately end up?  Users already familiar with the Open vSwitch
     <code>ofproto/trace</code> command described in
-    <code>ovs-vswitch</code>(8) will find <code>ovn-trace</code> to be a
+    <code>ovs-vswitchd</code>(8) will find <code>ovn-trace</code> to be a
     similar tool for logical networks.
   </p>
 
