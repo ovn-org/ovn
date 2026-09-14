@@ -37578,14 +37578,12 @@ dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1b 10.10.10.1 10.10.10.101 00:00:00:
 dump_ns 00:00:00:00:10:1b 00:00:00:00:10:00 fd11::65 fd11::1 fd11::65 > ucast_v6_65.pkt
 OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
                 grep -Fc "$(cat ucast_v4_101.pkt)") -ge 2])
+v4_ts=$(fetch_column Mac_Binding timestamp ip=10.10.10.101)
+send_garp hv1 vif1 2 00:00:00:00:10:1b 00:00:00:00:10:00 10.10.10.101 10.10.10.1
+
 OVS_WAIT_UNTIL([test $($PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" hv1/vif1-tx.pcap | \
                 grep -Fc "$(cat ucast_v6_65.pkt)") -ge 2])
-
-# The neighbours answer, refreshing the rows in place (resetting
-# arp_attempts).  Confirm the timestamps advanced.
-v4_ts=$(fetch_column Mac_Binding timestamp ip=10.10.10.101)
 v6_ts=$(fetch_column Mac_Binding timestamp ip=\"fd11::65\")
-send_garp hv1 vif1 2 00:00:00:00:10:1b 00:00:00:00:10:00 10.10.10.101 10.10.10.1
 send_na hv1 vif1 00:00:00:00:10:1b 00:00:00:00:10:00 fd11::65 fd11::1
 OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp ip=10.10.10.101) -gt $v4_ts])
 OVS_WAIT_UNTIL([test $(fetch_column Mac_Binding timestamp ip=\"fd11::65\") -gt $v6_ts])
@@ -37709,6 +37707,25 @@ dump_icmp() {
     echo $packet
 }
 
+mac_cache_flow_is_stale() {
+    local flow=$1
+    local stats field n_packets idle_age
+
+    stats=$(as hv1 ovs-ofctl dump-flows br-int \
+            "table=OFTABLE_MAC_CACHE_USE,$flow" | grep 'n_packets=')
+    n_packets=
+    idle_age=
+    for field in $stats; do
+        field=${field%,}
+        case $field in
+            n_packets=*) n_packets=${field#n_packets=} ;;
+            idle_age=*) idle_age=${field#idle_age=} ;;
+        esac
+    done
+
+    test "$n_packets" -gt 0 && test "$idle_age" -ge "$aging_th"
+}
+
 aging_th=5
 net_add n1
 sim_add hv1
@@ -37768,17 +37785,15 @@ OVS_WAIT_UNTIL([$(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
 
 send_icmp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
 
-# Wait until ovn-controller sends the ARP request.
-OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log) -eq 1])
-send_icmp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
-
 # Now drop ICMP echo reply in order to force OVN to arp the mac binding entry
 # for the distributed router lr.
 check ovn-nbctl --wait=hv acl-add join from-lport 1000 'inport == "join-lr" && icmp' drop
 
-sleep $((aging_th / 2))
+OVS_WAIT_UNTIL([mac_cache_flow_is_stale 'ip,nw_src=192.168.20.2'])
+
+probe_count=$(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log)
 send_icmp_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:10:1a 192.168.20.2 192.168.10.100
-OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log) -eq 2])
+OVS_WAIT_UNTIL([test "$(grep -c "Sending ARP/ND.*ip: 192.168.20.2" hv1/ovn-controller.log)" -gt "$probe_count"])
 
 check ovn-nbctl --wait=hv acl-del join
 wait_row_count mac_binding 0 ip="192.168.10.100" logical_port="gw-public"
@@ -37789,17 +37804,15 @@ wait_row_count mac_binding 1 mac=\"00:00:00:00:30:00\" ip=\"fd12::2\"
 
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
 
-# Wait until ovn-controller sends the NS request.
-OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log) -eq 1])
-send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
-
 # Now drop ICMPv6 echo reply in order to force OVN to send NS for the lr mac binding entry.
 check ovn-nbctl --wait=hv acl-add join from-lport 1010 'inport == "join-lr" && ip6 && icmp6.type == 0x87' allow
 check ovn-nbctl --wait=hv acl-add join from-lport 1000 'inport == "join-lr" && icmp' drop
 
-sleep $((aging_th / 2))
+OVS_WAIT_UNTIL([mac_cache_flow_is_stale 'ipv6,ipv6_src=fd12::2'])
+
+probe_count=$(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log)
 send_icmp6_echo_req hv1 public 00:00:00:00:10:00 00:00:00:00:50:01 fd12::2 fd11::64
-OVS_WAIT_UNTIL([test $(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log) -eq 2])
+OVS_WAIT_UNTIL([test "$(grep -c "Sending ARP/ND.*ip: fd12::2" hv1/ovn-controller.log)" -gt "$probe_count"])
 
 wait_row_count mac_binding 0 ip=\"fd12::2\" logical_port="gw-join"
 
