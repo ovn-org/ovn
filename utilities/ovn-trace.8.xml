@@ -150,9 +150,10 @@
     section for a packet traversing the ingress pipeline of logical datapath
     <code>ls1</code> with ingress logical port <code>lp111</code>.  The
     packet matches a logical flow in table 0 (aka
-    <code>ls_in_port_sec_l2</code>) with priority 50 and executes
-    <code>next(1);</code> to pass to table 1.  Tables 1 through 11 are
-    trivial and omitted.  In table 19 (aka <code>ls_in_l2_lkup</code>), the
+    <code>ls_in_check_port_sec</code>) with priority 50, which checks if the
+    packet passes the inport security checks and stores the result to reg0[15]
+    and executes <code>next;</code> to pass to table 1.  Tables 1 through 32
+    are trivial and omitted.  In table 33 (aka <code>ls_in_l2_lkup</code>), the
     packet matches a flow with priority 50 based on its Ethernet destination
     address and the flow's actions output the packet to the
     <code>lrp11-attachment</code> logical port.
@@ -161,11 +162,12 @@
   <pre fixed="yes">
     ingress(dp="ls1", inport="lp111")
     ---------------------------------
-    0. ls_in_port_sec_l2: inport == "lp111", priority 50
-    next(1);
-    19. ls_in_l2_lkup: eth.dst == 00:00:00:00:ff:11, priority 50
-    outport = "lrp11-attachment";
-    output;
+     0. ls_in_check_port_sec (northd.c:10650): 1, priority 50, uuid 5e3c7151
+        reg0[15] = check_in_port_sec();
+        next;
+     33. ls_in_l2_lkup (northd.c:11754): eth.dst == 00:00:00:00:ff:11, priority 50, uuid 33a37615
+         outport = "lrp11-attachment";
+         output;
   </pre>
 
   <h2>Summary Output</h2>
@@ -181,9 +183,11 @@
 
   <pre fixed="yes">
     ingress(dp="ls1", inport="lp111") {
-    outport = "lrp11-attachment";
-    output;
-    ...
+        reg0[15] = check_in_port_sec();
+        next;
+        outport = "lp11-attachment";
+        output;
+        ...
     };
   </pre>
 
@@ -195,7 +199,7 @@
     <code>output</code> actions that actually deliver a packet to a logical
     port (excluding patch ports).  The operands of actions that modify packet
     data are displayed reduced to constants, e.g. <code>ip4.dst =
-    reg0;</code> might be show as <code>ip4.dst = 192.168.0.1;</code> if that
+    reg0;</code> might be shown as <code>ip4.dst = 192.168.0.1;</code> if that
     was the value actually loaded.  This yields output even simpler than the
     summary format.  (Users familiar with Open vSwitch may recognize this as
     similar in spirit to the datapath actions listed at the bottom of
@@ -389,7 +393,7 @@
         <li>
           <code>trk</code>: Include to indicate connection tracking has taken
           place.  (This bit is set automatically even if not listed in
-          <var>flags</var>.
+          <var>flags</var>).
         </li>
         <li><code>new</code>: Include to indicate a new flow.</li>
         <li><code>est</code>: Include to indicate an established flow.</li>
