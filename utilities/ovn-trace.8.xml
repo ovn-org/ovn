@@ -489,6 +489,31 @@
       default is unlikely to be useful outside of single-machine OVN test
       environments.
     </dd>
+
+    <dt><code>--leader-only</code></dt>
+    <dt><code>--no-leader-only</code></dt>
+    <dd>
+      By default, or with <code>--leader-only</code>, when the database
+      server is a clustered database, <code>ovn-trace</code> reads only
+      from the cluster leader.  This ensures that the data
+      <code>ovn-trace</code> reads is up-to-date.  With
+      <code>--no-leader-only</code>, <code>ovn-trace</code> uses any
+      server in the cluster, which means that it can read stale data.
+      Refer to <code>Understanding Cluster Consistency</code> in
+      <code>ovsdb</code>(7) for more information.
+    </dd>
+
+    <dt><code>--unixctl=</code><var>socket</var></dt>
+    <dd>
+      Sets the name of the control socket on which <code>ovn-trace</code>
+      listens for runtime management commands when run in daemon mode with
+      <code>--detach</code>.  If <var>socket</var> does not begin with
+      <code>/</code>, it is interpreted as relative to
+      <code>@RUNDIR@</code>.  If <code>--unixctl</code> is not specified,
+      the default socket is
+      <code>@RUNDIR@/ovn-trace.</code><var>pid</var><code>.ctl</code>,
+      where <var>pid</var> is <code>ovn-trace</code>'s process ID.
+    </dd>
   </dl>
   
   <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
