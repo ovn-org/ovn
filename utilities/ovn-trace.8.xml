@@ -155,7 +155,7 @@
     trivial and omitted.  In table 19 (aka <code>ls_in_l2_lkup</code>), the
     packet matches a flow with priority 50 based on its Ethernet destination
     address and the flow's actions output the packet to the
-    <code>lrp11-attachement</code> logical port.
+    <code>lrp11-attachment</code> logical port.
   </p>
 
   <pre fixed="yes">
