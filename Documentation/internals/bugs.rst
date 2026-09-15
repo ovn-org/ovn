@@ -35,7 +35,7 @@ For reporting security vulnerabilities, please read :doc:`security`.
 
 The most important parts of your bug report are the following:
 
-- What you did that make the problem appear.
+- What you did that made the problem appear.
 
 - What you expected to happen.
 
@@ -53,9 +53,10 @@ Please also include the following information:
 The following are also handy sometimes:
 
 - The kernel version on which Open vSwitch is running (from ``/proc/version``)
-  and the distribution and version number of your OS (e.g. "Centos 5.0").
+  and the distribution and version number of your OS (e.g. "CentOS 9").
 
-- The contents of the northbound database.
+- The contents of the northbound database and, when relevant, the southbound
+  database.
 
 - Any other information that you think might be relevant.
 
