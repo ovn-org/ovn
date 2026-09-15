@@ -645,5 +645,5 @@ Python
 ------
 
 When introducing new Python code, try to follow Python's `PEP 8
-<https://www.python.org/dev/peps/pep-0008/>`__ style. Consider running the
-``pep8`` or ``flake8`` tool against your code to find issues.
+<https://peps.python.org/pep-0008/>`__ style. Consider running the
+``pycodestyle`` or ``flake8`` tool against your code to find issues.

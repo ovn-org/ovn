@@ -25,7 +25,7 @@
 Submitting Patches
 ==================
 
-Send changes to OVN as patches to dev@openvswitch.org.  One patch per
+Send changes to OVN as patches to dev@openvswitch.org.  Send one patch per
 email.  More details are included below.
 
 If you are using Git, then `git format-patch` takes care of most of the

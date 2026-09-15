@@ -42,15 +42,15 @@ the project.
 Word List
 ---------
 
-The intent of this document is to formally document the acceptance of a
-inclusive word list by OVN.  Accordingly, this document specifies
-use of the use the `Inclusive Naming Word List
+The intent of this document is to formally document OVN's adoption of an
+inclusive word list.  Accordingly, this document specifies use of the
+`Inclusive Naming Word List
 <https://inclusivenaming.org/word-lists/>`__ v1.0 (the word list) for
 OVN.
 
-The adoption of the word list intended that this act as a guide for
+The word list acts as a guide for
 developers creating patches to the OVN repository, including both
-source code and documentation. And to aid maintainers in their role of
+source code and documentation. It also aids maintainers in their role of
 shepherding changes into the repository.
 
 Further steps to align usage of language in OVN, including clarification

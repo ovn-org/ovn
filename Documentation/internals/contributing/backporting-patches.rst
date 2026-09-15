@@ -36,8 +36,8 @@ Backporting patches
 The backporting of patches from one git tree to another takes multiple forms
 within OVN, but is broadly applied in the following fashion:
 
-- Contributors submit their proposed changes to the latest development branch
-- Contributors and maintainers provide feedback on the patches
+- Contributors submit their proposed changes to the latest development branch.
+- Contributors and maintainers provide feedback on the patches.
 - When the change is satisfactory, maintainers apply the patch to the
   development branch.
 - Maintainers backport changes from a development branch to release branches.
