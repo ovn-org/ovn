@@ -24,22 +24,24 @@ struct mac_cache_data;
 struct ovsdb_idl_index;
 struct ovsdb_idl_txn;
 struct sbrec_mac_binding_table;
+struct sbrec_shared_mac_binding_table;
 
-/* Tracks a MAC_Binding row that was written to SB by the EVPN sync. */
+/* Tracks a MAC_Binding or Shared_MAC_Binding row written by EVPN sync. */
 struct evpn_mb_synced_entry {
     struct hmap_node hmap_node;
-    char *logical_port;                  /* Router port name. */
+    char *logical_port;                  /* Router port name, if private. */
+    struct uuid scope_uuid;              /* Scope UUID, if shared. */
+    bool shared;
     char *ip;                            /* Normalized IP string. */
-    struct uuid mb_uuid;                 /* UUID of the SB MAC_Binding row.
-                                          * All-zeros when not yet synced. */
+    struct uuid mb_uuid;                 /* UUID of the SB binding row. */
     bool stale;                          /* Marked true at start of sync,
                                           * cleared when still desired. */
 };
 
 /* Persistent state for the en_evpn_mac_binding_sync engine node. */
 struct ed_type_evpn_mac_binding_sync {
-    /* Contains 'struct evpn_mb_synced_entry'.  Tracks which
-     * (logical_port, ip) pairs we have written to SB. */
+    /* Contains 'struct evpn_mb_synced_entry'.  Tracks private
+     * (logical_port, ip) and shared (scope, ip) pairs written to SB. */
     struct hmap synced_entries;
 
     /* Contains LSP UUIDs belonging to synced entries peers. */
@@ -59,7 +61,9 @@ struct evpn_mb_sync_waker {
 void evpn_mac_binding_sync_run(
     struct ovsdb_idl_txn *ovnsb_idl_txn,
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+    struct ovsdb_idl_index *shared_mac_binding_by_scope_ip,
     const struct sbrec_mac_binding_table *mb_table,
+    const struct sbrec_shared_mac_binding_table *shared_mb_table,
     const struct hmap *local_datapaths,
     const struct hmap *evpn_arps,
     struct mac_cache_data *mac_cache_data,

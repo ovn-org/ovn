@@ -355,17 +355,28 @@ send_garp_locally(const struct garp_rarp_ctx_in *r_ctx_in,
             continue;
         }
 
-        bool update_only = !smap_get_bool(&remote->datapath->external_ids,
-                                          "always_learn_from_arp_request",
-                                          true);
+        bool always_learn = remote->mac_binding_scope
+            ? (!remote->mac_binding_scope->n_always_learn_from_arp_request ||
+               remote->mac_binding_scope->always_learn_from_arp_request[0])
+            : smap_get_bool(&remote->datapath->external_ids,
+                            "always_learn_from_arp_request", true);
+        bool update_only = !always_learn;
 
         struct ds ip_s = DS_EMPTY_INITIALIZER;
 
         ip_format_masked(ip, OVS_BE32_MAX, &ip_s);
-        mac_binding_add_to_sb(r_ctx_in->ovnsb_idl_txn,
-                              r_ctx_in->sbrec_mac_binding_by_lport_ip,
-                              remote->logical_port, remote->datapath,
-                              ea, ds_cstr(&ip_s), update_only, NULL);
+        if (remote->mac_binding_scope) {
+            shared_mac_binding_add_to_sb(
+                r_ctx_in->ovnsb_idl_txn,
+                r_ctx_in->shared_mac_binding_by_scope_ip,
+                remote->mac_binding_scope, ea, ds_cstr(&ip_s),
+                update_only, NULL);
+        } else {
+            mac_binding_add_to_sb(r_ctx_in->ovnsb_idl_txn,
+                                  r_ctx_in->sbrec_mac_binding_by_lport_ip,
+                                  remote->logical_port, remote->datapath,
+                                  ea, ds_cstr(&ip_s), update_only, NULL);
+        }
         ds_destroy(&ip_s);
     }
 }
@@ -458,9 +469,16 @@ garp_rarp_is_enabled(struct ovsdb_idl_index *sbrec_port_binding_by_name,
     /* Check if GARP probing is disabled on the peer logical router. */
     const struct sbrec_port_binding *peer = lport_get_peer(
             pb, sbrec_port_binding_by_name);
-    if (peer && smap_get_bool(&peer->datapath->external_ids,
-                              "disable_garp_rarp", false)) {
-        return false;
+    if (peer) {
+        if (peer->mac_binding_scope) {
+            if (peer->mac_binding_scope->n_disable_garp_rarp &&
+                peer->mac_binding_scope->disable_garp_rarp[0]) {
+                return false;
+            }
+        } else if (smap_get_bool(&peer->datapath->external_ids,
+                                 "disable_garp_rarp", false)) {
+            return false;
+        }
     }
 
     return true;

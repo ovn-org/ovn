@@ -424,6 +424,7 @@ chassis_build_other_config(const struct ovs_chassis_cfg *ovs_cfg,
     smap_replace(config, OVN_FEATURE_CT_LABEL_FLUSH,
                  ovs_cfg->ct_label_flush ? "true" :"false");
     smap_replace(config, OVN_FEATURE_CT_STATE_SAVE, "true");
+    smap_replace(config, OVN_FEATURE_SHARED_MAC_BINDING, "true");
 }
 
 /*
@@ -779,6 +780,7 @@ update_supported_sset(struct sset *supported)
     sset_add(supported, OVN_FEATURE_CT_NEXT_ZONE);
     sset_add(supported, OVN_FEATURE_CT_LABEL_FLUSH);
     sset_add(supported, OVN_FEATURE_CT_STATE_SAVE);
+    sset_add(supported, OVN_FEATURE_SHARED_MAC_BINDING);
 }
 
 static void

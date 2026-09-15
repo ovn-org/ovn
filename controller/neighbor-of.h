@@ -44,4 +44,8 @@ consider_neighbor_flow(const struct sbrec_port_binding *,
                        enum neigh_of_rule_prio priority,
                        bool needs_usage_tracking);
 
+void consider_shared_neighbor_flow(
+    const struct sbrec_shared_mac_binding *,
+    struct ovn_desired_flow_table *, bool needs_usage_tracking);
+
 #endif  /* NEIGHBOR_OF_H */

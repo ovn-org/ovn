@@ -21,6 +21,7 @@
 void statctrl_init(void);
 void statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                  struct ovsdb_idl_index *sbrec_port_binding_by_scope,
                   const struct sbrec_chassis *chassis,
                   struct mac_cache_data *mac_cache_data);
 

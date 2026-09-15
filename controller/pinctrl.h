@@ -40,6 +40,7 @@ struct sbrec_bfd_table;
 struct sbrec_ecmp_nexthop_table;
 struct sbrec_port_binding;
 struct sbrec_mac_binding_table;
+struct sbrec_shared_mac_binding_table;
 
 void pinctrl_init(void);
 void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
@@ -47,12 +48,14 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  struct ovsdb_idl_index *sbrec_port_binding_by_key,
                  struct ovsdb_idl_index *sbrec_port_binding_by_name,
                  struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
+                 struct ovsdb_idl_index *shared_mac_binding_by_scope_ip,
                  struct ovsdb_idl_index *sbrec_igmp_groups,
                  struct ovsdb_idl_index *sbrec_ip_multicast_opts,
                  struct ovsdb_idl_index *sbrec_fdb_by_dp_key_mac,
                  const struct sbrec_controller_event_table *,
                  const struct sbrec_service_monitor_table *,
                  const struct sbrec_mac_binding_table *,
+                 const struct sbrec_shared_mac_binding_table *,
                  const struct sbrec_bfd_table *,
                  const struct sbrec_ecmp_nexthop_table *,
                  const struct sbrec_chassis *chassis,

@@ -54,6 +54,7 @@ struct garp_rarp_ctx_in {
     struct ovsdb_idl_index *sbrec_port_binding_by_datapath;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip;
+    struct ovsdb_idl_index *shared_mac_binding_by_scope_ip;
     const struct sbrec_chassis *chassis;
     const struct hmap *local_datapaths;
     const struct sset *active_tunnels;

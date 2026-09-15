@@ -22,6 +22,8 @@ struct ovsdb_idl_index *mac_binding_by_datapath_index_create(
     struct ovsdb_idl *idl);
 struct ovsdb_idl_index *mac_binding_by_lport_ip_index_create(
     struct ovsdb_idl *idl);
+struct ovsdb_idl_index *shared_mac_binding_by_scope_ip_index_create(
+    struct ovsdb_idl *idl);
 
 const struct sbrec_mac_binding *
 mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
@@ -33,5 +35,16 @@ const struct sbrec_mac_binding *mac_binding_add_to_sb(
     const char *logical_port, const struct sbrec_datapath_binding *,
     struct eth_addr, const char *ip, bool update_only,
     const struct sbrec_mac_binding *sb_mb);
+
+const struct sbrec_shared_mac_binding *shared_mac_binding_lookup(
+    struct ovsdb_idl_index *shared_mac_binding_by_scope_ip,
+    const struct sbrec_mac_binding_scope *scope, const char *ip);
+
+const struct sbrec_shared_mac_binding *shared_mac_binding_add_to_sb(
+    struct ovsdb_idl_txn *,
+    struct ovsdb_idl_index *shared_mac_binding_by_scope_ip,
+    const struct sbrec_mac_binding_scope *, struct eth_addr,
+    const char *ip, bool update_only,
+    const struct sbrec_shared_mac_binding *sb_mb);
 
 #endif /* lib/mac-binding-index.h */

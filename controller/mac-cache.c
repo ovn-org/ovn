@@ -53,11 +53,17 @@ static inline bool
 fdb_data_equals(const struct fdb_data *a, const struct fdb_data *b);
 static uint64_t
 mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp);
+static uint64_t mac_cache_scope_threshold_get_value_ms(
+    const struct sbrec_mac_binding_scope *);
 static void
 mac_cache_threshold_remove(struct hmap *thresholds,
                            struct mac_cache_threshold *threshold);
 static void
 mac_cache_update_req_delay(struct hmap *thresholds, uint64_t *req_delay);
+static struct mac_cache_threshold *mac_cache_threshold_find__(
+    struct mac_cache_data *, uint32_t, bool);
+static void mac_cache_threshold_add__(struct mac_cache_data *, uint32_t,
+                                      uint64_t, bool);
 
 static struct buffered_packets *
 buffered_packets_find(struct cmap *bp_map,
@@ -72,26 +78,49 @@ buffered_packets_db_lookup(struct buffered_packets *bp,
                            struct ovsdb_idl_index *sbrec_pb_by_key,
                            struct ovsdb_idl_index *sbrec_dp_by_key,
                            struct ovsdb_idl_index *sbrec_pb_by_name,
-                           struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
+                           struct ovsdb_idl_index *sbrec_mb_by_lport_ip,
+                           struct ovsdb_idl_index *shared_mb_by_scope_ip);
+
+static const struct sbrec_port_binding *
+buffered_packets_get_pb(const struct buffered_packets *bp,
+                        struct ovsdb_idl_index *sbrec_pb_by_key,
+                        struct ovsdb_idl_index *sbrec_dp_by_key,
+                        struct ovsdb_idl_index *sbrec_pb_by_name);
 
 /* Thresholds. */
 void
 mac_cache_threshold_add(struct mac_cache_data *data,
                         const struct sbrec_datapath_binding *dp)
 {
+    mac_cache_threshold_add__(data, dp->tunnel_key,
+                              mac_cache_threshold_get_value_ms(dp), false);
+}
+
+void
+mac_cache_threshold_add_scope(struct mac_cache_data *data,
+                              const struct sbrec_mac_binding_scope *scope)
+{
+    mac_cache_threshold_add__(data, scope->binding_key,
+                              mac_cache_scope_threshold_get_value_ms(scope),
+                              true);
+}
+
+static void
+mac_cache_threshold_add__(struct mac_cache_data *data, uint32_t key,
+                          uint64_t value, bool is_scope)
+{
     struct mac_cache_threshold *threshold =
-            mac_cache_threshold_find(data, dp->tunnel_key);
+        mac_cache_threshold_find__(data, key, is_scope);
     if (threshold) {
         return;
     }
-
-    uint64_t value = mac_cache_threshold_get_value_ms(dp);
     if (!value) {
         return;
     }
 
     threshold = xmalloc(sizeof *threshold);
-    threshold->dp_key = dp->tunnel_key;
+    threshold->dp_key = key;
+    threshold->is_scope = is_scope;
     threshold->value = value;
     threshold->dump_period = (3 * value) / 16;
     threshold->cooldown_period = (3 * value) / 16;
@@ -109,7 +138,8 @@ mac_cache_threshold_add(struct mac_cache_data *data,
     ovs_assert(2 * (threshold->cooldown_period + threshold->dump_period)
                < (9 * value) / 10);
 
-    hmap_insert(&data->thresholds, &threshold->hmap_node, dp->tunnel_key);
+    hmap_insert(&data->thresholds, &threshold->hmap_node,
+                hash_2words(key, is_scope));
 }
 
 void
@@ -134,9 +164,25 @@ mac_cache_threshold_replace(struct mac_cache_data *data,
 struct mac_cache_threshold *
 mac_cache_threshold_find(struct mac_cache_data *data, uint32_t dp_key)
 {
+    return mac_cache_threshold_find__(data, dp_key, false);
+}
+
+struct mac_cache_threshold *
+mac_cache_threshold_find_scope(struct mac_cache_data *data,
+                               uint32_t binding_key)
+{
+    return mac_cache_threshold_find__(data, binding_key, true);
+}
+
+static struct mac_cache_threshold *
+mac_cache_threshold_find__(struct mac_cache_data *data, uint32_t key,
+                           bool is_scope)
+{
     struct mac_cache_threshold *threshold;
-    HMAP_FOR_EACH_WITH_HASH (threshold, hmap_node, dp_key, &data->thresholds) {
-        if (threshold->dp_key == dp_key) {
+    HMAP_FOR_EACH_WITH_HASH (threshold, hmap_node,
+                             hash_2words(key, is_scope),
+                             &data->thresholds) {
+        if (threshold->dp_key == key && threshold->is_scope == is_scope) {
             return threshold;
         }
     }
@@ -150,7 +196,8 @@ mac_cache_thresholds_sync(struct mac_cache_data *data,
 {
     struct mac_cache_threshold *threshold;
     HMAP_FOR_EACH_SAFE (threshold, hmap_node, &data->thresholds) {
-        if (!get_local_datapath(local_datapaths, threshold->dp_key)) {
+        if (!threshold->is_scope &&
+            !get_local_datapath(local_datapaths, threshold->dp_key)) {
             mac_cache_threshold_remove(&data->thresholds, threshold);
         }
     }
@@ -178,6 +225,26 @@ mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
 
     mb->data = mb_data;
     mb->sbrec = smb;
+    mb->shared_sbrec = NULL;
+    mb->timestamp = timestamp;
+    mb->arp_attempts = 0;
+    mac_binding_update_log("Added", &mb_data, false, NULL, 0, 0);
+}
+
+void
+mac_binding_add_shared(struct hmap *map, struct mac_binding_data mb_data,
+                       const struct sbrec_shared_mac_binding *smb,
+                       long long timestamp)
+{
+    struct mac_binding *mb = mac_binding_find(map, &mb_data);
+    if (!mb) {
+        mb = xmalloc(sizeof *mb);
+        hmap_insert(map, &mb->hmap_node, mac_binding_data_hash(&mb_data));
+    }
+
+    mb->data = mb_data;
+    mb->sbrec = NULL;
+    mb->shared_sbrec = smb;
     mb->timestamp = timestamp;
     mb->arp_attempts = 0;
     mac_binding_update_log("Added", &mb_data, false, NULL, 0, 0);
@@ -241,6 +308,21 @@ mac_binding_data_from_sbrec(struct mac_binding_data *data,
     return true;
 }
 
+bool
+mac_binding_data_from_shared_sbrec(
+    struct mac_binding_data *data,
+    const struct sbrec_shared_mac_binding *mb)
+{
+    if (!mac_binding_data_parse(data, mb->scope->binding_key, 0,
+                                mb->ip, mb->mac)) {
+        return false;
+    }
+
+    data->cookie = mb->header_.uuid.parts[0];
+    data->is_scope = true;
+    return true;
+}
+
 void
 mac_bindings_clear(struct hmap *map)
 {
@@ -260,10 +342,12 @@ mac_binding_data_to_string(const struct mac_binding_data *data,
         return;
     }
     ds_put_format(out_data, "cookie: 0x%08"PRIx64", "
+                            "namespace: %s, "
                             "datapath-key: %"PRIu32", "
                             "port-key: %"PRIu32", "
                             "ip: %s, mac: " ETH_ADDR_FMT,
-                  data->cookie, data->dp_key, data->port_key,
+                  data->cookie, data->is_scope ? "scope" : "datapath",
+                  data->dp_key, data->port_key,
                   ip, ETH_ADDR_ARGS(data->mac));
 }
 
@@ -361,6 +445,8 @@ mac_binding_stats_process_flow_stats(struct vector *stats_vec,
              * mac_binding_data_from_sbrec. */
             .port_key = 0,
             .dp_key = ntohll(ofp_stats->match.flow.metadata),
+            .is_scope =
+                ofp_stats->match.flow.regs[MFF_LOG_INPORT - MFF_REG0] == 0,
             .mac = ofp_stats->match.flow.dl_src
         },
     };
@@ -417,9 +503,13 @@ mac_binding_stats_run(struct vector *stats_vec, uint64_t *req_delay,
             continue;
         }
 
-        uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
-        struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(cache_data, mb->data.dp_key);
+        int64_t timestamp = mb->data.is_scope
+                            ? mb->shared_sbrec->timestamp
+                            : mb->sbrec->timestamp;
+        uint64_t since_updated_ms = timewall_now - timestamp;
+        struct mac_cache_threshold *threshold = mb->data.is_scope
+            ? mac_cache_threshold_find_scope(cache_data, mb->data.dp_key)
+            : mac_cache_threshold_find(cache_data, mb->data.dp_key);
 
         /* If "idle_age" is under threshold it means that the mac binding is
          * used on this chassis. */
@@ -428,7 +518,12 @@ mac_binding_stats_run(struct vector *stats_vec, uint64_t *req_delay,
                 mac_binding_update_log("Updating active", &mb->data, true,
                                        threshold, stats->idle_age_ms,
                                        since_updated_ms);
-                sbrec_mac_binding_set_timestamp(mb->sbrec, timewall_now);
+                if (mb->data.is_scope) {
+                    sbrec_shared_mac_binding_set_timestamp(mb->shared_sbrec,
+                                                           timewall_now);
+                } else {
+                    sbrec_mac_binding_set_timestamp(mb->sbrec, timewall_now);
+                }
             } else {
                 /* Postponing the update to avoid sending database transactions
                  * too frequently. */
@@ -614,7 +709,8 @@ buffered_packets_lookup_run(struct cmap *bp_map, const struct hmap *recent_mbs,
                             struct ovsdb_idl_index *sbrec_pb_by_key,
                             struct ovsdb_idl_index *sbrec_dp_by_key,
                             struct ovsdb_idl_index *sbrec_pb_by_name,
-                            struct ovsdb_idl_index *sbrec_mb_by_lport_ip) {
+                            struct ovsdb_idl_index *sbrec_mb_by_lport_ip,
+                            struct ovsdb_idl_index *shared_mb_by_scope_ip) {
     struct ds ip = DS_EMPTY_INITIALIZER;
     long long now = time_msec();
     bool updated = false;
@@ -631,14 +727,24 @@ buffered_packets_lookup_run(struct cmap *bp_map, const struct hmap *recent_mbs,
 
         struct eth_addr mac = eth_addr_zero;
 
-        struct mac_binding *mb = mac_binding_find(recent_mbs, &bp->mb_data);
+        struct mac_binding_data lookup_data = bp->mb_data;
+        const struct sbrec_port_binding *pb = buffered_packets_get_pb(
+            bp, sbrec_pb_by_key, sbrec_dp_by_key, sbrec_pb_by_name);
+        if (pb && pb->mac_binding_scope) {
+            lookup_data.dp_key = pb->mac_binding_scope->binding_key;
+            lookup_data.port_key = 0;
+            lookup_data.is_scope = true;
+        }
+
+        struct mac_binding *mb = mac_binding_find(recent_mbs, &lookup_data);
         if (mb) {
             mac = mb->data.mac;
         } else if (now >= bp->lookup_at_ms) {
             /* Check if we can do a full lookup. */
             buffered_packets_db_lookup(bp, &ip, &mac, sbrec_pb_by_key,
                                        sbrec_dp_by_key, sbrec_pb_by_name,
-                                       sbrec_mb_by_lport_ip);
+                                       sbrec_mb_by_lport_ip,
+                                       shared_mb_by_scope_ip);
             /* Schedule next lookup even if we found the MAC address,
              * if the address was found this struct will be deleted anyway. */
 
@@ -718,6 +824,7 @@ mac_binding_data_hash(const struct mac_binding_data *mb_data)
 
     hash = hash_add(hash, mb_data->port_key);
     hash = hash_add(hash, mb_data->dp_key);
+    hash = hash_add(hash, mb_data->is_scope);
     hash = hash_add_in6_addr(hash, &mb_data->ip);
 
     return hash_finish(hash, 24);
@@ -730,6 +837,7 @@ mac_binding_data_equals(const struct mac_binding_data *a,
     return a->cookie == b->cookie &&
            a->port_key == b->port_key &&
            a->dp_key == b->dp_key &&
+           a->is_scope == b->is_scope &&
            ipv6_addr_equals(&a->ip, &b->ip);
 }
 
@@ -767,6 +875,39 @@ mac_cache_threshold_get_value_ms(const struct sbrec_datapath_binding *dp)
     }
 
     return mb_value ? mb_value * 1000 : fdb_value * 1000;
+}
+
+static uint64_t
+mac_cache_scope_threshold_get_value_ms(
+    const struct sbrec_mac_binding_scope *scope)
+{
+    if (!scope->mac_binding_age_threshold) {
+        return 0;
+    }
+
+    uint64_t min_value = UINT64_MAX;
+    char *thresholds = xstrdup(scope->mac_binding_age_threshold);
+    char *save_ptr = NULL;
+    for (char *entry = strtok_r(thresholds, ";", &save_ptr); entry;
+         entry = strtok_r(NULL, ";", &save_ptr)) {
+        const char *value_str = strrchr(entry, ':');
+        value_str = value_str ? value_str + 1 : entry;
+
+        unsigned int value;
+        if (!str_to_uint(value_str, 10, &value)) {
+            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+            VLOG_WARN_RL(&rl, "Invalid MAC binding aging threshold '%s' "
+                         "for scope '%s'", entry, scope->name);
+            free(thresholds);
+            return 0;
+        }
+        if (value) {
+            min_value = MIN(min_value, value);
+        }
+    }
+    free(thresholds);
+
+    return min_value == UINT64_MAX ? 0 : min_value * 1000;
 }
 
 static void
@@ -822,34 +963,56 @@ buffered_packets_db_lookup(struct buffered_packets *bp, struct ds *ip,
                            struct ovsdb_idl_index *sbrec_pb_by_key,
                            struct ovsdb_idl_index *sbrec_dp_by_key,
                            struct ovsdb_idl_index *sbrec_pb_by_name,
-                           struct ovsdb_idl_index *sbrec_mb_by_lport_ip) {
+                           struct ovsdb_idl_index *sbrec_mb_by_lport_ip,
+                           struct ovsdb_idl_index *shared_mb_by_scope_ip) {
+    const struct sbrec_port_binding *pb = buffered_packets_get_pb(
+        bp, sbrec_pb_by_key, sbrec_dp_by_key, sbrec_pb_by_name);
+    if (!pb) {
+        return;
+    }
+
+    ipv6_format_mapped(&bp->mb_data.ip, ip);
+    if (pb->mac_binding_scope) {
+        const struct sbrec_shared_mac_binding *smb =
+            shared_mac_binding_lookup(shared_mb_by_scope_ip,
+                                      pb->mac_binding_scope,
+                                      ds_cstr_ro(ip));
+        ds_clear(ip);
+        if (smb) {
+            eth_addr_from_string(smb->mac, mac);
+        }
+        return;
+    }
+
+    const struct sbrec_mac_binding *smb =
+        mac_binding_lookup(sbrec_mb_by_lport_ip, pb->logical_port,
+                           ds_cstr_ro(ip));
+    ds_clear(ip);
+
+    if (smb) {
+        eth_addr_from_string(smb->mac, mac);
+    }
+}
+
+static const struct sbrec_port_binding *
+buffered_packets_get_pb(const struct buffered_packets *bp,
+                        struct ovsdb_idl_index *sbrec_pb_by_key,
+                        struct ovsdb_idl_index *sbrec_dp_by_key,
+                        struct ovsdb_idl_index *sbrec_pb_by_name)
+{
     const struct sbrec_port_binding *pb =
             lport_lookup_by_key(sbrec_dp_by_key, sbrec_pb_by_key,
                                 bp->mb_data.dp_key, bp->mb_data.port_key);
     if (!pb) {
-        return;
+        return NULL;
     }
 
     if (!strcmp(pb->type, "chassisredirect")) {
         const char *dgp_name =
                 smap_get_def(&pb->options, "distributed-port", "");
         pb = lport_lookup_by_name(sbrec_pb_by_name, dgp_name);
-        if (!pb) {
-            return;
-        }
     }
-
-    ipv6_format_mapped(&bp->mb_data.ip, ip);
-    const struct sbrec_mac_binding *smb =
-            mac_binding_lookup(sbrec_mb_by_lport_ip, pb->logical_port,
-                               ds_cstr_ro(ip));
-    ds_clear(ip);
-
-    if (!smb) {
-        return;
-    }
-
-    eth_addr_from_string(smb->mac, mac);
+    return pb;
 }
 
 void
@@ -871,6 +1034,7 @@ mac_binding_probe_stats_process_flow_stats(
              * mac_binding_data_from_sbrec. */
             .port_key = 0,
             .dp_key = ntohll(ofp_stats->match.flow.metadata),
+            .is_scope = false,
             .mac = ofp_stats->match.flow.dl_src
         },
     };
@@ -884,6 +1048,101 @@ mac_binding_probe_stats_process_flow_stats(
     }
 
     vector_push(stats_vec, &stats);
+}
+
+void
+shared_mac_binding_probe_stats_process_flow_stats(
+        struct vector *stats_vec,
+        struct ofputil_flow_stats *ofp_stats)
+{
+    size_t old_size = vector_len(stats_vec);
+
+    mac_binding_probe_stats_process_flow_stats(stats_vec, ofp_stats);
+    if (vector_len(stats_vec) > old_size) {
+        struct mac_cache_stats *stats = vector_get_ptr(stats_vec, old_size);
+        stats->data.mb.is_scope = true;
+    }
+}
+
+static bool
+mac_binding_probe_get_local_address(const struct sbrec_port_binding *pb,
+                                    const struct in6_addr *target,
+                                    struct lport_addresses *laddr,
+                                    struct in6_addr *local)
+{
+    if (!pb->datapath || !pb->n_mac ||
+        !extract_lsp_addresses(pb->mac[0], laddr)) {
+        return false;
+    }
+
+    *local = in6addr_any;
+    if (IN6_IS_ADDR_V4MAPPED(target)) {
+        ovs_be32 ip4 = in6_addr_get_mapped_ipv4(target);
+        for (size_t i = 0; i < laddr->n_ipv4_addrs; i++) {
+            struct ipv4_netaddr address = laddr->ipv4_addrs[i];
+            if (address.network == (ip4 & address.mask)) {
+                *local = in6_addr_mapped_ipv4(address.addr);
+                break;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < laddr->n_ipv6_addrs; i++) {
+            struct ipv6_netaddr address = laddr->ipv6_addrs[i];
+            struct in6_addr neigh_prefix =
+                ipv6_addr_bitand(target, &address.mask);
+            if (ipv6_addr_equals(&address.network, &neigh_prefix)) {
+                *local = address.addr;
+                break;
+            }
+        }
+    }
+
+    if (ipv6_addr_equals(local, &in6addr_any)) {
+        destroy_lport_addresses(laddr);
+        return false;
+    }
+    return true;
+}
+
+static const struct sbrec_port_binding *
+mac_binding_probe_get_port(const struct mac_binding *mb,
+                           const struct mac_binding_probe_data *probe_data,
+                           struct lport_addresses *laddr,
+                           struct in6_addr *local)
+{
+    if (!mb->data.is_scope) {
+        const struct sbrec_port_binding *pb = lport_lookup_by_name(
+            probe_data->sbrec_port_binding_by_name,
+            mb->sbrec->logical_port);
+        if (!pb || !lport_pb_is_local(
+                probe_data->sbrec_port_binding_by_name,
+                probe_data->chassis, pb)) {
+            return NULL;
+        }
+        return mac_binding_probe_get_local_address(
+            pb, &mb->data.ip, laddr, local) ? pb : NULL;
+    }
+
+    struct sbrec_port_binding *target = sbrec_port_binding_index_init_row(
+        probe_data->sbrec_port_binding_by_mac_binding_scope);
+    sbrec_port_binding_index_set_mac_binding_scope(
+        target, mb->shared_sbrec->scope);
+
+    const struct sbrec_port_binding *pb;
+    const struct sbrec_port_binding *found = NULL;
+    SBREC_PORT_BINDING_FOR_EACH_EQUAL (
+        pb, target, probe_data->sbrec_port_binding_by_mac_binding_scope) {
+        if (strcmp(pb->type, "chassisredirect") &&
+            lport_pb_is_local(probe_data->sbrec_port_binding_by_name,
+                              probe_data->chassis, pb) &&
+            mac_binding_probe_get_local_address(
+                pb, &mb->data.ip, laddr, local)) {
+            found = pb;
+            break;
+        }
+    }
+    sbrec_port_binding_index_destroy_row(target);
+    return found;
 }
 
 void
@@ -903,10 +1162,13 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
             continue;
         }
 
-        struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(cache_data, mb->data.dp_key);
-        uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
-        const struct sbrec_mac_binding *sbrec = mb->sbrec;
+        struct mac_cache_threshold *threshold = mb->data.is_scope
+            ? mac_cache_threshold_find_scope(cache_data, mb->data.dp_key)
+            : mac_cache_threshold_find(cache_data, mb->data.dp_key);
+        int64_t timestamp = mb->data.is_scope
+                            ? mb->shared_sbrec->timestamp
+                            : mb->sbrec->timestamp;
+        uint64_t since_updated_ms = timewall_now - timestamp;
 
         if (stats->idle_age_ms > threshold->value) {
             mac_binding_update_log("Not sending ARP/ND request for non-active",
@@ -924,66 +1186,33 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
             continue;
         }
 
-        const struct sbrec_port_binding *pb =
-            lport_lookup_by_name(probe_data->sbrec_port_binding_by_name,
-                                 sbrec->logical_port);
+        struct lport_addresses laddr;
+        struct in6_addr local;
+        const struct sbrec_port_binding *pb = mac_binding_probe_get_port(
+            mb, probe_data, &laddr, &local);
         if (!pb) {
-            continue;
-        }
-
-        if (!lport_pb_is_local(probe_data->sbrec_port_binding_by_name,
-                               probe_data->chassis, pb)) {
             mac_binding_update_log("Not sending ARP/ND request for non-local",
                                    &mb->data, true, threshold,
                                    stats->idle_age_ms, since_updated_ms);
             continue;
         }
 
-        struct lport_addresses laddr;
-        if (!extract_lsp_addresses(pb->mac[0], &laddr)) {
-            continue;
-        }
+        struct eth_addr eth_dst =
+            mb->arp_attempts < PROBE_MULICAST_THRESHOLD
+            ? mb->data.mac
+            : eth_addr_zero;
 
-        struct in6_addr local = in6addr_any;
-        if (IN6_IS_ADDR_V4MAPPED(&mb->data.ip)) {
-            ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&mb->data.ip);
-            for (size_t i = 0; i < laddr.n_ipv4_addrs; i++) {
-                struct ipv4_netaddr address = laddr.ipv4_addrs[i];
-                if (address.network == (ip4 & address.mask)) {
-                    local = in6_addr_mapped_ipv4(address.addr);
-                    break;
-                }
-            }
-        } else {
-            for (size_t i = 0; i < laddr.n_ipv6_addrs; i++) {
-                struct ipv6_netaddr address = laddr.ipv6_addrs[i];
-                struct in6_addr neigh_prefix =
-                    ipv6_addr_bitand(&mb->data.ip, &address.mask);
-                if (ipv6_addr_equals(&address.network, &neigh_prefix)) {
-                    local = address.addr;
-                    break;
-                }
-            }
-        }
+        mac_binding_update_log("Sending ARP/ND request for active",
+                               &mb->data, true, threshold,
+                               stats->idle_age_ms, since_updated_ms);
 
-        if (!ipv6_addr_equals(&local, &in6addr_any)) {
-            struct eth_addr eth_dst =
-                mb->arp_attempts < PROBE_MULICAST_THRESHOLD
-                ? mb->data.mac
-                : eth_addr_zero;
-
-            mac_binding_update_log("Sending ARP/ND request for active",
-                                   &mb->data, true, threshold,
-                                   stats->idle_age_ms, since_updated_ms);
-
-            send_self_originated_neigh_packet(probe_data->swconn,
-                                              sbrec->datapath->tunnel_key,
-                                              pb->tunnel_key, laddr.ea,
-                                              eth_dst, &local,
-                                              &mb->data.ip,
-                                              OFTABLE_LOCAL_OUTPUT);
-            mb->arp_attempts++;
-        }
+        send_self_originated_neigh_packet(probe_data->swconn,
+                                          pb->datapath->tunnel_key,
+                                          pb->tunnel_key, laddr.ea,
+                                          eth_dst, &local,
+                                          &mb->data.ip,
+                                          OFTABLE_LOCAL_OUTPUT);
+        mb->arp_attempts++;
 
         destroy_lport_addresses(&laddr);
     }

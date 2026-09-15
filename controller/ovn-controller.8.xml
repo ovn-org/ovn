@@ -764,6 +764,14 @@
         and <code>put_nd</code> logical actions.  These changes persist beyond
         the lifetime of <code>ovn-controller</code>.
       </dd>
+
+      <dt><code>Shared_MAC_Binding</code></dt>
+      <dd>
+        At runtime, <code>ovn-controller</code> updates the
+        <code>Shared_MAC_Binding</code> table as instructed by scoped
+        <code>put_arp</code> and <code>put_nd</code> logical actions.  These
+        changes persist beyond the lifetime of <code>ovn-controller</code>.
+      </dd>
     </dl>
 
     <h1>Runtime Management Commands</h1>

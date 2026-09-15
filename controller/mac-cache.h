@@ -43,8 +43,9 @@ struct mac_cache_data {
 
 struct mac_cache_threshold {
     struct hmap_node hmap_node;
-    /* Datapath tunnel key. */
+    /* Datapath tunnel key or scope binding key. */
     uint32_t dp_key;
+    bool is_scope;
     /* Aging threshold in ms. */
     uint64_t value;
     /* Statistics dump period. */
@@ -58,6 +59,7 @@ struct mac_binding_data {
     uint64_t cookie;
     uint32_t port_key;
     uint32_t dp_key;
+    bool is_scope;
     struct in6_addr ip;
     /* Value. */
     struct eth_addr mac;
@@ -67,6 +69,7 @@ struct mac_binding_probe_data {
     struct mac_cache_data *cache_data;
     struct rconn *swconn;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
+    struct ovsdb_idl_index *sbrec_port_binding_by_mac_binding_scope;
     const struct sbrec_chassis *chassis;
 };
 
@@ -76,6 +79,7 @@ struct mac_binding {
     struct mac_binding_data data;
     /* Reference to the SB MAC binding record (Might be NULL). */
     const struct sbrec_mac_binding *sbrec;
+    const struct sbrec_shared_mac_binding *shared_sbrec;
     /* User specified timestamp (in ms) */
     long long timestamp;
     /* Number of re-ARP attempts for given entry. */
@@ -146,6 +150,10 @@ void mac_cache_threshold_replace(struct mac_cache_data *data,
                                  const struct hmap *local_datapaths);
 struct mac_cache_threshold *
 mac_cache_threshold_find(struct mac_cache_data *data, uint32_t dp_key);
+void mac_cache_threshold_add_scope(
+    struct mac_cache_data *, const struct sbrec_mac_binding_scope *);
+struct mac_cache_threshold *mac_cache_threshold_find_scope(
+    struct mac_cache_data *, uint32_t binding_key);
 void mac_cache_thresholds_sync(struct mac_cache_data *data,
                                const struct hmap *local_datapaths);
 void mac_cache_thresholds_clear(struct mac_cache_data *data);
@@ -161,6 +169,7 @@ mac_binding_data_init(struct mac_binding_data *data,
         .cookie = 0,
         .dp_key = (dp_key),
         .port_key = (port_key),
+        .is_scope = false,
         .ip = (ip),
         .mac = (mac),
     };
@@ -168,6 +177,9 @@ mac_binding_data_init(struct mac_binding_data *data,
 
 void mac_binding_add(struct hmap *map, struct mac_binding_data mb_data,
                      const struct sbrec_mac_binding *, long long timestamp);
+void mac_binding_add_shared(
+    struct hmap *, struct mac_binding_data,
+    const struct sbrec_shared_mac_binding *, long long timestamp);
 
 void mac_binding_remove(struct hmap *map, struct mac_binding *mb);
 
@@ -179,6 +191,8 @@ bool mac_binding_data_parse(struct mac_binding_data *data,
                             const char *ip_str, const char *mac_str);
 bool mac_binding_data_from_sbrec(struct mac_binding_data *data,
                                  const struct sbrec_mac_binding *mb);
+bool mac_binding_data_from_shared_sbrec(
+    struct mac_binding_data *, const struct sbrec_shared_mac_binding *);
 
 void mac_bindings_clear(struct hmap *map);
 void mac_bindings_to_string(const struct hmap *map, struct ds *out_data);
@@ -226,13 +240,18 @@ bool buffered_packets_lookup_run(struct cmap *bp_map,
                                  struct ovsdb_idl_index *sbrec_pb_by_key,
                                  struct ovsdb_idl_index *sbrec_dp_by_key,
                                  struct ovsdb_idl_index *sbrec_pb_by_name,
-                                 struct ovsdb_idl_index *sbrec_mb_by_lport_ip);
+                                 struct ovsdb_idl_index *sbrec_mb_by_lport_ip,
+                                 struct ovsdb_idl_index
+                                     *shared_mb_by_scope_ip);
 
 void buffered_packets_run(struct cmap *bp_map, struct vector *rpd);
 
 void buffered_packets_map_destroy(struct cmap *bp_map);
 
 void mac_binding_probe_stats_process_flow_stats(
+        struct vector *stats_vec,
+        struct ofputil_flow_stats *ofp_stats);
+void shared_mac_binding_probe_stats_process_flow_stats(
         struct vector *stats_vec,
         struct ofputil_flow_stats *ofp_stats);
 

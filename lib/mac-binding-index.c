@@ -35,6 +35,14 @@ mac_binding_by_lport_ip_index_create(struct ovsdb_idl *idl)
                                    &sbrec_mac_binding_col_ip);
 }
 
+struct ovsdb_idl_index *
+shared_mac_binding_by_scope_ip_index_create(struct ovsdb_idl *idl)
+{
+    return ovsdb_idl_index_create2(idl,
+                                   &sbrec_shared_mac_binding_col_scope,
+                                   &sbrec_shared_mac_binding_col_ip);
+}
+
 const struct sbrec_mac_binding *
 mac_binding_lookup(struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip,
                    const char *logical_port, const char *ip) {
@@ -97,6 +105,61 @@ mac_binding_add_to_sb(struct ovsdb_idl_txn *ovnsb_idl_txn,
                      b->ip, b->mac, logical_port, time_wall_msec());
             sbrec_mac_binding_set_timestamp(b, time_wall_msec());
         }
+    }
+
+    return b;
+}
+
+const struct sbrec_shared_mac_binding *
+shared_mac_binding_lookup(
+    struct ovsdb_idl_index *shared_mac_binding_by_scope_ip,
+    const struct sbrec_mac_binding_scope *scope, const char *ip)
+{
+    struct sbrec_shared_mac_binding *mb =
+        sbrec_shared_mac_binding_index_init_row(
+            shared_mac_binding_by_scope_ip);
+    sbrec_shared_mac_binding_index_set_scope(mb, scope);
+    sbrec_shared_mac_binding_index_set_ip(mb, ip);
+
+    const struct sbrec_shared_mac_binding *retval =
+        sbrec_shared_mac_binding_index_find(
+            shared_mac_binding_by_scope_ip, mb);
+
+    sbrec_shared_mac_binding_index_destroy_row(mb);
+    return retval;
+}
+
+/* Update or add an IP-MAC binding in 'scope'. */
+const struct sbrec_shared_mac_binding *
+shared_mac_binding_add_to_sb(
+    struct ovsdb_idl_txn *ovnsb_idl_txn,
+    struct ovsdb_idl_index *shared_mac_binding_by_scope_ip,
+    const struct sbrec_mac_binding_scope *scope, struct eth_addr ea,
+    const char *ip, bool update_only,
+    const struct sbrec_shared_mac_binding *sb_mb)
+{
+    char mac_string[ETH_ADDR_STRLEN + 1];
+    snprintf(mac_string, sizeof mac_string, ETH_ADDR_FMT, ETH_ADDR_ARGS(ea));
+
+    const struct sbrec_shared_mac_binding *b = sb_mb
+        ? sb_mb
+        : shared_mac_binding_lookup(shared_mac_binding_by_scope_ip,
+                                    scope, ip);
+    if (!b) {
+        if (update_only) {
+            return NULL;
+        }
+
+        struct uuid uuid = uuid_random();
+        b = sbrec_shared_mac_binding_insert_persist_uuid(ovnsb_idl_txn,
+                                                         &uuid);
+        sbrec_shared_mac_binding_set_scope(b, scope);
+        sbrec_shared_mac_binding_set_ip(b, ip);
+    }
+
+    if (strcmp(b->mac, mac_string)) {
+        sbrec_shared_mac_binding_set_mac(b, mac_string);
+        sbrec_shared_mac_binding_set_timestamp(b, time_wall_msec());
     }
 
     return b;

@@ -18,25 +18,28 @@
 #include "lflow.h"
 #include "neighbor-of.h"
 #include "openvswitch/match.h"
+#include "openvswitch/vlog.h"
 #include "ovn/logical-fields.h"
 
-void
-consider_neighbor_flow(const struct sbrec_port_binding *pb,
-                       const struct uuid *neighbor_uuid,
-                       const struct in6_addr *ip, struct eth_addr mac,
-                       struct ovn_desired_flow_table *flow_table,
-                       enum neigh_of_rule_prio priority,
-                       bool needs_usage_tracking)
+VLOG_DEFINE_THIS_MODULE(neighbor_of);
+
+static void
+consider_neighbor_flow__(uint32_t dp_key, uint32_t port_key,
+                         const struct uuid *neighbor_uuid,
+                         const struct in6_addr *ip, struct eth_addr mac,
+                         struct ovn_desired_flow_table *flow_table,
+                         uint8_t binding_table, uint8_t lookup_table,
+                         enum neigh_of_rule_prio priority,
+                         bool needs_usage_tracking, bool clear_on_mismatch)
 {
     struct match get_arp_match = MATCH_CATCHALL_INITIALIZER;
     struct match lookup_arp_match = MATCH_CATCHALL_INITIALIZER;
     struct match mb_cache_use_match = MATCH_CATCHALL_INITIALIZER;
     struct match lookup_arp_for_stats_match = MATCH_CATCHALL_INITIALIZER;
 
-    match_set_dl_src(&lookup_arp_match, mac);
-    match_set_metadata(&lookup_arp_match, htonll(pb->datapath->tunnel_key));
+    match_set_metadata(&lookup_arp_match, htonll(dp_key));
     match_set_reg(&lookup_arp_match, MFF_LOG_INPORT - MFF_REG0,
-                  pb->tunnel_key);
+                  port_key);
 
     if (IN6_IS_ADDR_V4MAPPED(ip)) {
         ovs_be32 ip_addr = in6_addr_get_mapped_ipv4(ip);
@@ -67,30 +70,41 @@ consider_neighbor_flow(const struct sbrec_port_binding *pb,
         match_set_ipv6_src(&mb_cache_use_match, ip);
     }
 
-    match_set_metadata(&get_arp_match, htonll(pb->datapath->tunnel_key));
-    match_set_reg(&get_arp_match, MFF_LOG_OUTPORT - MFF_REG0, pb->tunnel_key);
+    struct match lookup_ip_match = lookup_arp_match;
+    match_set_dl_src(&lookup_arp_match, mac);
+
+    match_set_metadata(&get_arp_match, htonll(dp_key));
+    match_set_reg(&get_arp_match, MFF_LOG_OUTPORT - MFF_REG0, port_key);
 
     match_set_dl_src(&mb_cache_use_match, mac);
     match_set_reg(&mb_cache_use_match, MFF_LOG_INPORT - MFF_REG0,
-                  pb->tunnel_key);
-    match_set_metadata(&mb_cache_use_match, htonll(pb->datapath->tunnel_key));
+                  port_key);
+    match_set_metadata(&mb_cache_use_match, htonll(dp_key));
 
     uint64_t stub[1024 / 8];
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(stub);
     put_load_bytes(mac.ea, sizeof mac.ea, MFF_ETH_DST, 0, 48,
                    &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, &ofpacts);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_BINDING, priority,
+    ofctrl_add_flow(flow_table, binding_table, priority,
                     neighbor_uuid->parts[0],
                     &get_arp_match, &ofpacts,
                     neighbor_uuid);
 
     ofpbuf_clear(&ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, &ofpacts);
-    ofctrl_add_flow(flow_table, OFTABLE_MAC_LOOKUP, priority,
+    ofctrl_add_flow(flow_table, lookup_table, priority,
                     neighbor_uuid->parts[0],
                     &lookup_arp_match, &ofpacts,
                     neighbor_uuid);
+
+    if (clear_on_mismatch) {
+        ofpbuf_clear(&ofpacts);
+        put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, &ofpacts);
+        ofctrl_add_flow(flow_table, lookup_table, priority - 1,
+                        neighbor_uuid->parts[0], &lookup_ip_match,
+                        &ofpacts, neighbor_uuid);
+    }
 
     if (needs_usage_tracking) {
         ofpbuf_clear(&ofpacts);
@@ -106,4 +120,55 @@ consider_neighbor_flow(const struct sbrec_port_binding *pb,
     }
 
     ofpbuf_uninit(&ofpacts);
+}
+
+void
+consider_neighbor_flow(const struct sbrec_port_binding *pb,
+                       const struct uuid *neighbor_uuid,
+                       const struct in6_addr *ip, struct eth_addr mac,
+                       struct ovn_desired_flow_table *flow_table,
+                       enum neigh_of_rule_prio priority,
+                       bool needs_usage_tracking)
+{
+    consider_neighbor_flow__(pb->datapath->tunnel_key, pb->tunnel_key,
+                             neighbor_uuid, ip, mac, flow_table,
+                             OFTABLE_MAC_BINDING, OFTABLE_MAC_LOOKUP,
+                             priority, needs_usage_tracking, false);
+
+    if (priority == NEIGH_OF_STATIC_MAC_BINDING_HIGH_PRIO &&
+        pb->mac_binding_scope) {
+        consider_neighbor_flow__(pb->datapath->tunnel_key, pb->tunnel_key,
+                                 neighbor_uuid, ip, mac, flow_table,
+                                 OFTABLE_MAC_BINDING_OVERRIDE,
+                                 OFTABLE_MAC_LOOKUP_OVERRIDE,
+                                 NEIGH_OF_DYNAMIC_MAC_BINDING_PRIO,
+                                 false, true);
+    }
+}
+
+void
+consider_shared_neighbor_flow(const struct sbrec_shared_mac_binding *mb,
+                              struct ovn_desired_flow_table *flow_table,
+                              bool needs_usage_tracking)
+{
+    struct eth_addr mac;
+    struct in6_addr ip;
+
+    if (!eth_addr_from_string(mb->mac, &mac)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad 'mac' %s", mb->mac);
+        return;
+    }
+    if (!ip46_parse(mb->ip, &ip)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad 'ip' %s", mb->ip);
+        return;
+    }
+
+    consider_neighbor_flow__(mb->scope->binding_key, 0,
+                             &mb->header_.uuid, &ip, mac, flow_table,
+                             OFTABLE_SHARED_MAC_BINDING,
+                             OFTABLE_SHARED_MAC_LOOKUP,
+                             NEIGH_OF_DYNAMIC_MAC_BINDING_PRIO,
+                             needs_usage_tracking, true);
 }
