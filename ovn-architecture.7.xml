@@ -2558,8 +2558,24 @@
   </p>
 
   <p>
-    When VXLAN tunneling is enabled in an OVN cluster, due to the limited
-    range available for VNIs, Interconnection feature is not supported.
+    OVN interconnection supports VXLAN tunneling for transit switches.  To use
+    VXLAN for cross-AZ traffic, the
+    <ref table="IC_NB_Global" column="options" key="vxlan_mode"
+         db="OVN_IC_Northbound"/> option in the interconnection northbound
+    database must be set to <code>true</code>.  The option defaults to
+    <code>false</code>.  Enabling it requires an IC-SB VXLAN encapsulation to
+    exist.  Transit routers do not support VXLAN tunnel key allocation.
+  </p>
+
+  <p>
+    For each transit switch, <code>ovn-ic</code> sets
+    <code>other_config:ic-vxlan_mode</code> in the availability zone's
+    northbound <code>Logical_Switch</code> row to either <code>true</code> or
+    <code>false</code>.  Currently, northd selects the reduced VXLAN range
+    based on the presence of this key rather than its value.  Therefore, the
+    maximum number of non-transit logical switches and logical routers in an
+    availability zone is 1023 whenever an interconnection transit switch
+    exists, even when interconnection VXLAN mode is disabled.
   </p>
 
   <h3>A day in the life of a packet crossing AZs</h3>
@@ -3055,16 +3071,13 @@
 
   <ul>
     <li>
-      The maximum number of networks is reduced to 4096.
+      The maximum number of logical datapaths (networks) is reduced to 4095.
     </li>
     <li>
       The maximum number of ports per network is reduced to 2048.
     </li>
     <li>
       ACLs matching against logical ingress port identifiers are not supported.
-    </li>
-    <li>
-      OVN interconnection feature is not supported.
     </li>
   </ul>
 
@@ -3114,7 +3127,8 @@
   <p>
     <code>VXLAN mode</code> is recommended to be disabled if VXLAN encap at
     hypervisors is needed only to support HW VTEP L2 Gateway functionality.
-    See man ovn-nb(5) for table <code>NB_Global</code> column
-    <code>options</code> key <code>vxlan_mode</code> for more details.
+    See man ovn-nb(5) for the
+    <ref table="NB_Global" column="options" key="vxlan_mode"
+         db="OVN_Northbound"/> option for more details.
   </p>
 </manpage>
