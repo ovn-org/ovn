@@ -2729,9 +2729,12 @@
 
   <p>
     RBAC configuration for the OVN southbound database is maintained by
-    ovn-northd. With RBAC enabled, modifications are only permitted for the
-    <code>Chassis</code>, <code>Encap</code>, <code>Port_Binding</code>, and
-    <code>MAC_Binding</code> tables, and are restricted as follows:
+    ovn-northd.  With RBAC enabled, modifications are only permitted for the
+    <code>Chassis</code>, <code>Chassis_Private</code>,
+    <code>Controller_Event</code>, <code>Encap</code>, <code>FDB</code>,
+    <code>Port_Binding</code>, <code>MAC_Binding</code>,
+    <code>Service_Monitor</code>, <code>IGMP_Group</code>, <code>BFD</code>,
+    and <code>Learned_Route</code> tables, and are restricted as follows:
   </p>
   <dl>
     <dt><code>Chassis</code></dt>
@@ -2745,8 +2748,42 @@
       </p>
       <p>
         <code>Update</code>: The columns <code>nb_cfg</code>,
-        <code>external_ids</code>, <code>encaps</code>, and
-        <code>vtep_logical_switches</code> may be modified when authorized.
+        <code>external_ids</code>, <code>encaps</code>,
+        <code>vtep_logical_switches</code>, <code>other_config</code>, and
+        <code>transport_zones</code> may be modified when authorized.
+      </p>
+    </dd>
+
+    <dt><code>Chassis_Private</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: client ID must match the chassis name.
+      </p>
+      <p>
+        <code>Insert/Delete</code>: authorized row insertion and deletion
+        are permitted.
+      </p>
+      <p>
+        <code>Update</code>: The columns <code>nb_cfg</code>,
+        <code>nb_cfg_timestamp</code>, <code>chassis</code>, and
+        <code>external_ids</code> may be modified when authorized.
+      </p>
+    </dd>
+
+    <dt><code>Controller_Event</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: disabled (all clients are considered
+        authorized).
+      </p>
+      <p>
+        <code>Insert/Delete</code>: authorized row insertion and deletion
+        are permitted.
+      </p>
+      <p>
+        <code>Update</code>: The columns <code>chassis</code>,
+        <code>event_info</code>, <code>event_type</code>, and
+        <code>seq_num</code> may be modified by ovn-controller.
       </p>
     </dd>
 
@@ -2765,6 +2802,23 @@
       </p>
     </dd>
 
+    <dt><code>FDB</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: disabled (all clients are considered
+        authorized).
+      </p>
+      <p>
+        <code>Insert/Delete</code>: authorized row insertion and deletion
+        are permitted.
+      </p>
+      <p>
+        <code>Update</code>: The columns <code>dp_key</code>,
+        <code>mac</code>, <code>port_key</code>, and
+        <code>timestamp</code> may be modified by ovn-controller.
+      </p>
+    </dd>
+
     <dt><code>Port_Binding</code></dt>
     <dd>
       <p>
@@ -2774,12 +2828,15 @@
         allowed to bind each port.
       </p>
       <p>
-        <code>Insert/Delete</code>: row insertion/deletion are not permitted
-        (ovn-northd maintains rows in this table.
+        <code>Insert/Delete</code>: row insertion and deletion are not
+        permitted (ovn-northd maintains rows in this table).
       </p>
       <p>
-        <code>Update</code>: Only modifications to the <code>chassis</code>
-        column are permitted.
+        <code>Update</code>: Only modifications to the
+        <code>chassis</code>, <code>additional_chassis</code>,
+        <code>encap</code>, <code>additional_encap</code>, <code>up</code>,
+        <code>virtual_parent</code>, and <code>options</code> columns are
+        permitted.
       </p>
     </dd>
 
@@ -2794,24 +2851,72 @@
       </p>
       <p>
         <code>Update</code>: The columns <code>logical_port</code>,
-        <code>ip</code>, <code>mac</code>, and <code>datapath</code> may be
-        modified by ovn-controller.
+        <code>ip</code>, <code>mac</code>, <code>datapath</code>, and
+        <code>timestamp</code> may be modified by ovn-controller.
       </p>
     </dd>
 
     <dt><code>IGMP_Group</code></dt>
     <dd>
       <p>
-        <code>Authorization</code>: disabled (all clients are considered
-        to be authorized).
+        <code>Authorization</code>: client ID must match the chassis name.
       </p>
       <p>
-        <code>Insert/Delete</code>: row insertion/deletion are permitted.
+        <code>Insert/Delete</code>: authorized row insertion and deletion
+        are permitted.
       </p>
       <p>
         <code>Update</code>: The columns <code>address</code>,
-        <code>chassis</code>, <code>datapath</code>, and
-        <code>ports</code> may be modified by ovn-controller.
+        <code>protocol</code>, <code>chassis</code>, <code>datapath</code>,
+        and <code>ports</code> may be modified by ovn-controller.
+      </p>
+    </dd>
+
+    <dt><code>Service_Monitor</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: client ID must match the chassis name.
+      </p>
+      <p>
+        <code>Insert/Delete</code>: row insertion and deletion are not
+        permitted.
+      </p>
+      <p>
+        <code>Update</code>: Only modifications to the <code>status</code>
+        column are permitted.
+      </p>
+    </dd>
+
+    <dt><code>BFD</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: client ID must match the chassis name.
+      </p>
+      <p>
+        <code>Insert/Delete</code>: row insertion and deletion are not
+        permitted.
+      </p>
+      <p>
+        <code>Update</code>: Only modifications to the <code>status</code>
+        column are permitted.
+      </p>
+    </dd>
+
+    <dt><code>Learned_Route</code></dt>
+    <dd>
+      <p>
+        <code>Authorization</code>: disabled (all clients are considered
+        authorized).
+      </p>
+      <p>
+        <code>Insert/Delete</code>: authorized row insertion and deletion
+        are permitted.
+      </p>
+      <p>
+        <code>Update</code>: The columns <code>datapath</code>,
+        <code>logical_port</code>, <code>ip_prefix</code>,
+        <code>nexthop</code>, and <code>external_ids</code> may be modified
+        by ovn-controller.
       </p>
     </dd>
   </dl>
