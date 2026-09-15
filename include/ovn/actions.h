@@ -128,7 +128,7 @@ struct collector_set_ids;
     OVNACT(COMMIT_LB_AFF,     ovnact_commit_lb_aff)   \
     OVNACT(CHK_LB_AFF,        ovnact_result)          \
     OVNACT(SAMPLE,            ovnact_sample)          \
-    OVNACT(MAC_CACHE_USE,     ovnact_null)            \
+    OVNACT(MAC_CACHE_USE,     ovnact_mac_cache_use)   \
     OVNACT(CT_ORIG_NW_DST,    ovnact_result)          \
     OVNACT(CT_ORIG_IP6_DST,   ovnact_result)          \
     OVNACT(CT_ORIG_TP_DST,    ovnact_result)          \
@@ -369,6 +369,7 @@ struct ovnact_get_mac_bind {
     struct ovnact ovnact;
     struct expr_field port;     /* Logical port name. */
     struct expr_field ip;       /* 32-bit or 128-bit IP address. */
+    uint32_t scope;             /* Optional MAC binding scope key. */
 };
 
 /* OVNACT_PUT_ARP, ONVACT_PUT_ND. */
@@ -386,6 +387,7 @@ struct ovnact_lookup_mac_bind {
     struct expr_field port;     /* Logical port name. */
     struct expr_field ip;       /* 32-bit or 128-bit IP address. */
     struct expr_field mac;      /* 48-bit Ethernet address. */
+    uint32_t scope;             /* Optional MAC binding scope key. */
 };
 
 /* OVNACT_LOOKUP_ARP_IP, OVNACT_LOOKUP_ND_IP. */
@@ -394,6 +396,13 @@ struct ovnact_lookup_mac_bind_ip {
     struct expr_field dst;      /* 1-bit destination field. */
     struct expr_field port;     /* Logical port name. */
     struct expr_field ip;       /* 32-bit or 128-bit IP address. */
+    uint32_t scope;             /* Optional MAC binding scope key. */
+};
+
+/* OVNACT_MAC_CACHE_USE. */
+struct ovnact_mac_cache_use {
+    struct ovnact ovnact;
+    uint32_t scope;             /* Optional MAC binding scope key. */
 };
 
 struct ovnact_gen_option {
@@ -970,6 +979,14 @@ struct ovnact_encode_params {
                                    resubmit. */
     uint8_t mac_lookup_ptable;  /* OpenFlow table for
                                    'lookup_arp'/'lookup_nd' to resubmit. */
+    uint8_t shared_mac_bind_ptable; /* OpenFlow table for shared dynamic
+                                       MAC bindings. */
+    uint8_t shared_mac_lookup_ptable; /* OpenFlow table for shared dynamic
+                                         MAC binding lookups. */
+    uint8_t mac_bind_override_ptable; /* OpenFlow table for high-priority
+                                         binding overrides. */
+    uint8_t mac_lookup_override_ptable; /* OpenFlow table for high-priority
+                                           lookup overrides. */
     uint8_t lb_hairpin_ptable;  /* OpenFlow table for
                                  * 'chk_lb_hairpin' to resubmit. */
     uint8_t lb_hairpin_reply_ptable;  /* OpenFlow table for

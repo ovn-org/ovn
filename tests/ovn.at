@@ -1420,6 +1420,9 @@ get_arp(outport, ip4.dst);
     has prereqs eth.type == 0x800
 get_arp(inport, reg0);
     encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG0[[]],push:NXM_NX_XXREG0[[96..127]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_REG0[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,OFTABLE_MAC_BINDING),pop:NXM_NX_REG0[[]],pop:NXM_NX_REG15[[]]
+get_arp(outport, ip4.dst, 42);
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_IP_DST[[]],pop:NXM_NX_REG0[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,OFTABLE_MAC_BINDING),push:OXM_OF_METADATA[[]],push:NXM_NX_REG15[[]],set_field:0x2a->metadata,set_field:0->reg15,resubmit(,OFTABLE_SHARED_MAC_BINDING),pop:NXM_NX_REG15[[]],pop:OXM_OF_METADATA[[]],resubmit(,OFTABLE_MAC_BINDING_OVERRIDE),pop:NXM_NX_REG0[[]]
+    has prereqs eth.type == 0x800
 
 get_arp;
     Syntax error at `;' expecting `('.
@@ -1437,6 +1440,10 @@ get_arp(inport, outport);
     Cannot use string field outport where numeric field is required.
 get_arp(reg0, ip4.dst);
     Cannot use numeric field reg0 where string field is required.
+get_arp(outport, ip4.dst, 0);
+    MAC binding scope must be in the range 1 to 16777215
+get_arp(outport, ip4.dst, 16777216);
+    MAC binding scope must be in the range 1 to 16777215
 
 # put_arp
 put_arp(inport, arp.spa, arp.sha);
@@ -1450,6 +1457,9 @@ reg0[[0]] = lookup_arp(inport, ip4.dst, eth.src);
 reg1[[1]] = lookup_arp(inport, arp.spa, arp.sha);
     encodes as push:NXM_NX_REG0[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ARP_SHA[[]],push:NXM_OF_ARP_SPA[[]],pop:NXM_NX_REG0[[]],pop:NXM_OF_ETH_SRC[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_LOOKUP),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[65]],pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_REG0[[]]
     has prereqs eth.type == 0x806 && eth.type == 0x806
+reg0[[0]] = lookup_arp(inport, ip4.dst, eth.src, 42);
+    encodes as push:NXM_NX_REG0[[]],push:NXM_OF_IP_DST[[]],pop:NXM_NX_REG0[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_LOOKUP),push:OXM_OF_METADATA[[]],push:NXM_NX_REG14[[]],set_field:0x2a->metadata,set_field:0->reg14,resubmit(,OFTABLE_SHARED_MAC_LOOKUP),pop:NXM_NX_REG14[[]],pop:OXM_OF_METADATA[[]],resubmit(,OFTABLE_MAC_LOOKUP_OVERRIDE),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[96]],pop:NXM_NX_REG0[[]]
+    has prereqs eth.type == 0x800
 
 lookup_arp;
     Syntax error at `lookup_arp' expecting action.
@@ -1477,6 +1487,9 @@ reg0[[0]] = lookup_arp_ip(inport, ip4.dst);
 reg1[[1]] = lookup_arp_ip(inport, arp.spa);
     encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG0[[]],push:NXM_OF_ARP_SPA[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_REG0[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_BINDING),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[65]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_REG0[[]],pop:NXM_NX_REG15[[]]
     has prereqs eth.type == 0x806
+reg0[[0]] = lookup_arp_ip(inport, ip4.dst, 42);
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_REG0[[]],push:NXM_OF_IP_DST[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_REG0[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_BINDING),push:OXM_OF_METADATA[[]],push:NXM_NX_REG15[[]],set_field:0x2a->metadata,set_field:0->reg15,resubmit(,OFTABLE_SHARED_MAC_BINDING),pop:NXM_NX_REG15[[]],pop:OXM_OF_METADATA[[]],resubmit(,OFTABLE_MAC_BINDING_OVERRIDE),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[96]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_REG0[[]],pop:NXM_NX_REG15[[]]
+    has prereqs eth.type == 0x800
 
 lookup_arp_ip;
     Syntax error at `lookup_arp_ip' expecting action.
@@ -1491,7 +1504,7 @@ reg0[[0]] = lookup_arp_ip(inport ip4.dst);
 reg0[[0]] = lookup_arp_ip(inport, ip4.dst;
     Syntax error at `;' expecting `)'.
 reg0[[0]] = lookup_arp_ip(inport, ip4.dst, eth.src;
-    Syntax error at `,' expecting `)'.
+    Syntax error at `eth.src' expecting small integer.
 reg0[[0]] = lookup_arp_ip(inport, eth.dst);
     Cannot use 48-bit field eth.dst[[0..47]] where 32-bit field is required.
 
@@ -1600,6 +1613,9 @@ get_nd(outport, ip6.dst);
     has prereqs eth.type == 0x86dd
 get_nd(inport, xxreg0);
     encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_XXREG0[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,OFTABLE_MAC_BINDING),pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
+get_nd(outport, ip6.dst, 42);
+    encodes as push:NXM_NX_XXREG1[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG1[[]],set_field:00:00:00:00:00:00->eth_dst,resubmit(,OFTABLE_MAC_BINDING),push:OXM_OF_METADATA[[]],push:NXM_NX_REG15[[]],set_field:0x2a->metadata,set_field:0->reg15,resubmit(,OFTABLE_SHARED_MAC_BINDING),pop:NXM_NX_REG15[[]],pop:OXM_OF_METADATA[[]],resubmit(,OFTABLE_MAC_BINDING_OVERRIDE),pop:NXM_NX_XXREG1[[]]
+    has prereqs eth.type == 0x86dd
 get_nd;
     Syntax error at `;' expecting `('.
 get_nd();
@@ -1662,6 +1678,9 @@ reg2[[0]] = lookup_nd(inport, ip6.dst, eth.src);
 reg3[[0]] = lookup_nd(inport, nd.target, nd.tll);
     encodes as push:NXM_NX_XXREG0[[]],push:NXM_OF_ETH_SRC[[]],push:NXM_NX_ND_TLL[[]],push:NXM_NX_ND_TARGET[[]],pop:NXM_NX_XXREG0[[]],pop:NXM_OF_ETH_SRC[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_LOOKUP),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[0]],pop:NXM_OF_ETH_SRC[[]],pop:NXM_NX_XXREG0[[]]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.type == 0x88 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
+reg0[[0]] = lookup_nd(inport, ip6.dst, eth.src, 42);
+    encodes as push:NXM_NX_XXREG0[[]],push:NXM_NX_IPV6_DST[[]],pop:NXM_NX_XXREG0[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_LOOKUP),push:OXM_OF_METADATA[[]],push:NXM_NX_REG14[[]],set_field:0x2a->metadata,set_field:0->reg14,resubmit(,OFTABLE_SHARED_MAC_LOOKUP),pop:NXM_NX_REG14[[]],pop:OXM_OF_METADATA[[]],resubmit(,OFTABLE_MAC_LOOKUP_OVERRIDE),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[96]],pop:NXM_NX_XXREG0[[]]
+    has prereqs eth.type == 0x86dd
 
 lookup_nd;
     Syntax error at `lookup_nd' expecting action.
@@ -1691,6 +1710,9 @@ reg2[[0]] = lookup_nd_ip(inport, ip6.dst);
 reg3[[0]] = lookup_nd_ip(inport, nd.target);
     encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_ND_TARGET[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_BINDING),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[0]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
     has prereqs (icmp6.type == 0x87 || icmp6.type == 0x88) && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && icmp6.code == 0 && eth.type == 0x86dd && ip.proto == 0x3a && (eth.type == 0x800 || eth.type == 0x86dd) && ip.ttl == 0xff && (eth.type == 0x800 || eth.type == 0x86dd)
+reg0[[0]] = lookup_nd_ip(inport, ip6.dst, 42);
+    encodes as push:NXM_NX_REG15[[]],push:NXM_NX_XXREG1[[]],push:NXM_NX_IPV6_DST[[]],push:NXM_NX_REG14[[]],pop:NXM_NX_REG15[[]],pop:NXM_NX_XXREG1[[]],push:NXM_OF_ETH_DST[[]],set_field:0/0x40->reg10,resubmit(,OFTABLE_MAC_BINDING),push:OXM_OF_METADATA[[]],push:NXM_NX_REG15[[]],set_field:0x2a->metadata,set_field:0->reg15,resubmit(,OFTABLE_SHARED_MAC_BINDING),pop:NXM_NX_REG15[[]],pop:OXM_OF_METADATA[[]],resubmit(,OFTABLE_MAC_BINDING_OVERRIDE),move:NXM_NX_REG10[[6]]->NXM_NX_XXREG0[[96]],pop:NXM_OF_ETH_DST[[]],pop:NXM_NX_XXREG1[[]],pop:NXM_NX_REG15[[]]
+    has prereqs eth.type == 0x86dd
 
 lookup_nd_ip;
     Syntax error at `lookup_nd_ip' expecting action.
@@ -2283,6 +2305,10 @@ sample(probability=10, obs_point=ct_label);
 # mac_cache_use
 mac_cache_use;
     encodes as resubmit(,OFTABLE_MAC_CACHE_USE)
+mac_cache_use(42);
+    encodes as push:OXM_OF_METADATA[[]],push:NXM_NX_REG14[[]],set_field:0x2a->metadata,set_field:0->reg14,resubmit(,OFTABLE_MAC_CACHE_USE),pop:NXM_NX_REG14[[]],pop:OXM_OF_METADATA[[]]
+mac_cache_use();
+    Syntax error at `)' expecting small integer.
 
 # ct_nw_dst()
 reg1 = ct_nw_dst();

@@ -2220,6 +2220,26 @@ ovnact_nest_free(struct ovnact_nest *on)
 }
 
 static void
+parse_mac_binding_scope(struct action_context *ctx, uint32_t *scope)
+{
+    *scope = 0;
+    if (!lexer_match(ctx->lexer, LEX_T_COMMA)) {
+        return;
+    }
+
+    int value;
+    if (!lexer_force_int(ctx->lexer, &value)) {
+        return;
+    }
+    if (value < 1 || value > 0xffffff) {
+        lexer_error(ctx->lexer,
+                    "MAC binding scope must be in the range 1 to 16777215");
+        return;
+    }
+    *scope = value;
+}
+
+static void
 parse_get_mac_bind(struct action_context *ctx, int width,
                    struct ovnact_get_mac_bind *get_mac)
 {
@@ -2227,6 +2247,7 @@ parse_get_mac_bind(struct action_context *ctx, int width,
     action_parse_field(ctx, 0, false, &get_mac->port);
     lexer_force_match(ctx->lexer, LEX_T_COMMA);
     action_parse_field(ctx, width, false, &get_mac->ip);
+    parse_mac_binding_scope(ctx, &get_mac->scope);
     lexer_force_match(ctx->lexer, LEX_T_RPAREN);
 }
 
@@ -2238,6 +2259,9 @@ format_get_mac_bind(const struct ovnact_get_mac_bind *get_mac,
     expr_field_format(&get_mac->port, s);
     ds_put_cstr(s, ", ");
     expr_field_format(&get_mac->ip, s);
+    if (get_mac->scope) {
+        ds_put_format(s, ", %"PRIu32, get_mac->scope);
+    }
     ds_put_cstr(s, ");");
 }
 
@@ -2254,6 +2278,19 @@ format_GET_ND(const struct ovnact_get_mac_bind *get_mac, struct ds *s)
 }
 
 static void
+encode_mac_binding_scope(uint32_t scope, enum mf_field_id port_field,
+                         uint8_t table, struct ofpbuf *ofpacts)
+{
+    init_stack(ofpact_put_STACK_PUSH(ofpacts), MFF_LOG_DATAPATH);
+    init_stack(ofpact_put_STACK_PUSH(ofpacts), port_field);
+    put_load(scope, MFF_LOG_DATAPATH, 0, 64, ofpacts);
+    put_load(0, port_field, 0, 32, ofpacts);
+    emit_resubmit(ofpacts, table);
+    init_stack(ofpact_put_STACK_POP(ofpacts), port_field);
+    init_stack(ofpact_put_STACK_POP(ofpacts), MFF_LOG_DATAPATH);
+}
+
+static void
 encode_get_mac(const struct ovnact_get_mac_bind *get_mac,
                enum mf_field_id ip_field,
                const struct ovnact_encode_params *ep,
@@ -2267,6 +2304,11 @@ encode_get_mac(const struct ovnact_get_mac_bind *get_mac,
 
     put_load(0, MFF_ETH_DST, 0, 48, ofpacts);
     emit_resubmit(ofpacts, ep->mac_bind_ptable);
+    if (get_mac->scope) {
+        encode_mac_binding_scope(get_mac->scope, MFF_LOG_OUTPORT,
+                                 ep->shared_mac_bind_ptable, ofpacts);
+        emit_resubmit(ofpacts, ep->mac_bind_override_ptable);
+    }
 
     encode_restore_args(args, ARRAY_SIZE(args), ofpacts);
 }
@@ -2378,6 +2420,9 @@ static void format_lookup_mac_bind(
     expr_field_format(&lookup_mac->ip, s);
     ds_put_cstr(s, ", ");
     expr_field_format(&lookup_mac->mac, s);
+    if (lookup_mac->scope) {
+        ds_put_format(s, ", %"PRIu32, lookup_mac->scope);
+    }
     ds_put_cstr(s, ");");
 }
 
@@ -2414,6 +2459,11 @@ encode_lookup_mac_bind(const struct ovnact_lookup_mac_bind *lookup_mac,
 
     put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, ofpacts);
     emit_resubmit(ofpacts, ep->mac_lookup_ptable);
+    if (lookup_mac->scope) {
+        encode_mac_binding_scope(lookup_mac->scope, MFF_LOG_INPORT,
+                                 ep->shared_mac_lookup_ptable, ofpacts);
+        emit_resubmit(ofpacts, ep->mac_lookup_override_ptable);
+    }
 
     struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
     orm->dst = dst;
@@ -2462,6 +2512,7 @@ parse_lookup_mac_bind(struct action_context *ctx,
     action_parse_field(ctx, width, false, &lookup_mac->ip);
     lexer_force_match(ctx->lexer, LEX_T_COMMA);
     action_parse_field(ctx, 48, false, &lookup_mac->mac);
+    parse_mac_binding_scope(ctx, &lookup_mac->scope);
     lexer_force_match(ctx->lexer, LEX_T_RPAREN);
     lookup_mac->dst = *dst;
 }
@@ -2483,6 +2534,9 @@ static void format_lookup_mac_bind_ip(
     expr_field_format(&lookup_mac->port, s);
     ds_put_cstr(s, ", ");
     expr_field_format(&lookup_mac->ip, s);
+    if (lookup_mac->scope) {
+        ds_put_format(s, ", %"PRIu32, lookup_mac->scope);
+    }
     ds_put_cstr(s, ");");
 }
 
@@ -2519,6 +2573,11 @@ encode_lookup_mac_bind_ip(const struct ovnact_lookup_mac_bind_ip *lookup_mac,
 
     put_load(0, MFF_LOG_FLAGS, MLF_LOOKUP_MAC_BIT, 1, ofpacts);
     emit_resubmit(ofpacts, ep->mac_bind_ptable);
+    if (lookup_mac->scope) {
+        encode_mac_binding_scope(lookup_mac->scope, MFF_LOG_OUTPORT,
+                                 ep->shared_mac_bind_ptable, ofpacts);
+        emit_resubmit(ofpacts, ep->mac_bind_override_ptable);
+    }
 
     struct ofpact_reg_move *orm = ofpact_put_REG_MOVE(ofpacts);
     orm->dst = dst;
@@ -2566,6 +2625,7 @@ parse_lookup_mac_bind_ip(struct action_context *ctx,
     action_parse_field(ctx, 0, false, &lookup_mac->port);
     lexer_force_match(ctx->lexer, LEX_T_COMMA);
     action_parse_field(ctx, width, false, &lookup_mac->ip);
+    parse_mac_binding_scope(ctx, &lookup_mac->scope);
     lexer_force_match(ctx->lexer, LEX_T_RPAREN);
     lookup_mac->dst = *dst;
 }
@@ -5483,17 +5543,54 @@ encode_CHK_LB_AFF(const struct ovnact_result *res,
 }
 
 static void
-format_MAC_CACHE_USE(const struct ovnact_null *null OVS_UNUSED, struct ds *s)
+parse_MAC_CACHE_USE(struct action_context *ctx,
+                    struct ovnact_mac_cache_use *mac_cache_use)
 {
-    ds_put_cstr(s, "mac_cache_use;");
+    mac_cache_use->scope = 0;
+    if (!lexer_match(ctx->lexer, LEX_T_LPAREN)) {
+        return;
+    }
+
+    int value;
+    if (lexer_force_int(ctx->lexer, &value)) {
+        if (value < 1 || value > 0xffffff) {
+            lexer_error(ctx->lexer, "MAC binding scope must be in the "
+                        "range 1 to 16777215");
+        } else {
+            mac_cache_use->scope = value;
+        }
+    }
+    lexer_force_match(ctx->lexer, LEX_T_RPAREN);
 }
 
 static void
-encode_MAC_CACHE_USE(const struct ovnact_null *null OVS_UNUSED,
+format_MAC_CACHE_USE(const struct ovnact_mac_cache_use *mac_cache_use,
+                     struct ds *s)
+{
+    if (mac_cache_use->scope) {
+        ds_put_format(s, "mac_cache_use(%"PRIu32");", mac_cache_use->scope);
+    } else {
+        ds_put_cstr(s, "mac_cache_use;");
+    }
+}
+
+static void
+encode_MAC_CACHE_USE(const struct ovnact_mac_cache_use *mac_cache_use,
                      const struct ovnact_encode_params *ep,
                      struct ofpbuf *ofpacts)
 {
-    emit_resubmit(ofpacts, ep->mac_cache_use_table);
+    if (mac_cache_use->scope) {
+        encode_mac_binding_scope(mac_cache_use->scope, MFF_LOG_INPORT,
+                                 ep->mac_cache_use_table, ofpacts);
+    } else {
+        emit_resubmit(ofpacts, ep->mac_cache_use_table);
+    }
+}
+
+static void
+ovnact_mac_cache_use_free(
+    struct ovnact_mac_cache_use *mac_cache_use OVS_UNUSED)
+{
 }
 
 static bool
@@ -5999,7 +6096,7 @@ parse_action(struct action_context *ctx)
     } else if (lexer_match_id(ctx->lexer, "sample")) {
         parse_sample(ctx);
     } else if (lexer_match_id(ctx->lexer, "mac_cache_use")) {
-        ovnact_put_MAC_CACHE_USE(ctx->ovnacts);
+        parse_MAC_CACHE_USE(ctx, ovnact_put_MAC_CACHE_USE(ctx->ovnacts));
     } else if (lexer_match_id(ctx->lexer, "flood_remote")) {
         ovnact_put_FLOOD_REMOTE(ctx->ovnacts);
     } else if (lexer_match_id(ctx->lexer, "mirror")) {

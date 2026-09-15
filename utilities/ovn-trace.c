@@ -480,7 +480,7 @@ struct ovntrace_flow {
 
 struct ovntrace_mac_binding {
     struct hmap_node node;
-    uint16_t port_key;
+    uint32_t port_key;
     struct in6_addr ip;
     struct eth_addr mac;
 };
@@ -492,7 +492,7 @@ struct ovntrace_fdb {
 };
 
 static inline uint32_t
-hash_mac_binding(uint16_t port_key, const struct in6_addr *ip)
+hash_mac_binding(uint32_t port_key, const struct in6_addr *ip)
 {
     return hash_bytes(ip, sizeof *ip, port_key);
 }
@@ -505,6 +505,9 @@ hash_fdb(const struct eth_addr *mac)
 
 /* Every ovntrace_datapath, by southbound Datapath_Binding record UUID. */
 static struct hmap datapaths;
+
+/* Shared MAC bindings, indexed by scope binding key and IP address. */
+static struct hmap shared_mac_bindings;
 
 /* Every ovntrace_port, by name. */
 static struct shash ports;
@@ -642,7 +645,7 @@ ovntrace_mcgroup_find_by_name(const struct ovntrace_datapath *dp,
 
 static const struct ovntrace_mac_binding *
 ovntrace_mac_binding_find(const struct ovntrace_datapath *dp,
-                          uint16_t port_key, const struct in6_addr *ip)
+                          uint32_t port_key, const struct in6_addr *ip)
 {
     const struct ovntrace_mac_binding *bind;
     HMAP_FOR_EACH_WITH_HASH (bind, node, hash_mac_binding(port_key, ip),
@@ -656,7 +659,7 @@ ovntrace_mac_binding_find(const struct ovntrace_datapath *dp,
 
 static const struct ovntrace_mac_binding *
 ovntrace_mac_binding_find_mac_ip(const struct ovntrace_datapath *dp,
-                                 uint16_t port_key, const struct in6_addr *ip,
+                                 uint32_t port_key, const struct in6_addr *ip,
                                  struct eth_addr *mac)
 {
     const struct ovntrace_mac_binding *bind;
@@ -664,6 +667,20 @@ ovntrace_mac_binding_find_mac_ip(const struct ovntrace_datapath *dp,
                              &dp->mac_bindings) {
         if (bind->port_key == port_key && ipv6_addr_equals(ip, &bind->ip)
             && (!mac || eth_addr_equals(bind->mac, *mac))) {
+            return bind;
+        }
+    }
+    return NULL;
+}
+
+static const struct ovntrace_mac_binding *
+ovntrace_shared_mac_binding_find(uint32_t scope,
+                                 const struct in6_addr *ip)
+{
+    const struct ovntrace_mac_binding *bind;
+    HMAP_FOR_EACH_WITH_HASH (bind, node, hash_mac_binding(scope, ip),
+                             &shared_mac_bindings) {
+        if (bind->port_key == scope && ipv6_addr_equals(ip, &bind->ip)) {
             return bind;
         }
     }
@@ -1167,6 +1184,36 @@ read_mac_bindings(void)
 }
 
 static void
+read_shared_mac_bindings(void)
+{
+    hmap_init(&shared_mac_bindings);
+
+    const struct sbrec_shared_mac_binding *sbmb;
+    SBREC_SHARED_MAC_BINDING_FOR_EACH (sbmb, ovnsb_idl) {
+        struct in6_addr ip6;
+        if (!ip46_parse(sbmb->ip, &ip6)) {
+            VLOG_WARN_RL(&rl, "%s: bad shared MAC binding IP address",
+                         sbmb->ip);
+            continue;
+        }
+
+        struct eth_addr mac;
+        if (!eth_addr_from_string(sbmb->mac, &mac)) {
+            VLOG_WARN_RL(&rl, "%s: bad shared MAC binding Ethernet address",
+                         sbmb->mac);
+            continue;
+        }
+
+        struct ovntrace_mac_binding *binding = xmalloc(sizeof *binding);
+        binding->port_key = sbmb->scope->binding_key;
+        binding->ip = ip6;
+        binding->mac = mac;
+        hmap_insert(&shared_mac_bindings, &binding->node,
+                    hash_mac_binding(binding->port_key, &ip6));
+    }
+}
+
+static void
 read_fdbs(void)
 {
     const struct sbrec_fdb *fdb;
@@ -1201,6 +1248,7 @@ read_db(void)
     read_gen_opts();
     read_flows();
     read_mac_bindings();
+    read_shared_mac_bindings();
     read_fdbs();
 }
 
@@ -2142,8 +2190,12 @@ execute_get_mac_bind(const struct ovnact_get_mac_bind *bind,
                           ? in6_addr_mapped_ipv4(ip_sv.ipv4)
                           : ip_sv.ipv6);
 
-    const struct ovntrace_mac_binding *binding
-        = ovntrace_mac_binding_find(dp, port_key, &ip);
+    const struct ovntrace_mac_binding *binding = bind->scope
+        ? ovntrace_shared_mac_binding_find(bind->scope, &ip)
+        : NULL;
+    if (!binding) {
+        binding = ovntrace_mac_binding_find(dp, port_key, &ip);
+    }
 
     uflow->dl_dst = binding ? binding->mac : eth_addr_zero;
     if (binding) {
@@ -2185,8 +2237,22 @@ execute_lookup_mac_bind(const struct ovnact_lookup_mac_bind *bind,
     union mf_subvalue mac_sv;
     mf_read_subfield(&mac_sf, uflow, &mac_sv);
 
-    const struct ovntrace_mac_binding *binding
-        = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip, &mac_sv.mac);
+    const struct ovntrace_mac_binding *binding = NULL;
+    bool shared_binding_found = false;
+    if (bind->scope) {
+        const struct ovntrace_mac_binding *shared_binding =
+            ovntrace_shared_mac_binding_find(bind->scope, &ip);
+        if (shared_binding) {
+            shared_binding_found = true;
+            if (eth_addr_equals(shared_binding->mac, mac_sv.mac)) {
+                binding = shared_binding;
+            }
+        }
+    }
+    if (!shared_binding_found) {
+        binding = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip,
+                                                   &mac_sv.mac);
+    }
 
     struct mf_subfield dst = expr_resolve_field(&bind->dst);
     uint8_t val = 0;
@@ -2224,8 +2290,12 @@ execute_lookup_mac_bind_ip(const struct ovnact_lookup_mac_bind_ip *bind,
                           ? in6_addr_mapped_ipv4(ip_sv.ipv4)
                           : ip_sv.ipv6);
 
-    const struct ovntrace_mac_binding *binding
-        = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip, NULL);
+    const struct ovntrace_mac_binding *binding = bind->scope
+        ? ovntrace_shared_mac_binding_find(bind->scope, &ip)
+        : NULL;
+    if (!binding) {
+        binding = ovntrace_mac_binding_find_mac_ip(dp, port_key, &ip, NULL);
+    }
 
     struct mf_subfield dst = expr_resolve_field(&bind->dst);
     uint8_t val = 0;
