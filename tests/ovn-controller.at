@@ -740,6 +740,7 @@ ct_commit_nat_v2: true
 ct_commit_to_zone: true
 ct_next_zone: true
 ct_state_save: true
+shared_mac_binding: true
 ])
 
 OVN_CLEANUP([hv1])
