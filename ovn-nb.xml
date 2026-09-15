@@ -6458,9 +6458,10 @@ or
         locally and don't care about IPv6 only interested in IPv4 or
         vice versa.
 
-        This will let ovn send IPv4 DNS reply and reject/ignore IPv6
-        queries to save the waiting for a timeout on those uninteresting
-        queries.
+        This will let ovn send IPv4 DNS replies and answer IPv6 queries
+        for such a name with NODATA (RCODE 0 and an empty answer section),
+        so the client neither waits for a timeout nor treats the name as
+        unknown; the same applies to IPv4 queries for an IPv6-only name.
       </p>
     </column>
 
