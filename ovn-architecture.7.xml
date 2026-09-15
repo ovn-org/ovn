@@ -153,9 +153,13 @@
         other nodes, <dfn>Logical Network</dfn> (LN) tables that describe the
         logical network in terms of ``logical datapath flows,'' and
         <dfn>Binding</dfn> tables that link logical network components'
-        locations to the physical network.  The hypervisors populate the PN and
-        Port_Binding tables, whereas <code>ovn-northd</code>(8) populates the
-        LN tables.
+        locations to the physical network.  <code>ovn-northd</code>(8)
+        populates the LN tables and creates the logical port rows in the
+        <code>Port_Binding</code> table.  Each <code>ovn-controller</code>(8)
+        populates the PN tables for its chassis and updates the binding state
+        for the ports that it claims.  The
+        <code>ovn-controller-vtep</code> daemon also updates the binding state
+        for VTEP ports that it claims.
       </p>
 
       <p>
@@ -176,8 +180,11 @@
       <code>ovn-controller</code>(8) is OVN's agent on each hypervisor and
       software gateway.  Northbound, it connects to the OVN Southbound
       Database to learn about OVN configuration and status and to
-      populate the PN table and the <code>Chassis</code> column in
-      <code>Binding</code> table with the hypervisor's status.
+      populate the PN tables and the <code>chassis</code> and <code>up</code>
+      columns in the <code>Port_Binding</code> table with the hypervisor's
+      status.  It also populates the <code>virtual_parent</code> column for
+      virtual ports.  The <code>ovn-controller-vtep</code> daemon populates the
+      <code>chassis</code> and <code>up</code> columns for VTEP ports.
       Southbound, it connects to <code>ovs-vswitchd</code>(8) as an
       OpenFlow controller, for control over network traffic, and to the
       local <code>ovsdb-server</code>(1) to allow it to monitor and
@@ -239,10 +246,13 @@
     Status information in OVN flows from south to north.  OVN currently
     provides only a few forms of status information.  First,
     <code>ovn-northd</code> populates the <code>up</code> column in the
-    northbound <code>Logical_Switch_Port</code> table: if a logical port's
-    <code>chassis</code> column in the southbound <code>Port_Binding</code>
-    table is nonempty, it sets <code>up</code> to <code>true</code>, otherwise
-    to <code>false</code>.  This allows the CMS to detect when a VM's
+    northbound <code>Logical_Switch_Port</code> table from the corresponding
+    southbound <code>Port_Binding</code> row.  For an ordinary VIF, the
+    <code>chassis</code> column must be set and the <code>up</code> column must
+    be <code>true</code>.  Logical ports of type <code>router</code> or
+    <code>switch</code> are always reported up.  Ports bound to a chassis
+    marked as remote are also reported up regardless of the southbound
+    <code>up</code> value.  This allows the CMS to detect when a VM's
     networking has come up.
   </p>
 
@@ -380,6 +390,15 @@
       an in-band remote controller, and in that case this suppresses the flows
       that in-band control would ordinarily set up.  Refer to the documentation
       for more information.
+    </dd>
+
+    <dt><code>other-config:hwaddr=<var>mac</var></code></dt>
+    <dd>
+      Sets the integration bridge's hardware address.  When
+      <code>ovn-controller</code> creates the bridge, it generates a random
+      address for this setting so that adding the first non-local port does
+      not change the bridge datapath ID and force OpenFlow controllers to
+      reconnect.
     </dd>
   </dl>
 
@@ -904,9 +923,10 @@
       The CMS plugin updates the OVN Northbound database to include the new
       VIF, by adding a row to the <code>Logical_Switch_Port</code>
       table.  In the new row, <code>name</code> is <var>vif-id</var>,
-      <code>mac</code> is <var>mac</var>, <code>switch</code> points to
-      the OVN logical switch's Logical_Switch record, and other columns
-      are initialized appropriately.
+      <code>addresses</code> contains <var>mac</var>, and other columns are
+      initialized appropriately.  The CMS plugin also adds the new logical
+      switch port to the <code>ports</code> column of the corresponding
+      <code>Logical_Switch</code> row.
     </li>
 
     <li>
@@ -916,9 +936,10 @@
       table to reflect the new port, e.g. add a flow to recognize that packets
       destined to the new port's MAC address should be delivered to it, and
       update the flow that delivers broadcast and multicast packets to include
-      the new port.  It also creates a record in the <code>Binding</code> table
-      and populates all its columns except the column that identifies the
-      <code>chassis</code>.
+      the new port.  It also creates a record in the
+      <code>Port_Binding</code> table and populates the fields derived from the
+      northbound configuration.  The controllers maintain the row's binding
+      and readiness state.
     </li>
 
     <li>
@@ -945,19 +966,19 @@
     <li>
       On the hypervisor where the VM is powered on, <code>ovn-controller</code>
       notices <code>external_ids</code>:<code>iface-id</code> in the new
-      Interface. In response, in the OVN Southbound DB, it updates the
-      <code>Binding</code> table's <code>chassis</code> column for the
-      row that links the logical port from <code>external_ids</code>:<code>
-      iface-id</code> to the hypervisor. Afterward, <code>ovn-controller</code>
-      updates the local hypervisor's OpenFlow tables so that packets to and from
-      the VIF are properly handled.
+      Interface.  In response, <code>ovn-controller</code> updates the
+      <code>Port_Binding</code> row's <code>chassis</code> column to claim the
+      logical port and updates the local hypervisor's OpenFlow tables so that
+      packets to and from the VIF are properly handled.  After the local flows
+      are installed and ready, it sets the <code>up</code> column in the
+      <code>Port_Binding</code> row.
     </li>
 
     <li>
       Some CMS systems, including OpenStack, fully start a VM only when its
       networking is ready.  To support this, <code>ovn-northd</code> notices
-      the <code>chassis</code> column updated for the row in
-      <code>Binding</code> table and pushes this upward by updating the
+      the <code>up</code> column set in the <code>Port_Binding</code> table and
+      pushes this upward by updating the
       <ref column="up" table="Logical_Switch_Port" db="OVN_NB"/> column
       in the OVN Northbound database's <ref table="Logical_Switch_Port"
       db="OVN_NB"/> table to indicate that the VIF is now up.  The CMS,
@@ -967,12 +988,15 @@
 
     <li>
       On every hypervisor but the one where the VIF resides,
-      <code>ovn-controller</code> notices the completely populated row in the
-      <code>Binding</code> table.  This provides <code>ovn-controller</code>
-      the physical location of the logical port, so each instance updates the
-      OpenFlow tables of its switch (based on logical datapath flows in the OVN
-      DB <code>Logical_Flow</code> table) so that packets to and from the VIF
-      can be properly handled via tunnels.
+      <code>ovn-controller</code> notices the <code>chassis</code> claim in the
+      <code>Port_Binding</code> table.  This provides
+      <code>ovn-controller</code> the physical location of the logical port, so
+      each remote instance updates the OpenFlow tables of its switch (based on
+      logical datapath flows in the OVN DB <code>Logical_Flow</code> table) so
+      that packets to and from the VIF can be properly handled via tunnels.
+      The <code>up</code> column separately reports whether the local flows on
+      the claiming hypervisor are ready; it does not determine whether remote
+      hypervisors react to the chassis claim.
     </li>
 
     <li>
@@ -984,16 +1008,18 @@
     <li>
       On the hypervisor where the VM was powered off,
       <code>ovn-controller</code> notices that the VIF was deleted.  In
-      response, it removes the <code>Chassis</code> column content in the
-      <code>Binding</code> table for the logical port.
+      response, it clears the <code>up</code> column and removes the
+      <code>chassis</code> column content in the <code>Port_Binding</code>
+      table for the logical port.  Both changes become visible in the same
+      database transaction.
     </li>
 
     <li>
-      On every hypervisor, <code>ovn-controller</code> notices the empty
-      <code>Chassis</code> column in the <code>Binding</code> table's row
-      for the logical port.  This means that <code>ovn-controller</code> no
-      longer knows the physical location of the logical port, so each instance
-      updates its OpenFlow table to reflect that.
+      On every hypervisor, <code>ovn-controller</code> sees the cleared
+      <code>up</code> and <code>chassis</code> columns in the
+      <code>Port_Binding</code> row.  This indicates that the local flows are
+      no longer ready and that the logical port no longer has a known physical
+      location, so each instance updates its OpenFlow table to reflect that.
     </li>
 
     <li>
@@ -1011,8 +1037,8 @@
       <code>ovn-northd</code> receives the OVN Northbound update and in turn
       updates the OVN Southbound database accordingly, by removing or updating
       the rows from the OVN Southbound database <code>Logical_Flow</code> table
-      and <code>Binding</code> table that were related to the now-destroyed
-      VIF.
+      and <code>Port_Binding</code> table that were related to the
+      now-destroyed VIF.
     </li>
 
     <li>
@@ -1021,7 +1047,7 @@
       in the previous step.  <code>ovn-controller</code> updates OpenFlow
       tables to reflect the update, although there may not be much to do, since
       the VIF had already become unreachable when it was removed from the
-      <code>Binding</code> table in a previous step.
+      <code>Port_Binding</code> table in a previous step.
     </li>
   </ol>
 
@@ -1110,28 +1136,29 @@
       turn, it makes the corresponding updates to the OVN Southbound database,
       by adding rows to the OVN Southbound database's <code>Logical_Flow</code>
       table to reflect the new port and also by creating a new row in the
-      <code>Binding</code> table and populating all its columns except the
-      column that identifies the <code>chassis</code>.
+      <code>Port_Binding</code> table and populating the fields derived from
+      the northbound configuration.  The controllers maintain the row's binding
+      and readiness state.
     </li>
 
     <li>
       On every hypervisor, <code>ovn-controller</code> subscribes to the
-      changes in the <code>Binding</code> table.  When a new row is created
-      by <code>ovn-northd</code> that includes a value in
-      <code>parent_port</code> column of <code>Binding</code> table, the
-      <code>ovn-controller</code> in the hypervisor whose OVN integration bridge
-      has that same value in <var>vif-id</var> in
-      <code>external_ids</code>:<code>iface-id</code>
-      updates the local hypervisor's OpenFlow tables so that packets to and
-      from the VIF with the particular VLAN <code>tag</code> are properly
-      handled.  Afterward it updates the <code>chassis</code> column of
-      the <code>Binding</code> to reflect the physical location.
+      changes in the <code>Port_Binding</code> table.  When a new row is
+      created by <code>ovn-northd</code> that includes a value in
+      <code>parent_port</code> column of <code>Port_Binding</code> table, the
+      <code>ovn-controller</code> on the hypervisor whose OVN integration
+      bridge has that same value in <var>vif-id</var> in
+      <code>external_ids</code>:<code>iface-id</code> claims the CIF on the
+      same chassis as its parent.  A CIF has no separate OVS interface and does
+      not wait for its own flow-installation barrier.  Its readiness is gated
+      on the parent VIF, and it is marked up once the parent
+      <code>Port_Binding</code> is up.
     </li>
 
     <li>
       One can only start the application inside the container after the
       underlying network is ready.  To support this, <code>ovn-northd</code>
-      notices the updated <code>chassis</code> column in <code>Binding</code>
+      notices the <code>up</code> column set in the <code>Port_Binding</code>
       table and updates the <ref column="up" table="Logical_Switch_Port"
       db="OVN_NB"/> column in the OVN Northbound database's
       <ref table="Logical_Switch_Port" db="OVN_NB"/> table to indicate that the
@@ -1150,7 +1177,7 @@
       updates the OVN Southbound database accordingly, by removing or updating
       the rows from the OVN Southbound database <code>Logical_Flow</code> table
       that were related to the now-destroyed CIF.  It also deletes the row in
-      the <code>Binding</code> table for that CIF.
+      the <code>Port_Binding</code> table for that CIF.
     </li>
 
     <li>
@@ -2327,8 +2354,8 @@
 
     <li>
       Next, the <code>ovn-controller-vtep</code> will keep reacting to the
-      configuration change in the <code>Port_Binding</code> in the
-      <code>OVN_Northbound</code> database, and updating the
+      configuration change in the <code>Port_Binding</code> table in the
+      <code>OVN_Southbound</code> database, and updating the
       <code>Ucast_Macs_Remote</code> table in the <code>VTEP</code> database.
       This allows the VTEP gateway to understand where to forward the unicast
       traffic coming from the extended external network.
