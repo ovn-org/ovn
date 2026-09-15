@@ -27,7 +27,7 @@ OVN's Security Process
 
 This is a proposed security vulnerability reporting and handling process for
 OVN. It is based on the OpenStack vulnerability management process
-described at https://wiki.openstack.org/wiki/Vulnerability\_Management.
+described at https://security.openstack.org/vmt-process.html.
 
 The OVN security team coordinates vulnerability management using the
 ovs-security mailing list. Membership in the security team and subscription to
@@ -67,7 +67,7 @@ this process:
   (Integrity).
 
 * A bug (memory corruption, overflow, ...) that allows one to modify the
-  behaviour of OVN through external configuration interfaces such as OVSDB
+  behavior of OVN through external configuration interfaces such as OVSDB
   (Integrity).
 
 * Privileged information is exposed to unprivileged users (Confidentiality).
@@ -210,6 +210,8 @@ sections for the document include:
       tags, such as Acked-by tags obtained during review.
 
 `CVE-2016-2074
+<https://www.cve.org/CVERecord?id=CVE-2016-2074>`__ is the CVE record.  The
+`original ovs-announce message
 <https://mail.openvswitch.org/pipermail/ovs-announce/2016-March/000222.html>`__
 is an example advisory document.
 
@@ -232,8 +234,8 @@ expected not to deploy or disclose patches until the embargo is passed.
 A disclosure date is negotiated by the security team working with the bug
 submitter as well as vendors. However, the OVN security team holds the
 final say when setting a disclosure date. The timeframe for disclosure is from
-immediate (esp. if it's already publicly known) to a few weeks. As a basic
-default policy, we expect report date to disclosure date to be 10 to 15
+immediate (especially if it's already publicly known) to a few weeks. As a
+basic default policy, we expect report date to disclosure date to be 10 to 15
 business days.
 
 Operating system vendors are obvious downstream stakeholders. It may not be
@@ -266,5 +268,5 @@ Contact
 Report security vulnerabilities to the ovs-security mailing list:
 security@openvswitch.org
 
-Report problems with this document to the ovs-bugs mailing list:
+Report problems with this document to the bugs mailing list:
 bugs@openvswitch.org
