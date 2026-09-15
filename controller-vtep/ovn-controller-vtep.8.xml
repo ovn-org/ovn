@@ -2,27 +2,100 @@
 <manpage program="ovn-controller-vtep" section="8" title="ovn-controller-vtep">
     <h1>Name</h1>
     <p>ovn-controller-vtep -- Open Virtual Network local controller for
-       vtep enabled physical switches.
+       VTEP-enabled physical switches.
     </p>
 
     <h1>Synopsis</h1>
-    <p><code>ovn-controller-vtep</code> [<var>options</var>]
-    [<var>--vtep-db=vtep-database</var>] [<var>--ovnsb-db=ovnsb-database</var>]
-    </p>
+    <p><code>ovn-controller-vtep</code> [<var>options</var>]</p>
 
     <h1>Description</h1>
     <p>
-      <code>ovn-controller-vtep</code> is the local controller daemon in
-      OVN, the Open Virtual Network, for VTEP enabled physical switches.
-      It connects up to the OVN Southbound database (see
-      <code>ovn-sb</code>(5)) over the OVSDB protocol, and down to the VTEP
-      database (see <code>vtep</code>(5)) over the OVSDB protocol.
+      <code>ovn-controller-vtep</code> integrates hardware VTEP physical
+      switches into OVN.  It connects to the OVN Southbound database (see
+      <code>ovn-sb</code>(5)) and to a hardware_vtep database (see
+      <code>vtep</code>(5)) over the OVSDB protocol.
     </p>
+
+    <p>
+      In the OVN Southbound database, <code>ovn-controller-vtep</code>
+      registers each hardware_vtep <ref table="Physical_Switch"
+      db="hardware_vtep"/> as a <ref table="Chassis"
+      db="OVN_Southbound"/>.  It creates a VXLAN <ref table="Encap"
+      db="OVN_Southbound"/> using the physical switch's first
+      <ref table="Physical_Switch" column="tunnel_ips" db="hardware_vtep"/>
+      value and records the hardware_vtep logical switches attached to the
+      chassis.  It updates the chassis association of matching
+      <code>vtep</code> <ref table="Port_Binding" db="OVN_Southbound"/>
+      rows when there is no conflicting binding.  If a matching row is
+      already associated with that chassis and has an
+      <ref table="Port_Binding" column="up" db="OVN_Southbound"/> value,
+      it sets that value to <code>true</code>.  A binding matches when its
+      <ref table="Port_Binding" column="options"
+      db="OVN_Southbound"/>:<code>vtep-physical-switch</code> and
+      <ref table="Port_Binding" column="options"
+      db="OVN_Southbound"/>:<code>vtep-logical-switch</code> values identify
+      the physical switch and one of its bound hardware_vtep logical switches.
+    </p>
+
+    <p>
+      In the hardware_vtep database, <code>ovn-controller-vtep</code> sets each
+      bound <ref table="Logical_Switch" column="tunnel_key"
+      db="hardware_vtep"/> from the corresponding OVN logical datapath and
+      sets <ref table="Logical_Switch" column="replication_mode"
+      db="hardware_vtep"/> to <code>source_node</code>.
+      For each attached logical switch, it maintains
+      <ref table="Ucast_Macs_Remote" db="hardware_vtep"/> entries for MAC
+      addresses behind other OVN chassis and for MAC addresses learned by
+      other VTEPs and recorded in the OVN Southbound <ref table="FDB"
+      db="OVN_Southbound"/> table.  It also maintains an
+      <code>unknown-dst</code> <ref table="Mcast_Macs_Remote"
+      db="hardware_vtep"/> entry with the locators used for source-node
+      replication.  Conversely, MAC addresses learned locally by the hardware
+      VTEP in <ref table="Ucast_Macs_Local" db="hardware_vtep"/> are mirrored
+      into the OVN Southbound <ref table="FDB" db="OVN_Southbound"/> table;
+      stale mirrored entries are removed.
+    </p>
+
+    <h1>Options</h1>
+    <dl>
+      <dt><code>-d</code> <var>database</var></dt>
+      <dt><code>--ovnsb-db=<var>database</var></code></dt>
+      <dd>
+        <p>
+          Connects to <var>database</var> as the OVN Southbound database.  If
+          the <env>OVN_SB_DB</env> environment variable is set, its value is
+          used as the default.  Otherwise, the default is
+          <code>unix:@RUNDIR@/ovnsb_db.sock</code>.
+        </p>
+      </dd>
+
+      <dt><code>-D</code> <var>database</var></dt>
+      <dt><code>--vtep-db=<var>database</var></code></dt>
+      <dd>
+        <p>
+          Connects to <var>database</var> as the hardware_vtep database.  The
+          default is <code>unix:<var>ovs-rundir</var>/db.sock</code>, where
+          <var>ovs-rundir</var> is the local Open vSwitch run directory.  The
+          <env>OVS_RUNDIR</env> environment variable overrides that directory.
+        </p>
+      </dd>
+    </dl>
+
+    <p>
+      <var>database</var> in the above options must be an OVSDB active
+      connection method, as described in <code>ovsdb</code>(7).
+    </p>
+
+    <h2>Daemon Options</h2>
+    <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
+
+    <h2>Logging Options</h2>
+    <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>PKI Options</h2>
     <p>
-      PKI configuration is required in order to use SSL/TLS for the connections
-      to the VTEP and Southbound databases.
+      PKI configuration is required to use SSL/TLS for connections to the
+      hardware_vtep and OVN Southbound databases.
     </p>
     <xi:include href="lib/ssl.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
     <xi:include href="lib/ssl-bootstrap.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
@@ -33,13 +106,36 @@
     <h3></h3>
     <xi:include href="lib/common.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
+    <h1>Runtime Management Commands</h1>
+    <p>
+      <code>ovn-appctl</code> can send the following commands to a running
+      <code>ovn-controller-vtep</code> process:
+    </p>
+    <dl>
+      <dt><code>exit</code></dt>
+      <dd>
+        Causes <code>ovn-controller-vtep</code> to gracefully terminate.
+      </dd>
+
+      <dt><code>sb-connection-status</code></dt>
+      <dd>
+        Prints whether the connection to the OVN Southbound database is
+        currently connected.
+      </dd>
+
+      <dt><code>vtep-connection-status</code></dt>
+      <dd>
+        Prints whether the connection to the hardware_vtep database is
+        currently connected.
+      </dd>
+    </dl>
+
     <h1>Configuration</h1>
     <p>
       <code>ovn-controller-vtep</code> retrieves its configuration
-      information from both the ovnsb and the vtep database.  If the
-      database locations are not given from command line, the default
-      is the <code>db.sock</code> in local OVSDB's 'run' directory.
-      The database location must take one of the following forms:
+      information from both the OVN Southbound and hardware_vtep databases.
+      The database locations can be selected with the options described above.
+      A database location must take one of the following forms:
     </p>
     <ul>
       <li>
@@ -47,7 +143,7 @@
           <code>ssl:<var>host</var>:<var>port</var></code>
         </p>
         <p>
-          The specified SSL/TLS <var>port</var> on the give <var>host</var>,
+          The specified SSL/TLS <var>port</var> on the given <var>host</var>,
           which can either be a DNS name (if built with unbound library) or an
           IP address (IPv4 or IPv6).  If <var>host</var> is an IPv6 address,
           then wrap <var>host</var> with square brackets, e.g.:
@@ -64,7 +160,7 @@
         <p>
           Connect to the given TCP <var>port</var> on <var>host</var>, where
           <var>host</var> can be a DNS name (if built with unbound library) or
-          IP address (IPv4 or IPv6). If <var>host</var> is an IPv6 address,
+          IP address (IPv4 or IPv6).  If <var>host</var> is an IPv6 address,
           then wrap <var>host</var> with square brackets,
           e.g.: <code>tcp:[::1]:6640</code>.
         </p>
@@ -80,37 +176,38 @@
     </ul>
 
     <p>
-      <code>ovn-controller-vtep</code> assumes it gets configuration
-      information from the following keys in the <code>Global</code>
-      table of the connected <code>hardware_vtep</code> database:
+      <code>ovn-controller-vtep</code> reads the following keys from the
+      <ref table="Global" db="hardware_vtep"/> table of the connected
+      hardware_vtep database:
     </p>
 
-    <p>
     <dl>
       <dt><code>other_config:ovn-match-northd-version</code></dt>
       <dd>
-        The boolean flag indicates if <code>ovn-controller-vtep</code> needs to
-        check <code>ovn-northd</code> version. If this flag is set to true and
-        the <code>ovn-northd's</code> version (reported in the Southbound
-        database) doesn't match with the <code>ovn-controller-vtep's</code>
-        internal version, then it will stop processing the southbound and
-        connected <code>hardware_vtep</code> database changes.
-        The default value is considered false if this option is not defined.
+        <p>
+          When this boolean value is <code>true</code>,
+          <code>ovn-controller-vtep</code> processes database changes only when
+          its internal version matches the northd internal version reported in
+          the OVN Southbound database.  When the versions do not match, it
+          continues monitoring both databases but does not update either one.
+          Default: <code>false</code>.
+        </p>
       </dd>
 
       <dt><code>other_config:ovn-remote-probe-interval</code></dt>
       <dd>
         <p>
           The inactivity probe interval of the connection to the OVN Southbound
-          database, in milliseconds. If the value is zero, it disables the
+          database, in milliseconds.  If the value is zero, it disables the
           connection keepalive feature.
         </p>
 
         <p>
-          If the value is nonzero, then it will be forced to a value of at
-          least 1000 ms.
+          If the value is not specified, the default is <code>0</code> ms when
+          the connection does not need probes and <code>5000</code> ms
+          otherwise.  If the value is nonzero, then it will be forced to a
+          value of at least 1000 ms.
         </p>
       </dd>
     </dl>
-    </p>
 </manpage>
