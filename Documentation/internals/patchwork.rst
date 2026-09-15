@@ -70,7 +70,7 @@ commands::
 
     $ git pw --help
 
-__ https://pypi.python.org/pypi/git-pw
+__ https://pypi.org/project/git-pw/
 __ https://patchwork.ozlabs.org/user/
 
 .. _pwclient:
