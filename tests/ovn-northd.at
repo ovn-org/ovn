@@ -12577,6 +12577,66 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([DNS options:ttl synchronization to SB])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+dns_uuid=$(ovn-nbctl create DNS records={})
+check ovn-nbctl set DNS $dns_uuid records:vm1.ovn.org="10.0.0.4"
+check ovn-nbctl set Logical_Switch sw0 dns_records="$dns_uuid"
+check ovn-nbctl --wait=sb sync
+
+wait_row_count sb:DNS 1
+sb_dns_uuid=$(fetch_column sb:DNS _uuid)
+
+# Without "options:ttl", the key is not present in SB.
+AT_CHECK([test -z "$(ovn-sbctl --if-exists get DNS $sb_dns_uuid options:ttl)"])
+
+# Valid values are synced to SB, including the boundary values 0 and the
+# RFC 2181 maximum of 2147483647.
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=30
+AT_CHECK([ovn-sbctl get DNS $sb_dns_uuid options:ttl], [0], [dnl
+"30"
+])
+
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=0
+AT_CHECK([ovn-sbctl get DNS $sb_dns_uuid options:ttl], [0], [dnl
+"0"
+])
+
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=2147483647
+AT_CHECK([ovn-sbctl get DNS $sb_dns_uuid options:ttl], [0], [dnl
+"2147483647"
+])
+
+# Invalid values are rejected and the key is removed from SB.
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=garbage
+AT_CHECK([test -z "$(ovn-sbctl --if-exists get DNS $sb_dns_uuid options:ttl)"])
+
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=-5
+AT_CHECK([test -z "$(ovn-sbctl --if-exists get DNS $sb_dns_uuid options:ttl)"])
+
+# A value above the 2^31-1 cap is out of range and rejected.
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=2147483648
+AT_CHECK([test -z "$(ovn-sbctl --if-exists get DNS $sb_dns_uuid options:ttl)"])
+
+# A value that overflows the 32-bit unsigned range is rejected as well.
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=99999999999
+AT_CHECK([test -z "$(ovn-sbctl --if-exists get DNS $sb_dns_uuid options:ttl)"])
+
+# Removing the option clears any previously synced value.
+check ovn-nbctl --wait=sb set DNS $dns_uuid options:ttl=30
+AT_CHECK([ovn-sbctl get DNS $sb_dns_uuid options:ttl], [0], [dnl
+"30"
+])
+check ovn-nbctl --wait=sb remove DNS $dns_uuid options ttl
+AT_CHECK([test -z "$(ovn-sbctl --if-exists get DNS $sb_dns_uuid options:ttl)"])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL/Meter incremental processing - no northd recompute])
 ovn_start
 

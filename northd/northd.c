@@ -21709,6 +21709,28 @@ sync_dns_entries(struct ovsdb_idl_txn *ovnsb_txn,
                                        "ovn-owned", false);
         smap_replace(&options, "ovn-owned",
                  ovn_owned? "true" : "false");
+
+        /* Sync the per-row TTL option to SB.  Only values in the range
+         * 0..DNS_MAX_RR_TTL are valid.
+         */
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        const char *ttl = smap_get(&dns_info->nb_dns->options, "ttl");
+        if (ttl) {
+            unsigned int ttl_val;
+            if (str_to_uint(ttl, 10, &ttl_val) && ttl_val <= DNS_MAX_RR_TTL) {
+                smap_replace(&options, "ttl", ttl);
+            } else {
+                VLOG_WARN_RL(&rl, "Ignoring invalid \"options:ttl\" %s "
+                                  "(expected 0-%"PRIu32") for DNS record "
+                                  UUID_FMT, ttl, DNS_MAX_RR_TTL,
+                                  UUID_ARGS(&dns_info->nb_dns->header_.uuid));
+                smap_remove(&options, "ttl");
+            }
+        } else {
+            /* Remove any stale value so the default TTL is used. */
+            smap_remove(&options, "ttl");
+        }
+
         sbrec_dns_set_options(dns_info->sb_dns, &options);
         smap_destroy(&options);
 

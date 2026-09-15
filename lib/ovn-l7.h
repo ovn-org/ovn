@@ -52,6 +52,7 @@ BUILD_ASSERT_DECL(BFD_PACKET_LEN == sizeof(struct bfd_msg));
 
 #define DNS_CLASS_IN            0x01
 #define DNS_DEFAULT_RR_TTL      3600
+#define DNS_MAX_RR_TTL          2147483647U /* 2^31-1, per RFC 2181. */
 
 /* Generic options map which is used to store dhcpv4 opts and dhcpv6 opts. */
 struct gen_opts_map {

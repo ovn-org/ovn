@@ -5015,6 +5015,15 @@ tcp.flags = RST;
       will be answered locally by either an IP address or
       <code>DNS rejection</code>.
 </column>
+
+    <column name="options" key="ttl">
+      The time-to-live (in seconds) set in the TTL field of DNS replies for
+      the records in this row.  This is synced automatically by ovn-northd
+      from the corresponding
+      <ref table="DNS" column="options" key="ttl" db="OVN_Northbound"/>
+      option and should not be set directly.
+    </column>
+
     <group title="Common Columns">
       <column name="external_ids">
         See <em>External IDs</em> at the beginning of this document.

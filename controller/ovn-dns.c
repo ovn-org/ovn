@@ -22,6 +22,7 @@
 #include "openvswitch/vlog.h"
 
 /* OVN includes. */
+#include "lib/ovn-l7.h"
 #include "lib/ovn-sb-idl.h"
 #include "ovn-dns.h"
 
@@ -112,12 +113,14 @@ ovn_dns_update_cache(const struct sbrec_dns_table *dns_table)
 }
 
 const char *
-ovn_dns_lookup(const char *query_name, uint64_t dp_key, bool *ovn_owned)
+ovn_dns_lookup(const char *query_name, uint64_t dp_key, bool *ovn_owned,
+               uint32_t *ttl)
 {
     const char *answer_data = NULL;
     struct dns_data *dns_data;
 
     *ovn_owned = false;
+    *ttl = DNS_DEFAULT_RR_TTL;
 
     CMAP_FOR_EACH (dns_data, cmap_node, &dns_cache_) {
         for (size_t i = 0; i < dns_data->n_dps; i++) {
@@ -131,6 +134,8 @@ ovn_dns_lookup(const char *query_name, uint64_t dp_key, bool *ovn_owned)
                 if (answer_data) {
                     *ovn_owned = smap_get_bool(&dns_data->options, "ovn-owned",
                                                false);
+                    *ttl = smap_get_uint(&dns_data->options, "ttl",
+                                         DNS_DEFAULT_RR_TTL);
                     break;
                 }
             }

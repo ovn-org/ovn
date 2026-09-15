@@ -24,6 +24,6 @@ void ovn_dns_cache_destroy(void);
 void ovn_dns_sync_cache(const struct sbrec_dns_table *);
 void ovn_dns_update_cache(const struct sbrec_dns_table *);
 const char *ovn_dns_lookup(const char *query_name, uint64_t dp_key,
-                           bool *ovn_owned);
+                           bool *ovn_owned, uint32_t *ttl);
 
 #endif /* OVN_DNS_H */

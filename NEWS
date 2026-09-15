@@ -1,5 +1,7 @@
 Post v26.09.0
 --------------
+   - Added a new "options:ttl" key on the NB DNS table to make the TTL of
+     DNS replies from OVN's native DNS resolver configurable per row.
    - Removed implementations of the commit_ecmp_nh, chk_ecmp_nh, and
      chk_ecmp_nh_mac actions from the code.
    - Mark tunnel ports as transient (other_config:transient=true) when the

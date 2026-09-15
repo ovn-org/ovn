@@ -3394,22 +3394,22 @@ put_be32(struct ofpbuf *buf, ovs_be32 x)
 static void
 dns_build_base_answer(
     struct ofpbuf *dns_answer, const uint8_t *in_queryname,
-    uint16_t query_length, int query_type)
+    uint16_t query_length, int query_type, uint32_t ttl)
 {
     ofpbuf_put(dns_answer, in_queryname, query_length);
     put_be16(dns_answer, htons(query_type));
     put_be16(dns_answer, htons(DNS_CLASS_IN));
-    put_be32(dns_answer, htonl(DNS_DEFAULT_RR_TTL));
+    put_be32(dns_answer, htonl(ttl));
 }
 
 /* Populates dns_answer struct with a TYPE A answer. */
 static void
 dns_build_a_answer(
     struct ofpbuf *dns_answer, const uint8_t *in_queryname,
-    uint16_t query_length, const ovs_be32 addr)
+    uint16_t query_length, const ovs_be32 addr, uint32_t ttl)
 {
     dns_build_base_answer(dns_answer, in_queryname, query_length,
-                          DNS_QUERY_TYPE_A);
+                          DNS_QUERY_TYPE_A, ttl);
     put_be16(dns_answer, htons(sizeof(ovs_be32)));
     put_be32(dns_answer, addr);
 }
@@ -3418,10 +3418,10 @@ dns_build_a_answer(
 static void
 dns_build_aaaa_answer(
     struct ofpbuf *dns_answer, const uint8_t *in_queryname,
-    uint16_t query_length, const struct in6_addr *addr)
+    uint16_t query_length, const struct in6_addr *addr, uint32_t ttl)
 {
     dns_build_base_answer(dns_answer, in_queryname, query_length,
-                          DNS_QUERY_TYPE_AAAA);
+                          DNS_QUERY_TYPE_AAAA, ttl);
     put_be16(dns_answer, htons(sizeof(*addr)));
     ofpbuf_put(dns_answer, addr, sizeof(*addr));
 }
@@ -3430,10 +3430,10 @@ dns_build_aaaa_answer(
 static void
 dns_build_ptr_answer(
     struct ofpbuf *dns_answer, const uint8_t *in_queryname,
-    uint16_t query_length, const char *answer_data)
+    uint16_t query_length, const char *answer_data, uint32_t ttl)
 {
     dns_build_base_answer(dns_answer, in_queryname, query_length,
-                          DNS_QUERY_TYPE_PTR);
+                          DNS_QUERY_TYPE_PTR, ttl);
 
     size_t encoded_len = 0;
     char *encoded = encode_fqdn_string(answer_data, &encoded_len);
@@ -3586,8 +3586,9 @@ pinctrl_handle_dns_lookup(
 
     uint64_t dp_key = ntohll(pin->flow_metadata.flow.metadata);
     bool ovn_owned = false;
+    uint32_t ttl = DNS_DEFAULT_RR_TTL;
     const char *answer_data = ovn_dns_lookup(ds_cstr(&query_name), dp_key,
-                                             &ovn_owned);
+                                             &ovn_owned, &ttl);
     ds_destroy(&query_name);
     if (!answer_data) {
         COVERAGE_INC(dns_cache_miss);
@@ -3601,7 +3602,8 @@ pinctrl_handle_dns_lookup(
     struct ofpbuf dns_answer = OFPBUF_STUB_INITIALIZER(dns_ans_stub);
 
     if (query_type == DNS_QUERY_TYPE_PTR) {
-        dns_build_ptr_answer(&dns_answer, in_queryname, idx, answer_data);
+        dns_build_ptr_answer(&dns_answer, in_queryname, idx, answer_data,
+                             ttl);
         ancount++;
     } else {
         struct lport_addresses ip_addrs;
@@ -3617,7 +3619,7 @@ pinctrl_handle_dns_lookup(
             query_type == DNS_QUERY_TYPE_ANY) {
             for (size_t i = 0; i < ip_addrs.n_ipv4_addrs; i++) {
                 ovs_be32 addr = ip_addrs.ipv4_addrs[ipv4_order[i]].addr;
-                dns_build_a_answer(&dns_answer, in_queryname, idx, addr);
+                dns_build_a_answer(&dns_answer, in_queryname, idx, addr, ttl);
                 ancount++;
             }
         }
@@ -3627,7 +3629,8 @@ pinctrl_handle_dns_lookup(
             for (size_t i = 0; i < ip_addrs.n_ipv6_addrs; i++) {
                 struct in6_addr *addr =
                     &ip_addrs.ipv6_addrs[ipv6_order[i]].addr;
-                dns_build_aaaa_answer(&dns_answer, in_queryname, idx, addr);
+                dns_build_aaaa_answer(&dns_answer, in_queryname, idx, addr,
+                                      ttl);
                 ancount++;
             }
         }

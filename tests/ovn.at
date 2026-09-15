@@ -12678,6 +12678,144 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([dns lookup : configurable TTL])
+CHECK_SCAPY
+ovn_start
+
+check ovn-nbctl ls-add ls \
+    -- lsp-add ls lsp \
+    -- lsp-set-addresses lsp "00:00:00:00:00:01 10.0.0.1"
+
+d=$(ovn-nbctl create DNS records={})
+check ovn-nbctl set DNS $d records:foo.ovn.org="10.0.0.42 aef0::42"
+check ovn-nbctl set DNS $d records:42.0.0.10.in-addr.arpa="foo.ovn.org"
+check ovn-nbctl set Logical_switch ls dns_records="$d"
+
+net_add n1
+sim_add hv1
+
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=lsp \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dns_req_a=$(fmt_pkt "Ether(dst='00:00:00:00:00:02', src='00:00:00:00:00:01') / \
+                    IP(dst='10.0.0.254', src='10.0.0.1') / \
+                    UDP(sport=42424, dport=53) / \
+                    DNS(rd=1, qd=DNSQR(qname='foo.ovn.org', qtype='A'))")
+dns_req_aaaa=$(fmt_pkt "Ether(dst='00:00:00:00:00:02', src='00:00:00:00:00:01') / \
+                       IP(dst='10.0.0.254', src='10.0.0.1') / \
+                       UDP(sport=42424, dport=53) / \
+                       DNS(rd=1, qd=DNSQR(qname='foo.ovn.org', qtype='AAAA'))")
+dns_req_ptr=$(fmt_pkt "Ether(dst='00:00:00:00:00:02', src='00:00:00:00:00:01') / \
+                      IP(dst='10.0.0.254', src='10.0.0.1') / \
+                      UDP(sport=42424, dport=53) / \
+                      DNS(rd=1, qd=DNSQR(qname='42.0.0.10.in-addr.arpa', qtype='PTR'))")
+dns_req_any=$(fmt_pkt "Ether(dst='00:00:00:00:00:02', src='00:00:00:00:00:01') / \
+                       IP(dst='10.0.0.254', src='10.0.0.1') / \
+                       UDP(sport=42424, dport=53) / \
+                       DNS(rd=1, qd=DNSQR(qname='foo.ovn.org', qtype='ALL'))")
+
+# Without "options:ttl", the reply uses the default TTL of 3600.
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                     IP(dst='10.0.0.1', src='10.0.0.254') / \
+                     UDP(sport=53, dport=42424, chksum=0) / \
+                     DNS(qr=1, qd=DNSQR(qname='foo.ovn.org', qtype='A'), \
+                         an=DNSRR(rrname='foo.ovn.org', type='A', ttl=3600, \
+                                  rdata='10.0.0.42'))")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_a}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+# options:ttl=30 is applied to the A, AAAA and PTR replies alike.
+check ovn-nbctl --wait=hv set DNS $d options:ttl=30
+
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                     IP(dst='10.0.0.1', src='10.0.0.254') / \
+                     UDP(sport=53, dport=42424, chksum=0) / \
+                     DNS(qr=1, qd=DNSQR(qname='foo.ovn.org', qtype='A'), \
+                         an=DNSRR(rrname='foo.ovn.org', type='A', ttl=30, \
+                                  rdata='10.0.0.42'))")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_a}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                     IP(dst='10.0.0.1', src='10.0.0.254') / \
+                     UDP(sport=53, dport=42424, chksum=0) / \
+                     DNS(qr=1, qd=DNSQR(qname='foo.ovn.org', qtype='AAAA'), \
+                         an=DNSRR(rrname='foo.ovn.org', type='AAAA', ttl=30, \
+                                  rdata='aef0::42'))")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_aaaa}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                     IP(dst='10.0.0.1', src='10.0.0.254') / \
+                     UDP(sport=53, dport=42424, chksum=0) / \
+                     DNS(qr=1, qd=DNSQR(qname='42.0.0.10.in-addr.arpa', qtype='PTR'), \
+                         an=DNSRR(rrname='42.0.0.10.in-addr.arpa', type='PTR', \
+                                  ttl=30, rdata='foo.ovn.org'))")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_ptr}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+# The ANY reply carries the A and AAAA RRs, each with the per-row TTL.
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                      IP(dst='10.0.0.1', src='10.0.0.254') / \
+                      UDP(sport=53, dport=42424, chksum=0) / \
+                      DNS(qr=1, qd=DNSQR(qname='foo.ovn.org', qtype='ALL'), \
+                          an=[[DNSRR(rrname='foo.ovn.org', type='A', \
+                                    ttl=30, rdata='10.0.0.42'), \
+                               DNSRR(rrname='foo.ovn.org', type='AAAA', \
+                                    ttl=30, rdata='aef0::42')]])")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_any}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+# Removing the option restores the default TTL of 3600.
+check ovn-nbctl --wait=hv remove DNS $d options ttl
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                     IP(dst='10.0.0.1', src='10.0.0.254') / \
+                     UDP(sport=53, dport=42424, chksum=0) / \
+                     DNS(qr=1, qd=DNSQR(qname='foo.ovn.org', qtype='A'), \
+                         an=DNSRR(rrname='foo.ovn.org', type='A', ttl=3600, \
+                                  rdata='10.0.0.42'))")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_a}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+# options:ttl=0 is honored (a reply TTL of 0).
+check ovn-nbctl --wait=hv set DNS $d options:ttl=0
+dns_reply=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:02') / \
+                     IP(dst='10.0.0.1', src='10.0.0.254') / \
+                     UDP(sport=53, dport=42424, chksum=0) / \
+                     DNS(qr=1, qd=DNSQR(qname='foo.ovn.org', qtype='A'), \
+                         an=DNSRR(rrname='foo.ovn.org', type='A', ttl=0, \
+                                  rdata='10.0.0.42'))")
+echo ${dns_reply} > expected
+as hv1 reset_pcap_file hv1-vif1 hv1/vif1
+as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 ${dns_req_a}
+OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv1/vif1-tx.pcap], [expected])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port])
 ovn_start
 
