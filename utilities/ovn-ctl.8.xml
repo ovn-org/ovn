@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manpage program="ovn-ctl" section="8" title="ovn-ctl">
     <h1>Name</h1>
-    <p>ovn-ctl -- Open Virtual Network northbound daemon lifecycle utility</p>
+    <p>ovn-ctl -- controls Open Virtual Network daemons.</p>
 
     <h1>Synopsis</h1>
     <p>
@@ -17,56 +17,185 @@
 
     <dl>
       <dt><code>start_northd</code></dt>
+      <dd><p>Starts ovn-northd.</p></dd>
       <dt><code>start_controller</code></dt>
+      <dd><p>Starts ovn-controller.</p></dd>
       <dt><code>start_controller_vtep</code></dt>
+      <dd><p>Starts ovn-controller-vtep.</p></dd>
       <dt><code>start_ic</code></dt>
-      <dt><code>stop_northd</code></dt>
-      <dt><code>stop_controller</code></dt>
-      <dt><code>stop_controller_vtep</code></dt>
-      <dt><code>stop_ic</code></dt>
-      <dt><code>restart_northd</code></dt>
-      <dt><code>restart_controller</code></dt>
-      <dt><code>restart_controller_vtep</code></dt>
-      <dt><code>restart_ic</code></dt>
-      <dt><code>promote_ovnnb</code></dt>
-      <dt><code>promote_ovnsb</code></dt>
-      <dt><code>demote_ovnnb</code></dt>
-      <dt><code>demote_ovnsb</code></dt>
-      <dt><code>status_ovnnb</code></dt>
-      <dt><code>status_ovnsb</code></dt>
+      <dd><p>Starts ovn-ic.</p></dd>
       <dt><code>start_ovsdb</code></dt>
+      <dd>
+        <p>Starts the OVN Northbound and Southbound database servers.</p>
+      </dd>
       <dt><code>start_nb_ovsdb</code></dt>
+      <dd><p>Starts the OVN Northbound database server.</p></dd>
       <dt><code>start_sb_ovsdb</code></dt>
-      <dt><code>stop_ovsdb</code></dt>
-      <dt><code>stop_nb_ovsdb</code></dt>
-      <dt><code>stop_sb_ovsdb</code></dt>
-      <dt><code>restart_ovsdb</code></dt>
-      <dt><code>run_nb_ovsdb</code></dt>
-      <dt><code>run_sb_ovsdb</code></dt>
-      <dt><code>promote_ic_nb</code></dt>
-      <dt><code>promote_ic_sb</code></dt>
-      <dt><code>demote_ic_nb</code></dt>
-      <dt><code>demote_ic_sb</code></dt>
-      <dt><code>status_ic_nb</code></dt>
-      <dt><code>status_ic_sb</code></dt>
+      <dd><p>Starts the OVN Southbound database server.</p></dd>
+      <dt><code>start_sb_relay_ovsdb</code></dt>
+      <dd><p>Starts the OVN Southbound database relay server.</p></dd>
       <dt><code>start_ic_ovsdb</code></dt>
+      <dd>
+        <p>Starts the OVN interconnection Northbound and
+        Southbound database servers.</p>
+      </dd>
       <dt><code>start_ic_nb_ovsdb</code></dt>
+      <dd>
+        <p>Starts the OVN interconnection Northbound database server.</p>
+      </dd>
       <dt><code>start_ic_sb_ovsdb</code></dt>
-      <dt><code>stop_ic_ovsdb</code></dt>
-      <dt><code>stop_ic_nb_ovsdb</code></dt>
-      <dt><code>stop_ic_sb_ovsdb</code></dt>
-      <dt><code>restart_ic_ovsdb</code></dt>
-      <dt><code>run_ic_nb_ovsdb</code></dt>
-      <dt><code>run_ic_sb_ovsdb</code></dt>
+      <dd>
+        <p>Starts the OVN interconnection Southbound database server.</p>
+      </dd>
       <dt><code>start_ovnbr_ovsdb</code></dt>
-      <dt><code>start_br_controller</code></dt>
+      <dd>
+        <p>Starts the OVN bridge controller database server.</p>
+      </dd>
+      <dt><code>start_ovnbr_controller</code></dt>
+      <dd><p>Starts the OVN bridge controller.</p></dd>
+      <dt><code>stop_northd</code></dt>
+      <dd><p>Stops ovn-northd.</p></dd>
+      <dt><code>stop_controller</code></dt>
+      <dd><p>Stops ovn-controller.</p></dd>
+      <dt><code>stop_controller_vtep</code></dt>
+      <dd><p>Stops ovn-controller-vtep.</p></dd>
+      <dt><code>stop_ic</code></dt>
+      <dd><p>Stops ovn-ic.</p></dd>
+      <dt><code>stop_ovsdb</code></dt>
+      <dd><p>Stops the OVN Northbound and Southbound database servers.</p></dd>
+      <dt><code>stop_nb_ovsdb</code></dt>
+      <dd><p>Stops the OVN Northbound database server.</p></dd>
+      <dt><code>stop_sb_ovsdb</code></dt>
+      <dd><p>Stops the OVN Southbound database server.</p></dd>
+      <dt><code>stop_sb_relay_ovsdb</code></dt>
+      <dd><p>Stops the OVN Southbound database relay server.</p></dd>
+      <dt><code>stop_ic_ovsdb</code></dt>
+      <dd><p>
+        Stops the OVN interconnection Northbound and Southbound database
+        servers.
+      </p></dd>
+      <dt><code>stop_ic_nb_ovsdb</code></dt>
+      <dd><p>Stops the OVN interconnection Northbound database server.</p></dd>
+      <dt><code>stop_ic_sb_ovsdb</code></dt>
+      <dd><p>Stops the OVN interconnection Southbound database server.</p></dd>
       <dt><code>stop_ovnbr_ovsdb</code></dt>
-      <dt><code>stop_br_controller</code></dt>
+      <dd><p>Stops the OVN bridge controller database server.</p></dd>
+      <dt><code>stop_ovnbr_controller</code></dt>
+      <dd><p>Stops the OVN bridge controller.</p></dd>
+      <dt><code>restart_northd</code></dt>
+      <dd><p>Restarts ovn-northd.</p></dd>
+      <dt><code>restart_controller</code></dt>
+      <dd><p>Restarts ovn-controller.</p></dd>
+      <dt><code>restart_controller_vtep</code></dt>
+      <dd><p>Restarts ovn-controller-vtep.</p></dd>
+      <dt><code>restart_ic</code></dt>
+      <dd><p>Restarts ovn-ic.</p></dd>
+      <dt><code>restart_ovsdb</code></dt>
+      <dd>
+        <p>Restarts the OVN Northbound and Southbound database servers.</p>
+      </dd>
+      <dt><code>restart_nb_ovsdb</code></dt>
+      <dd><p>Restarts the OVN Northbound database server.</p></dd>
+      <dt><code>restart_sb_ovsdb</code></dt>
+      <dd><p>Restarts the OVN Southbound database server.</p></dd>
+      <dt><code>restart_sb_relay_ovsdb</code></dt>
+      <dd><p>Restarts the OVN Southbound database relay server.</p></dd>
+      <dt><code>restart_ic_ovsdb</code></dt>
+      <dd><p>
+        Restarts the OVN interconnection Northbound and Southbound database
+        servers.
+      </p></dd>
+      <dt><code>restart_ic_nb_ovsdb</code></dt>
+      <dd>
+        <p>Restarts the OVN interconnection Northbound database server.</p>
+      </dd>
+      <dt><code>restart_ic_sb_ovsdb</code></dt>
+      <dd>
+        <p>Restarts the OVN interconnection Southbound database server.</p>
+      </dd>
       <dt><code>restart_ovnbr_ovsdb</code></dt>
-      <dt><code>restart_br_controller</code></dt>
+      <dd><p>Restarts the OVN bridge controller database server.</p></dd>
+      <dt><code>restart_ovnbr_controller</code></dt>
+      <dd><p>Restarts the OVN bridge controller.</p></dd>
+      <dt><code>promote_ovnnb</code></dt>
+      <dd><p>Promotes the OVN Northbound database server.</p></dd>
+      <dt><code>promote_ovnsb</code></dt>
+      <dd><p>Promotes the OVN Southbound database server.</p></dd>
+      <dt><code>demote_ovnnb</code></dt>
+      <dd><p>Demotes the OVN Northbound database server.</p></dd>
+      <dt><code>demote_ovnsb</code></dt>
+      <dd><p>Demotes the OVN Southbound database server.</p></dd>
+      <dt><code>status_ovnnb</code></dt>
+      <dd><p>Reports the status of the OVN Northbound database server.</p></dd>
+      <dt><code>status_ovnsb</code></dt>
+      <dd><p>Reports the status of the OVN Southbound database server.</p></dd>
+      <dt><code>status_northd</code></dt>
+      <dd><p>Reports whether northd is running.</p></dd>
+      <dt><code>status_ovsdb</code></dt>
+      <dd><p>
+        Reports whether the OVN Northbound and Southbound database servers
+        are running.
+      </p></dd>
+      <dt><code>status_controller</code></dt>
+      <dd><p>Reports whether ovn-controller is running.</p></dd>
+      <dt><code>status_controller_vtep</code></dt>
+      <dd><p>Reports whether ovn-controller-vtep is running.</p></dd>
+      <dt><code>status_ic</code></dt>
+      <dd><p>Reports whether ovn-ic is running.</p></dd>
+      <dt><code>status_ic_ovsdb</code></dt>
+      <dd><p>
+        Reports whether the OVN interconnection database servers are running.
+      </p></dd>
       <dt><code>status_ovnbr_ovsdb</code></dt>
-      <dt><code>status_br_controller</code></dt>
+      <dd>
+        <p>Reports the status of the OVN bridge controller database server.</p>
+      </dd>
+      <dt><code>status_ovnbr_controller</code></dt>
+      <dd><p>Reports whether the OVN bridge controller is running.</p></dd>
+      <dt><code>promote_ic_nb</code></dt>
+      <dd><p>Promotes the OVN IC-NB database server.</p></dd>
+      <dt><code>promote_ic_sb</code></dt>
+      <dd><p>Promotes the OVN IC-SB database server.</p></dd>
+      <dt><code>demote_ic_nb</code></dt>
+      <dd><p>
+        Attempts to demote the OVN IC-NB database server.  The current
+        implementation does not target the server, so the operation does not
+        complete.
+      </p></dd>
+      <dt><code>demote_ic_sb</code></dt>
+      <dd><p>
+        Attempts to demote the OVN IC-SB database server.  The current
+        implementation does not target the server, so the operation does not
+        complete.
+      </p></dd>
+      <dt><code>status_ic_nb</code></dt>
+      <dd><p>Reports the status of the OVN IC-NB database server.</p></dd>
+      <dt><code>status_ic_sb</code></dt>
+      <dd><p>Reports the status of the OVN IC-SB database server.</p></dd>
+      <dt><code>run_ic_nb_ovsdb</code></dt>
+      <dd><p>Runs the OVN IC-NB database server in the foreground.</p></dd>
+      <dt><code>run_ic_sb_ovsdb</code></dt>
+      <dd><p>Runs the OVN IC-SB database server in the foreground.</p></dd>
+      <dt><code>run_nb_ovsdb</code></dt>
+      <dd>
+        <p>Runs the OVN Northbound database server in the foreground.</p>
+      </dd>
+      <dt><code>run_sb_ovsdb</code></dt>
+      <dd>
+        <p>Runs the OVN Southbound database server in the foreground.</p>
+      </dd>
+      <dt><code>run_sb_relay_ovsdb</code></dt>
+      <dd><p>
+        Runs the OVN Southbound database relay server in the foreground and
+        blocks until it exits.
+      </p></dd>
       <dt><code>run_ovnbr_ovsdb</code></dt>
+      <dd><p>
+        Runs the OVN bridge controller database server in the foreground and
+        blocks until it exits.
+      </p></dd>
+      <dt><code>help</code></dt>
+      <dd><p>Displays usage information.</p></dd>
     </dl>
 
     <h1>Options</h1>
@@ -415,5 +544,5 @@
 
     <h2>Run OVN bridge controller services on a host already running OVS</h2>
     <p><code># ovn-ctl start_ovnbr_ovsdb</code></p>
-    <p><code># ovn-ctl start_br_controller</code></p>
+    <p><code># ovn-ctl start_ovnbr_controller</code></p>
 </manpage>
