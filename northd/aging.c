@@ -217,6 +217,18 @@ exit:
     return result;
 }
 
+bool
+mac_binding_age_threshold_is_valid(const char *opt)
+{
+    struct threshold_config config;
+    if (!parse_aging_threshold(opt, &config)) {
+        return false;
+    }
+
+    threshold_config_destroy(&config);
+    return true;
+}
+
 static unsigned int
 find_threshold_for_ip(const char *ip_str,
                       const struct threshold_config *config)
@@ -386,6 +398,29 @@ mac_binding_aging_run_for_datapath(const struct sbrec_datapath_binding *dp,
     sbrec_mac_binding_index_destroy_row(mb_index_row);
 }
 
+static void
+mac_binding_aging_run_for_scope(
+    const struct sbrec_mac_binding_scope *scope,
+    struct ovsdb_idl_index *shared_mb_by_scope,
+    struct aging_context *ctx)
+{
+    struct sbrec_shared_mac_binding *target =
+        sbrec_shared_mac_binding_index_init_row(shared_mb_by_scope);
+    sbrec_shared_mac_binding_index_set_scope(target, scope);
+
+    const struct sbrec_shared_mac_binding *mb;
+    SBREC_SHARED_MAC_BINDING_FOR_EACH_EQUAL (
+        mb, target, shared_mb_by_scope) {
+        if (aging_context_handle_timestamp(ctx, mb->timestamp, mb->ip)) {
+            sbrec_shared_mac_binding_delete(mb);
+            if (aging_context_is_at_limit(ctx)) {
+                break;
+            }
+        }
+    }
+    sbrec_shared_mac_binding_index_destroy_row(target);
+}
+
 enum engine_node_state
 en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
 {
@@ -404,6 +439,10 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
     struct ovsdb_idl_index *sbrec_mac_binding_by_datapath =
         engine_ovsdb_node_get_index(engine_get_input("SB_mac_binding", node),
                                     "sbrec_mac_binding_by_datapath");
+    struct ovsdb_idl_index *shared_mb_by_scope =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_shared_mac_binding", node),
+            "sbrec_shared_mac_binding_by_scope");
 
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
@@ -431,6 +470,27 @@ en_mac_binding_aging_run(struct engine_node *node, void *data OVS_UNUSED)
             /* Schedule the next run after specified delay. */
             ctx.next_wake_ms = AGING_BULK_REMOVAL_DELAY_MSEC;
             break;
+        }
+    }
+
+    if (!aging_context_is_at_limit(&ctx)) {
+        const struct sbrec_mac_binding_scope_table *scope_table =
+            EN_OVSDB_GET(engine_get_input("SB_mac_binding_scope", node));
+        const struct sbrec_mac_binding_scope *scope;
+        SBREC_MAC_BINDING_SCOPE_TABLE_FOR_EACH (scope, scope_table) {
+            struct threshold_config threshold_config;
+            if (!parse_aging_threshold(scope->mac_binding_age_threshold,
+                                       &threshold_config)) {
+                continue;
+            }
+
+            aging_context_set_threshold(&ctx, &threshold_config);
+            mac_binding_aging_run_for_scope(scope, shared_mb_by_scope, &ctx);
+            threshold_config_destroy(&threshold_config);
+            if (aging_context_is_at_limit(&ctx)) {
+                ctx.next_wake_ms = AGING_BULK_REMOVAL_DELAY_MSEC;
+                break;
+            }
         }
     }
 

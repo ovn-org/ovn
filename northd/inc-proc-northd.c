@@ -30,6 +30,7 @@
 #include "openvswitch/vlog.h"
 #include "inc-proc-northd.h"
 #include "en-global-config.h"
+#include "en-mac-binding-scope.h"
 #include "en-lb-data.h"
 #include "en-lr-stateful.h"
 #include "en-lr-nat.h"
@@ -76,7 +77,8 @@ static unixctl_cb_func chassis_features_list;
     NB_NODE(network_function) \
     NB_NODE(network_function_group) \
     NB_NODE(logical_switch_port_health_check) \
-    NB_NODE(logical_router_static_route)
+    NB_NODE(logical_router_static_route) \
+    NB_NODE(mac_binding_scope)
 
     enum nb_engine_node {
 #define NB_NODE(NAME) NB_##NAME,
@@ -122,7 +124,9 @@ static unixctl_cb_func chassis_features_list;
     SB_NODE(acl_id) \
     SB_NODE(advertised_route) \
     SB_NODE(learned_route) \
-    SB_NODE(advertised_mac_binding)
+    SB_NODE(advertised_mac_binding) \
+    SB_NODE(mac_binding_scope) \
+    SB_NODE(shared_mac_binding)
 
 enum sb_engine_node {
 #define SB_NODE(NAME) SB_##NAME,
@@ -195,6 +199,7 @@ static ENGINE_NODE(datapath_sync, CLEAR_TRACKED_DATA, SB_WRITE);
 static ENGINE_NODE(datapath_synced_logical_router, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(datapath_synced_logical_switch, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(ic_learned_svc_monitors, SB_WRITE);
+static ENGINE_NODE(mac_binding_scope, SB_WRITE);
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -299,6 +304,17 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_port_group,
                      northd_nb_port_group_handler);
 
+    engine_add_input(&en_mac_binding_scope, &en_northd, NULL);
+    engine_add_input(&en_mac_binding_scope, &en_global_config, NULL);
+    engine_add_input(&en_mac_binding_scope, &en_nb_mac_binding_scope, NULL);
+    engine_add_input(&en_mac_binding_scope, &en_sb_mac_binding_scope, NULL);
+    engine_add_input(&en_mac_binding_scope, &en_sb_shared_mac_binding,
+                     engine_noop_handler);
+    engine_add_input(&en_mac_binding_scope, &en_sb_mac_binding,
+                     engine_noop_handler);
+    engine_add_input(&en_mac_binding_scope, &en_sb_port_binding,
+                     engine_noop_handler);
+
     /* No need for an explicit handler for the SB datapath and
      * SB IP Multicast changes.*/
     engine_add_input(&en_northd, &en_sb_ip_multicast, engine_noop_handler);
@@ -316,6 +332,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_ls_stateful, &en_nb_acl, ls_stateful_acl_handler);
 
     engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_sb_shared_mac_binding, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_sb_mac_binding_scope, NULL);
+    engine_add_input(&en_mac_binding_aging, &en_mac_binding_scope, NULL);
     engine_add_input(&en_mac_binding_aging, &en_northd, NULL);
     engine_add_input(&en_mac_binding_aging, &en_mac_binding_aging_waker, NULL);
     engine_add_input(&en_mac_binding_aging, &en_global_config,
@@ -423,6 +442,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
      */
     engine_add_input(&en_lflow, &en_datapath_sync, engine_noop_handler);
     engine_add_input(&en_lflow, &en_northd, lflow_northd_handler);
+    engine_add_input(&en_lflow, &en_mac_binding_scope, NULL);
     /* No need for an explicit handler for port_groups in the en_lflow node.
      * Stateful configuration changes are passed through the en_ls_stateful
      * input dependancy. Still needs access to en_port_port_group (input)
@@ -524,6 +544,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
         = mac_binding_by_datapath_index_create(sb->idl);
     struct ovsdb_idl_index *sbrec_mac_binding_by_lport_ip
         = mac_binding_by_lport_ip_index_create(sb->idl);
+    struct ovsdb_idl_index *shared_mac_binding_by_scope =
+        ovsdb_idl_index_create1(sb->idl,
+                                &sbrec_shared_mac_binding_col_scope);
     struct ovsdb_idl_index *fdb_by_dp_key =
         ovsdb_idl_index_create1(sb->idl, &sbrec_fdb_col_dp_key);
 
@@ -553,6 +576,9 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_mac_binding,
                                 "sbrec_mac_binding_by_lport_ip",
                                 sbrec_mac_binding_by_lport_ip);
+    engine_ovsdb_node_add_index(&en_sb_shared_mac_binding,
+                                "sbrec_shared_mac_binding_by_scope",
+                                shared_mac_binding_by_scope);
     engine_ovsdb_node_add_index(&en_sb_fdb,
                                 "fdb_by_dp_key",
                                 fdb_by_dp_key);
@@ -694,6 +720,8 @@ chassis_features_list(struct unixctl_conn *conn, int argc OVS_UNUSED,
                   features->ct_label_flush ? "true" : "false");
     ds_put_format(&ds, "ct_state_save: %s\n",
                   features->ct_state_save ? "true" : "false");
+    ds_put_format(&ds, "shared_mac_binding: %s\n",
+                  features->shared_mac_binding ? "true" : "false");
 
     unixctl_command_reply(conn, ds_cstr(&ds));
     ds_destroy(&ds);

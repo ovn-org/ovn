@@ -20,6 +20,7 @@ struct chassis_features {
     bool ct_next_zone;
     bool ct_label_flush;
     bool ct_state_save;
+    bool shared_mac_binding;
 };
 
 struct global_config_tracked_data {

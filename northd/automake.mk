@@ -20,6 +20,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-ecmp-nexthop.h \
 	northd/en-global-config.c \
 	northd/en-global-config.h \
+	northd/en-mac-binding-scope.c \
+	northd/en-mac-binding-scope.h \
 	northd/en-northd.c \
 	northd/en-northd.h \
 	northd/en-lflow.c \

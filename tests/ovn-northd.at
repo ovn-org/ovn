@@ -9382,6 +9382,110 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([LR shared MAC binding scopes])
+ovn_start
+
+check ovn-sbctl chassis-add gw geneve 127.0.0.1
+
+check ovn-nbctl \
+    -- ls-add ext0 \
+    -- lsp-add-localnet-port ext0 ln0 physnet \
+    -- lr-add lr0 \
+    -- lrp-add lr0 rp0 00:00:00:00:00:01 192.0.2.1/24 fd00::1/64 \
+    -- lsp-add-router-port ext0 ext0-rp0 rp0 \
+    -- ls-add ext1 \
+    -- lsp-add-localnet-port ext1 ln1 physnet \
+    -- lr-add lr1 \
+    -- lrp-add lr1 rp1 00:00:00:00:00:02 192.0.2.2/24 fd00::2/64 \
+    -- lsp-add-router-port ext1 ext1-rp1 rp1
+check ovn-nbctl lrp-set-gateway-chassis rp0 gw
+check ovn-nbctl lrp-set-gateway-chassis rp1 gw
+
+scope=$(ovn-nbctl create MAC_Binding_Scope name=scope0 \
+    always_learn_from_arp_request=false disable_garp_rarp=true \
+    mac_binding_age_threshold=300)
+check ovn-nbctl set Logical_Router_Port rp0 mac_binding_scope=$scope \
+    -- set Logical_Router_Port rp1 mac_binding_scope=$scope
+check ovn-nbctl --wait=sb sync
+
+dnl The scope stays inactive until every local chassis supports it.
+check_row_count sb:MAC_Binding_Scope 0
+
+check ovn-sbctl set Chassis gw other_config:shared-mac-binding=true
+check ovn-nbctl --wait=sb sync
+check_row_count sb:MAC_Binding_Scope 1 name=scope0
+
+sb_scope=$(fetch_column sb:MAC_Binding_Scope _uuid name=scope0)
+scope_key=$(fetch_column sb:MAC_Binding_Scope binding_key name=scope0)
+check test "$scope_key" -gt 0
+check_column "$sb_scope" sb:Port_Binding mac_binding_scope \
+    logical_port=rp0
+check_column "$sb_scope" sb:Port_Binding mac_binding_scope \
+    logical_port=rp1
+check_column "$sb_scope" sb:Port_Binding mac_binding_scope \
+    logical_port=cr-rp0
+check_column "$sb_scope" sb:Port_Binding mac_binding_scope \
+    logical_port=cr-rp1
+check_column false sb:MAC_Binding_Scope always_learn_from_arp_request \
+    name=scope0
+check_column true sb:MAC_Binding_Scope disable_garp_rarp name=scope0
+check_column 300 sb:MAC_Binding_Scope mac_binding_age_threshold name=scope0
+
+dnl Revalidating an unchanged active scope must not force lflow recompute.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lb-add lb0 198.51.100.1 198.51.100.2
+check_engine_stats mac_binding_scope recompute nocompute
+check_engine_stats lflow norecompute compute
+
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+AT_CHECK([grep -Fq "lookup_arp(inport, arp.spa, arp.sha, $scope_key)" \
+    lr0flows])
+AT_CHECK([grep -Fq "get_arp(outport, reg0, $scope_key)" lr0flows])
+AT_CHECK([grep -Fq "mac_cache_use($scope_key)" lr0flows])
+
+dnl Reconciliation preserves the OpenFlow namespace key.
+check ovn-nbctl --wait=sb set MAC_Binding_Scope $scope name=scope1
+check_column "$scope_key" sb:MAC_Binding_Scope binding_key name=scope1
+
+dnl Private rows for active members are stale and must be removed.
+dp0=$(fetch_column Datapath_Binding _uuid external_ids:name=lr0)
+check_uuid ovn-sbctl create MAC_Binding logical_port=rp0 \
+    ip=192.0.2.254 mac="00\:00\:00\:00\:00\:fe" datapath=$dp0 \
+    timestamp=0
+check_row_count MAC_Binding 1 logical_port=rp0
+check ovn-nbctl --wait=sb set MAC_Binding_Scope $scope \
+    external_ids:reconcile=true
+check_row_count MAC_Binding 0 logical_port=rp0
+
+dnl A shared row survives reconciliation but is removed with its scope.
+check ovn-nbctl --wait=sb clear MAC_Binding_Scope $scope \
+    mac_binding_age_threshold
+check_uuid ovn-sbctl create Shared_MAC_Binding scope=$sb_scope \
+    ip=192.0.2.254 mac="00\:00\:00\:00\:00\:fe" timestamp=0
+check ovn-nbctl --wait=sb set MAC_Binding_Scope $scope \
+    external_ids:reconcile=false
+check_row_count Shared_MAC_Binding 1 ip=192.0.2.254
+
+dnl A different localnet mapping invalidates the complete scope.
+check ovn-nbctl --wait=sb set Logical_Switch_Port ln1 \
+    options:network_name=other
+check_row_count sb:MAC_Binding_Scope 0
+check_row_count Shared_MAC_Binding 0
+check_column "" sb:Port_Binding mac_binding_scope logical_port=rp0
+check_column "" sb:Port_Binding mac_binding_scope logical_port=rp1
+
+dnl Invalid scope-wide aging policy also keeps the scope inactive.
+check ovn-nbctl set Logical_Switch_Port ln1 options:network_name=physnet
+check ovn-nbctl --wait=sb set MAC_Binding_Scope $scope \
+    mac_binding_age_threshold=invalid
+check_row_count sb:MAC_Binding_Scope 0
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD_NO_HV_PARALLELIZATION([
 AT_SETUP([LS default ACL drop])
 AT_KEYWORDS([acl])

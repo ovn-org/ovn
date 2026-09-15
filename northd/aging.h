@@ -34,6 +34,7 @@ void en_mac_binding_aging_waker_cleanup(void *data);
 
 /* The MAC binding aging helper function. */
 unsigned int min_mac_binding_age_threshold(const char *opt);
+bool mac_binding_age_threshold_is_valid(const char *opt);
 
 /* The FDB aging node functions. */
 enum engine_node_state en_fdb_aging_run(struct engine_node *node, void *data);

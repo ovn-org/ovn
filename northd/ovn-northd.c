@@ -115,6 +115,11 @@ static const char *rbac_mac_binding_auth[] =
 static const char *rbac_mac_binding_update[] =
     {"logical_port", "ip", "mac", "datapath", "timestamp"};
 
+static const char *rbac_shared_mac_binding_auth[] =
+    {""};
+static const char *rbac_shared_mac_binding_update[] =
+    {"scope", "ip", "mac", "timestamp"};
+
 static const char *rbac_svc_monitor_auth[] =
     {"chassis_name"};
 static const char *rbac_svc_monitor_auth_update[] =
@@ -197,6 +202,14 @@ static struct rbac_perm_cfg {
         .insdel = true,
         .update = rbac_mac_binding_update,
         .n_update = ARRAY_SIZE(rbac_mac_binding_update),
+        .row = NULL
+    },{
+        .table = "Shared_MAC_Binding",
+        .auth = rbac_shared_mac_binding_auth,
+        .n_auth = ARRAY_SIZE(rbac_shared_mac_binding_auth),
+        .insdel = true,
+        .update = rbac_shared_mac_binding_update,
+        .n_update = ARRAY_SIZE(rbac_shared_mac_binding_update),
         .row = NULL
     },{
         .table = "Service_Monitor",

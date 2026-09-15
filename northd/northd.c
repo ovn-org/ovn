@@ -15283,8 +15283,91 @@ build_neigh_learning_flows_for_lrouter_port(
 {
     ovs_assert(op->nbrp);
 
-    bool learn_from_arp_request = smap_get_bool(&op->od->nbr->options,
-        "always_learn_from_arp_request", true);
+    const struct sbrec_mac_binding_scope *scope =
+        op->sb ? op->sb->mac_binding_scope : NULL;
+    bool learn_from_arp_request = scope
+        ? (!scope->n_always_learn_from_arp_request ||
+           scope->always_learn_from_arp_request[0])
+        : smap_get_bool(&op->od->nbr->options,
+                        "always_learn_from_arp_request", true);
+    char scope_arg[32] = "";
+    if (scope) {
+        snprintf(scope_arg, sizeof scope_arg, ", %"PRId64,
+                 scope->binding_key);
+
+        const char *flood = op->od->is_transit_router
+                            ? "flood_remote; " : "";
+        ds_clear(match);
+        ds_put_format(match, "inport == %s && arp.op == 2", op->json_key);
+        ds_clear(actions);
+        ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                      " = lookup_arp(inport, arp.spa, arp.sha%s); %s%snext;",
+                      scope_arg, learn_from_arp_request ? "" :
+                      REGBIT_LOOKUP_NEIGHBOR_IP_RESULT " = 1; ", flood);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 130,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_HINT(&op->nbrp->header_));
+
+        ds_clear(match);
+        ds_put_format(match, "inport == %s && nd_na", op->json_key);
+        ds_clear(actions);
+        ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                      " = lookup_nd(inport, nd.target, nd.tll%s); %s%snext;",
+                      scope_arg, learn_from_arp_request ? "" :
+                      REGBIT_LOOKUP_NEIGHBOR_IP_RESULT " = 1; ", flood);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 130,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_HINT(&op->nbrp->header_));
+
+        ds_put_cstr(match, " && nd.tll == 0");
+        ds_clear(actions);
+        ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                      " = lookup_nd(inport, nd.target, eth.src%s); %s%snext;",
+                      scope_arg, learn_from_arp_request ? "" :
+                      REGBIT_LOOKUP_NEIGHBOR_IP_RESULT " = 1; ", flood);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 135,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_HINT(&op->nbrp->header_));
+
+        if (!learn_from_arp_request) {
+            ds_clear(match);
+            ds_put_format(match, "inport == %s && nd_na && "
+                          "ip6.src == fe80::/10 && ip6.dst == ff00::/8",
+                          op->json_key);
+            ds_clear(actions);
+            ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                          " = lookup_nd(inport, nd.target, nd.tll%s); "
+                          REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
+                          " = lookup_nd_ip(inport, nd.target%s); %snext;",
+                          scope_arg, scope_arg, flood);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 140,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&op->nbrp->header_));
+
+            ds_put_cstr(match, " && nd.tll == 0");
+            ds_clear(actions);
+            ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                          " = lookup_nd(inport, nd.target, eth.src%s); "
+                          REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
+                          " = lookup_nd_ip(inport, nd.target%s); %snext;",
+                          scope_arg, scope_arg, flood);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 145,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref,
+                          WITH_HINT(&op->nbrp->header_));
+        }
+
+        ds_clear(match);
+        ds_put_format(match, "inport == %s && ("
+                      REGBIT_LOOKUP_NEIGHBOR_RESULT " == 1%s)",
+                      op->json_key, learn_from_arp_request ? "" :
+                      " || " REGBIT_LOOKUP_NEIGHBOR_IP_RESULT " == 0");
+        ds_clear(actions);
+        ds_put_format(actions, "mac_cache_use(%"PRId64"); next;",
+                      scope->binding_key);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LEARN_NEIGHBOR, 110,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_HINT(&op->nbrp->header_));
+    }
 
     /* Check if we need to learn mac-binding from ARP requests. */
     for (size_t i = 0; i < op->lrp_networks.n_ipv4_addrs; i++) {
@@ -15304,12 +15387,13 @@ build_neigh_learning_flows_for_lrouter_port(
                 ds_put_format(match, " && is_chassis_resident(%s)",
                               op->cr_port->json_key);
             }
-            const char *actions_s = REGBIT_LOOKUP_NEIGHBOR_RESULT
-                              " = lookup_arp(inport, arp.spa, arp.sha); "
-                              REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1;"
-                              " next;";
+            ds_clear(actions);
+            ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                          " = lookup_arp(inport, arp.spa, arp.sha%s); "
+                          REGBIT_LOOKUP_NEIGHBOR_IP_RESULT " = 1; next;",
+                          scope_arg);
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 110,
-                          ds_cstr(match), actions_s, lflow_ref,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref,
                           WITH_HINT(&op->nbrp->header_));
         }
         ds_clear(match);
@@ -15324,10 +15408,14 @@ build_neigh_learning_flows_for_lrouter_port(
         }
         ds_clear(actions);
         ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
-                      " = lookup_arp(inport, arp.spa, arp.sha); %snext;",
-                      learn_from_arp_request ? "" :
-                      REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
-                      " = lookup_arp_ip(inport, arp.spa); ");
+                      " = lookup_arp(inport, arp.spa, arp.sha%s); ",
+                      scope_arg);
+        if (!learn_from_arp_request) {
+            ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
+                          " = lookup_arp_ip(inport, arp.spa%s); ",
+                          scope_arg);
+        }
+        ds_put_cstr(actions, "next;");
         ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 100,
                       ds_cstr(match), ds_cstr(actions), lflow_ref,
                       WITH_HINT(&op->nbrp->header_));
@@ -15355,12 +15443,13 @@ build_neigh_learning_flows_for_lrouter_port(
                 ds_put_format(match, " && is_chassis_resident(%s)",
                               op->cr_port->json_key);
             }
-            const char *actions_s = REGBIT_LOOKUP_NEIGHBOR_RESULT
-                              " = lookup_nd(inport, ip6.src, nd.sll); "
-                              REGBIT_LOOKUP_NEIGHBOR_IP_RESULT" = 1;"
-                              " next;";
+            ds_clear(actions);
+            ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
+                          " = lookup_nd(inport, ip6.src, nd.sll%s); "
+                          REGBIT_LOOKUP_NEIGHBOR_IP_RESULT " = 1; next;",
+                          scope_arg);
             ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 110,
-                          ds_cstr(match), actions_s, lflow_ref,
+                          ds_cstr(match), ds_cstr(actions), lflow_ref,
                           WITH_HINT(&op->nbrp->header_));
         }
         ds_clear(match);
@@ -15375,10 +15464,14 @@ build_neigh_learning_flows_for_lrouter_port(
         }
         ds_clear(actions);
         ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_RESULT
-                      " = lookup_nd(inport, ip6.src, nd.sll); %snext;",
-                      learn_from_arp_request ? "" :
-                      REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
-                      " = lookup_nd_ip(inport, ip6.src); ");
+                      " = lookup_nd(inport, ip6.src, nd.sll%s); ",
+                      scope_arg);
+        if (!learn_from_arp_request) {
+            ds_put_format(actions, REGBIT_LOOKUP_NEIGHBOR_IP_RESULT
+                          " = lookup_nd_ip(inport, ip6.src%s); ",
+                          scope_arg);
+        }
+        ds_put_cstr(actions, "next;");
         ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 100,
                       ds_cstr(match), ds_cstr(actions), lflow_ref,
                       WITH_HINT(&op->nbrp->header_));
@@ -15390,7 +15483,8 @@ build_neigh_learning_flows_for_lrouter_port(
                              "eth.mcast && "
                              "!is_chassis_resident(%s)", op->json_key,
                              op->cr_port->json_key);
-        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR, 120,
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_LOOKUP_NEIGHBOR,
+                      scope ? 150 : 120,
                       ds_cstr(match), REGBIT_LOOKUP_NEIGHBOR_RESULT" = 1; "
                       "next;", lflow_ref, WITH_HINT(&op->nbrp->header_));
     }
@@ -16015,6 +16109,30 @@ build_arp_resolve_flows_for_lrp(struct ovn_port *op,
                                 struct lflow_ref *lflow_ref)
 {
     ovs_assert(op->nbrp);
+    const struct sbrec_mac_binding_scope *scope =
+        op->sb ? op->sb->mac_binding_scope : NULL;
+    if (scope) {
+        ds_clear(match);
+        ds_put_format(match, "outport == %s && "
+                      REGBIT_NEXTHOP_IS_IPV4 " == 1", op->json_key);
+        ds_clear(actions);
+        ds_put_format(actions, "get_arp(outport, " REG_NEXT_HOP_IPV4
+                      ", %"PRId64"); next;", scope->binding_key);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ARP_RESOLVE, 2,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_HINT(&op->nbrp->header_));
+
+        ds_clear(match);
+        ds_put_format(match, "outport == %s && "
+                      REGBIT_NEXTHOP_IS_IPV4 " == 0", op->json_key);
+        ds_clear(actions);
+        ds_put_format(actions, "get_nd(outport, " REG_NEXT_HOP_IPV6
+                      ", %"PRId64"); next;", scope->binding_key);
+        ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ARP_RESOLVE, 2,
+                      ds_cstr(match), ds_cstr(actions), lflow_ref,
+                      WITH_HINT(&op->nbrp->header_));
+    }
+
     /* This is a logical router port. If next-hop IP address in
      * REG_NEXT_HOP_IPV4/REG_NEXT_HOP_IPV6 matches IP address of this
      * router port, then the packet is intended to eventually be sent
@@ -18976,12 +19094,28 @@ build_lrouter_nat_defrag_and_lb(
                             is_v6 ? "6" : "4", nat->logical_ip,
                             nat->logical_port);
                     ds_clear(actions);
+                    const struct sbrec_mac_binding_scope *scope =
+                        nat_entry->l3dgw_port->sb
+                        ? nat_entry->l3dgw_port->sb->mac_binding_scope
+                        : NULL;
                     if (is_v6) {
-                        ds_put_cstr(actions,
-                            "get_nd(outport, " REG_NEXT_HOP_IPV6 "); next;");
+                        if (scope) {
+                            ds_put_format(actions, "get_nd(outport, "
+                                REG_NEXT_HOP_IPV6 ", %"PRId64"); next;",
+                                scope->binding_key);
+                        } else {
+                            ds_put_cstr(actions, "get_nd(outport, "
+                                REG_NEXT_HOP_IPV6 "); next;");
+                        }
                     } else {
-                        ds_put_cstr(actions,
-                            "get_arp(outport, " REG_NEXT_HOP_IPV4 "); next;");
+                        if (scope) {
+                            ds_put_format(actions, "get_arp(outport, "
+                                REG_NEXT_HOP_IPV4 ", %"PRId64"); next;",
+                                scope->binding_key);
+                        } else {
+                            ds_put_cstr(actions, "get_arp(outport, "
+                                REG_NEXT_HOP_IPV4 "); next;");
+                        }
                     }
                     ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_RESOLVE, 90,
                                   ds_cstr(match), ds_cstr(actions), lflow_ref,
