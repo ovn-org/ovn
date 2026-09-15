@@ -1,7 +1,7 @@
 {
     "name": "OVN_Northbound",
-    "version": "7.19.0",
-    "cksum": "2631744256 45474",
+    "version": "7.20.0",
+    "cksum": "2786460320 46440",
     "tables": {
         "NB_Global": {
             "columns": {
@@ -583,6 +583,12 @@
                                      "refType": "strong"},
                              "min": 0,
                              "max": 1}},
+                "mac_binding_scope": {
+                    "type": {"key": {"type": "uuid",
+                                     "refTable": "MAC_Binding_Scope",
+                                     "refType": "weak"},
+                             "min": 0,
+                             "max": 1}},
                 "options": {
                     "type": {"key": "string",
                              "value": "string",
@@ -861,7 +867,21 @@
                 "mac": {"type": "string"},
                 "override_dynamic_mac": {"type": "boolean"}},
             "indexes": [["logical_port", "ip"]],
-             "isRoot": true},
+            "isRoot": true},
+        "MAC_Binding_Scope": {
+            "columns": {
+                "name": {"type": "string"},
+                "always_learn_from_arp_request": {
+                    "type": {"key": "boolean", "min": 0, "max": 1}},
+                "disable_garp_rarp": {
+                    "type": {"key": "boolean", "min": 0, "max": 1}},
+                "mac_binding_age_threshold": {
+                    "type": {"key": "string", "min": 0, "max": 1}},
+                "external_ids": {
+                    "type": {"key": "string", "value": "string",
+                             "min": 0, "max": "unlimited"}}},
+            "indexes": [["name"]],
+            "isRoot": true},
         "Chassis_Template_Var": {
             "columns": {
                 "chassis": {"type": "string"},

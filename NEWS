@@ -1,5 +1,8 @@
 Post v26.09.0
 --------------
+   - Logical router ports can share dynamically learned IP-to-MAC bindings
+     through MAC_Binding_Scope, reducing SB rows and controller flows when
+     co-located routers use the same physical L2 domain.
    - Removed implementations of the commit_ecmp_nh, chk_ecmp_nh, and
      chk_ecmp_nh_mac actions from the code.
    - Mark tunnel ports as transient (other_config:transient=true) when the

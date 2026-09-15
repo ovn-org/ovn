@@ -4193,6 +4193,23 @@ or
       to <ref table="DHCP_Relay"/> table.
     </column>
 
+    <column name="mac_binding_scope">
+      <p>
+        Optional.  Associates this port with a <ref
+        table="MAC_Binding_Scope"/>.  Router ports in the same scope share
+        one set of dynamically learned IP-to-MAC bindings.
+      </p>
+
+      <p>
+        All members of a scope must be hosted by the same gateway chassis (or
+        equivalent HA chassis group) and connect to the same physical L2
+        broadcast domain.  <code>ovn-northd</code> ignores the complete scope
+        if these requirements are not met.  The CMS is responsible for
+        delivering ARP and IPv6 neighbor discovery traffic to at least one
+        member of a valid scope.
+      </p>
+    </column>
+
     <column name="options" key="dhcpv4_primary_ip">
       <p>
         Optional.  Selects which of the logical router port's IPv4
@@ -6747,6 +6764,72 @@ or
 
       <column name="override_dynamic_mac">
         Override dynamically learnt MACs.
+      </column>
+    </group>
+  </table>
+
+  <table name="MAC_Binding_Scope" title="Shared dynamic MAC bindings">
+    <p>
+      Each row defines a group of logical router ports that share one set of
+      dynamically learned IP-to-MAC bindings.  Membership is configured with
+      <ref table="Logical_Router_Port" column="mac_binding_scope"/>.
+      Bindings learned on any member are available to every member.
+    </p>
+
+    <p>
+      The scope is symmetric: no member owns the binding state.  This reduces
+      the number of dynamic binding rows and their corresponding OpenFlow
+      rules from being proportional to the number of bindings multiplied by
+      the number of member routers to being proportional to the number of
+      bindings plus the number of members.
+    </p>
+
+    <column name="name">
+      A human-readable name that must be unique within the database.
+    </column>
+
+    <column name="always_learn_from_arp_request">
+      <p>
+        Controls whether members always learn from IPv4 ARP requests and IPv6
+        Neighbor Solicitation packets.  If unset, the default is
+        <code>true</code>.
+      </p>
+
+      <p>
+        When <code>false</code>, a request is learned only if a binding for
+        the source IP already exists with a different MAC, or if the request
+        targets an IP address owned by the receiving router.  This has the
+        same meaning as the Logical_Router
+        <ref table="Logical_Router" column="options"
+        key="always_learn_from_arp_request"/> option, but applies to the
+        complete scope and takes precedence for scope members.
+      </p>
+    </column>
+
+    <column name="disable_garp_rarp">
+      <p>
+        When <code>true</code>, GARP and RARP announcements are not sent by VIF
+        peer ports of member logical routers.  If unset, the default is
+        <code>false</code>.  This has the same meaning as the Logical_Router
+        <ref table="Logical_Router" column="options" key="disable_garp_rarp"/>
+        option, but applies to the complete scope and takes precedence for
+        scope members.
+      </p>
+    </column>
+
+    <column name="mac_binding_age_threshold">
+      <p>
+        Optional aging threshold for bindings in this scope.  The syntax and
+        behavior are the same as the Logical_Router
+        <ref table="Logical_Router" column="options"
+        key="mac_binding_age_threshold"/> option.  This value applies to the
+        complete scope and takes precedence for scope members.
+      </p>
+    </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        See <em>External IDs</em> at the beginning of this document.
       </column>
     </group>
   </table>

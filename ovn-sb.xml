@@ -3509,6 +3509,17 @@ tcp.flags = RST;
         logical port ID.
       </column>
 
+      <column name="mac_binding_scope">
+        <p>
+          For a logical router port that participates in shared dynamic MAC
+          binding state, this references the corresponding <ref
+          table="MAC_Binding_Scope"/>.  It is populated by
+          <code>ovn-northd</code> only after validating that all members are
+          co-located on the same physical L2 broadcast domain and all relevant
+          chassis support the feature.
+        </p>
+      </column>
+
       <column name="encap">
         Points to preferred encapsulation configuration to transmit
         logical dataplane packets to this chassis. The entry is a reference to
@@ -4386,6 +4397,77 @@ tcp.flags = RST;
 
     <column name="datapath">
       The logical datapath to which the logical port belongs.
+    </column>
+  </table>
+
+  <table name="MAC_Binding_Scope" title="Shared MAC binding scopes">
+    <p>
+      Each row represents a validated group of logical router ports that use
+      the same dynamically learned IP-to-MAC bindings.  <code>ovn-northd</code>
+      creates and maintains these rows from the corresponding
+      <ref table="MAC_Binding_Scope" db="OVN_Northbound"/> records.
+    </p>
+
+    <column name="name">
+      The name copied from the corresponding northbound scope.
+    </column>
+
+    <column name="binding_key">
+      <p>
+        A locally significant identifier used by <code>ovn-controller</code>
+        to represent this scope in the MAC binding OpenFlow lookup tables.
+        The key is unique among scope rows.
+      </p>
+    </column>
+
+    <column name="always_learn_from_arp_request">
+      The scope-wide value copied from the corresponding northbound scope.
+      An empty value means <code>true</code>.
+    </column>
+
+    <column name="disable_garp_rarp">
+      The scope-wide value copied from the corresponding northbound scope.
+      An empty value means <code>false</code>.
+    </column>
+
+    <column name="mac_binding_age_threshold">
+      The optional scope-wide MAC binding aging threshold copied from the
+      corresponding northbound scope.
+    </column>
+
+    <group title="Common Columns">
+      <column name="external_ids">
+        <p>
+          <code>ovn-northd</code> stores the UUID of the corresponding
+          northbound <ref table="MAC_Binding_Scope" db="OVN_Northbound"/>
+          in the <code>ovn-nb-id</code> key.
+        </p>
+      </column>
+    </group>
+  </table>
+
+  <table name="Shared_MAC_Binding" title="Shared IP to MAC bindings">
+    <p>
+      Each row specifies a dynamically learned binding from an IP address to
+      an Ethernet address that is valid for every router port in the referenced
+      <ref table="MAC_Binding_Scope"/>.  This table expresses the functional
+      relationship <code>Shared_MAC_Binding(scope, ip) = mac</code>.
+    </p>
+
+    <column name="scope">
+      The shared MAC binding scope in which this binding was learned.
+    </column>
+
+    <column name="ip">
+      The bound IPv4 or IPv6 address.
+    </column>
+
+    <column name="mac">
+      The Ethernet address to which the IP address is bound.
+    </column>
+
+    <column name="timestamp">
+      The timestamp in milliseconds when the binding was added or updated.
     </column>
   </table>
 
