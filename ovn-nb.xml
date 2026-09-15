@@ -6718,6 +6718,14 @@ or
             </li>
           </ul>
         </p>
+        <p>
+          The status is normally reported by the <code>ovn-controller</code>
+          running the BFD session.  If no eligible chassis currently owns the
+          session for the logical port (e.g. the binding was released or its
+          stale owner is no longer a member of the port's HA chassis group),
+          <code>ovn-northd</code> sets the status of a session that is not
+          <code>admin_down</code> to <code>down</code>.
+        </p>
       </column>
     </group>
   </table>
