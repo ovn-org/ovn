@@ -24,6 +24,7 @@ EXTRA_DIST += \
 	debian/ovn-host.manpages \
 	debian/ovn-host.postinst \
 	debian/ovn-host.postrm \
+	debian/ovn-host.prerm \
 	debian/ovn-host.template \
 	debian/rules \
 	debian/source/format
