@@ -144,14 +144,25 @@ function execute_dist_tests()
 
 function run_tests()
 {
+    local errf="tests/testsuite.stderr"
+
     if ! timeout -k 5m -v $TIMEOUT make check \
         CFLAGS="${COMMON_CFLAGS} ${OVN_CFLAGS}" $JOBS \
         TESTSUITEFLAGS="$JOBS $TEST_RANGE" RECHECK=$RECHECK \
-        SKIP_UNSTABLE=$SKIP_UNSTABLE
+        SKIP_UNSTABLE=$SKIP_UNSTABLE 2> $errf
     then
-        # testsuite.log is necessary for debugging.
-        cat tests/testsuite.log
+        # The sdterr and testsuite.log is necessary for debugging.
+        cat $errf tests/testsuite.log
         return 1
+    fi
+
+    if grep -q 'tests/testsuite.dir' $errf; then
+        # Exit early in case testsuite compilation errors have been detected.
+        # In order to make these errors as visible as possible, we don't
+        # return and instead we exit directly.
+        echo "Potential test compilation errors in stderr output"
+        cat $errf
+        exit 1
     fi
 }
 
