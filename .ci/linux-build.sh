@@ -184,7 +184,7 @@ function run_system_tests()
     local type=$1
     local log_file=$2
 
-    if ! sudo timeout -k 5m -v $TIMEOUT make $JOBS $type \
+    if ! sudo timeout -k 5m -v $TIMEOUT make $type \
         TESTSUITEFLAGS="$TEST_RANGE" RECHECK=$RECHECK \
         SKIP_UNSTABLE=$SKIP_UNSTABLE UPGRADE_TEST=$UPGRADE_TEST \
         BASE_VERSION=$BASE_VERSION; then
