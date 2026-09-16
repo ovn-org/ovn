@@ -6152,13 +6152,13 @@ check_column "ts1 ts2 ts3" ic-sb:Datapath_Binding transit_switch
 as az2 check ovn-appctl -t ic/ovn-ic resume
 
 # Now do the same on a "slow" ovn-ic-sb
-OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status)" = "xStatus: active"])
+OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status | grep "Status")" = "xStatus: active"])
 
 AS_BOX([$(date +%H:%M:%S.%03N) Pausing ovn-ic-sb])
 AT_CHECK([kill -STOP $(cat ovn-ic-sb/ovsdb-server.pid)])
 
 as az1 check ovn-appctl -t ic/ovn-ic pause
-OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status)" = "xStatus: paused"])
+OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status | grep "Status")" = "xStatus: paused"])
 
 check ovn-ic-nbctl ts-add ts4
 
@@ -6353,21 +6353,21 @@ net_add n1
 
 check ovn-ic-nbctl ts-add ts1
 ovn_start az1
-OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status)" = "xStatus: active"])
+OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status | grep "Status")" = "xStatus: active"])
 OVS_WAIT_UNTIL([grep -q "OVN ISB lock acquired" az1/ic/ovn-ic.log])
 
 ovn_start az2
 
 AS_BOX([az2 paused])
 check as az2 ovn-appctl -t ic/ovn-ic pause
-OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status)" = "xStatus: paused"])
+OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status | grep "Status")" = "xStatus: paused"])
 # Wait for az1 receiving "locked" notification.
 OVS_WAIT_UNTIL([grep -q 'send notification, method="locked"' ovn-ic-sb/ovsdb-server.log])
 n1_lock_notif=$(grep -c 'send notification, method="locked"' ovn-ic-sb/ovsdb-server.log)
 
 AS_BOX([az1 paused])
 check as az1 ovn-appctl -t ic/ovn-ic pause
-OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status)" = "xStatus: paused"])
+OVS_WAIT_UNTIL([test "x$(as az1 ovn-appctl -t ic/ovn-ic status | grep "Status")" = "xStatus: paused"])
 n2_lock_notif=$(grep -c 'send notification, method="locked"' ovn-ic-sb/ovsdb-server.log)
 
 # Pausing az1 should not cause az2 to own the lock: az2 is paused.
@@ -6387,3 +6387,66 @@ OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic - IC-SB lock is only requested by the active instance])
+ovn_init_ic_db
+
+ovn_start az1
+ovn_start az2
+wait_row_count ic-sb:Availability_Zone 2
+
+check ovn-ic-nbctl ts-add ts1
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts1
+
+# Start a second ovn-ic in az1. It can't get the SB lock, so it must stay
+# standby and must not compete for the IC-SB lock either.
+ovn_as az1
+mkdir az1/ic2
+as az1/ic2 start_daemon ovn-ic -v \
+    --ovnnb-db=$OVN_NB_DB --ovnsb-db=$OVN_SB_DB \
+    --ic-nb-db=unix:"$ovs_base"/ovn-ic-nb/ovn-ic-nb.sock \
+    --ic-sb-db=unix:"$ovs_base"/ovn-ic-sb/ovn-ic-sb.sock
+OVS_WAIT_UNTIL([as az1 ovn-appctl -t ic2/ovn-ic status | grep -q "^Status: standby$"])
+OVS_WAIT_UNTIL([as az1 ovn-appctl -t ic2/ovn-ic ic-sb-connection-status | grep -q "^connected$"])
+AT_CHECK([as az1 ovn-appctl -t ic2/ovn-ic status | grep -q "^IC-SB lock: not held$"])
+
+# Simulate an IC-SB failover: freeze both active instances, drop every
+# IC-SB connection and let the standby reconnect first. A standby that
+# competes for the IC-SB lock wins it here and, never running the engine,
+# blocks IC-SB datapath creation for everyone.
+AS_BOX([Dropping IC-SB connections with the active instances frozen])
+AT_CHECK([kill -STOP $(cat az1/ic/ovn-ic.pid) $(cat az2/ic/ovn-ic.pid)])
+check as ovn-ic-sb ovs-appctl -t ovsdb-server ovsdb-server/reconnect
+OVS_WAIT_UNTIL([as az1 ovn-appctl -t ic2/ovn-ic ic-sb-connection-status | grep -q "^not connected$"])
+OVS_WAIT_UNTIL([as az1 ovn-appctl -t ic2/ovn-ic ic-sb-connection-status | grep -q "^connected$"])
+AT_CHECK([kill -CONT $(cat az1/ic/ovn-ic.pid) $(cat az2/ic/ovn-ic.pid)])
+
+check ovn-ic-nbctl ts-add ts2
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts2
+check_column "ts1 ts2" ic-sb:Datapath_Binding transit_switch
+
+AT_CHECK([as az1 ovn-appctl -t ic2/ovn-ic status | grep -q "^Status: standby$"])
+AT_CHECK([as az1 ovn-appctl -t ic2/ovn-ic status | grep -q "^IC-SB lock: not held$"])
+AT_CHECK([grep -q "OVN ISB lock acquired" az1/ic2/ovn-ic.log], [1])
+
+# Once the standby becomes active in its AZ it should take the IC-SB lock.
+AS_BOX([Pausing both original instances])
+check as az1 ovn-appctl -t ic/ovn-ic pause
+check as az2 ovn-appctl -t ic/ovn-ic pause
+OVS_WAIT_UNTIL([as az1 ovn-appctl -t ic2/ovn-ic status | grep -q "^Status: active$"])
+OVS_WAIT_UNTIL([as az1 ovn-appctl -t ic2/ovn-ic status | grep -q "^IC-SB lock: held$"])
+
+check ovn-ic-nbctl ts-add ts3
+wait_row_count ic-sb:Datapath_Binding 1 transit_switch=ts3
+check_column "ts1 ts2 ts3" ic-sb:Datapath_Binding transit_switch
+
+check as az1 ovn-appctl -t ic/ovn-ic resume
+check as az2 ovn-appctl -t ic/ovn-ic resume
+
+as az1/ic2
+OVS_APP_EXIT_AND_WAIT([ovn-ic])
+
+OVN_CLEANUP_IC([az1], [az2])
+
+AT_CLEANUP
+])

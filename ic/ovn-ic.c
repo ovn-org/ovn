@@ -4375,16 +4375,6 @@ main(int argc, char *argv[])
                 ovsdb_idl_set_lock(ovnsb_idl_loop.idl, "ovn_ic");
             }
 
-            if (!ovsdb_idl_has_lock(ovnisb_idl_loop.idl) &&
-                !ovsdb_idl_is_lock_contended(ovnisb_idl_loop.idl)) {
-                /*
-                 * Ensure that only a single ovn-ic has the permission to
-                 * write to IC-SB.
-                 */
-                VLOG_INFO("Acquiring OVN ISB lock.");
-                ovsdb_idl_set_lock(ovnisb_idl_loop.idl, "ovn_ic_sb");
-            }
-
             struct ovsdb_idl_txn *ovnnb_txn =
                 run_idl_loop(&ovnnb_idl_loop, "OVN_Northbound",
                              &eng_ctx.nb_idl_duration_ms);
@@ -4409,6 +4399,25 @@ main(int argc, char *argv[])
                     inc_proc_ic_force_recompute();
                 }
                 ovnsb_cond_seqno = new_ovnsb_cond_seqno;
+            }
+
+            if (ovsdb_idl_has_lock(ovnsb_idl_loop.idl)) {
+                if (!ovsdb_idl_has_lock(ovnisb_idl_loop.idl) &&
+                    !ovsdb_idl_is_lock_contended(ovnisb_idl_loop.idl)) {
+                    /*
+                     * Ensure that only a single ovn-ic has the permission to
+                     * write to IC-SB. Only the instance that is active in
+                     * its own AZ may request it: a standby instance never
+                     * runs the engine, so if it held the IC-SB lock nobody
+                     * would ever write to IC-SB.
+                     */
+                    VLOG_INFO("Acquiring OVN ISB lock.");
+                    ovsdb_idl_set_lock(ovnisb_idl_loop.idl, "ovn_ic_sb");
+                }
+            } else {
+                /* Release the IC-SB lock, or withdraw a pending request for
+                 * it, as soon as the local SB lock is gone. */
+                ovsdb_idl_set_lock(ovnisb_idl_loop.idl, NULL);
             }
 
             struct ovsdb_idl_txn *ovninb_txn =
@@ -4720,6 +4729,8 @@ ovn_ic_status(struct unixctl_conn *conn, int argc OVS_UNUSED,
      */
     struct ds s = DS_EMPTY_INITIALIZER;
     ds_put_format(&s, "Status: %s\n", status);
+    ds_put_format(&s, "IC-SB lock: %s\n",
+                  state->had_isb_lock ? "held" : "not held");
     unixctl_command_reply(conn, ds_cstr(&s));
     ds_destroy(&s);
 }
