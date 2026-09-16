@@ -11228,7 +11228,7 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([Chassis-feature compatibitility - remote chassis])
+AT_SETUP([Chassis-feature compatibility - remote chassis])
 ovn_start
 
 AS_BOX([Local chassis])
@@ -11250,6 +11250,36 @@ check ovn-nbctl --wait=sb sync
 
 AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list | grep "mac_binding_timestamp"], [0], [dnl
 mac_binding_timestamp: true
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Chassis-feature compatibility - VTEP chassis])
+ovn_start
+
+AS_BOX([Local chassis])
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1 \
+  -- set chassis hv1 other_config:ct-state-save=true
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list | grep "ct_state_save"], [0], [dnl
+ct_state_save: true
+])
+
+AS_BOX([VTEP chassis])
+dnl ovn-controller-vtep never advertises any feature in other_config,
+dnl so a VTEP chassis must not disable features for the local chassis.
+check ovn-sbctl chassis-add vtep1 vxlan 127.0.0.2 \
+  -- set chassis vtep1 other_config:is-vtep=true
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([as northd ovn-appctl -t ovn-northd debug/chassis-features-list | grep "ct_state_save"], [0], [dnl
+ct_state_save: true
 ])
 
 OVN_CLEANUP_NORTHD
