@@ -617,6 +617,8 @@ encaps_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
 
     bool any_changes = n != br_int->n_ports;
     if (any_changes && ovs_idl_txn) {
+        VLOG_INFO("Removing %"PRIuSIZE" tunnel port(s) from bridge %s.",
+                  br_int->n_ports - n, br_int->name);
         ovsdb_idl_txn_add_comment(ovs_idl_txn,
                                   "ovn-controller: destroying tunnels");
         ovsrec_bridge_verify_ports(br_int);

@@ -1071,6 +1071,8 @@ chassis_cleanup(struct ovsdb_idl_txn *ovs_idl_txn,
                                   "ovn-controller: unregistering chassis '%s'",
                                   chassis_name);
         if (chassis_rec) {
+            VLOG_INFO("Deleting Chassis row '%s' from the southbound DB.",
+                      chassis_name);
             sbrec_chassis_delete(chassis_rec);
         }
         if (chassis_private_rec) {

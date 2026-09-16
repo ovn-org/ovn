@@ -2222,6 +2222,7 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     const struct sbrec_port_binding *binding_rec;
     bool any_changes = false;
+    size_t n_released = 0;
     SBREC_PORT_BINDING_TABLE_FOR_EACH (binding_rec, port_binding_table) {
         if (binding_rec->chassis == chassis_rec) {
             if (binding_rec->encap) {
@@ -2229,14 +2230,18 @@ binding_cleanup(struct ovsdb_idl_txn *ovnsb_idl_txn,
             }
             sbrec_port_binding_set_chassis(binding_rec, NULL);
             any_changes = true;
+            n_released++;
         }
         if (is_additional_chassis(binding_rec, chassis_rec)) {
             remove_additional_chassis(binding_rec, chassis_rec);
             any_changes = true;
+            n_released++;
         }
     }
 
     if (any_changes) {
+        VLOG_INFO("Releasing %"PRIuSIZE" port binding(s) from chassis '%s' "
+                  "in the southbound DB.", n_released, chassis_rec->name);
         ovsdb_idl_txn_add_comment(
             ovnsb_idl_txn,
             "ovn-controller: removing all port bindings for '%s'",

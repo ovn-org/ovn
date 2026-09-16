@@ -1298,6 +1298,10 @@ ovn_exit_command_callback(struct unixctl_conn *conn, int argc,
     if (!exit_args->restart) {
         exit_args->restart = argc == 2 && !strcmp(argv[1], "--restart");
     }
+    VLOG_INFO("Exit requested%s.",
+              exit_args->restart
+              ? " with --restart: chassis state will be preserved"
+              : " without --restart: chassis state will be cleaned up");
 }
 
 /* Reply to all waiting unixctl connections and free the connection array.

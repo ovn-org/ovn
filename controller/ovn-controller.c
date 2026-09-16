@@ -6341,7 +6341,12 @@ loop_done:
     engine_cleanup();
 
     /* It's time to exit.  Clean up the databases if we are not restarting */
-    if (!exit_args.restart) {
+    if (exit_args.restart) {
+        VLOG_INFO("Exiting with --restart: leaving Chassis row, port bindings "
+                  "and tunnel ports in place for the next ovn-controller.");
+    } else {
+        VLOG_INFO("Exiting without --restart: releasing port bindings, "
+                  "deleting Chassis row and removing tunnel ports.");
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,
@@ -6391,6 +6396,7 @@ loop_done:
             ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
             poll_block();
         }
+        VLOG_INFO("Southbound and OVS database cleanup complete.");
     }
 
     free(ovn_version);

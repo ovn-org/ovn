@@ -634,6 +634,13 @@ run_S_WAIT_BEFORE_CLEAR(void)
     if (!wait_before_clear_time ||
         (wait_before_clear_expire &&
          time_msec() >= wait_before_clear_expire)) {
+        if (!wait_before_clear_time) {
+            VLOG_INFO("ofctrl-wait-before-clear is 0 ms: existing flows will "
+                      "be cleared as soon as the new ones are ready.");
+        } else {
+            VLOG_INFO("ofctrl-wait-before-clear (%u ms) expired: existing "
+                      "flows will now be cleared.", wait_before_clear_time);
+        }
         state = S_CLEAR_FLOWS;
         return;
     }
@@ -641,6 +648,9 @@ run_S_WAIT_BEFORE_CLEAR(void)
     if (!wait_before_clear_expire) {
         /* Start the timer. */
         wait_before_clear_expire = time_msec() + wait_before_clear_time;
+        VLOG_INFO("Holding existing flows for up to %u ms while the new flow "
+                  "table is computed (ofctrl-wait-before-clear).",
+                  wait_before_clear_time);
     }
     poll_timer_wait_until(wait_before_clear_expire);
 }
@@ -2766,6 +2776,9 @@ ofctrl_put(struct ovn_desired_flow_table *lflow_table,
     ovs_list_push_back(&msgs, &bundle_open->list_node);
 
     if (ofctrl_initial_clear) {
+        VLOG_INFO("Clearing all existing flows and groups in the integration "
+                  "bridge; the recomputed flow table is installed in the same "
+                  "OpenFlow bundle.");
         /* Send a flow_mod to delete all flows. */
         struct ofputil_flow_mod fm = {
             .table_id = OFPTT_ALL,
