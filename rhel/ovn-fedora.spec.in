@@ -312,6 +312,16 @@ fi
 %endif
 
 %preun host
+if [ $1 -eq 0 ] ; then
+    # Package erase, not upgrade.  ovn-host.service stops ovn-controller with
+    # --restart, which deliberately preserves this chassis' state in the
+    # southbound DB so that upgrades do not disturb the data plane.  When the
+    # package is going away that state would be left behind as garbage, so stop
+    # once without --restart to run the full cleanup: delete the Chassis and
+    # Chassis_Private rows, clear the chassis and encap columns on our
+    # Port_Bindings and remove the tunnel ports from br-int.
+    %{_datadir}/ovn/scripts/ovn-ctl --no-monitor stop_controller >/dev/null 2>&1 || :
+fi
 %if 0%{?systemd_preun:1}
     %systemd_preun ovn-host.service
 %else
@@ -436,18 +446,17 @@ fi
 
 %postun host
 if [ "$1" -ge "1" ] ; then
+    # Package upgrade, not uninstall.  Only reload unit files here: the new
+    # ovn-controller binary is left on disk and the old process keeps running.
+    # Restarting the service is the pf9-neutron-ovn-controller wrapper's job -
+    # it is upgraded in lockstep with this package and restarts ovn-host from
+    # its after-install, once its own configuration has been written.  That
+    # keeps it to a single controlled stop/start per transaction, and matches
+    # the deb build's dh_installinit --no-start.
+    #
+    # The restart itself is graceful: ovn-host.service stops ovn-controller
+    # with --restart, so no separate stop_controller call is needed here.
     /bin/systemctl daemon-reload >/dev/null 2>&1 || :
-    # Package upgrade, not uninstall
-    # We perform lightweight stop here not to affect active traffic during
-    # ovn-controller upgrade.
-    # Ideally this would be held by systemd, but it's impossible
-    # to pass custom restart command to systemd service.
-    systemctl -q is-active ovn-host
-    if [ "$?" -eq 0 ] ; then
-        # ovn-host was running prior to upgrade, so do a graceful restart
-        %{_datadir}/ovn/scripts/ovn-ctl stop_controller --restart >/dev/null 2>&1 || :
-        /bin/systemctl restart ovn-host.service >/dev/null 2>&1 || :
-    fi
 fi
 
 %postun vtep

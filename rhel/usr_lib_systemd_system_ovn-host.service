@@ -10,7 +10,12 @@ Type=forking
 Restart=on-failure
 EnvironmentFile=-/etc/sysconfig/ovn-host
 ExecStart=/usr/share/ovn/scripts/ovn-ctl --no-monitor --ovn-manage-ovsdb=no start_controller $OVN_CTL_OPTS
-ExecStop=/usr/share/ovn/scripts/ovn-ctl stop_controller --no-monitor
+# --restart tells ovn-controller to skip its exit-time cleanup: the Chassis row,
+# Port_Binding chassis/encap columns and br-int tunnel ports are all left intact,
+# so a stop/start cycle is invisible to the rest of the deployment.  Without it
+# every restart deletes this chassis from the SB DB, unbinds all its ports and
+# drops every VM on the host.  Full cleanup on erase is done by %preun host.
+ExecStop=/usr/share/ovn/scripts/ovn-ctl --no-monitor stop_controller --restart
 
 [Install]
 WantedBy=multi-user.target
