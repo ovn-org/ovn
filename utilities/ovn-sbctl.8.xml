@@ -188,7 +188,7 @@
         clients of a clustered database can distribute evenly to all members
         of the cluster.  With <code>--no-shuffle-remotes</code>,
         <code>ovn-sbctl</code> will use the original order specified in the
-        connection string to connect.  This allows user to specify the
+        connection string to connect.  This allows a user to specify the
         preferred order, which is particularly useful for testing.
       </dd>
 
