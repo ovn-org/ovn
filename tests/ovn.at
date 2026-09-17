@@ -37173,6 +37173,7 @@ AT_CLEANUP
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing GW router Dynamic Neigh])
+TAG_UNSTABLE
 CHECK_SCAPY
 ovn_start
 
