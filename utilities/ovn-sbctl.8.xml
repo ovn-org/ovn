@@ -461,7 +461,7 @@
 
       <dt>[<code>--inactivity-probe=</code><var>msecs</var>] <code>set-connection</code> <var>target</var>...</dt>
       <dd>
-        Sets the configured manager target or targets.  Use
+        Sets the configured connection target or targets.  Use
         <code>--inactivity-probe=</code><var>msecs</var> to override the
         default idle connection inactivity probe time.  Use 0 to disable
         inactivity probes.
