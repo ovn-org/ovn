@@ -58,6 +58,9 @@ bfd_sync_northd_change_handler(struct engine_node *node,
 enum engine_input_handler_result
 bfd_sync_routes_change_handler(struct engine_node *node,
                                void *data OVS_UNUSED);
+enum engine_input_handler_result
+bfd_sync_sb_port_binding_change_handler(struct engine_node *node,
+                                        void *data);
 
 enum engine_node_state en_bfd_sync_run(struct engine_node *node, void *data);
 void en_bfd_sync_cleanup(void *data OVS_UNUSED);
