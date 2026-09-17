@@ -242,8 +242,10 @@
     <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>Table Formatting Options</h2>
-    These options control the format of output from the <code>list</code> and
-    <code>find</code> commands.
+    <p>
+      These options control the format of output from the <code>list</code>
+      and <code>find</code> commands.
+    </p>
     <xi:include href="lib/table.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>PKI Options</h2>
