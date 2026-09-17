@@ -40104,8 +40104,9 @@ check ovn-nbctl lrp-set-gateway-chassis lr0-public hv2 20
 check ovn-nbctl lr-nat-add lr0 snat 172.168.0.1 10.0.0.0/24
 check ovn-nbctl lr-nat-add lr0 dnat_and_snat 172.168.0.110 10.0.0.2 sw0-port1 f0:00:00:01:02:03
 
-wait_for_ports_up
 OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
 
 # send UDP request to the FIP associated to sw0-port1
 test_ip_req_packet "f0:00:00:01:02:03" "172.168.0.110"
@@ -40120,7 +40121,7 @@ echo $fip_packet > expected
 OVN_CHECK_PACKETS_REMOVE_BROADCAST([hv2/vif1-tx.pcap], [expected])
 
 check ovn-nbctl lb-add lb0 172.168.0.1:4369 10.0.0.2:4369 udp
-check ovn-nbctl lr-lb-add lr0 lb0
+check ovn-nbctl --wait=hv lr-lb-add lr0 lb0
 
 # send UDP request to the load-balancer VIP
 test_ip_req_packet "00:00:20:20:12:13" "172.168.0.1"
