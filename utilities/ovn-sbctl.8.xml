@@ -354,7 +354,9 @@
           Without <code>--may-exist</code>, attempting to bind a logical port
           that has already been bound is an error.  With
           <code>--may-exist</code>, this command does nothing if
-          <var>logical-port</var> has already been bound to a chassis.
+          <var>logical-port</var> has already been bound to the specified
+          chassis.  It is still an error if the port is bound to a different
+          chassis.
         </p>
       </dd>
 
