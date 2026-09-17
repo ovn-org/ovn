@@ -238,7 +238,7 @@
     <h2>Daemon Options</h2>
     <xi:include href="lib/daemon.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
-    <h2>Logging options</h2>
+    <h2>Logging Options</h2>
     <xi:include href="lib/vlog.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
 
     <h2>Table Formatting Options</h2>
