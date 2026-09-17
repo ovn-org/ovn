@@ -5749,10 +5749,10 @@ check_row_count nb:Logical_Router_Port 1 networks="192.168.10.10/24 192.168.10.2
 
 ovn_as az1
 check ovn-ic-nbctl --wait=sb tr-del tr0
-check_row_count sb:Datapath_Binding 0
+wait_row_count Datapath_Binding 0
 
 ovn_as az2
-check_row_count sb:Datapath_Binding 0
+wait_row_count Datapath_Binding 0
 
 OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP
