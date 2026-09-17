@@ -430,8 +430,8 @@
         </p>
       </dd>
 
-      <dt>[<code>--uuid</code>] <code>dump-flows</code> [<var>logical-datapath</var>]</dt>
-      <dd>Alias for <code>lflow-list</code>.</dd>
+      <dt><code>dump-flows</code></dt>
+      <dd>Alias for <ref section="lflow-list"/> and accepts all the same options.</dd>
 
       <dt><code>count-flows</code> [<var>logical-datapath</var>]</dt>
       <dd>Prints the number of logical flows per table and per datapath.</dd>
