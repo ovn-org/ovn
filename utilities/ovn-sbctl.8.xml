@@ -367,7 +367,7 @@
         <p>
           Without <code>--if-exists</code>, attempting to unbind a logical port
           that is not bound is an error.  With <code>--if-exists</code>,
-          attempting to unbind logical port that is not bound has no effect.
+          attempting to unbind a logical port that is not bound has no effect.
         </p>
       </dd>
     </dl>
