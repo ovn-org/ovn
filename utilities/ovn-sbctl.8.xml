@@ -425,8 +425,9 @@
           records directly used for generating OpenFlow flows are also
           listed. This includes: <var>port-bindings</var>,
           <var>mac-bindings</var>, <var>multicast-groups</var>,
-          <var>chassis</var>.  The <code>--ovs</code> and <code>--stats</code>
-          can also be used in conjunction with <code>--vflows</code>.
+          <var>chassis</var> and <var>load-balancers</var>.  The
+          <code>--ovs</code> and <code>--stats</code> options can also be used
+          in conjunction with <code>--vflows</code>.
         </p>
       </dd>
 
