@@ -321,7 +321,7 @@
         </p>
       </dd>
 
-      <dt>[<code>--if-exists</code>] <var>chassis-del <var>chassis</var></var></dt>
+      <dt>[<code>--if-exists</code>] <code>chassis-del <var>chassis</var></code></dt>
       <dd>
         <p>
           Deletes <var>chassis</var> and its <var>encaps</var> and
