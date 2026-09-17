@@ -330,8 +330,8 @@
 
         <p>
           Without <code>--if-exists</code>, attempting to delete a chassis that
-          does not exist is an error.  With <code>--if-exists</code> attempting
-          to delete a chassis that does not exist has no effect.
+          does not exist is an error.  With <code>--if-exists</code>,
+          attempting to delete a chassis that does not exist has no effect.
         </p>
       </dd>
     </dl>
