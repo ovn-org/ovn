@@ -106,6 +106,19 @@
       ovn-sbctl -u /tmp/mysock.ctl show
     </pre>
 
+    <p>
+      When running in daemon mode, <code>ovn-sbctl</code> uses the
+      <code>sbctl_probe_interval</code> value from the
+      <ref table="SB_Global" column="options"/> column in the
+      <ref table="SB_Global"/> table to configure the inactivity probe interval
+      (in milliseconds) for the database connection.  The default is 120000 ms
+      (120 seconds). To override, set the value with:
+    </p>
+
+    <pre fixed="yes">
+      ovn-sbctl set SB_Global . options:sbctl_probe_interval=60000
+    </pre>
+
     <h3>Daemon Commands</h3>
 
     <p>
