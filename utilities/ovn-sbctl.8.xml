@@ -90,7 +90,7 @@
       When using daemon mode, an alternative to the <env>OVN_SB_DAEMON</env>
       environment variable is to specify a path for the Unix socket. When
       starting the ovn-sbctl daemon, specify the <code>-u</code> option with a
-      full path to the location of the socket file. Here is an exmple:
+      full path to the location of the socket file. Here is an example:
     </p>
 
     <pre fixed="yes">
