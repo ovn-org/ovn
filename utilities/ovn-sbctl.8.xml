@@ -437,6 +437,27 @@
       <dd>Prints the number of logical flows per table and per datapath.</dd>
     </dl>
 
+    <h2>IP Multicast Commands</h2>
+
+    <dl>
+      <dt><code>ip-multicast-flush</code> [<var>switch</var>]</dt>
+      <dd>
+        <p>
+          Flushes the learned IP multicast groups for the logical switch
+          identified by <var>switch</var>, which may be given as a UUID or
+          as a datapath name.  If <var>switch</var> is not specified, flushes
+          learned multicast groups for all logical switches.
+        </p>
+
+        <p>
+          This works by incrementing the <code>seq_no</code> column of
+          the <code>IP_Multicast</code> record for the datapath.
+          <code>ovn-controller</code> monitors this value and flushes
+          its locally learned multicast groups when it detects a change.
+        </p>
+      </dd>
+    </dl>
+
     <h2>Remote Connectivity Commands</h2>
 
     <p>

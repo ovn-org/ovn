@@ -110,6 +110,9 @@ Logical flow commands:\n\
   dump-flows  [DATAPATH] [LFLOW...] alias for lflow-list\n\
   count-flows [DATAPATH]            count logical flows for DATAPATH\n\
 \n\
+IP multicast commands:\n\
+  ip-multicast-flush [SWITCH]     flush learned multicast groups\n\
+\n\
 Connection commands:\n\
   get-connection             print the connections\n\
   del-connection             delete the connections\n\
