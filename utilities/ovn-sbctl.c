@@ -98,7 +98,8 @@ Chassis commands:\n\
   chassis-add CHASSIS ENCAP-TYPE ENCAP-IP  create a new chassis named\n\
                                            CHASSIS with ENCAP-TYPE tunnels\n\
                                            and ENCAP-IP\n\
-  chassis-del CHASSIS         delete CHASSIS and all of its encaps\n\
+  chassis-del CHASSIS         delete CHASSIS, its encaps, and the associated\n\
+                              Chassis_Private record.\n\
 \n\
 Port binding commands:\n\
   lsp-bind PORT CHASSIS       bind logical port PORT to CHASSIS\n\
