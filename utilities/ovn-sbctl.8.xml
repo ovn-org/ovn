@@ -304,8 +304,8 @@
         the rules. Each <var>filter-rule</var> has the form
         <var>table-name</var>(<var>filter</var>[|<var>filter</var>]...).
         If <var>table-name</var> is omitted, filtering is applied to
-        the <code>Chassis</code> table by default. A row is shown only if its
-        printed representation (including all referenced rows) contains at
+        the <ref table="Chassis" /> table by default. A row is shown only if
+        its printed representation (including all referenced rows) contains at
         least one of the specified <var>filter</var> substrings.
       </dd>
     </dl>
@@ -466,8 +466,9 @@
         </p>
 
         <p>
-          This works by incrementing the <code>seq_no</code> column of
-          the <code>IP_Multicast</code> record for the datapath.
+          This works by incrementing the
+          <ref table="IP_Multicast" column="seq_no"/> column of
+          the <ref table="IP_Multicast"/> record for the datapath.
           <code>ovn-controller</code> monitors this value and flushes
           its locally learned multicast groups when it detects a change.
         </p>
@@ -477,12 +478,13 @@
     <h2>Remote Connectivity Commands</h2>
 
     <p>
-      These commands manipulate the <code>connections</code> column in the
-      <code>SB_Global</code> table and rows in the <code>Connection</code>
+      These commands manipulate the
+      <ref table="SB_Global" column="connections"/> column in the
+      <ref table="SB_Global"/> table and rows in the <ref table="Connection"/>
       table.  When <code>ovsdb-server</code> is configured to use the
-      <code>connections</code> column for OVSDB connections, this allows the
-      administrator to use <code>ovn-sbctl</code> to configure database
-      connections.
+      <ref table="SB_Global" column="connections"/> column for OVSDB
+      connections, this allows the administrator to use <code>ovn-sbctl</code>
+      to configure database connections.
     </p>
 
     <dl>
@@ -514,21 +516,23 @@
         <dl>
           <dt><code>read-only</code></dt>
           <dd>
-            Sets the <code>read_only</code> column for subsequent connections
-            to <code>true</code>, restricting them to read-only transactions.
+            Sets the <ref table="Connection" column="read_only"/> column for
+            subsequent connections to <code>true</code>, restricting them to
+            read-only transactions.
           </dd>
 
           <dt><code>read-write</code></dt>
           <dd>
-            Sets the <code>read_only</code> column for subsequent connections
-            to <code>false</code>, allowing them to modify the database.
-            This is the default.
+            Sets the <ref table="Connection" column="read_only"/> column for
+            subsequent connections to <code>false</code>, allowing them to
+            modify the database. This is the default.
           </dd>
 
           <dt><code>role=</code><var>name</var></dt>
           <dd>
-            Sets the <code>role</code> column for subsequent connections to
-            <var>name</var>.  The default is the empty string.
+            Sets the <ref table="Connection" column="role"/> column for
+            subsequent connections to <var>name</var>.  The default is the
+            empty string.
           </dd>
         </dl>
       </dd>
@@ -619,7 +623,7 @@
       columns are not case-sensitive, and <code>-</code> and <code>_</code> are
       treated interchangeably.  Unique abbreviations of table and column names
       are acceptable, e.g. <code>d</code> or <code>dhcp</code> is sufficient
-      to identify the <code>DHCP_Options</code> table.
+      to identify the <ref table="DHCP_Options"/> table.
     </p>
 
     <xi:include href="lib/db-ctl-base.xml" xmlns:xi="http://www.w3.org/2003/XInclude"/>
