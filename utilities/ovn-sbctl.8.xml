@@ -485,10 +485,39 @@
 
       <dt>[<code>--inactivity-probe=</code><var>msecs</var>] <code>set-connection</code> <var>target</var>...</dt>
       <dd>
-        Sets the configured connection target or targets.  Use
-        <code>--inactivity-probe=</code><var>msecs</var> to override the
-        default idle connection inactivity probe time.  Use 0 to disable
-        inactivity probes.
+        <p>
+          Sets the configured connection target or targets.  Use
+          <code>--inactivity-probe=</code><var>msecs</var> to override the
+          default idle connection inactivity probe time.  Use 0 to disable
+          inactivity probes.
+        </p>
+
+        <p>
+          Each <var>target</var> may be preceded by zero or more of the
+          following modifiers, which apply to all subsequent targets until
+          changed:
+        </p>
+
+        <dl>
+          <dt><code>read-only</code></dt>
+          <dd>
+            Sets the <code>read_only</code> column for subsequent connections
+            to <code>true</code>, restricting them to read-only transactions.
+          </dd>
+
+          <dt><code>read-write</code></dt>
+          <dd>
+            Sets the <code>read_only</code> column for subsequent connections
+            to <code>false</code>, allowing them to modify the database.
+            This is the default.
+          </dd>
+
+          <dt><code>role=</code><var>name</var></dt>
+          <dd>
+            Sets the <code>role</code> column for subsequent connections to
+            <var>name</var>.  The default is the empty string.
+          </dd>
+        </dl>
       </dd>
     </dl>
 

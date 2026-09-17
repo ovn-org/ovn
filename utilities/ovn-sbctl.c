@@ -118,6 +118,8 @@ Connection commands:\n\
   del-connection             delete the connections\n\
   [--inactivity-probe=MSECS]\n\
   set-connection TARGET...   set the list of connections to TARGET...\n\
+                               (TARGET may be preceded by read-only,\n\
+                               read-write, or role=NAME)\n\
 \n\
 SSL/TLS commands:\n\
   get-ssl                     print the SSL/TLS configuration\n\
