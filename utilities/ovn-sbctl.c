@@ -99,7 +99,6 @@ Chassis commands:\n\
                                            CHASSIS with ENCAP-TYPE tunnels\n\
                                            and ENCAP-IP\n\
   chassis-del CHASSIS         delete CHASSIS and all of its encaps\n\
-                              and gateway_ports\n\
 \n\
 Port binding commands:\n\
   lsp-bind PORT CHASSIS       bind logical port PORT to CHASSIS\n\

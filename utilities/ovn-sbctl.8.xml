@@ -324,8 +324,7 @@
       <dt>[<code>--if-exists</code>] <code>chassis-del <var>chassis</var></code></dt>
       <dd>
         <p>
-          Deletes <var>chassis</var> and its <var>encaps</var> and
-          <var>gateway_ports</var>.
+          Deletes <var>chassis</var> and its <var>encaps</var>.
         </p>
 
         <p>
