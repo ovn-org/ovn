@@ -135,6 +135,10 @@ static void
 route_table_change(const void *change_, void *aux OVS_UNUSED)
 {
     if (!change_) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
+        VLOG_INFO_RL(&rl, "Missed route table notifications, resyncing.");
+        any_route_table_changed = true;
         return;
     }
 
