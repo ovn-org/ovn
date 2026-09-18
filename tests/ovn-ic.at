@@ -4043,16 +4043,15 @@ AT_CHECK([ovn-sbctl lflow-list az2_ls1 | grep ls_in_lb | grep backends | ovn_str
 ovn_as az1
 # set other statuses to online state.
 svc_lport1_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport1_az1)
-lport1_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Port_Binding logical_port=lport1_az1)
-check ovn-sbctl set Port_Binding $lport1_uuid up=true
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl --may-exist lsp-bind lport1_az1 hv1
 check ovn-sbctl set Service_Monitor $svc_lport1_uuid status="online"
 # Sync IC DB (AZ1->ISB)
 check ovn-ic-nbctl --wait=sb sync
 check_column online ic-sb:Service_Monitor status logical_port=lport1_az1
 
 svc_lport2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport2_az1)
-lport2_uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Port_Binding logical_port=lport2_az1)
-check ovn-sbctl set Port_Binding $lport2_uuid up=true
+check ovn-sbctl --may-exist lsp-bind lport2_az1 hv1
 check ovn-sbctl set Service_Monitor $svc_lport2_uuid status="online"
 # Sync IC DB (AZ1->ISB)
 check ovn-ic-nbctl --wait=sb sync

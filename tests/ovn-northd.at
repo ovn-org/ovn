@@ -1806,6 +1806,81 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer health check unbound backends go offline])
+ovn_start
+
+check ovn-nbctl lb-add lb1 10.0.0.10:80 10.0.0.3:80,10.0.0.4:80
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.3=sw0-p1:10.0.0.2
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:10.0.0.4=sw0-p2:10.0.0.2
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 \
+"00:00:00:00:00:03 10.0.0.3"
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 \
+"00:00:00:00:00:04 10.0.0.4"
+
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.1
+check ovn-sbctl lsp-bind sw0-p1 hv1
+check ovn-sbctl lsp-bind sw0-p2 hv1
+wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 'up=true'
+wait_row_count nb:Logical_Switch_Port 1 name=sw0-p2 'up=true'
+
+check ovn-nbctl --wait=sb ls-lb-add sw0 lb1
+check_uuid ovn-nbctl --wait=sb -- --id=@hc create \
+Load_Balancer_Health_Check vip="10.0.0.10\:80" -- add Load_Balancer . \
+health_check @hc
+wait_row_count Service_Monitor 2
+wait_row_count Service_Monitor 2 chassis_name=hv1
+
+# Simulate successful probes from hv1.
+check ovn-sbctl set service_monitor sw0-p1 status=online
+check ovn-sbctl set service_monitor sw0-p2 status=online
+AT_CAPTURE_FILE([sbflows_online])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows_online | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,10.0.0.4:80);)
+])
+
+AS_BOX([Port released without clearing "up": nobody probes it anymore.])
+# This is what happens when the chassis row is deleted (weak reference) or
+# when ovn-controller releases a port it was not tracking, e.g. after the
+# hypervisor rebooted with the VM not restarted.
+check ovn-sbctl clear Port_Binding sw0-p1 chassis
+wait_row_count Port_Binding 1 logical_port=sw0-p1 'up=true'
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 'chassis_name=""'
+wait_row_count Service_Monitor 1 logical_port=sw0-p2 status=online
+AT_CAPTURE_FILE([sbflows_unbound])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows_unbound | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.4:80);)
+])
+
+AS_BOX([Port bound again: stays offline until a probe succeeds.])
+check ovn-sbctl lsp-bind sw0-p1 hv1
+wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 'up=true'
+wait_row_count Service_Monitor 1 logical_port=sw0-p1 chassis_name=hv1
+check ovn-nbctl --wait=sb sync
+check_row_count Service_Monitor 1 logical_port=sw0-p1 status=offline
+AT_CAPTURE_FILE([sbflows_rebound])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows_rebound | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.4:80);)
+])
+
+# Only a successful probe (reported by ovn-controller) brings it back.
+check ovn-sbctl set service_monitor sw0-p1 status=online
+AT_CAPTURE_FILE([sbflows_recovered])
+OVS_WAIT_FOR_OUTPUT(
+  [ovn-sbctl dump-flows sw0 | tee sbflows_recovered | grep 'priority=120.*backends' | ovn_strip_lflows], 0, [dnl
+  table=??(ls_in_lb           ), priority=120  , match=(ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(reg4 = 10.0.0.10; reg2[[0..15]] = 80; ct_lb_mark(backends=10.0.0.3:80,10.0.0.4:80);)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Load balancer VIP in NAT entries])
 AT_SKIP_IF([test $HAVE_PYTHON = no])
 ovn_start
