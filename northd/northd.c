@@ -3522,19 +3522,22 @@ ovn_lb_svc_create(struct ovsdb_idl_txn *ovnsb_txn,
                     backend_nb->svc_mon_src_ip);
             }
 
+            /* Unbound ports are not probed by any chassis: fail closed. */
             if (!backend_nb->remote_backend &&
-                (!op->sb->n_up || !op->sb->up[0])
+                (!op->sb->chassis || !op->sb->n_up || !op->sb->up[0])
                 && mon_info->sbrec_mon->status
                 && !strcmp(mon_info->sbrec_mon->status, "online")) {
                 sbrec_service_monitor_set_status(mon_info->sbrec_mon,
                                                  "offline");
             }
 
-            if (!backend_nb->remote_backend && op->sb->chassis &&
-                strcmp(mon_info->sbrec_mon->chassis_name,
-                       op->sb->chassis->name)) {
-                sbrec_service_monitor_set_chassis_name(mon_info->sbrec_mon,
-                                                       op->sb->chassis->name);
+            if (!backend_nb->remote_backend) {
+                const char *chassis_name = op->sb->chassis
+                                           ? op->sb->chassis->name : "";
+                if (strcmp(mon_info->sbrec_mon->chassis_name, chassis_name)) {
+                    sbrec_service_monitor_set_chassis_name(mon_info->sbrec_mon,
+                                                           chassis_name);
+                }
             }
         }
     }
@@ -3853,16 +3856,18 @@ ovn_lsp_svc_monitors_process_port(
                                              lsp_hc->src_ip);
         }
 
-        if ((!op->sb->n_up || !op->sb->up[0]) &&
+        /* Unbound ports are not probed by any chassis: fail closed. */
+        if ((!op->sb->chassis || !op->sb->n_up || !op->sb->up[0]) &&
             mon_info->sbrec_mon->status &&
             !strcmp(mon_info->sbrec_mon->status, "online")) {
             sbrec_service_monitor_set_status(mon_info->sbrec_mon, "offline");
         }
 
-        if (op->sb->chassis && strcmp(mon_info->sbrec_mon->chassis_name,
-                                      op->sb->chassis->name)) {
+        const char *chassis_name = op->sb->chassis ? op->sb->chassis->name
+                                                   : "";
+        if (strcmp(mon_info->sbrec_mon->chassis_name, chassis_name)) {
             sbrec_service_monitor_set_chassis_name(mon_info->sbrec_mon,
-                                                   op->sb->chassis->name);
+                                                   chassis_name);
         }
     }
 }
