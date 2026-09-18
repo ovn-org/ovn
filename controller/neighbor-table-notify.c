@@ -236,7 +236,15 @@ neighbor_table_change(const void *change_, void *aux OVS_UNUSED)
 
     const struct ne_table_msg *change = change_;
 
-    if (change && !ne_is_ovn_owned(&change->nd)) {
+    if (!change) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+
+        VLOG_INFO_RL(&rl, "Missed neighbor table notifications, resyncing.");
+        any_neighbor_table_changed = true;
+        return;
+    }
+
+    if (!ne_is_ovn_owned(&change->nd)) {
         if (find_watch_entry_by_if_index(change->nd.if_index)) {
             any_neighbor_table_changed = true;
         }
