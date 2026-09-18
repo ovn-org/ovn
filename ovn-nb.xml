@@ -427,6 +427,31 @@
         to true.
       </column>
 
+      <column name="options" key="tunnel_mtu">
+        <p>
+          Underlay MTU, in bytes, used for path MTU discovery on multichassis
+          logical ports.  This must be the smallest MTU supported along the
+          entire tunnel path between chassis.  It only affects the packet
+          size limit for multichassis ports on switches with a
+          <code>localnet</code> port and <ref column="options"
+          key="always_tunnel"/> disabled.
+          A chassis can override this value with
+          <code>external_ids:ovn-tunnel-mtu</code>;
+          see <code>ovn-controller</code>(8).
+        </p>
+        <p>
+          OVN subtracts the largest peer tunnel overhead from this value to
+          determine the packet size limit.  Larger IP packets are dropped and
+          receive ICMP Fragmentation Needed or Packet Too Big errors.  For
+          example, 9000 with Geneve over IPv4 gives a packet size limit of 8942
+          and an advertised IP MTU of 8924.
+        </p>
+        <p>
+          When unset, invalid, or below 1280 plus the tunnel and Ethernet
+          overhead (1356 for Geneve over IPv4), OVN falls back to the VIF MTU.
+        </p>
+      </column>
+
       <column name="options" key="always_tunnel"
            type='{"type": "boolean"}'>
         <p>

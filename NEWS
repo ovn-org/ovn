@@ -2,6 +2,9 @@ Post v26.09.0
 --------------
    - Added a new "options:ttl" key on the NB DNS table to make the TTL of
      DNS replies from OVN's native DNS resolver configurable per row.
+   - Add NB_Global options:tunnel_mtu and a per-chassis
+     external_ids:ovn-tunnel-mtu override to base multichassis path MTU
+     discovery on the tunnel underlay MTU instead of the VIF MTU.
    - Removed implementations of the commit_ecmp_nh, chk_ecmp_nh, and
      chk_ecmp_nh_mac actions from the code.
    - Mark tunnel ports as transient (other_config:transient=true) when the
