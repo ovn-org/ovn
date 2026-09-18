@@ -566,6 +566,30 @@ bfd_sync_routes_change_handler(struct engine_node *node,
     return EN_HANDLED_UNCHANGED;
 }
 
+enum engine_input_handler_result
+bfd_sync_sb_port_binding_change_handler(struct engine_node *node, void *data)
+{
+    struct bfd_sync_data *bfd_sync_data = data;
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    const struct sbrec_port_binding_table *sbrec_port_binding_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
+
+    /* bfd_table_sync() derives the chassis that runs a BFD session (and
+     * with it the NB/SB BFD "status" and the SB BFD "chassis_name") from
+     * the Port_Binding of the session's logical port and of its
+     * chassisredirect twin.  If a chassis binding of such a port changed
+     * (e.g. the chassis running the session went away and the binding
+     * was released), fall back to recompute; all other Port_Binding
+     * changes are irrelevant to BFD. */
+    if (!bfd_sync_handle_sb_port_binding_changes(sbrec_port_binding_table,
+                                                 &northd_data->lr_ports,
+                                                 &bfd_sync_data->bfd_ports)) {
+        return EN_UNHANDLED;
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 enum engine_node_state
 en_bfd_sync_run(struct engine_node *node, void *data)
 {

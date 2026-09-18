@@ -356,6 +356,7 @@ static void notify_pinctrl_handler(void);
 
 static bool bfd_monitor_should_inject(void);
 static void bfd_monitor_wait(long long int timeout);
+static void bfd_monitor_reconcile_wait(void);
 static void bfd_monitor_init(void);
 static void bfd_monitor_destroy(void);
 static void bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
@@ -4753,6 +4754,7 @@ pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
     if (ovnsb_idl_txn) {
         wait_controller_event();
         wait_put_vport_bindings();
+        bfd_monitor_reconcile_wait();
         seq_wait(pinctrl_main_seq, main_seq);
     }
     wait_activated_ports();
@@ -7584,6 +7586,8 @@ struct bfd_entry {
     uint32_t detection_timeout;
     long long int last_rx;
     long long int next_tx;
+    /* Earliest time for the next SB status reconciliation attempt. */
+    long long int next_reconcile;
 };
 
 static void
@@ -7651,6 +7655,21 @@ bfd_monitor_wait(long long int timeout)
 {
     if (!hmap_is_empty(&bfd_monitor_map)) {
         poll_timer_wait_until(timeout);
+    }
+}
+
+/* Register reconciliation deadlines with the main controller thread.  BFD
+ * packet transmission is handled by the pinctrl handler thread, but SB IDL
+ * transactions are owned by the main thread. */
+static void
+bfd_monitor_reconcile_wait(void)
+{
+    struct bfd_entry *entry;
+
+    HMAP_FOR_EACH (entry, node, &bfd_monitor_map) {
+        if (entry->next_reconcile) {
+            poll_timer_wait_until(entry->next_reconcile);
+        }
     }
 }
 
@@ -8173,8 +8192,34 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             if (entry->state == BFD_STATE_DOWN) {
                 entry->remote_disc = 0;
             }
+            sbrec_bfd_verify_status(bt);
             sbrec_bfd_set_status(bt, bfd_get_status(entry->state));
             entry->change_state = false;
+        }
+
+        /* Reconcile the SB status with the local session state.  The
+         * state machine only writes the status out on transitions (see
+         * the change_state branch above), so a divergent SB value would
+         * otherwise persist until the next transition, e.g. if the row
+         * held a stale status when the session was created or if an
+         * external client rewrote the column.  Skip "admin_down": it is
+         * an administrative override written by northd/CMS, not a state
+         * machine product, and the branches above already move the local
+         * session in and out of BFD_STATE_ADMIN_DOWN to honor it.
+         * Rate limit the attempts so that a write repeatedly rejected by
+         * the server, e.g. by RBAC, does not busy loop the main loop. */
+        if (ovnsb_idl_txn && !entry->change_state &&
+            entry->state != BFD_STATE_ADMIN_DOWN &&
+            cur_time >= entry->next_reconcile &&
+            strcmp(bt->status, "admin_down") &&
+            strcmp(bt->status, bfd_get_status(entry->state))) {
+            sbrec_bfd_verify_status(bt);
+            sbrec_bfd_set_status(bt, bfd_get_status(entry->state));
+            entry->next_reconcile = cur_time + BFD_UPDATE_TIMEOUT;
+        } else if (entry->state == BFD_STATE_ADMIN_DOWN ||
+                   !strcmp(bt->status, "admin_down") ||
+                   !strcmp(bt->status, bfd_get_status(entry->state))) {
+            entry->next_reconcile = 0;
         }
         bfd_monitor_check_sb_conf(bt, entry);
         entry->erase = false;
