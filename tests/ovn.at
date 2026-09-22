@@ -6662,7 +6662,7 @@ check ovn-nbctl lrp-add R2 R2_R1 00:00:00:02:03:05 20.0.0.2/24 peer=R1_R2
 
 #install static routes
 check ovn-nbctl lr-route-add R1 172.16.1.0/24 20.0.0.2
-check ovn-nbctl lr-route-add R2 172.16.2.0/24 20.0.0.2 R1_R2
+check ovn-nbctl lr-route-add R1 172.16.2.0/24 20.0.0.2 R1_R2
 check ovn-nbctl lr-route-add R2 192.168.1.0/24 20.0.0.1
 
 # Create logical port foo1 in foo
