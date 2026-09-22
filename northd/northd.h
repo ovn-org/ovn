@@ -907,7 +907,6 @@ struct parsed_route *parsed_route_add(
 
 struct parsed_route *parsed_routes_add_static(
     const struct ovn_datapath *od,
-    const struct hmap *lr_ports,
     const struct nbrec_logical_router_static_route *route,
     const struct hmap *bfd_connections,
     struct hmap *routes, struct simap *route_tables,
@@ -920,7 +919,7 @@ struct svc_monitors_map_data {
 };
 
 bool
-find_route_outport(const struct hmap *lr_ports, const char *output_port,
+find_route_outport(const struct ovn_datapath *od, const char *output_port,
                    const char *route_type, const char *route_desc,
                    const char *nexthop, bool is_ipv4,
                    bool force_out_port,
@@ -952,8 +951,7 @@ void northd_indices_create(struct northd_data *data,
 void route_policies_init(struct route_policies_data *);
 void route_policies_destroy(struct route_policies_data *);
 void build_parsed_routes(const struct ovn_datapath *, const struct hmap *,
-                         const struct hmap *, struct hmap *, struct simap *,
-                         struct hmap *);
+                         struct hmap *, struct simap *, struct hmap *);
 uint32_t get_route_table_id(struct simap *, const char *);
 void routes_init(struct routes_data *);
 void routes_destroy(struct routes_data *);
@@ -1018,8 +1016,7 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    struct northd_tracked_data *);
 
 void build_route_policies(struct ovn_datapath *, const struct hmap *,
-                          const struct hmap *, struct hmap *, struct hmap *,
-                          struct simap *);
+                          struct hmap *, struct hmap *, struct simap *);
 void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     const struct hmap *, const struct hmap *,
                     const struct hmap *, const struct hmap *,

@@ -140,7 +140,6 @@ en_learned_route_sync_run(struct engine_node *node, void *data)
 
 static struct parsed_route *
 parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
-                             const struct hmap *lr_ports,
                              const struct hmap *lr_datapaths,
                              const struct sbrec_learned_route *route)
 {
@@ -186,7 +185,7 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
     /* Verify that ip_prefix and nexthop are on the same network. */
     const char *lrp_addr_s = NULL;
     struct ovn_port *out_port = NULL;
-    if (!find_route_outport(lr_ports, route->logical_port->logical_port,
+    if (!find_route_outport(od, route->logical_port->logical_port,
                             "static route", route->ip_prefix, route->nexthop,
                             IN6_IS_ADDR_V4MAPPED(nexthop),
                             true,
@@ -236,7 +235,7 @@ routes_table_sync(
             sbrec_learned_route_delete(sb_route);
             continue;
         }
-        parse_route_from_sbrec_route(parsed_routes_out, lr_ports,
+        parse_route_from_sbrec_route(parsed_routes_out,
                                      &lr_datapaths->datapaths,
                                      sb_route);
 
@@ -272,8 +271,8 @@ learned_route_sync_sb_learned_route_change_handler(struct engine_node *node,
 
         if (sbrec_learned_route_is_new(changed_route)) {
             struct parsed_route *route = parse_route_from_sbrec_route(
-                &data->parsed_routes, &northd_data->lr_ports,
-                &northd_data->lr_datapaths.datapaths, changed_route);
+                &data->parsed_routes, &northd_data->lr_datapaths.datapaths,
+                changed_route);
             if (route) {
                 hmapx_add(&data->trk_data.trk_created_parsed_route, route);
                 continue;

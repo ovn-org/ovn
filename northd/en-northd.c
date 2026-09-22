@@ -290,7 +290,6 @@ route_policies_northd_change_handler(struct engine_node *node,
     /* This node uses the below data from the en_northd engine node.
      * See (lr_stateful_get_input_data())
      *   1. northd_data->lr_datapaths
-     *   2. northd_data->lr_ports
      *      This data gets updated when a logical router or logical router port
      *      is created or deleted.
      *      Northd engine node presently falls back to full recompute when
@@ -319,8 +318,7 @@ en_route_policies_run(struct engine_node *node, void *data)
 
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
-        build_route_policies(od, &northd_data->lr_ports,
-                             &bfd_data->bfd_connections,
+        build_route_policies(od, &bfd_data->bfd_connections,
                              &route_policies_data->route_policies,
                              &route_policies_data->bfd_active_connections,
                              &route_policies_data->chain_ids);
@@ -341,7 +339,6 @@ routes_northd_change_handler(struct engine_node *node,
     /* This node uses the below data from the en_northd engine node.
      * See (lr_stateful_get_input_data())
      *   1. northd_data->lr_datapaths
-     *   2. northd_data->lr_ports
      *      This data gets updated when a logical router or logical router port
      *      is created or deleted.
      *      Northd engine node presently falls back to full recompute when
@@ -415,7 +412,7 @@ routes_static_route_change_handler(struct engine_node *node,
                 od->nbr->static_routes[i];
 
             if (nbrec_logical_router_static_route_is_new(sr)) {
-                pr = parsed_routes_add_static(od, &northd_data->lr_ports, sr,
+                pr = parsed_routes_add_static(od, sr,
                         &bfd_data->bfd_connections,
                         &routes_data->parsed_routes,
                         &routes_data->route_tables,
@@ -444,8 +441,7 @@ routes_static_route_change_handler(struct engine_node *node,
             }
             hmapx_add(&routes_data->trk_data.trk_deleted_parsed_route, pr);
             hmap_remove(&routes_data->parsed_routes, &pr->key_node);
-            pr = parsed_routes_add_static(od, &northd_data->lr_ports, sr,
-                    &bfd_data->bfd_connections,
+            pr = parsed_routes_add_static(od, sr, &bfd_data->bfd_connections,
                     &routes_data->parsed_routes,
                     &routes_data->route_tables,
                     &routes_data->bfd_active_connections);
@@ -508,8 +504,7 @@ en_routes_run(struct engine_node *node, void *data)
                                route_table_name);
         }
 
-        build_parsed_routes(od, &northd_data->lr_ports,
-                            &bfd_data->bfd_connections,
+        build_parsed_routes(od, &bfd_data->bfd_connections,
                             &routes_data->parsed_routes,
                             &routes_data->route_tables,
                             &routes_data->bfd_active_connections);

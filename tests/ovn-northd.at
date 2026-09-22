@@ -25454,3 +25454,80 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policy misconfigured port])
+ovn_start
+
+# Logical router policies can specify an outport. This test ensures that
+# if the outport does not correspond with a port on the logical router
+# where the policy is applied, then we do not generate any sort of bogus
+# router policy flows.
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr2 lrp2 00:00:00:00:00:02 20.0.0.1/24
+
+# Our logical router policy will always live on lr1. We'll mess with the
+# outport port and see what logical flows we end up with.
+check ovn-nbctl --output-port=lrp2 lr-policy-add lr1 100 "ip4.src == 10.0.0.100" reroute 10.0.0.1
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list lr1 > lr1flows])
+AT_CAPTURE_FILE([lr1flows])
+
+# Since we configured a port on the wrong logical router, we should not be able
+# to find the logical router port and therefore should not have any policy flows.
+AT_CHECK([grep "lr_in_policy" lr1flows | grep "priority=100"], [1], [ignore], [ignore])
+
+AT_CHECK([ovn-sbctl lflow-list lr2 > lr2flows])
+AT_CAPTURE_FILE([lr2flows])
+
+# Just to be safe, let's also ensure the router policy did not get installed on lr2
+AT_CHECK([grep "lr_in_policy" lr2flows | grep "priority=100"], [1], [ignore], [ignore])
+
+# Double check that the reason why is due to a bad port configured.
+AT_CHECK([grep -qE "Bad out port lrp2 for policy ip4.src == 10.0.0.100" northd/ovn-northd.log], [0])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Static route misconfigured port])
+ovn_start
+
+# Static routes can specify an outport. This test ensures that
+# if the outport does not correspond with a port on the logical router
+# where the static route is applied, then we do not generate any sort of bogus
+# route flows.
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lr-add lr2
+check ovn-nbctl lrp-add lr2 lrp2 00:00:00:00:00:02 20.0.0.1/24
+
+# Our static route will always live on lr1. We'll mess with the
+# outport port and see what logical flows we end up with.
+check ovn-nbctl lr-route-add lr1 100.0.0.0/24 10.0.0.50 lrp2
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list lr1 > lr1flows])
+AT_CAPTURE_FILE([lr1flows])
+
+# Since we configured a port on the wrong logical router, we should not be able
+# to find the logical router port and therefore should not have any policy flows.
+AT_CHECK([grep "lr_in_ip_routing" lr1flows | grep "100.0.0.0"], [1], [ignore], [ignore])
+
+AT_CHECK([ovn-sbctl lflow-list lr2 > lr2flows])
+AT_CAPTURE_FILE([lr2flows])
+
+# Just to be safe, let's also ensure the route did not get installed on lr2
+AT_CHECK([grep "lr_in_ip_routing" lr2flows | grep "100.0.0.0"], [1], [ignore], [ignore])
+
+# Double check that the reason why is due to a bad port configured.
+AT_CHECK([grep -qE "Bad out port lrp2 for static route 100.0.0.0/24" northd/ovn-northd.log], [0])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

@@ -12361,7 +12361,7 @@ lrp_find_member_ip(const struct ovn_port *op, const char *ip_s)
  * in 'p_output_port' and a pointer to the router IP address to be used for
  * this policy, in 'p_lrp_addr_s'. */
 static bool
-find_policy_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
+find_policy_outport(struct ovn_datapath *od,
                     const struct nbrec_logical_router_policy *policy,
                     const char *nexthop, bool is_ipv4,
                     const char **p_lrp_addr_s, struct ovn_port **p_out_port)
@@ -12374,7 +12374,7 @@ find_policy_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
     const char *lrp_addr_s = NULL;
 
     if (policy->output_port) {
-        if (!find_route_outport(lr_ports, policy->output_port->name,
+        if (!find_route_outport(od, policy->output_port->name,
                                 "policy", policy->match,
                                 nexthop, is_ipv4, true, &out_port,
                                 &lrp_addr_s)) {
@@ -12468,7 +12468,7 @@ static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
 
 static void
 build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
-                          const struct hmap *lr_ports, struct route_policy *rp,
+                          struct route_policy *rp,
                           const struct ovsdb_idl_row *stage_hint,
                           struct lflow_ref *lflow_ref)
 {
@@ -12488,8 +12488,8 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
         const char *lrp_addr_s = NULL;
         struct ovn_port *out_port = NULL;
 
-        if (!find_policy_outport(od, lr_ports, rule, nexthop, is_ipv4,
-                                 &lrp_addr_s, &out_port)) {
+        if (!find_policy_outport(od, rule, nexthop, is_ipv4, &lrp_addr_s,
+                                 &out_port)) {
             return;
         }
 
@@ -12545,7 +12545,6 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
 static void
 build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 struct ovn_datapath *od,
-                                const struct hmap *lr_ports,
                                 struct route_policy *rp,
                                 uint16_t ecmp_group_id,
                                 struct lflow_ref *lflow_ref)
@@ -12581,8 +12580,8 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
         const char *lrp_addr_s = NULL;
         struct ovn_port *out_port = NULL;
 
-        if (!find_policy_outport(od, lr_ports, rule, rp->valid_nexthops[i],
-                                 is_ipv4, &lrp_addr_s, &out_port)) {
+        if (!find_policy_outport(od, rule, rp->valid_nexthops[i], is_ipv4,
+                                 &lrp_addr_s, &out_port)) {
             goto cleanup;
         }
 
@@ -12713,7 +12712,6 @@ route_hash(const struct parsed_route *route)
 
 static bool
 find_static_route_outport(const struct ovn_datapath *od,
-    const struct hmap *lr_ports,
     const struct nbrec_logical_router_static_route *route, bool is_ipv4,
     const char **p_lrp_addr_s, struct ovn_port **p_out_port);
 
@@ -12956,7 +12954,6 @@ parsed_route_add(const struct ovn_datapath *od,
 
 struct parsed_route *
 parsed_routes_add_static(const struct ovn_datapath *od,
-                         const struct hmap *lr_ports,
                          const struct nbrec_logical_router_static_route *route,
                          const struct hmap *bfd_connections,
                          struct hmap *routes, struct simap *route_tables,
@@ -13004,7 +13001,7 @@ parsed_routes_add_static(const struct ovn_datapath *od,
     const char *lrp_addr_s = NULL;
     struct ovn_port *out_port = NULL;
     if (!is_discard_route &&
-        !find_static_route_outport(od, lr_ports, route,
+        !find_static_route_outport(od, route,
                                    nexthop ? IN6_IS_ADDR_V4MAPPED(nexthop)
                                    : IN6_IS_ADDR_V4MAPPED(&prefix),
                                    &lrp_addr_s, &out_port)) {
@@ -13111,13 +13108,13 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
 }
 
 void
-build_parsed_routes(const struct ovn_datapath *od, const struct hmap *lr_ports,
+build_parsed_routes(const struct ovn_datapath *od,
                     const struct hmap *bfd_connections, struct hmap *routes,
                     struct simap *route_tables,
                     struct hmap *bfd_active_connections)
 {
     for (size_t i = 0; i < od->nbr->n_static_routes; i++) {
-        parsed_routes_add_static(od, lr_ports, od->nbr->static_routes[i],
+        parsed_routes_add_static(od, od->nbr->static_routes[i],
                                  bfd_connections, routes, route_tables,
                                  bfd_active_connections);
     }
@@ -13195,13 +13192,13 @@ calc_priority(int plen,
 }
 
 bool
-find_route_outport(const struct hmap *lr_ports, const char *output_port,
+find_route_outport(const struct ovn_datapath *od, const char *output_port,
                    const char *route_type, const char *route_desc,
                    const char *nexthop, bool is_ipv4,
                    bool force_out_port,
                    struct ovn_port **out_port, const char **lrp_addr_s)
 {
-    *out_port = ovn_port_find(lr_ports, output_port);
+    *out_port = ovn_port_find_in_datapath(od, output_port);
     if (!*out_port) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
         VLOG_WARN_RL(&rl, "Bad out port %s for %s %s",
@@ -13237,15 +13234,13 @@ find_route_outport(const struct hmap *lr_ports, const char *output_port,
 /* Output: p_lrp_addr_s and p_out_port. */
 static bool
 find_static_route_outport(const struct ovn_datapath *od,
-    const struct hmap *lr_ports,
     const struct nbrec_logical_router_static_route *route, bool is_ipv4,
     const char **p_lrp_addr_s, struct ovn_port **p_out_port)
 {
     const char *lrp_addr_s = NULL;
     struct ovn_port *out_port = NULL;
     if (route->output_port) {
-        /* XXX: we should be able to use &od->ports instead of lr_ports. */
-        if (!find_route_outport(lr_ports, route->output_port,
+        if (!find_route_outport(od, route->output_port,
                                 "static route", route->ip_prefix,
                                 route->nexthop, is_ipv4, true, &out_port,
                                 &lrp_addr_s)) {
@@ -16050,7 +16045,7 @@ policy_chain_add(struct simap *chain_ids, const char *chain_name)
 }
 
 void
-build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
+build_route_policies(struct ovn_datapath *od,
                      const struct hmap *bfd_connections,
                      struct hmap *route_policies,
                      struct hmap *bfd_active_connections,
@@ -16142,8 +16137,8 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
                 struct ovn_port *out_port = NULL;
                 bool is_ipv4 = strchr(nexthop, '.') ? true : false;
 
-                if (!find_policy_outport(od, lr_ports, rule, nexthop, is_ipv4,
-                                         NULL, &out_port)) {
+                if (!find_policy_outport(od, rule, nexthop, is_ipv4, NULL,
+                                         &out_port)) {
                     continue;
                 }
                 if (!check_bfd_state(rule, out_port, nexthop,
@@ -16190,7 +16185,6 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
 static void
 build_ingress_policy_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
-        const struct hmap *lr_ports,
         struct hmap *route_policies,
         struct lflow_ref *lflow_ref)
 {
@@ -16216,12 +16210,12 @@ build_ingress_policy_flows_for_lrouter(
             (!strcmp(rule->action, "reroute") && rule->n_nexthops > 1);
 
         if (is_ecmp_reroute) {
-            build_ecmp_routing_policy_flows(lflows, od, lr_ports, rp,
-                                            ecmp_group_id, lflow_ref);
+            build_ecmp_routing_policy_flows(lflows, od, rp, ecmp_group_id,
+                                            lflow_ref);
             ecmp_group_id++;
         } else {
-            build_routing_policy_flow(lflows, od, lr_ports, rp,
-                                      &rule->header_, lflow_ref);
+            build_routing_policy_flow(lflows, od, rp, &rule->header_,
+                                      lflow_ref);
         }
     }
 }
@@ -20716,7 +20710,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
                                   lsi->bfd_ports);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                          od->datapath_lflows);
-    build_ingress_policy_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
+    build_ingress_policy_flows_for_lrouter(od, lsi->lflows,
                                            lsi->route_policies,
                                            od->datapath_lflows);
     build_arp_resolve_flows_for_lrouter(od, lsi->lflows, od->datapath_lflows);
