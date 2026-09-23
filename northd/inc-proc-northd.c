@@ -51,6 +51,7 @@
 #include "en-datapath-logical-router.h"
 #include "en-datapath-logical-switch.h"
 #include "en-datapath-sync.h"
+#include "en-route-policies.h"
 #include "unixctl.h"
 #include "util.h"
 

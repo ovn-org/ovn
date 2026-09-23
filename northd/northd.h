@@ -210,15 +210,6 @@ struct northd_data {
     struct northd_tracked_data trk_data;
 };
 
-struct route_policy {
-    struct hmap_node key_node;
-    const struct nbrec_logical_router_policy *rule;
-    size_t n_valid_nexthops;
-    char **valid_nexthops;
-    uint32_t chain_id;
-    uint32_t jump_chain_id;
-};
-
 struct route_tracked_data {
     struct hmapx trk_crupdated_parsed_route;
     struct hmapx trk_deleted_parsed_route;
@@ -230,12 +221,6 @@ struct routes_data {
     struct hmap bfd_active_connections;
     struct route_tracked_data trk_data;
     bool tracked;
-};
-
-struct route_policies_data {
-    struct hmap route_policies;
-    struct hmap bfd_active_connections;
-    struct simap chain_ids;
 };
 
 struct bfd_data {
@@ -948,8 +933,6 @@ void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
 
-void route_policies_init(struct route_policies_data *);
-void route_policies_destroy(struct route_policies_data *);
 void build_parsed_routes(const struct ovn_datapath *, const struct hmap *,
                          struct hmap *, struct simap *, struct hmap *);
 uint32_t get_route_table_id(struct simap *, const char *);
@@ -957,8 +940,29 @@ void routes_init(struct routes_data *);
 void routes_destroy(struct routes_data *);
 void routes_clear_tracked(struct routes_data *);
 
+struct bfd_entry {
+    struct hmap_node hmap_node;
+
+    const struct nbrec_bfd *nb_bt;
+    const struct sbrec_bfd *sb_bt;
+
+    char *logical_port;
+    char *dst_ip;
+    char *status;
+    bool stale;
+};
+
+struct bfd_entry *bfd_alloc_entry(struct hmap *bfd_connections,
+                                  const char *logical_port, const char *dst_ip,
+                                  const char *status);
+void bfd_erase_entry(struct bfd_entry *bfd_e);
+void bfd_set_status(struct bfd_entry *bfd_e, const char *status);
+struct bfd_entry *bfd_port_lookup(const struct hmap *bfd_map,
+                                  const char *logical_port,
+                                  const char *dst_ip);
+void bfd_destroy(struct hmap *bfd_connections);
+
 void bfd_init(struct bfd_data *);
-void bfd_destroy(struct bfd_data *);
 
 void bfd_sync_init(struct bfd_sync_data *);
 void bfd_sync_swap(struct bfd_sync_data *, struct sset *bfd_ports);
@@ -1015,8 +1019,12 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    const struct hmap *lr_lb_map,
                                    struct northd_tracked_data *);
 
-void build_route_policies(struct ovn_datapath *, const struct hmap *,
-                          struct hmap *, struct hmap *, struct simap *);
+bool find_policy_outport(struct ovn_datapath *od,
+                         const struct nbrec_logical_router_policy *policy,
+                         const char *nexthop, bool is_ipv4,
+                         const char **p_lrp_addr_s,
+                         struct ovn_port **p_out_port);
+
 void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     const struct hmap *, const struct hmap *,
                     const struct hmap *, const struct hmap *,

@@ -34,6 +34,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-northd-output.h \
 	northd/en-port-group.c \
 	northd/en-port-group.h \
+	northd/en-route-policies.c \
+	northd/en-route-policies.h \
 	northd/en-sync-sb.c \
 	northd/en-sync-sb.h \
 	northd/en-sync-from-sb.c \

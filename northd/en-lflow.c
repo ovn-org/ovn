@@ -29,6 +29,7 @@
 #include "en-sampling-app.h"
 #include "en-group-ecmp-route.h"
 #include "en-datapath-sync.h"
+#include "en-route-policies.h"
 #include "lflow-mgr.h"
 
 #include "lib/inc-proc-eng.h"
