@@ -14335,11 +14335,6 @@ lrouter_dnat_and_snat_is_stateless(const struct ovn_nat *nat)
 
 #define NAT_PRIORITY_MATCH_OFFSET 300
 
-/* Routers with distributed gateway ports shift their lr_out_snat NAT
- * priorities up by this offset.  Other lr_out_snat flows that have to keep a
- * fixed ordering relative to the NAT flows must apply the same offset. */
-#define NAT_PRIORITY_DGP_OFFSET 128
-
 static inline uint16_t
 lrouter_nat_get_priority(const struct ovn_datapath *od,
                          const struct nbrec_nat *nat, bool is_dnat,
@@ -14358,7 +14353,7 @@ lrouter_nat_get_priority(const struct ovn_datapath *od,
      * priority. */
     uint16_t priority = prefix_len + 1;
     if (!od->is_gw_router && !vector_is_empty(&od->l3dgw_ports)) {
-        priority += NAT_PRIORITY_DGP_OFFSET;
+        priority += 128;
     }
 
     return priority;
@@ -14707,47 +14702,23 @@ build_lrouter_force_snat_flows(struct lflow_table *lflows,
                                const struct ovn_datapath *od,
                                const char *ip_version, const char *ip_addr,
                                const char *context,
-                               const struct ovn_port *l3dgw_port,
                                struct lflow_ref *lflow_ref)
 {
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
     ds_put_format(&match, "ip%s && ip%s.dst == %s",
                   ip_version, ip_version, ip_addr);
-    if (l3dgw_port) {
-        /* Distributed router: only unSNAT on the chassis where the
-         * gateway port is resident. */
-        ds_put_format(&match, " && inport == %s && is_chassis_resident("
-                      "\"%s\")", l3dgw_port->json_key,
-                      l3dgw_port->cr_port->key);
-    }
     ovn_lflow_add(lflows, od, S_ROUTER_IN_UNSNAT, 110,
                   ds_cstr(&match), "ct_snat;", lflow_ref);
 
-    /* Higher priority rules to force SNAT with the configured IP
-     * addresses.  This only takes effect when the packet has already been
-     * DNATed or load balanced once. */
+    /* Higher priority rules to force SNAT with the IP addresses
+     * configured in the Gateway router.  This only takes effect
+     * when the packet has already been DNATed or load balanced once. */
     ds_clear(&match);
     ds_put_format(&match, "flags.force_snat_for_%s == 1 && ip%s",
                   context, ip_version);
-    uint16_t snat_prio = 100;
-    if (l3dgw_port) {
-        /* Distributed router: force SNAT is applied on the chassis
-         * where the gateway port is resident, consistent with how
-         * regular SNAT entries are handled for such routers.
-         *
-         * The NAT flows of such a router are shifted up by
-         * NAT_PRIORITY_DGP_OFFSET, so shift this flow as well to keep the
-         * same ordering it has on a gateway router.  Without the shift
-         * even a plain subnet SNAT entry would outrank it and the forced
-         * SNAT would never be applied. */
-        ds_put_format(&match, " && outport == %s && is_chassis_resident("
-                      "\"%s\")", l3dgw_port->json_key,
-                      l3dgw_port->cr_port->key);
-        snat_prio += NAT_PRIORITY_DGP_OFFSET;
-    }
     ds_put_format(&actions, "ct_snat(%s);", ip_addr);
-    ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, snat_prio,
+    ovn_lflow_add(lflows, od, S_ROUTER_OUT_SNAT, 100,
                   ds_cstr(&match), ds_cstr(&actions),
                   lflow_ref);
 
@@ -19233,46 +19204,30 @@ build_lrouter_nat_defrag_and_lb(
 
     }
 
-    /* Consumers for the force SNAT flags produced by the lr_in_dnat and
-     * lr_out_undnat flows above.
-     */
+    /* Handle force SNAT options set in the gateway router. */
     if (od->is_gw_router) {
         if (dnat_force_snat_ip) {
             if (lrnat_rec->dnat_force_snat_addrs.n_ipv4_addrs) {
                 build_lrouter_force_snat_flows(lflows, od, "4",
                     lrnat_rec->dnat_force_snat_addrs.ipv4_addrs[0].addr_s,
-                    "dnat", NULL, lflow_ref);
+                    "dnat", lflow_ref);
             }
             if (lrnat_rec->dnat_force_snat_addrs.n_ipv6_addrs) {
                 build_lrouter_force_snat_flows(lflows, od, "6",
                     lrnat_rec->dnat_force_snat_addrs.ipv6_addrs[0].addr_s,
-                    "dnat", NULL, lflow_ref);
+                    "dnat", lflow_ref);
             }
         }
         if (lb_force_snat_ip) {
             if (lrnat_rec->lb_force_snat_addrs.n_ipv4_addrs) {
                 build_lrouter_force_snat_flows(lflows, od, "4",
                     lrnat_rec->lb_force_snat_addrs.ipv4_addrs[0].addr_s, "lb",
-                    NULL, lflow_ref);
+                    lflow_ref);
             }
             if (lrnat_rec->lb_force_snat_addrs.n_ipv6_addrs) {
                 build_lrouter_force_snat_flows(lflows, od, "6",
                     lrnat_rec->lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb",
-                    NULL, lflow_ref);
-            }
-        }
-    } else if (lb_force_snat_ip) {
-        struct ovn_port *dgp;
-        VECTOR_FOR_EACH (&od->l3dgw_ports, dgp) {
-            if (lrnat_rec->lb_force_snat_addrs.n_ipv4_addrs) {
-                build_lrouter_force_snat_flows(lflows, od, "4",
-                    lrnat_rec->lb_force_snat_addrs.ipv4_addrs[0].addr_s, "lb",
-                    dgp, lflow_ref);
-            }
-            if (lrnat_rec->lb_force_snat_addrs.n_ipv6_addrs) {
-                build_lrouter_force_snat_flows(lflows, od, "6",
-                    lrnat_rec->lb_force_snat_addrs.ipv6_addrs[0].addr_s, "lb",
-                    dgp, lflow_ref);
+                    lflow_ref);
             }
         }
     }
