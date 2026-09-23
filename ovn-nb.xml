@@ -3270,18 +3270,6 @@ or
         </p>
 
         <p>
-          A set of IP addresses is also honored on distributed routers
-          with one or more distributed gateway ports.  In that case the
-          SNAT is applied on the chassis where the gateway port is
-          resident, consistent with how regular SNAT entries are handled
-          for such routers.  This is useful, for example, when a load
-          balancer backend reachable through the gateway port connects to
-          its own VIP: without the forced SNAT the un-SNATed reply would
-          arrive at the backend with identical source and destination
-          addresses and be discarded as a martian packet.
-        </p>
-
-        <p>
           If it is configured with the value <code>router_ip</code>, then
           the load balanced packet is SNATed with the IP of router port
           (attached to the gateway router) selected as the destination after
