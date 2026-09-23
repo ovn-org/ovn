@@ -156,6 +156,7 @@ digraph "Incremental-Processing-Engine" {
 	NB_logical_router_static_route -> routes [[label="routes_static_route_change_handler"]];
 	route_policies [[style=filled, shape=box, fillcolor=white, label="route_policies"]];
 	bfd -> route_policies [[label=""]];
+	datapath_synced_logical_router -> route_policies [[label="route_policies_datapath_synced_logical_router_handler"]];
 	northd -> route_policies [[label="route_policies_northd_change_handler"]];
 	bfd_sync [[style=filled, shape=box, fillcolor=white, label="bfd_sync"]];
 	bfd -> bfd_sync [[label=""]];

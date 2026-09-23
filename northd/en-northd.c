@@ -31,6 +31,7 @@
 #include "northd.h"
 #include "lib/util.h"
 #include "openvswitch/vlog.h"
+#include "en-datapath-logical-router.h"
 
 VLOG_DEFINE_THIS_MODULE(en_northd);
 COVERAGE_DEFINE(northd_run);
@@ -277,7 +278,6 @@ northd_nb_port_group_handler(struct engine_node *node, void *data)
     return EN_HANDLED_UNCHANGED;
 }
 
-
 enum engine_input_handler_result
 route_policies_northd_change_handler(struct engine_node *node,
                                      void *data OVS_UNUSED)
@@ -294,15 +294,54 @@ route_policies_northd_change_handler(struct engine_node *node,
      *      is created or deleted.
      *      Northd engine node presently falls back to full recompute when
      *      this happens and so does this node.
-     *      Note: When we add I-P to the created/deleted logical routers or
-     *      logical router ports, we need to revisit this handler.
      *
-     *      This node also accesses the route policies of the logical router.
-     *      When these route policies get updated, en_northd engine recomputes
-     *      and so does this node.
-     *      Note: When we add I-P to handle route policies changes, we need
-     *      to revisit this handler.
      */
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+enum engine_input_handler_result
+route_policies_datapath_synced_logical_router_handler(struct engine_node *node,
+                                                      void *data OVS_UNUSED)
+{
+    const struct ovn_synced_logical_router_map *synced_lrs =
+        engine_get_input_data("datapath_synced_logical_router", node);
+
+    if (hmapx_is_empty(&synced_lrs->new) &&
+        hmapx_is_empty(&synced_lrs->updated) &&
+        hmapx_is_empty(&synced_lrs->deleted)) {
+        return EN_UNHANDLED;
+    }
+
+    struct hmapx_node *lr_node;
+    HMAPX_FOR_EACH (lr_node, &synced_lrs->deleted) {
+        const struct ovn_synced_logical_router *lr = lr_node->data;
+        if (lr->nb->n_policies > 0) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    HMAPX_FOR_EACH (lr_node, &synced_lrs->new) {
+        const struct ovn_synced_logical_router *lr = lr_node->data;
+        if (lr->nb->n_policies > 0) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    HMAPX_FOR_EACH (lr_node, &synced_lrs->updated) {
+        const struct ovn_synced_logical_router *lr = lr_node->data;
+        if (nbrec_logical_router_is_updated(
+                lr->nb, NBREC_LOGICAL_ROUTER_COL_POLICIES)) {
+            return EN_UNHANDLED;
+        }
+        for (size_t i = 0; i < lr->nb->n_policies; i++) {
+            if (nbrec_logical_router_policy_row_get_seqno(lr->nb->policies[i],
+                                    OVSDB_IDL_CHANGE_MODIFY) > 0) {
+                return EN_UNHANDLED;
+            }
+        }
+    }
+
     return EN_HANDLED_UNCHANGED;
 }
 

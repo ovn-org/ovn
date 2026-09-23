@@ -333,6 +333,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_bfd, &en_sb_bfd, NULL);
 
     engine_add_input(&en_route_policies, &en_bfd, NULL);
+    engine_add_input(&en_route_policies, &en_datapath_synced_logical_router,
+                     route_policies_datapath_synced_logical_router_handler);
     engine_add_input(&en_route_policies, &en_northd,
                      route_policies_northd_change_handler);
 

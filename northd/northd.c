@@ -5504,6 +5504,10 @@ bool northd_handle_ipam_changes(struct northd_data *nd)
  * Presently supports i-p for the below changes:
  *    - load balancers and load balancer groups.
  *    - NAT changes
+ *
+ * We ignore changes to the following because they
+ * are handled by other incremental nodes:
+ *    - logical router policies
  */
 static bool
 lr_changes_can_be_handled(const struct nbrec_logical_router *lr)
@@ -5520,7 +5524,8 @@ lr_changes_can_be_handled(const struct nbrec_logical_router *lr)
             if (col == NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER
                 || col == NBREC_LOGICAL_ROUTER_COL_LOAD_BALANCER_GROUP
                 || col == NBREC_LOGICAL_ROUTER_COL_NAT
-                || col == NBREC_LOGICAL_ROUTER_COL_STATIC_ROUTES) {
+                || col == NBREC_LOGICAL_ROUTER_COL_STATIC_ROUTES
+                || col == NBREC_LOGICAL_ROUTER_COL_POLICIES) {
                 continue;
             }
             return false;
@@ -5538,12 +5543,6 @@ lr_changes_can_be_handled(const struct nbrec_logical_router *lr)
     if (lr->copp && nbrec_copp_row_get_seqno(lr->copp,
                                 OVSDB_IDL_CHANGE_MODIFY) > 0) {
         return false;
-    }
-    for (size_t i = 0; i < lr->n_policies; i++) {
-        if (nbrec_logical_router_policy_row_get_seqno(lr->policies[i],
-                                OVSDB_IDL_CHANGE_MODIFY) > 0) {
-            return false;
-        }
     }
 
     return true;
@@ -5699,7 +5698,6 @@ northd_handle_lr_changes(const struct northd_input *ni,
         if (deleted_lr->copp ||
             !hmap_is_empty(&od->ports) ||
             deleted_lr->n_ports > 0 ||
-            deleted_lr->n_policies > 0 ||
             deleted_lr->n_static_routes > 0) {
             goto fail;
         }

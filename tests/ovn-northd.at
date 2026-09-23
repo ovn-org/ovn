@@ -4809,7 +4809,7 @@ wait_column down bfd status logical_port=r0-sw8
 bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw8)
 AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid])
 
-check_engine_stats northd recompute incremental
+check_engine_stats northd norecompute incremental
 check_engine_stats bfd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
@@ -4824,7 +4824,7 @@ wait_column down bfd status dst_ip=192.168.9.2
 wait_column down bfd status dst_ip=192.168.9.3
 wait_column down bfd status dst_ip=192.168.9.4
 
-check_engine_stats northd recompute nocompute
+check_engine_stats northd norecompute compute
 check_engine_stats bfd recompute nocompute
 check_engine_stats route_policies recompute nocompute
 check_engine_stats lflow recompute nocompute
@@ -14647,39 +14647,6 @@ check_engine_stats lr_stateful norecompute compute
 check_engine_stats lflow norecompute compute
 check_engine_stats sync_to_sb_pb norecompute compute
 check_engine_stats sync_to_sb_lb norecompute compute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
-
-# Create router Policy
-check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.3" reroute 172.168.0.101,172.168.0.102
-check_engine_stats northd recompute nocompute
-check_engine_stats lr_nat recompute nocompute
-check_engine_stats lr_stateful recompute nocompute
-check_engine_stats sync_to_sb_pb recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
-check_engine_stats lflow recompute nocompute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
-
-# Change router Policy to use explicit output port.
-lrp_lr0_sw0=$(fetch_column nb:logical_router_port _uuid name=lr0-sw0)
-check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl --wait=sb set logical_router_policy . output_port=$lrp_lr0_sw0
-check_engine_stats northd recompute nocompute
-check_engine_stats lr_nat recompute nocompute
-check_engine_stats lr_stateful recompute nocompute
-check_engine_stats sync_to_sb_pb recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
-check_engine_stats lflow recompute nocompute
-CHECK_NO_CHANGE_AFTER_RECOMPUTE
-
-check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl --wait=sb lr-policy-del lr0  10 "ip4.src == 10.0.0.3"
-check_engine_stats northd recompute nocompute
-check_engine_stats lr_nat recompute nocompute
-check_engine_stats lr_stateful recompute nocompute
-check_engine_stats sync_to_sb_pb recompute nocompute
-check_engine_stats sync_to_sb_lb recompute nocompute
-check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP([hv1])
@@ -25527,6 +25494,106 @@ AT_CHECK([grep "lr_in_ip_routing" lr2flows | grep "100.0.0.0"], [1], [ignore], [
 
 # Double check that the reason why is due to a bad port configured.
 AT_CHECK([grep -qE "Bad out port lrp2 for static route 100.0.0.0/24" northd/ovn-northd.log], [0])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policy incremental processing])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --wait=sb lrp-add lr0 lr0-p1 00:00:00:00:ff:01 10.0.0.1/24
+
+# Create router Policy
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-policy-add lr0  10 "ip4.src == 10.0.0.3" reroute 172.168.0.101,172.168.0.102
+# northd should be able to handle a policy change without needing to
+# recompute.
+check_engine_stats northd norecompute compute
+# northd should report no change on a logical router policy change,
+# so dependent nodes should not run. Note: It would be nice to be
+# able to programmatically iterate over all nodes for which northd
+# is an input. This way, the test could stay up-to-date in case new
+# consumers of northd are added.
+check_engine_stats lr_nat norecompute nocompute
+check_engine_stats lr_stateful norecompute nocompute
+check_engine_stats ls_stateful norecompute nocompute
+check_engine_stats mac_binding_aging norecompute nocompute
+check_engine_stats fdb_aging norecompute nocompute
+check_engine_stats routes norecompute nocompute
+check_engine_stats dynamic_routes norecompute nocompute
+check_engine_stats advertised_mac_binding_sync norecompute nocompute
+check_engine_stats learned_route_sync norecompute nocompute
+check_engine_stats multicast_igmp norecompute nocompute
+check_engine_stats sync_to_sb_addr_set norecompute nocompute
+check_engine_stats port_group norecompute nocompute
+check_engine_stats sync_to_sb_pb norecompute nocompute
+check_engine_stats sync_from_sb norecompute nocompute
+# Even though northd reports no change, sync_to_sb_lb will still
+# compute because it computes on all northbound logical datapath
+# changes.
+check_engine_stats sync_to_sb_lb norecompute compute
+# route_policies recomputes on a logical router policy change, so
+# its dependent nodes should also recompute.
+check_engine_stats route_policies recompute nocompute
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Change router Policy to use a different priority.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb set logical_router_policy . priority=100
+
+# All engine nodes should have the same result as when we added the
+# policy.
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute nocompute
+check_engine_stats lr_stateful norecompute nocompute
+check_engine_stats ls_stateful norecompute nocompute
+check_engine_stats mac_binding_aging norecompute nocompute
+check_engine_stats fdb_aging norecompute nocompute
+check_engine_stats routes norecompute nocompute
+check_engine_stats dynamic_routes norecompute nocompute
+check_engine_stats advertised_mac_binding_sync norecompute nocompute
+check_engine_stats learned_route_sync norecompute nocompute
+check_engine_stats multicast_igmp norecompute nocompute
+check_engine_stats sync_to_sb_addr_set norecompute nocompute
+check_engine_stats port_group norecompute nocompute
+check_engine_stats sync_to_sb_pb norecompute nocompute
+check_engine_stats sync_from_sb norecompute nocompute
+check_engine_stats sync_to_sb_lb norecompute compute
+check_engine_stats route_policies recompute nocompute
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-policy-del lr0 100 "ip4.src == 10.0.0.3"
+
+# All engine nodes should have the same result as when we added the
+# policy.
+check_engine_stats northd norecompute compute
+check_engine_stats lr_nat norecompute nocompute
+check_engine_stats lr_stateful norecompute nocompute
+check_engine_stats ls_stateful norecompute nocompute
+check_engine_stats mac_binding_aging norecompute nocompute
+check_engine_stats fdb_aging norecompute nocompute
+check_engine_stats routes norecompute nocompute
+check_engine_stats dynamic_routes norecompute nocompute
+check_engine_stats advertised_mac_binding_sync norecompute nocompute
+check_engine_stats learned_route_sync norecompute nocompute
+check_engine_stats multicast_igmp norecompute nocompute
+check_engine_stats sync_to_sb_addr_set norecompute nocompute
+check_engine_stats port_group norecompute nocompute
+check_engine_stats sync_to_sb_pb norecompute nocompute
+check_engine_stats sync_from_sb norecompute nocompute
+check_engine_stats sync_to_sb_lb norecompute compute
+check_engine_stats route_policies recompute nocompute
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
