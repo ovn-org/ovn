@@ -30,7 +30,6 @@
 .dirstamp
 .libs
 .tmp_versions
-.vagrant
 /Makefile
 /Makefile.in
 /aclocal.m4
@@ -88,7 +87,6 @@ _debian
 odp-netlink.h
 odp-netlink-macros.h
 OvsDpInterface.h
-/.vagrant/
 testsuite.tmp.orig
 /rpm/
 /openvswitch*.tar.gz

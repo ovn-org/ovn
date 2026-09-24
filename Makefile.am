@@ -89,8 +89,6 @@ EXTRA_DIST = \
 	boot.sh \
 	$(MAN_FRAGMENTS) \
 	$(MAN_ROOTS) \
-	Vagrantfile \
-	Vagrantfile-FreeBSD \
 	.mailmap \
 	TODO.rst \
 	TODO_SPLIT.rst \
