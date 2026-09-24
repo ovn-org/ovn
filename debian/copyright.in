@@ -27,20 +27,6 @@ Upstream Copyright Holders:
 
 License:
 
-* The following components are licensed under the
-  GNU Lesser General Public License version 2.1.
-
-        utilities/bugtool/ovs-bugtool
-        utilities/bugtool/ovs-bugtool-*
-        utilities/bugtool/plugins/kernel-info/openvswitch.xml
-        utilities/bugtool/plugins/network-status/openvswitch.xml
-        utilities/bugtool/plugins/system-configuration.xml
-        utilities/bugtool/plugins/system-configuration/openvswitch.xml
-
-  On Debian systems, the complete text of the
-  GNU Lesser General Public License version 2.1 can be found in
-  `/usr/share/common-licenses/LGPL-2.1'
-
 * The following component is licensed under the GNU General Public License
   version 2.
 

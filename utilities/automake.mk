@@ -125,5 +125,3 @@ utilities_ovn_brctl_SOURCES = \
     utilities/ovn-dbctl.h \
     utilities/ovn-brctl.c
 utilities_ovn_brctl_LDADD = lib/libovn.la $(OVSDB_LIBDIR)/libovsdb.la $(OVS_LIBDIR)/libopenvswitch.la
-
-include utilities/bugtool/automake.mk

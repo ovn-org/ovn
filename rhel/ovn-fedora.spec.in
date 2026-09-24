@@ -40,9 +40,8 @@ Provides: openvswitch-ovn-common = %{?epoch:%{epoch}:}%{version}-%{release}
 # to skip running checks, pass --without check
 %bcond_without check
 
-# Nearly all of openvswitch is ASL 2.0.  The bugtool is LGPLv2+, and the
-# lib/sflow*.[ch] files are SISSL
-License: ASL 2.0 and LGPLv2+ and SISSL
+# Nearly all of openvswitch is ASL 2.0.  The lib/sflow*.[ch] files are SISSL
+License: ASL 2.0 and SISSL
 Release: 1%{?dist}
 Source: http://openvswitch.org/releases/ovn-%{version}.tar.gz
 Source10: http://openvswitch.org/releases/openvswitch-%{ovsver}.tar.gz
@@ -212,7 +211,6 @@ rm -f $RPM_BUILD_ROOT%{_mandir}/man8/ovs*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/vtep*
 rm -rf $RPM_BUILD_ROOT%{_datadir}/ovn/python
 rm -f $RPM_BUILD_ROOT%{_datadir}/ovn/scripts/ovs*
-rm -rf $RPM_BUILD_ROOT%{_datadir}/ovn/bugtool-plugins
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.a
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/pkgconfig/*.pc
@@ -511,9 +509,6 @@ fi
 %{_datadir}/ovn/scripts/ovn-ctl
 %{_datadir}/ovn/scripts/ovn-lib
 %{_datadir}/ovn/scripts/ovndb-servers.ocf
-%{_datadir}/ovn/scripts/ovn-bugtool-nbctl-show
-%{_datadir}/ovn/scripts/ovn-bugtool-sbctl-lflow-list
-%{_datadir}/ovn/scripts/ovn-bugtool-sbctl-show
 %{_mandir}/man8/ovn-ctl.8*
 %{_mandir}/man8/ovn-nbctl.8*
 %{_mandir}/man8/ovn-trace.8*

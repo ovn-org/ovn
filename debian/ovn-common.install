@@ -9,7 +9,4 @@ usr/bin/ovn-debug
 usr/share/ovn/scripts/ovn-ctl
 usr/share/ovn/scripts/ovndb-servers.ocf
 usr/share/ovn/scripts/ovn-lib
-usr/share/ovn/scripts/ovn-bugtool-nbctl-show
-usr/share/ovn/scripts/ovn-bugtool-sbctl-lflow-list
-usr/share/ovn/scripts/ovn-bugtool-sbctl-show
 usr/lib/*/libovn*.so.*
