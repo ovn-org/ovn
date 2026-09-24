@@ -16929,7 +16929,7 @@ AT_CLEANUP
 m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
   [OVN_FOR_EACH_NORTHD([
    AT_SETUP([localnet connectivity with multiple requested-chassis, path mtu discovery (ip=$1, tunnel=$2, mtu=$3)])
-   AT_KEYWORDS([multi-chassis])
+   AT_KEYWORDS([multi-chassis tunnel-mtu])
    CHECK_SCAPY
 
    ovn_start
@@ -17247,8 +17247,183 @@ m4_define([MULTICHASSIS_PATH_MTU_DISCOVERY_TEST],
    echo $packet >> hv1/multi1.expected
 
    check_pkts
+   reset_env
 
-   OVN_CLEANUP([hv1],[hv2])
+   # Check the programmed limit explicitly so packet tests never race flow
+   # updates, including those triggered only by local OVS configuration.
+   wait_for_mtu() {
+       local hv=${1} limit=$((${2} + 18))
+       OVS_WAIT_UNTIL([test "$(as ${hv} ovs-ofctl dump-flows br-int |
+           sed -n 's/.*check_pkt_larger(\([[0-9]]*\)).*/\1/p' |
+           sort -u)" = "${limit}"])
+   }
+
+   # Exercise both IP versions, both directions, and local and remote peers.
+   # Payload lengths are in hexadecimal digits (6000 means 3000 bytes).
+   check_tunnel_mtu_packets() {
+       local hv=${1} len=${2} fail=${3} mtu=${4}
+       local port peer peer_hv mac peer_mac ip ip6 peer_ip peer_ip6
+       if test "${hv}" = 1; then
+           port=first peer=second peer_hv=2
+           mac=$first_mac peer_mac=$second_mac
+           ip=$first_ip ip6=$first_ip6
+           peer_ip=$second_ip peer_ip6=$second_ip6
+       else
+           port=second peer=first peer_hv=1
+           mac=$second_mac peer_mac=$first_mac
+           ip=$second_ip ip6=$second_ip6
+           peer_ip=$first_ip peer_ip6=$first_ip6
+       fi
+
+       for version in 4 6; do
+           local send src dst remote
+           if test "${version}" = 4; then
+               send=send_ip_packet
+               src=$multi1_ip dst=$ip remote=$peer_ip
+           else
+               send=send_ip6_packet
+               src=$multi1_ip6 dst=$ip6 remote=$peer_ip6
+           fi
+           packet=$($send multi1 $hv $multi1_mac $mac $src $dst $(payload $len) $fail $mtu)
+           if test "${fail}" = 1; then
+               echo $packet >> hv${hv}/multi1.expected
+           else
+               echo $packet >> hv${hv}/${port}.expected
+           fi
+
+           packet=$($send multi1 $hv $multi1_mac $peer_mac $src $remote $(payload $len) $fail $mtu)
+           if test "${fail}" = 1; then
+               echo $packet >> hv${hv}/multi1.expected
+           else
+               echo $packet >> hv${peer_hv}/${peer}.expected
+           fi
+
+           packet=$($send $port $hv $mac $multi1_mac $dst $src $(payload $len) $fail $mtu)
+           if test "${fail}" = 1; then
+               echo $packet >> hv${hv}/${port}.expected
+           else
+               echo $packet >> hv1/multi1.expected
+               echo $packet >> hv2/multi1.expected
+           fi
+       done
+       check_pkts
+       reset_env
+   }
+
+   AS_BOX([Jumbo tunnel MTU permits large packets with 1500-byte VIF MTUs])
+   set_mtu_for_all_ports 1500
+   for hv in hv1 hv2; do
+       # Model a jumbo underlay independently of the VIF MTUs.
+       as $hv check ovs-vsctl set Interface br-phys mtu_request=10000 \
+           -- set Interface br-phys_n1 mtu_request=10000
+       as main check ovs-vsctl set Interface ${hv}_br-phys mtu_request=10000
+       wait_for_mtu $hv $3
+       AT_CHECK([as $hv ovs-vsctl get Interface multi1 mtu], [0], [1500
+])
+   done
+   check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=9000
+   AT_CHECK([ovn-sbctl get SB_Global . options:tunnel_mtu], [0], ["9000"
+])
+   jumbo_mtu=$(($3 + 7500))
+   for hv in hv1 hv2; do
+       wait_for_mtu $hv $jumbo_mtu
+   done
+   for hv in 1 2; do
+       check_tunnel_mtu_packets $hv 2880 0 $jumbo_mtu
+   done
+
+   # Enlarge the dummy netdevs for jumbo packet delivery.
+   set_mtu_for_all_ports 10000
+   for hv in hv1 hv2; do
+       wait_for_mtu $hv $jumbo_mtu
+   done
+   for hv in 1 2; do
+       check_tunnel_mtu_packets $hv 6000 0 $jumbo_mtu
+       # The cap remains in place and advertises the underlay-based MTU.
+       check_tunnel_mtu_packets $hv 18000 1 $jumbo_mtu
+   done
+
+   AS_BOX([Tunnel MTU precedence and runtime changes])
+   as hv1 check ovs-vsctl set Open_vSwitch . external_ids:ovn-tunnel-mtu=1500
+   wait_for_mtu hv1 $3
+   wait_for_mtu hv2 $jumbo_mtu
+   check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=1600
+   wait_for_mtu hv1 $3
+   wait_for_mtu hv2 $(($3 + 100))
+   as hv1 check ovs-vsctl remove Open_vSwitch . external_ids ovn-tunnel-mtu
+   wait_for_mtu hv1 $(($3 + 100))
+   check ovn-nbctl --wait=hv remove NB_Global . options tunnel_mtu
+   AT_CHECK([ovn-sbctl get SB_Global . options:tunnel_mtu], [1], [], [ignore])
+   for hv in hv1 hv2; do
+       wait_for_mtu $hv $(($3 + 8500))
+   done
+
+   AS_BOX([A 1500-byte tunnel MTU retains the original ICMP MTU])
+   check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=1500
+   for hv in hv1 hv2; do
+       wait_for_mtu $hv $3
+   done
+   for hv in 1 2; do
+       check_tunnel_mtu_packets $hv 6000 1 $3
+   done
+
+   AS_BOX([Invalid overrides use the global MTU without integer wrapping])
+   check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=9000
+   wait_for_mtu hv1 $jumbo_mtu
+   as hv1 check ovs-vsctl set Open_vSwitch . external_ids:ovn-tunnel-mtu=1500
+   wait_for_mtu hv1 $3
+   as hv1 check ovs-vsctl set Open_vSwitch . external_ids:ovn-tunnel-mtu=65536
+   wait_for_mtu hv1 $jumbo_mtu
+   as hv1 check ovs-vsctl remove Open_vSwitch . external_ids ovn-tunnel-mtu
+
+   AS_BOX([Invalid global settings restore VIF-based behavior])
+   set_mtu_for_all_ports 1500
+   for value in invalid 65536; do
+       check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=$value
+       for hv in hv1 hv2; do
+           wait_for_mtu $hv $3
+       done
+   done
+
+   AS_BOX([Low positive tunnel MTUs fall back without ICMP error loops])
+   # Both IP versions share a limit.  Leave room for an advertised IPv6 MTU
+   # of at least 1280, in addition to tunnel and Ethernet overhead.
+   min_tunnel_mtu=$((1500 - $3 + 1280))
+   check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=9000
+   for hv in hv1 hv2; do
+       wait_for_mtu $hv $jumbo_mtu
+   done
+   for value in 1280 $((min_tunnel_mtu - 1)); do
+       check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=$value
+       for hv in hv1 hv2; do
+           wait_for_mtu $hv $3
+       done
+       # Each request must produce exactly one error, including the
+       # 1280-byte IPv6 error frame.
+       packet=$(send_ip_packet first 1 $first_mac $multi1_mac $first_ip $multi1_ip $(payload 2880) 1 $3)
+       echo $packet >> hv1/first.expected
+       packet=$(send_ip6_packet first 1 $first_mac $multi1_mac $first_ip6 $multi1_ip6 $(payload 2880) 1 $3)
+       echo $packet >> hv1/first.expected
+       check_pkts
+       reset_env
+   done
+
+   AS_BOX([The minimum safe tunnel MTU gives usable IPv6 PMTU feedback])
+   check ovn-nbctl --wait=hv set NB_Global . options:tunnel_mtu=$min_tunnel_mtu
+   for hv in hv1 hv2; do
+       wait_for_mtu $hv 1280
+   done
+   # Oversized packets get feedback; IPv6 packets with 1280 L3 bytes fit.
+   check_tunnel_mtu_packets 1 2880 1 1280
+   check_tunnel_mtu_packets 1 2464 0 1280
+
+   OVN_CLEANUP([hv1
+/Invalid tunnel MTU:/d
+/Tunnel MTU .* is too small; minimum is/d
+], [hv2
+/Invalid tunnel MTU:/d
+/Tunnel MTU .* is too small; minimum is/d
+])
 
    AT_CLEANUP
    ])])

@@ -3743,8 +3743,25 @@ struct ed_type_northd_options {
                          * be tunnelled or sent via the localnet
                          * port.  Default value is 'false'. */
     bool enable_ch_nb_cfg_update;
+    uint16_t tunnel_mtu;
 };
 
+/* Zero means that multichassis PMTU discovery uses the VIF MTU. */
+static uint16_t
+parse_tunnel_mtu(const char *value, uint16_t def)
+{
+    if (!value) {
+        return def;
+    }
+
+    int mtu;
+    if (!str_to_int(value, 10, &mtu) || mtu <= 0 || mtu > UINT16_MAX) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+        VLOG_WARN_RL(&rl, "Invalid tunnel MTU: %s", value);
+        return def;
+    }
+    return mtu;
+}
 
 static void *
 en_northd_options_init(struct engine_node *node OVS_UNUSED,
@@ -3780,6 +3797,9 @@ en_northd_options_run(struct engine_node *node, void *data)
                         true)
         : true;
 
+    n_opts->tunnel_mtu = parse_tunnel_mtu(
+        sb_global ? smap_get(&sb_global->options, "tunnel_mtu") : NULL, 0);
+
     return EN_UPDATED;
 }
 
@@ -3812,6 +3832,13 @@ en_northd_options_sb_sb_global_handler(struct engine_node *node, void *data)
 
     if (enable_ch_nb_cfg_update != n_opts->enable_ch_nb_cfg_update) {
         n_opts->enable_ch_nb_cfg_update = enable_ch_nb_cfg_update;
+        result = EN_HANDLED_UPDATED;
+    }
+
+    uint16_t tunnel_mtu = parse_tunnel_mtu(
+        sb_global ? smap_get(&sb_global->options, "tunnel_mtu") : NULL, 0);
+    if (tunnel_mtu != n_opts->tunnel_mtu) {
+        n_opts->tunnel_mtu = tunnel_mtu;
         result = EN_HANDLED_UPDATED;
     }
 
@@ -4806,6 +4833,12 @@ static void init_physical_ctx(struct engine_node *node,
     p_ctx->flow_tunnels = non_vif_data->flow_tunnels;
     p_ctx->use_flow_based_tunnels = non_vif_data->use_flow_based_tunnels;
     p_ctx->always_tunnel = n_opts->always_tunnel;
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+    p_ctx->tunnel_mtu = parse_tunnel_mtu(
+        cfg ? get_chassis_external_id_value(&cfg->external_ids, chassis_id,
+                                             "ovn-tunnel-mtu", NULL) : NULL,
+        n_opts->tunnel_mtu);
     p_ctx->evpn_bindings = &eb_data->bindings;
     p_ctx->evpn_multicast_groups = &eb_data->multicast_groups;
     p_ctx->evpn_fdbs = &efdb_data->fdbs;
