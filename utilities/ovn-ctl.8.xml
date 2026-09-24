@@ -70,101 +70,300 @@
     </dl>
 
     <h1>Options</h1>
-    <p><code>--ovn-northd-priority=<var>NICE</var></code></p>
-    <p><code>--ovn-northd-wrapper=<var>WRAPPER</var></code></p>
-    <p><code>--ovn-controller-priority=<var>NICE</var></code></p>
-    <p><code>--ovn-controller-wrapper=<var>WRAPPER</var></code></p>
-    <p><code>--ovn-ic-priority=<var>NICE</var></code></p>
-    <p><code>--ovn-ic-wrapper=<var>WRAPPER</var></code></p>
-    <p><code>--ovsdb-nb-wrapper=<var>WRAPPER</var></code></p>
-    <p><code>--ovsdb-sb-wrapper=<var>WRAPPER</var></code></p>
-    <p><code>--ovn-br-controller-priority=<var>NICE</var></code></p>
-    <p><code>--ovn-br-controller-wrapper=<var>WRAPPER</var></code></p>
-    <p><code>--ovn-user=<var>USER:GROUP</var></code></p>
-    <p><code>-h</code> | <code>--help</code></p>
+    <p><code>--ovn-northd-priority=<var>NICE</var></code> sets the
+      ovn-northd process niceness.  The default is <code>-10</code>.</p>
+    <p><code>--ovn-northd-wrapper=<var>WRAPPER</var></code> runs ovn-northd
+      under the specified wrapper.</p>
+    <p><code>--ovn-controller-priority=<var>NICE</var></code> sets the
+      ovn-controller process niceness.  The default is <code>-10</code>.</p>
+    <p><code>--ovn-controller-wrapper=<var>WRAPPER</var></code> runs
+      ovn-controller under the specified wrapper.</p>
+    <p><code>--ovn-ic-priority=<var>NICE</var></code> sets the ovn-ic process
+      niceness.  The default is <code>-10</code>.</p>
+    <p><code>--ovn-ic-wrapper=<var>WRAPPER</var></code> runs ovn-ic under the
+      specified wrapper.</p>
+    <p><code>--ovnbr-controller-priority=<var>NICE</var></code> sets the
+      ovn-br-controller process niceness.  The default is <code>-10</code>.</p>
+    <p><code>--ovnbr-controller-wrapper=<var>WRAPPER</var></code> runs
+      ovn-br-controller under the specified wrapper.</p>
+    <p><code>--ovsdb-nb-wrapper=<var>WRAPPER</var></code> runs the Northbound
+      database server under the specified wrapper.</p>
+    <p><code>--ovsdb-sb-wrapper=<var>WRAPPER</var></code> runs the Southbound
+      database server under the specified wrapper.</p>
+    <p><code>--ovn-user=<var>USER[:GROUP]</var></code> runs OVN daemons as the
+      specified user and optional group.</p>
+    <p><code>--ovn-manage-ovsdb=<var>yes|no</var></code> controls whether
+      <code>start_northd</code> and <code>stop_northd</code> also manage the
+      NB and SB database servers.  The default is <code>yes</code>.</p>
+    <p><code>--ovn-controller-system-id=<var>SYSTEM_ID</var></code> sets the
+      chassis name passed to ovn-controller.  The default is empty.</p>
+    <p><code>--ovsdb-disable-file-column-diff=<var>yes|no</var></code>
+      controls whether database servers are started with
+      <code>--disable-file-column-diff</code>.  The default is
+      <code>no</code>.</p>
+    <p><code>-h</code> | <code>--help</code> displays usage information.</p>
 
     <h1>File location options</h1>
-    <p><code>--db-sock=<var>SOCKET</var></code></p>
-    <p><code>--db-nb-file=<var>FILE</var></code></p>
-    <p><code>--db-sb-file=<var>FILE</var></code></p>
-    <p><code>--db-nb-schema=<var>FILE</var></code></p>
-    <p><code>--db-sb-schema=<var>FILE</var></code></p>
-    <p><code>--db-sb-create-insecure-remote=<var>yes|no</var></code></p>
-    <p><code>--db-nb-create-insecure-remote=<var>yes|no</var></code></p>
-    <p><code>--db-ic-nb-file=<var>FILE</var></code></p>
-    <p><code>--db-ic-sb-file=<var>FILE</var></code></p>
-    <p><code>--db-ic-nb-schema=<var>FILE</var></code></p>
-    <p><code>--db-ic-sb-schema=<var>FILE</var></code></p>
-    <p><code>--db-ic-sb-create-insecure-remote=<var>yes|no</var></code></p>
-    <p><code>--db-ic-nb-create-insecure-remote=<var>yes|no</var></code></p>
-    <p><code>--db-nb-config-file=<var>FILE</var></code></p>
-    <p><code>--db-sb-config-file=<var>FILE</var></code></p>
-    <p><code>--db-ic-nb-config-file=<var>FILE</var></code></p>
-    <p><code>--db-ic-sb-config-file=<var>FILE</var></code></p>
-    <p><code>--db-sb-relay-config-file=<var>FILE</var></code></p>
-    <p><code>--ovn-controller-ssl-key=<var>KEY</var></code></p>
-    <p><code>--ovn-controller-ssl-cert=<var>CERT</var></code></p>
-    <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code></p>
-    <p><code>--ovn-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code></p>
-    <p><code>--db-ovnbr-sock=<var>SOCKET</var></code></p>
-    <p><code>--db-ovnbr-file=<var>FILE</var></code></p>
-    <p><code>--db-ovnbr-schema=<var>FILE</var></code></p>
-    <p><code>--db-ovnbr-create-insecure-remote=<var>yes|no</var></code></p>
-    <p><code>--db-ovnbr-config-file=<var>FILE</var></code></p>
-    <p><code>--ovn-br-controller-ssl-key=<var>KEY</var></code></p>
-    <p><code>--ovn-br-controller-ssl-cert=<var>CERT</var></code></p>
-    <p><code>--ovn-br-controller-ssl-ca-cert=<var>CERT</var></code></p>
-    <p><code>--ovn-br-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code></p>
+    <p><code>--db-sock=<var>SOCKET</var></code> sets the local Open vSwitch
+      database socket.</p>
+    <p><code>--db-nb-file=<var>FILE</var></code> sets the Northbound database
+      file.</p>
+    <p><code>--db-sb-file=<var>FILE</var></code> sets the Southbound database
+      file.</p>
+    <p>
+      <code>--db-nb-sock=<var>SOCKET</var></code> and
+      <code>--db-sb-sock=<var>SOCKET</var></code> set the NB and SB database
+      sockets.  Their defaults are <code>OVN_RUNDIR/ovnnb_db.sock</code> and
+      <code>OVN_RUNDIR/ovnsb_db.sock</code>, respectively.
+    </p>
+    <p><code>--db-nb-schema=<var>FILE</var></code> sets the Northbound database
+      schema file.</p>
+    <p><code>--db-sb-schema=<var>FILE</var></code> sets the Southbound database
+      schema file.</p>
+    <p>
+      <code>--db-ic-nb-sock=<var>SOCKET</var></code> and
+      <code>--db-ic-sb-sock=<var>SOCKET</var></code> set the IC-NB and IC-SB
+      database sockets.  Their defaults are
+      <code>OVN_RUNDIR/ovn_ic_nb_db.sock</code> and
+      <code>OVN_RUNDIR/ovn_ic_sb_db.sock</code>, respectively.
+    </p>
+    <p>
+      The <code>--db-nb-create-insecure-remote=<var>yes|no</var></code>,
+      <code>--db-sb-create-insecure-remote=<var>yes|no</var></code>,
+      <code>--db-ic-nb-create-insecure-remote=<var>yes|no</var></code>,
+      <code>--db-ic-sb-create-insecure-remote=<var>yes|no</var></code>, and
+      <code>--db-ovnbr-create-insecure-remote=<var>yes|no</var></code> options
+      accept <code>yes</code> or <code>no</code>.  The default is
+      <code>no</code>. When set to <code>yes</code>, the database server
+      creates an insecure ptcp remote; <code>no</code> does not create that
+      remote.
+    </p>
+    <p><code>--db-ic-nb-file=<var>FILE</var></code> sets the IC-NB database
+      file.</p>
+    <p><code>--db-ic-sb-file=<var>FILE</var></code> sets the IC-SB database
+      file.</p>
+    <p><code>--db-ic-nb-schema=<var>FILE</var></code> sets the IC-NB database
+      schema file.</p>
+    <p><code>--db-ic-sb-schema=<var>FILE</var></code> sets the IC-SB database
+      schema file.</p>
+    <p>
+      <code>--db-nb-pidfile=<var>FILE</var></code> and
+      <code>--db-sb-pidfile=<var>FILE</var></code> set the NB and SB database
+      pidfiles.  Their defaults are
+      <code>OVN_RUNDIR/ovnnb_db.pid</code> and
+      <code>OVN_RUNDIR/ovnsb_db.pid</code>, respectively.
+    </p>
+    <p>
+      <code>--db-nb-ctrl-sock=<var>SOCKET</var></code> and
+      <code>--db-sb-ctrl-sock=<var>SOCKET</var></code> set the NB and SB
+      database control sockets.  Their defaults are
+      <code>OVN_RUNDIR/ovnnb_db.ctl</code> and
+      <code>OVN_RUNDIR/ovnsb_db.ctl</code>, respectively.
+    </p>
+    <p><code>--db-nb-config-file=<var>FILE</var></code> sets the Northbound
+      database server configuration file.</p>
+    <p><code>--db-sb-config-file=<var>FILE</var></code> sets the Southbound
+      database server configuration file.</p>
+    <p><code>--db-ic-nb-config-file=<var>FILE</var></code> sets the IC-NB
+      database server configuration file.</p>
+    <p><code>--db-ic-sb-config-file=<var>FILE</var></code> sets the IC-SB
+      database server configuration file.</p>
+    <p><code>--db-sb-relay-config-file=<var>FILE</var></code> sets the
+      Southbound relay server configuration file.</p>
+    <p>
+      <code>--db-nb-use-remote-in-db</code>,
+      <code>--db-sb-use-remote-in-db</code>,
+      <code>--db-ic-nb-use-remote-in-db</code>, and
+      <code>--db-ic-sb-use-remote-in-db</code> accept <code>yes</code> or
+      <code>no</code> and default to <code>yes</code>.  A bare option is
+      equivalent to specifying <code>yes</code>.  The value <code>yes</code>
+      makes ovsdb-server listen on remotes configured in the database
+      <code>connections</code> column, while <code>no</code> does not.  If a
+      corresponding configuration file is specified, it takes precedence and
+      this setting is ignored.
+    </p>
+    <p><code>--db-ovnbr-use-remote-in-db=<var>yes|no</var></code> controls
+      whether ovsdb-server listens on the remotes configured in the database
+      <code>connections</code> column.  The default is <code>yes</code>.</p>
+    <p><code>--ovn-controller-ssl-key=<var>KEY</var></code> sets the
+      ovn-controller SSL/TLS private key file.</p>
+    <p><code>--ovn-controller-ssl-cert=<var>CERT</var></code> sets the
+      ovn-controller SSL/TLS certificate file.</p>
+    <p><code>--ovn-controller-ssl-ca-cert=<var>CERT</var></code> sets the
+      ovn-controller SSL/TLS CA certificate file.</p>
+    <p><code>--ovn-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code>
+      bootstraps the ovn-controller SSL/TLS CA certificate file.</p>
+    <p><code>--ovnbr-controller-ssl-key=<var>KEY</var></code> sets the
+      ovn-br-controller SSL/TLS private key file.</p>
+    <p><code>--ovnbr-controller-ssl-cert=<var>CERT</var></code> sets the
+      ovn-br-controller SSL/TLS certificate file.</p>
+    <p><code>--ovnbr-controller-ssl-ca-cert=<var>CERT</var></code> sets the
+      ovn-br-controller SSL/TLS CA certificate file.</p>
+    <p><code>--ovnbr-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code>
+      bootstraps the ovn-br-controller SSL/TLS CA certificate file.</p>
+    <p><code>--ovnbr-db-ssl-key=<var>KEY</var></code> sets the
+      ovn-br-controller database SSL/TLS private key file.</p>
+    <p><code>--ovnbr-db-ssl-cert=<var>CERT</var></code> sets the
+      ovn-br-controller database SSL/TLS certificate file.</p>
+    <p><code>--ovnbr-db-ssl-ca-cert=<var>CERT</var></code> sets the
+      ovn-br-controller database SSL/TLS CA certificate file.</p>
+    <p><code>--db-ovnbr-sock=<var>SOCKET</var></code> sets the OVN bridge
+      controller database socket.</p>
+    <p><code>--db-ovnbr-file=<var>FILE</var></code> sets the OVN bridge
+      controller database file.</p>
+    <p>
+      <code>--db-ic-nb-pidfile=<var>FILE</var></code>,
+      <code>--db-ic-sb-pidfile=<var>FILE</var></code>, and
+      <code>--db-ovnbr-pidfile=<var>FILE</var></code> set the IC-NB, IC-SB,
+      and OVN bridge controller database pidfiles.  Their defaults are
+      <code>OVN_RUNDIR/ovn_ic_nb_db.pid</code>,
+      <code>OVN_RUNDIR/ovn_ic_sb_db.pid</code>, and
+      <code>OVN_RUNDIR/ovnbr_db.pid</code>, respectively.
+    </p>
+    <p>
+      <code>--db-ic-nb-ctrl-sock=<var>SOCKET</var></code>,
+      <code>--db-ic-sb-ctrl-sock=<var>SOCKET</var></code>, and
+      <code>--db-ovnbr-ctrl-sock=<var>SOCKET</var></code> set database
+      control sockets.  Their defaults are
+      <code>OVN_RUNDIR/ovn_ic_nb_db.ctl</code>,
+      <code>OVN_RUNDIR/ovn_ic_sb_db.ctl</code>, and
+      <code>OVN_RUNDIR/ovnbr_db.ctl</code>, respectively.
+    </p>
+    <p><code>--db-ovnbr-schema=<var>FILE</var></code> sets the OVN bridge
+      controller database schema file.</p>
+    <h1>Logging options</h1>
+    <p><code>--ovn-controller-log=<var>STRING</var></code>,
+      <code>--ovn-northd-log=<var>STRING</var></code>,
+      and <code>--ovn-ic-log=<var>STRING</var></code> set daemon logging
+      parameters.  The default is
+      <code>-vconsole:emer -vsyslog:err -vfile:info</code>.</p>
+    <p><code>--ovnbr-controller-log=<var>STRING</var></code> sets
+      ovn-br-controller logging parameters.  The default is
+      <code>-vconsole:emer -vsyslog:err -vfile:info</code>.</p>
+    <p><code>--ovn-nb-log=<var>STRING</var></code>,
+      <code>--ovn-sb-log=<var>STRING</var></code>,
+      <code>--ovn-ic-nb-log=<var>STRING</var></code>,
+      <code>--ovn-ic-sb-log=<var>STRING</var></code>, and
+      <code>--ovn-sb-relay-log=<var>STRING</var></code> set database-server
+      logging parameters.  The defaults for the NB, SB, IC-NB, and IC-SB
+      database servers are <code>-vconsole:off -vfile:info</code>.  The
+      default for the SB relay database server is
+      <code>-vconsole:emer -vsyslog:err -vfile:info</code>.</p>
+    <p><code>--ovn-northd-logfile=<var>FILE</var></code>,
+      <code>--ovn-ic-logfile=<var>FILE</var></code>,
+      <code>--ovn-nb-logfile=<var>FILE</var></code>,
+      <code>--ovn-sb-logfile=<var>FILE</var></code>,
+      <code>--ovn-ic-nb-logfile=<var>FILE</var></code>,
+      <code>--ovn-ic-sb-logfile=<var>FILE</var></code>,
+      <code>--ovn-sb-relay-logfile=<var>FILE</var></code>, and
+      <code>--ovn-ovnbr-logfile=<var>FILE</var></code> select log files.
+      Database-server log files default to files under
+      <code>OVN_LOGDIR</code>; daemon log files default to empty.</p>
+    <p><code>--ovn-northd-n-threads=<var>N_THREADS</var></code> sets the
+      number of ovn-northd threads.  The default is <code>1</code>.</p>
 
     <h1>Protocol, Cipher and Ciphersuite options</h1>
-    <p><code>--ovn-controller-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-ic-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-northd-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-nb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-sb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-ic-nb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-ic-sb-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-controller-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-ic-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-northd-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-nb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-sb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-ic-nb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-ic-sb-db-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-controller-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-ic-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-northd-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-ic-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-ic-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-br-controller-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-br-db-ssl-protocols=<var>PROTOCOLS</var></code></p>
-    <p><code>--ovn-br-controller-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-br-db-ssl-ciphers=<var>CIPHERS</var></code></p>
-    <p><code>--ovn-br-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code></p>
-    <p><code>--ovn-controller-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-ic-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-northd-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-nb-db-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-sb-db-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-ic-nb-db-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-ic-sb-db-ssl-server-name=<var>NAME</var></code></p>
-    <p><code>--ovn-sb-relay-db-ssl-server-name=<var>NAME</var></code></p>
+    <p>
+      The daemon and database prefixes also accept their SSL/TLS key,
+      certificate, and CA certificate options.  The prefixes are
+      <code>ovn-controller</code>, <code>ovn-northd</code>,
+      <code>ovn-ic</code>, <code>ovn-nb-db</code>, <code>ovn-sb-db</code>,
+      <code>ovn-ic-nb-db</code>, <code>ovn-ic-sb-db</code>,
+      <code>ovn-sb-relay-db</code>, and <code>ovnbr-db</code>;
+      append <code>-ssl-key</code>, <code>-ssl-cert</code>,
+      or <code>-ssl-ca-cert</code>.  Controller prefixes also accept
+      <code>-ssl-bootstrap-ca-cert</code>.  Empty values leave the normal
+      database or daemon TLS settings in effect.
+    </p>
+    <p><code>--ovn-controller-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-ic-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-northd-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-nb-db-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-sb-db-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-ic-nb-db-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-ic-sb-db-ssl-protocols=<var>PROTOCOLS</var></code>.</p>
+    <p><code>--ovn-controller-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p><code>--ovn-ic-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p><code>--ovn-northd-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p><code>--ovn-nb-db-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p><code>--ovn-sb-db-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p><code>--ovn-ic-nb-db-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p><code>--ovn-ic-sb-db-ssl-ciphers=<var>CIPHERS</var></code>.</p>
+    <p>
+      <code>--ovn-controller-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.
+    </p>
+    <p><code>--ovn-ic-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.</p>
+    <p><code>--ovn-northd-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.</p>
+    <p><code>--ovn-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.</p>
+    <p><code>--ovn-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.</p>
+    <p>
+      <code>--ovn-ic-nb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.
+    </p>
+    <p>
+      <code>--ovn-ic-sb-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code>.
+    </p>
+    <p><code>--ovn-controller-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-ic-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-northd-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-nb-db-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-sb-db-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-ic-nb-db-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-ic-sb-db-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-sb-relay-db-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovnbr-controller-ssl-protocols=<var>PROTOCOLS</var></code> sets
+      the ovn-br-controller SSL/TLS protocols.</p>
+    <p><code>--ovnbr-controller-ssl-ciphers=<var>CIPHERS</var></code> sets the
+      ovn-br-controller SSL/TLS cipher list.</p>
+    <p><code>--ovnbr-controller-ssl-ciphersuites=<var>CIPHERSUITES</var></code>
+      sets the ovn-br-controller TLS 1.3 and later ciphersuite list.</p>
+    <p><code>--ovnbr-db-ssl-protocols=<var>PROTOCOLS</var></code> sets the
+      ovn-br-controller database SSL/TLS protocols.</p>
+    <p><code>--ovnbr-db-ssl-ciphers=<var>CIPHERS</var></code> sets the
+      ovn-br-controller database SSL/TLS cipher list.</p>
+    <p><code>--ovnbr-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code> sets
+      the ovn-br-controller database TLS 1.3 and later ciphersuite list.</p>
 
     <h1>Address and port options</h1>
-    <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-nb-sync-from-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-nb-sync-from-proto=<var>PROTO</var></code></p>
-    <p><code>--db-sb-sync-from-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-sb-sync-from-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-sb-sync-from-proto=<var>PROTO</var></code></p>
-    <p><code>--db-ic-nb-sync-from-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-ic-nb-sync-from-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-ic-nb-sync-from-proto=<var>PROTO</var></code></p>
-    <p><code>--db-ic-sb-sync-from-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-ic-sb-sync-from-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-ic-sb-sync-from-proto=<var>PROTO</var></code></p>
+    <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-nb-sync-from-port=<var>PORT NUMBER</var></code>.</p>
+    <p><code>--db-nb-sync-from-proto=<var>PROTO</var></code>.</p>
+    <p><code>--db-sb-sync-from-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-sb-sync-from-port=<var>PORT NUMBER</var></code>.</p>
+    <p><code>--db-sb-sync-from-proto=<var>PROTO</var></code>.</p>
+    <p><code>--db-ic-nb-sync-from-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-ic-nb-sync-from-port=<var>PORT NUMBER</var></code>.</p>
+    <p><code>--db-ic-nb-sync-from-proto=<var>PROTO</var></code>.</p>
+    <p><code>--db-ic-sb-sync-from-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-ic-sb-sync-from-port=<var>PORT NUMBER</var></code>.</p>
+    <p><code>--db-ic-sb-sync-from-proto=<var>PROTO</var></code>.</p>
+    <p>
+      The options <code>--db-nb-addr</code>, <code>--db-nb-port</code>,
+      <code>--db-sb-addr</code>, <code>--db-sb-port</code>,
+      <code>--db-ic-nb-addr</code>, <code>--db-ic-nb-port</code>,
+      <code>--db-ic-sb-addr</code>, <code>--db-ic-sb-port</code>,
+      <code>--db-ovnbr-addr</code>, and <code>--db-ovnbr-port</code> select the
+      addresses and ports used when the corresponding
+      <code>--db-*-create-insecure-remote</code> option is <code>yes</code>.
+      When that option is <code>no</code>, these settings have no effect.  The
+      defaults for
+      <code>--db-nb-addr</code> and <code>--db-nb-port</code> are
+      <code>0.0.0.0</code> and <code>6641</code>, respectively.  The defaults
+      for <code>--db-sb-addr</code> and <code>--db-sb-port</code> are
+      <code>0.0.0.0</code> and <code>6642</code>, respectively.  The defaults
+      for <code>--db-ic-nb-addr</code> and <code>--db-ic-nb-port</code> are
+      <code>0.0.0.0</code> and <code>6645</code>, respectively.  The defaults
+      for <code>--db-ic-sb-addr</code> and <code>--db-ic-sb-port</code> are
+      <code>0.0.0.0</code> and <code>6646</code>, respectively.  The defaults
+      for <code>--db-ovnbr-addr</code> and <code>--db-ovnbr-port</code> are
+      <code>0.0.0.0</code> and <code>6651</code>, respectively.
+    </p>
+    <p>
+      <code>--ovn-northd-nb-db</code> and <code>--ovn-northd-sb-db</code>
+      select the NB and SB remotes used by ovn-northd.  Similarly,
+      <code>--ovn-ic-nb-db</code> and <code>--ovn-ic-sb-db</code> select the
+      IC database remotes.  Their defaults are the corresponding local unix
+      database sockets.
+    </p>
     <p>
       <code>
         --ovn-northd-nb-db=<var>PROTO</var>:<var>IP ADDRESS</var>:
@@ -190,37 +389,86 @@
       </code>
     </p>
     <h1> Clustering options </h1>
-    <p><code>--db-nb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-nb-cluster-local-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-nb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-nb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-nb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-nb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-nb-election-timer=<var>Timeout in milliseconds</var></code></p>
-    <p><code>--db-sb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-sb-cluster-local-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-sb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-sb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-sb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-sb-election-timer=<var>Timeout in milliseconds</var></code></p>
-    <p><code>--db-ic-nb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-ic-nb-cluster-local-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-ic-nb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-ic-nb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-ic-nb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-ic-nb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-ic-sb-cluster-local-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-ic-sb-cluster-local-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-ic-sb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-ic-sb-cluster-remote-addr=<var>IP ADDRESS</var></code></p>
-    <p><code>--db-ic-sb-cluster-remote-port=<var>PORT NUMBER</var></code></p>
-    <p><code>--db-ic-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code></p>
-    <p><code>--db-cluster-schema-upgrade=<var>yes|no</var></code></p>
+    <p><code>--db-nb-cluster-local-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-nb-cluster-local-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-nb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p><code>--db-nb-cluster-remote-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-nb-cluster-remote-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-nb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p>
+      <code>--db-nb-election-timer=<var>Timeout in milliseconds</var></code>.
+    </p>
+    <p><code>--db-sb-cluster-local-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-sb-cluster-local-port=<var>PORT NUMBER</var></code>.</p>
+    <p><code>--db-sb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code>.</p>
+    <p><code>--db-sb-cluster-remote-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-sb-cluster-remote-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p>
+      <code>--db-sb-election-timer=<var>Timeout in milliseconds</var></code>.
+    </p>
+    <p><code>--db-ic-nb-cluster-local-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-ic-nb-cluster-local-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-ic-nb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p><code>--db-ic-nb-cluster-remote-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-ic-nb-cluster-remote-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-ic-nb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p><code>--db-ic-sb-cluster-local-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-ic-sb-cluster-local-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-ic-sb-cluster-local-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p><code>--db-ic-sb-cluster-remote-addr=<var>IP ADDRESS</var></code>.</p>
+    <p><code>--db-ic-sb-cluster-remote-port=<var>PORT NUMBER</var></code>.</p>
+    <p>
+      <code>--db-ic-sb-cluster-remote-proto=<var>PROTO (tcp/ssl)</var></code>.
+    </p>
+    <p>
+      <code>--db-cluster-schema-upgrade=<var>yes|no</var></code> controls
+      whether clustered database servers automatically upgrade their schemas
+      when they start.  The default is <code>yes</code>; specify
+      <code>no</code> to disable the automatic upgrade.
+    </p>
+    <p><code>--no-db-cluster-schema-upgrade</code> is equivalent to
+      <code>--db-cluster-schema-upgrade=no</code>.  The default is
+      <code>yes</code>.</p>
 
     <h1> Probe interval options </h1>
-    <p><code>--db-nb-probe-interval-to-active=<var>Time in milliseconds</var></code></p>
-    <p><code>--db-sb-probe-interval-to-active=<var>Time in milliseconds</var></code></p>
+    <p>
+      <code>
+        --db-nb-probe-interval-to-active=<var>Time in milliseconds</var>
+      </code>.
+    </p>
+    <p>
+      <code>
+        --db-sb-probe-interval-to-active=<var>Time in milliseconds</var>
+      </code>.
+    </p>
+
+    <h1>Relay options</h1>
+    <p><code>--db-sb-relay-sock=<var>SOCKET</var></code>,
+      <code>--db-sb-relay-pidfile=<var>FILE</var></code>, and
+      <code>--db-sb-relay-ctrl-sock=<var>SOCKET</var></code> set the relay
+      socket, pidfile, and control socket.  The defaults are
+      <code>ovnsb_relay_db.sock</code>, <code>ovnsb_relay_db.pid</code>, and
+      <code>ovnsb_relay_db.ctl</code> in <code>OVN_RUNDIR</code>.</p>
+    <p><code>--db-sb-relay-remote=<var>REMOTE</var></code> selects the
+      upstream relay remote.  The default is empty.</p>
+    <p><code>--db-sb-relay-use-remote-in-db=<var>yes|no</var></code> controls
+      whether ovsdb-server listens on the Southbound remotes configured in the
+      database <code>connections</code> column.  The default is
+      <code>yes</code>. A bare option is equivalent to specifying
+      <code>yes</code>.</p>
 
     <h1> Extra Options </h1>
     <p>
