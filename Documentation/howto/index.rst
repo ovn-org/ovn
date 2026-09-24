@@ -45,6 +45,4 @@ OVN
 .. toctree::
    :maxdepth: 1
 
-   docker
-   openstack-containers
    firewalld

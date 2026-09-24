@@ -38,11 +38,9 @@ DOC_SOURCE = \
 	Documentation/topics/vif-plug-providers/index.rst \
 	Documentation/topics/vif-plug-providers/vif-plug-providers.rst \
 	Documentation/howto/index.rst \
-	Documentation/howto/docker.rst \
 	Documentation/howto/firewalld.rst \
 	Documentation/howto/ipsec.rst \
 	Documentation/howto/ssl.rst \
-	Documentation/howto/openstack-containers.rst \
 	Documentation/ref/index.rst \
 	Documentation/faq/index.rst \
 	Documentation/faq/contributing.rst \

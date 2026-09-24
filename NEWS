@@ -18,6 +18,7 @@ Post v26.09.0
        obsolete.
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
+   - Removed ovn-docker utility scripts.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

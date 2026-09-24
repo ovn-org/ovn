@@ -111,16 +111,6 @@ Provides: openvswitch-ovn-vtep = %{?epoch:%{epoch}:}%{version}-%{release}
 %description vtep
 OVN vtep controller
 
-%package docker
-Summary: Open Virtual Network support
-License: ASL 2.0
-Requires: ovn python3-openvswitch
-Obsoletes: openvswitch-ovn-docker
-Provides: openvswitch-ovn-docker = %{?epoch:%{epoch}:}%{version}-%{release}
-
-%description docker
-Docker network plugins for OVN.
-
 %package br-controller
 Summary: Open Virtual Network support
 License: ASL 2.0
@@ -527,10 +517,6 @@ fi
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
 %{_unitdir}/ovn-db@.service
-
-%files docker
-%{_bindir}/ovn-docker-overlay-driver
-%{_bindir}/ovn-docker-underlay-driver
 
 %files central
 %{_bindir}/ovn-northd

@@ -109,7 +109,7 @@ Then execute the following from the OVN source directory (in which
     $ make rpm-fedora
 
 This will create the RPMs ``ovn``, ``ovn-central``, ``ovn-host``,
-``ovn-vtep``, ``ovn-docker``, and ``ovn-br-controller``, along with
+``ovn-vtep``, and ``ovn-br-controller``, along with
 their debuginfo variants.
 
 You can also have the above commands automatically run the OVN unit
