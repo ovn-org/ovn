@@ -4654,6 +4654,47 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([BFD routes on LRPs sharing a connected subnet])
+AT_KEYWORDS([northd-bfd])
+ovn_start
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl lrp-add r0 r0-ext-a 00:00:00:00:00:01 10.0.0.10/24
+check ovn-nbctl lrp-add r0 r0-ext-b 00:00:00:00:00:02 10.0.0.20/24
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add-router-port ext ext-r0-a r0-ext-a
+check ovn-nbctl lsp-add-router-port ext ext-r0-b r0-ext-b
+
+# Neutron creates these routes and BFD records directly in the NB database.
+# Use the same approach here because lr-route-add rejects ECMP routes with a
+# duplicate nexthop, even when they use different output ports.
+check_uuid ovn-nbctl --wait=sb \
+    --id=@bfd_a create bfd logical_port=r0-ext-a dst_ip=10.0.0.1 -- \
+    --id=@route_a create logical_router_static_route ip_prefix=0.0.0.0/0 \
+        nexthop=10.0.0.1 output_port=r0-ext-a bfd=@bfd_a -- \
+    add logical_router r0 static_routes @route_a -- \
+    --id=@bfd_b create bfd logical_port=r0-ext-b dst_ip=10.0.0.1 -- \
+    --id=@route_b create logical_router_static_route ip_prefix=0.0.0.0/0 \
+        nexthop=10.0.0.1 output_port=r0-ext-b bfd=@bfd_b -- \
+    add logical_router r0 static_routes @route_b
+
+AT_CHECK([ovn-sbctl lflow-list | grep 'lr_in_ip_routing' | \
+    grep '10.0.0.0/24' | grep 'udp.dst == 3784' | wc -l], [0], [2
+])
+AT_CHECK([ovn-sbctl lflow-list | grep 'lr_in_ip_routing' | \
+    grep '10.0.0.0/24' | grep 'udp.dst == 3784' | \
+    grep -c 'inport == "r0-ext-a"'], [0], [1
+])
+AT_CHECK([ovn-sbctl lflow-list | grep 'lr_in_ip_routing' | \
+    grep '10.0.0.0/24' | grep 'udp.dst == 3784' | \
+    grep -c 'inport == "r0-ext-b"'], [0], [1
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- check CoPP config])
 AT_KEYWORDS([northd-CoPP])
 
