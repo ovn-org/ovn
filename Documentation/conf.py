@@ -108,8 +108,6 @@ html_static_path = ['_static']
 _man_pages = [
     ('ovn-logical-flows.7',
      u'OVN logical flow table reference'),
-    ('ovn-sim.1',
-     u'Open Virtual Network simulator environment'),
 ]
 
 # Generate list of (path, name, description, [author, ...], section)

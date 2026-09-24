@@ -17,6 +17,7 @@ Post v26.09.0
        same priority as dynamic entries, making the preference option
        obsolete.
    - Removed OVN's ovs-bugtool plugin and helper scripts.
+   - Removed ovn-sim utility scripts.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

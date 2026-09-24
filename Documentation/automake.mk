@@ -68,7 +68,7 @@ DOC_SOURCE = \
 	Documentation/internals/contributing/documentation-style.rst \
 	Documentation/internals/contributing/submitting-patches.rst \
 	Documentation/requirements.txt \
-	$(addprefix Documentation/ref/,$(RST_MANPAGES) $(RST_MANPAGES_NOINST))
+	$(addprefix Documentation/ref/,$(RST_MANPAGES))
 FLAKE8_PYFILES += Documentation/conf.py
 EXTRA_DIST += $(DOC_SOURCE)
 
@@ -112,11 +112,6 @@ endif
 
 # rST formatted manpages under Documentation/ref.
 RST_MANPAGES = ovn-logical-flows.7.rst
-
-# rST formatted manpages that we don't want to install because they
-# document stuff that only works with a build tree, not with an
-# installed OVS.
-RST_MANPAGES_NOINST = ovn-sim.1.rst
 
 # The GNU standards say that these variables should control
 # installation directories for manpages in each section.  Automake

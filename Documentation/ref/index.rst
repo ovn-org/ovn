@@ -40,7 +40,6 @@ time:
    :maxdepth: 3
 
    ovn-logical-flows.7
-   ovn-sim.1
 
 The remainder are still in roff format can be found below:
 
