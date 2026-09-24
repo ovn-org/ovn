@@ -764,7 +764,7 @@ start_controller_vtep () {
 
 start_ovnbr_controller () {
     set ovn-br-controller
-    set "$@" -vconsole:emer -vsyslog:err -vfile:info
+    set "$@" $OVNBR_CONTROLLER_LOG
     if test X"$OVNBR_CONTROLLER_SSL_KEY" != X; then
         set "$@" --private-key=$OVNBR_CONTROLLER_SSL_KEY
     fi
@@ -793,7 +793,7 @@ start_ovnbr_controller () {
         set "$@" $extra_args
     fi
 
-    OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVN_CONTROLLER_PRIORITY" "$OVN_CONTROLLER_WRAPPER" "$@"
+    OVS_RUNDIR=${OVS_RUNDIR} start_ovn_daemon "$OVNBR_CONTROLLER_PRIORITY" "$OVNBR_CONTROLLER_WRAPPER" "$@"
 }
 
 ## ---- ##
@@ -1324,22 +1324,22 @@ Options:
   --db-sb-relay-remote           Specifies upstream cluster/server remote for ovsdb relay
   --db-sb-relay-use-remote-in-db=no|yes
                                  OVN_Sorthbound db listen on target connection table (default: $DB_SB_RELAY_USE_REMOTE_IN_DB)
-  --ovn-br-controller-priority=NICE     set ovn-br-controller's niceness (default: $OVN_CONTROLLER_PRIORITY)
-  --ovn-br-controller-wrapper=WRAPPER   run with a wrapper like valgrind for debugging
-  --ovn-br-controller-ssl-key=KEY OVN Bridge Controller SSL/TLS private key file
-  --ovn-br-controller-ssl-cert=CERT OVN Bridge Controller SSL/TLS certificate file
-  --ovn-br-controller-ssl-ca-cert=CERT OVN Bridge Controller SSL/TLS CA certificate file
-  --ovn-br-controller-ssl-bootstrap-ca-cert=CERT Bootstrapped OVN Bridge Controller SSL/TLS CA certificate file
-  --ovn-br-controller-ssl-protocols=PROTOCOLS OVN Bridge Controller SSL/TLS protocols
-  --ovn-br-controller-ssl-ciphers=CIPHERS OVN Bridge Controller SSL/TLS cipher list
-  --ovn-br-controller-ssl-ciphersuites=CIPHERSUITES OVN Bridge Controller TLSv1.3+ ciphersuite list
-  --ovn-br-db-ssl-key=KEY OVN Bridge Controller DB SSL/TLS private key file
-  --ovn-br-db-ssl-cert=CERT OVN Bridge Controller DB SSL/TLS certificate file
-  --ovn-br-db-ssl-ca-cert=CERT OVN Bridge Controller DB SSL/TLS CA certificate file
-  --ovn-br-db-ssl-protocols=PROTOCOLS OVN Bridge Controller DB SSL/TLS protocols
-  --ovn-br-db-ssl-ciphers=CIPHERS OVN Bridge Controller DB SSL/TLS cipher list
-  --ovn-br-db-ssl-ciphersuites=CIPHERSUITES OVN Bridge Controller DB TLSv1.3+ ciphersuite list
-  --ovn-br-controller-log=STRING        ovn controller process logging params (default: $OVN_CONTROLLER_LOG)
+  --ovnbr-controller-priority=NICE     set ovn-br-controller's niceness (default: $OVNBR_CONTROLLER_PRIORITY)
+  --ovnbr-controller-wrapper=WRAPPER   run with a wrapper like valgrind for debugging
+  --ovnbr-controller-ssl-key=KEY OVN Bridge Controller SSL/TLS private key file
+  --ovnbr-controller-ssl-cert=CERT OVN Bridge Controller SSL/TLS certificate file
+  --ovnbr-controller-ssl-ca-cert=CERT OVN Bridge Controller SSL/TLS CA certificate file
+  --ovnbr-controller-ssl-bootstrap-ca-cert=CERT Bootstrapped OVN Bridge Controller SSL/TLS CA certificate file
+  --ovnbr-controller-ssl-protocols=PROTOCOLS OVN Bridge Controller SSL/TLS protocols
+  --ovnbr-controller-ssl-ciphers=CIPHERS OVN Bridge Controller SSL/TLS cipher list
+  --ovnbr-controller-ssl-ciphersuites=CIPHERSUITES OVN Bridge Controller TLSv1.3+ ciphersuite list
+  --ovnbr-db-ssl-key=KEY OVN Bridge Controller DB SSL/TLS private key file
+  --ovnbr-db-ssl-cert=CERT OVN Bridge Controller DB SSL/TLS certificate file
+  --ovnbr-db-ssl-ca-cert=CERT OVN Bridge Controller DB SSL/TLS CA certificate file
+  --ovnbr-db-ssl-protocols=PROTOCOLS OVN Bridge Controller DB SSL/TLS protocols
+  --ovnbr-db-ssl-ciphers=CIPHERS OVN Bridge Controller DB SSL/TLS cipher list
+  --ovnbr-db-ssl-ciphersuites=CIPHERSUITES OVN Bridge Controller DB TLSv1.3+ ciphersuite list
+  --ovnbr-controller-log=STRING        ovn-br-controller process logging params (default: $OVNBR_CONTROLLER_LOG)
   --ovn-br-db-log=STRING             ovn brdb ovsdb-server processes logging params (default: $OVN_BR_DB_LOG)
   --ovsdb-br-wrapper=WRAPPER     run with a wrapper like valgrind for debugging
   -h, --help                     display this help message
