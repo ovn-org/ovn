@@ -2683,14 +2683,22 @@ pinctrl_handle_put_dhcp_opts(
     uint8_t msg_type = 0;
 
     switch (dhcp_opts.dhcp_msg_type) {
-    case DHCP_MSG_DISCOVER:
+    case DHCP_MSG_DISCOVER: {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+        VLOG_INFO_RL(&rl, "DHCPDISCOVER from "ETH_ADDR_FMT"",
+                     ETH_ADDR_ARGS(in_flow->dl_src));
         msg_type = DHCP_MSG_OFFER;
         break;
+    }
     case DHCP_MSG_REQUEST: {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 40);
+        VLOG_INFO_RL(&rl, "DHCPREQUEST from "ETH_ADDR_FMT" "IP_FMT"",
+                     ETH_ADDR_ARGS(in_flow->dl_src),
+                     IP_ARGS(dhcp_opts.request_ip));
         msg_type = DHCP_MSG_ACK;
         if (dhcp_opts.request_ip != *offer_ip) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-            VLOG_WARN_RL(&rl, "DHCPREQUEST requested IP "IP_FMT" does not "
+            static struct vlog_rate_limit rl_nak = VLOG_RATE_LIMIT_INIT(1, 5);
+            VLOG_WARN_RL(&rl_nak, "DHCPREQUEST requested IP "IP_FMT" does not "
                          "match offer "IP_FMT,
                          IP_ARGS(dhcp_opts.request_ip),
                          IP_ARGS(*offer_ip));
