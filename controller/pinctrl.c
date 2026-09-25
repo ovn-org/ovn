@@ -30,6 +30,7 @@
 #include "mac-cache.h"
 #include "nx-match.h"
 #include "ofctrl.h"
+#include "lib/ofctrl-seqno.h"
 #include "latch.h"
 #include "lib/packets.h"
 #include "lib/sset.h"
@@ -7003,6 +7004,8 @@ pinctrl_handle_bind_vport(
 }
 
 enum svc_monitor_state {
+    SVC_MON_S_WAIT_FLOWS,   /* New monitor: waits until the flows computed
+                             * from the same SB contents are installed. */
     SVC_MON_S_INIT,
     SVC_MON_S_WAITING,
     SVC_MON_S_ONLINE,
@@ -7086,17 +7089,29 @@ struct svc_monitor {
     ovs_be16 icmp_id;
     ovs_be16 icmp_seq_no;
 
+    /* ofctrl_seqno requested for SVC_MON_S_WAIT_FLOWS, 0 if none yet.
+     * Accessed only by the main ovn-controller thread. */
+    uint64_t flows_seqno;
+
     bool delete;
 };
 
 static struct hmap svc_monitors_map;
 static struct ovs_list svc_monitors;
 
+/* ofctrl_seqno type used to learn when the flows are installed for new
+ * service monitors, and the last requested and acked values.  Accessed
+ * only by the main ovn-controller thread. */
+static size_t svc_mon_seqno_type;
+static uint64_t svc_mon_seqno_requested;
+static uint64_t svc_mon_seqno_acked;
+
 static void
 init_svc_monitors(void)
 {
     hmap_init(&svc_monitors_map);
     ovs_list_init(&svc_monitors);
+    svc_mon_seqno_type = ofctrl_seqno_add_type();
 }
 
 static void
@@ -7310,13 +7325,13 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
                                            sb_svc_mon->port, protocol, hash);
 
         if (!svc_mon) {
-            svc_mon = xmalloc(sizeof *svc_mon);
+            svc_mon = xzalloc(sizeof *svc_mon);
             svc_mon->dp_key = dp_key;
             svc_mon->port_key = port_key;
             svc_mon->proto_port = sb_svc_mon->port;
             svc_mon->ip = ip_addr;
             svc_mon->is_ip6 = !is_ipv4;
-            svc_mon->state = SVC_MON_S_INIT;
+            svc_mon->state = SVC_MON_S_WAIT_FLOWS;
             svc_mon->status = SVC_MON_ST_UNKNOWN;
             svc_mon->protocol = protocol;
 
@@ -7383,10 +7398,74 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
         }
     }
 
+    /* The first probe of a new monitor must wait until the flows computed
+     * from these SB contents are installed.  Otherwise the reply can race
+     * with them, e.g. the backend resolves the probe source IP before the
+     * ARP responder for 'svc_monitor_mac' exists and the replies never reach
+     * ovn-controller.  This is called before ofctrl_put() of the same
+     * iteration, so the request is acked once those flows are installed. */
+    bool requested = false;
+    LIST_FOR_EACH (svc_mon, list_node, &svc_monitors) {
+        if (svc_mon->state == SVC_MON_S_WAIT_FLOWS && !svc_mon->flows_seqno) {
+            if (!requested) {
+                ofctrl_seqno_update_create(svc_mon_seqno_type,
+                                           ++svc_mon_seqno_requested);
+                requested = true;
+            }
+            svc_mon->flows_seqno = svc_mon_seqno_requested;
+        }
+    }
+
     if (changed) {
         notify_pinctrl_handler();
     }
 
+}
+
+/* Must be called by the main thread after ofctrl_seqno_run(). */
+void
+pinctrl_seqno_run(void)
+{
+    struct ofctrl_acked_seqnos *acked =
+        ofctrl_acked_seqnos_get(svc_mon_seqno_type);
+    uint64_t last_acked = acked->last_acked;
+    ofctrl_acked_seqnos_destroy(acked);
+
+    if (last_acked == svc_mon_seqno_acked) {
+        return;
+    }
+    svc_mon_seqno_acked = last_acked;
+
+    bool changed = false;
+    struct svc_monitor *svc_mon;
+    ovs_mutex_lock(&pinctrl_mutex);
+    LIST_FOR_EACH (svc_mon, list_node, &svc_monitors) {
+        if (svc_mon->state == SVC_MON_S_WAIT_FLOWS && svc_mon->flows_seqno
+            && svc_mon->flows_seqno <= last_acked) {
+            svc_mon->state = SVC_MON_S_INIT;
+            changed = true;
+        }
+    }
+    ovs_mutex_unlock(&pinctrl_mutex);
+
+    if (changed) {
+        notify_pinctrl_handler();
+    }
+}
+
+/* Must be called by the main thread after ofctrl_seqno_flush().  The flushed
+ * requests are never acked, so the waiting monitors request again. */
+void
+pinctrl_seqno_flush(void)
+{
+    struct svc_monitor *svc_mon;
+    ovs_mutex_lock(&pinctrl_mutex);
+    LIST_FOR_EACH (svc_mon, list_node, &svc_monitors) {
+        if (svc_mon->state == SVC_MON_S_WAIT_FLOWS) {
+            svc_mon->flows_seqno = 0;
+        }
+    }
+    ovs_mutex_unlock(&pinctrl_mutex);
 }
 
 enum bfd_state {
@@ -8334,6 +8413,10 @@ svc_monitors_run(struct rconn *swconn,
         long long int next_run_time = LLONG_MAX;
         enum svc_monitor_status old_status = svc_mon->status;
         switch (svc_mon->state) {
+        case SVC_MON_S_WAIT_FLOWS:
+            /* pinctrl_seqno_run() moves it to SVC_MON_S_INIT. */
+            break;
+
         case SVC_MON_S_INIT:
             svc_monitor_send_health_check(swconn, svc_mon);
             next_run_time = svc_mon->wait_time;
@@ -8416,6 +8499,11 @@ static void
 pinctrl_handle_icmp_svc_check(struct dp_packet *pkt_in,
                               struct svc_monitor *svc_mon)
 {
+    if (svc_mon->state == SVC_MON_S_WAIT_FLOWS) {
+        /* No probe sent yet. */
+        return;
+    }
+
     if (!svc_mon->is_ip6) {
         /* IPv4 ICMP echo reply */
         struct icmp_header *ih = dp_packet_l4(pkt_in);
@@ -8455,7 +8543,7 @@ pinctrl_handle_tcp_svc_check(struct rconn *swconn,
 {
     struct tcp_header *th = dp_packet_l4(pkt_in);
 
-    if (!th) {
+    if (!th || svc_mon->state == SVC_MON_S_WAIT_FLOWS) {
         return false;
     }
 
@@ -8696,6 +8784,10 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_WARN_RL(&rl, "handle service check: Service monitor not "
                          "found for ICMP packet");
+            return;
+        }
+
+        if (svc_mon->state == SVC_MON_S_WAIT_FLOWS) {
             return;
         }
 

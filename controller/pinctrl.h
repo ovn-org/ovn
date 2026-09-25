@@ -63,6 +63,8 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  int64_t cur_cfg);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
+void pinctrl_seqno_run(void);
+void pinctrl_seqno_flush(void);
 
 void pinctrl_update_swconn(const char *target, int probe_interval);
 
