@@ -5683,6 +5683,7 @@ northd_handle_lr_changes(const struct northd_input *ni,
         }
 
         if (deleted_lr->copp ||
+            !hmap_is_empty(&od->ports) ||
             deleted_lr->n_ports > 0 ||
             deleted_lr->n_policies > 0 ||
             deleted_lr->n_static_routes > 0) {
