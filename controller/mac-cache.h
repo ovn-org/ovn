@@ -29,6 +29,7 @@
 
 struct ovsdb_idl_index;
 struct vector;
+struct uuidset;
 
 struct mac_cache_data {
     /* 'struct mac_cache_threshold' by datapath's tunnel_key. */
@@ -65,6 +66,7 @@ struct mac_binding_data {
 
 struct mac_binding_probe_data {
     struct mac_cache_data *cache_data;
+    struct uuidset *mac_binding_pending;
     struct rconn *swconn;
     struct ovsdb_idl_index *sbrec_port_binding_by_name;
     const struct sbrec_chassis *chassis;
@@ -201,14 +203,20 @@ mac_binding_stats_process_flow_stats(struct vector *stats_vec,
                                      struct ofputil_flow_stats *ofp_stats);
 
 void mac_binding_stats_run(struct vector *stats_vec, uint64_t *req_delay,
-                           void *data, long long timewall_now);
+                           void *data, struct uuidset *pending,
+                           long long timewall_now);
+void mac_binding_stats_drain(struct ovsdb_idl_txn *txn,
+                             struct uuidset *pending, size_t batch_size,
+                             long long timewall_now);
 
 /* FDB stat processing. */
 void fdb_stats_process_flow_stats(struct vector *stats_vec,
                                   struct ofputil_flow_stats *ofp_stats);
 
 void fdb_stats_run(struct vector *stats_vec, uint64_t *req_delay, void *data,
-                   long long timewall_now);
+                   struct uuidset *pending, long long timewall_now);
+void fdb_stats_drain(struct ovsdb_idl_txn *txn, struct uuidset *pending,
+                     size_t batch_size, long long timewall_now);
 
 /* Packet buffering. */
 void bp_packet_data_destroy(struct bp_packet_data *pd);
@@ -237,6 +245,7 @@ void mac_binding_probe_stats_process_flow_stats(
         struct ofputil_flow_stats *ofp_stats);
 
 void mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
-                                 void *data, long long timewall_now);
+                                  void *data, struct uuidset *pending,
+                                  long long timewall_now);
 
 #endif /* controller/mac-cache.h */
