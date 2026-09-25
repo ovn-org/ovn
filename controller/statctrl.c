@@ -35,10 +35,13 @@
 #include "socket-util.h"
 #include "statctrl.h"
 #include "stopwatch.h"
+#include "uuidset.h"
 
 VLOG_DEFINE_THIS_MODULE(statctrl);
 
 #define STATS_VEC_CAPACITY_THRESHOLD 1024
+#define STATS_DRAIN_INTERVAL 3000
+#define STATS_MIN_BATCH_SIZE 500
 
 enum stat_type {
     STATS_MAC_BINDING = 0,
@@ -58,6 +61,10 @@ struct stats_node {
     uint64_t request_delay;
     /* Vector of processed statistics. */
     struct vector stats;
+    /* UUIDs whose timestamps should be updated. */
+    struct uuidset pending;
+    /* Timestamp when the next batch should be drained. */
+    int64_t next_drain_timestamp;
     /* Function to process the response and store it in the list.
      * This function runs in statctrl thread locked behind mutex. */
     void (*process_flow_stats)(struct vector *stats,
@@ -65,12 +72,15 @@ struct stats_node {
     /* Function to process the parsed stats.
      * This function runs in main thread locked behind mutex. */
     void (*run)(struct vector *stats, uint64_t *req_delay, void *data,
-                long long timewall_now);
+                struct uuidset *pending, long long timewall_now);
+    /* Function to drain a batch of pending timestamp updates. */
+    void (*drain)(struct ovsdb_idl_txn *txn, struct uuidset *pending,
+                  size_t batch_size, long long timewall_now);
     /* Name of the stats node. */
     const char *name;
 };
 
-#define STATS_NODE(NAME, REQUEST, STAT_TYPE, PROCESS, RUN)                 \
+#define STATS_NODE(NAME, REQUEST, STAT_TYPE, PROCESS, RUN, DRAIN)          \
     do {                                                                   \
         statctrl_ctx.nodes[STATS_##NAME] = (struct stats_node) {           \
             .request = REQUEST,                                            \
@@ -78,10 +88,13 @@ struct stats_node {
             .next_request_timestamp = INT64_MAX,                           \
             .request_delay = 0,                                            \
             .stats = VECTOR_EMPTY_INITIALIZER(STAT_TYPE),                  \
+            .next_drain_timestamp = INT64_MAX,                             \
             .process_flow_stats = PROCESS,                                 \
             .run = RUN,                                                    \
-            .name = OVS_STRINGIZE(stats_##NAME),                 \
+            .drain = DRAIN,                                                \
+            .name = OVS_STRINGIZE(stats_##NAME),                           \
         };                                                                 \
+        uuidset_init(&statctrl_ctx.nodes[STATS_##NAME].pending);           \
         stopwatch_create(OVS_STRINGIZE(stats_##NAME), SW_MS);              \
     } while (0)
 
@@ -141,7 +154,8 @@ statctrl_init(void)
             .table_id = OFTABLE_MAC_CACHE_USE,
     };
     STATS_NODE(MAC_BINDING, mac_binding_request, struct mac_cache_stats,
-               mac_binding_stats_process_flow_stats, mac_binding_stats_run);
+               mac_binding_stats_process_flow_stats, mac_binding_stats_run,
+               mac_binding_stats_drain);
 
     struct ofputil_flow_stats_request fdb_request = {
             .cookie = htonll(0),
@@ -151,7 +165,8 @@ statctrl_init(void)
             .table_id = OFTABLE_LOOKUP_FDB,
     };
     STATS_NODE(FDB, fdb_request, struct mac_cache_stats,
-               fdb_stats_process_flow_stats, fdb_stats_run);
+               fdb_stats_process_flow_stats, fdb_stats_run,
+               fdb_stats_drain);
 
     struct ofputil_flow_stats_request mac_binding_probe_request = {
             .cookie = htonll(0),
@@ -163,7 +178,7 @@ statctrl_init(void)
     STATS_NODE(MAC_BINDING_PROBE, mac_binding_probe_request,
                struct mac_cache_stats,
                mac_binding_probe_stats_process_flow_stats,
-               mac_binding_probe_stats_run);
+               mac_binding_probe_stats_run, NULL);
 
     statctrl_ctx.thread = ovs_thread_create("ovn_statctrl",
                                             statctrl_thread_handler,
@@ -182,6 +197,7 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     struct mac_binding_probe_data mac_binding_probe_data = {
         .cache_data = mac_cache_data,
+        .mac_binding_pending = &statctrl_ctx.nodes[STATS_MAC_BINDING].pending,
         .sbrec_port_binding_by_name = sbrec_port_binding_by_name,
         .swconn = statctrl_ctx.swconn,
         .chassis = chassis,
@@ -202,10 +218,12 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     for (size_t i = 0; i < STATS_MAX; i++) {
         struct stats_node *node = &statctrl_ctx.nodes[i];
         uint64_t prev_delay = node->request_delay;
+        size_t prev_pending_count = uuidset_count(&node->pending);
 
         stopwatch_start(node->name, time_msec());
         node->run(&node->stats, &node->request_delay, node_data[i],
-                  timewall_now);
+                  &node->pending, timewall_now);
+        now = time_msec();
         vector_clear(&node->stats);
         if (vector_capacity(&node->stats) >= STATS_VEC_CAPACITY_THRESHOLD) {
             VLOG_DBG("The statistics vector for node '%s' capacity "
@@ -217,6 +235,40 @@ statctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         schedule_updated |=
                 statctrl_update_next_request_timestamp(node, now, prev_delay);
+
+        if (!node->drain) {
+            continue;
+        }
+
+        size_t pending_count = uuidset_count(&node->pending);
+        if (pending_count != prev_pending_count && pending_count &&
+            node->next_drain_timestamp == INT64_MAX) {
+            node->next_drain_timestamp = now;
+        }
+
+        if (now < node->next_drain_timestamp) {
+            continue;
+        }
+
+        /* Distribute pending updates over the remaining fixed drain intervals
+         * before the next statistics request, subject to the minimum batch
+         * size. */
+        uint64_t slots = 1;
+        if (node->next_request_timestamp != INT64_MAX &&
+            node->next_request_timestamp > now) {
+            slots = MAX((node->next_request_timestamp - now)
+                        / STATS_DRAIN_INTERVAL, 1);
+        }
+        size_t batch_size = MAX(STATS_MIN_BATCH_SIZE,
+                                (pending_count / slots) + 1);
+
+        stopwatch_start(node->name, time_msec());
+        node->drain(ovnsb_idl_txn, &node->pending, batch_size,
+                    timewall_now);
+        node->next_drain_timestamp = uuidset_is_empty(&node->pending)
+                                     ? INT64_MAX
+                                     : now + STATS_DRAIN_INTERVAL;
+        stopwatch_stop(node->name, time_msec());
     }
     ovs_mutex_unlock(&mutex);
 
@@ -249,6 +301,9 @@ statctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
         if (!vector_is_empty(&node->stats)) {
             poll_immediate_wake();
         }
+        if (node->next_drain_timestamp != INT64_MAX) {
+            poll_timer_wait_until(node->next_drain_timestamp);
+        }
     }
     seq_wait(statctrl_ctx.main_seq, statctrl_ctx.new_main_seq);
     ovs_mutex_unlock(&mutex);
@@ -267,6 +322,7 @@ statctrl_destroy(void)
     for (size_t i = 0; i < STATS_MAX; i++) {
         struct stats_node *node = &statctrl_ctx.nodes[i];
         vector_destroy(&node->stats);
+        uuidset_destroy(&node->pending);
     }
 }
 
