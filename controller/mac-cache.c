@@ -417,9 +417,16 @@ mac_binding_stats_run(struct vector *stats_vec, uint64_t *req_delay,
             continue;
         }
 
-        uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
         struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(cache_data, mb->data.dp_key);
+            mac_cache_threshold_find(cache_data, mb->data.dp_key);
+        if (timewall_now < mb->sbrec->timestamp) {
+            mac_binding_update_log("Not updating with future timestamp",
+                                   &mb->data, true, threshold,
+                                   stats->idle_age_ms, 0);
+            continue;
+        }
+
+        uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
 
         /* If "idle_age" is under threshold it means that the mac binding is
          * used on this chassis. */
@@ -515,9 +522,15 @@ fdb_stats_run(struct vector *stats_vec, uint64_t *req_delay, void *data,
             continue;
         }
 
-        uint64_t since_updated_ms = timewall_now - fdb->sbrec_fdb->timestamp;
         struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(cache_data, fdb->data.dp_key);
+            mac_cache_threshold_find(cache_data, fdb->data.dp_key);
+        if (timewall_now < fdb->sbrec_fdb->timestamp) {
+            fdb_update_log("Not updating with future timestamp", &fdb->data,
+                           true, threshold, stats->idle_age_ms, 0);
+            continue;
+        }
+
+        uint64_t since_updated_ms = timewall_now - fdb->sbrec_fdb->timestamp;
 
         /* If "idle_age" is under threshold it means that the fdb entry is
          * used on this chassis. */
@@ -904,7 +917,15 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
         }
 
         struct mac_cache_threshold *threshold =
-                mac_cache_threshold_find(cache_data, mb->data.dp_key);
+            mac_cache_threshold_find(cache_data, mb->data.dp_key);
+        if (timewall_now < mb->sbrec->timestamp) {
+            mac_binding_update_log("Not sending ARP/ND request with future "
+                                   "timestamp", &mb->data, true, threshold,
+                                   stats->idle_age_ms, 0);
+            mb->arp_attempts = 0;
+            continue;
+        }
+
         uint64_t since_updated_ms = timewall_now - mb->sbrec->timestamp;
         const struct sbrec_mac_binding *sbrec = mb->sbrec;
 
