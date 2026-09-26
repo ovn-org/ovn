@@ -192,7 +192,7 @@ stop_ovn_daemon () {
                 case $action in
                     EXIT)
                         action "Exiting $1 ($pid)" \
-                            ${bindir}/ovn-appctl -T 1 -t $ctl_file exit $other_args
+                            ${ovn_bindir}/ovn-appctl -T 1 -t $ctl_file exit $other_args
                         # The above command could have resulted in delayed
                         # daemon segfault. And if a monitor is running, it
                         # would restart the daemon giving it a new pid.
