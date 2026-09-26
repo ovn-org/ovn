@@ -29,6 +29,7 @@ ovn_etcdir=$ovn_sysconfdir/ovn                      # /etc/ovn
 ovn_datadir=${OVN_PKGDATADIR-'@pkgdatadir@'}        # /usr/share/ovn
 ovn_bindir=${OVN_BINDIR-'@bindir@'}                 # /usr/bin
 ovn_sbindir=${OVN_SBINDIR-'@sbindir@'}              # /usr/sbin
+ovn_chown_logdir='@OVN_CHOWN_LOGDIR@'
 
 # /etc/ovn or /var/lib/ovn
 if test X"$OVN_DBDIR" != X; then
@@ -133,7 +134,9 @@ start_ovn_daemon () {
     set "$@" --detach
     test X"$MONITOR" = Xno || set "$@" --monitor
 
-    chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_logdir
+    if test "$ovn_chown_logdir" = yes; then
+        chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_logdir
+    fi
     chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_rundir
 
     start_wrapped_daemon "$wrapper" $daemon "$priority" "$@"

@@ -276,9 +276,8 @@ $cluster_remote_port
         upgrade_db "$file" "$schema"
     fi
 
-    # Set the owner of the ovn_dbdir (with -R option) to OVN_USER if set.
-    # This is required because the ovndbs are created with root permission
-    # if not present when create_cluster/upgrade_db is called.
+    # Database files may be created as root before ovsdb-server drops
+    # privileges, so keep ownership aligned with OVN_USER when configured.
     INSTALL_USER="$(id -un)"
     INSTALL_GROUP="$(id -gn)"
     [ "$OVN_USER" != "" ] && INSTALL_USER="${OVN_USER%:*}"
@@ -286,7 +285,9 @@ $cluster_remote_port
 
     chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_dbdir
     chown -R $INSTALL_USER:$INSTALL_GROUP $OVN_RUNDIR
-    chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_logdir
+    if test "$ovn_chown_logdir" = yes; then
+        chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_logdir
+    fi
     chown -R $INSTALL_USER:$INSTALL_GROUP $ovn_etcdir
 
     set ovsdb-server

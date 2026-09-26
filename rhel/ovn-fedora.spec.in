@@ -163,6 +163,9 @@ cd -
         --disable-libcapng \
 %endif
         --enable-ssl \
+        --enable-tmpfiles-log-ownership \
+        --with-log-user=openvswitch \
+        --with-log-group=openvswitch \
         --with-pkidir=%{_sharedstatedir}/openvswitch/pki \
         --with-version-suffix=-%{release} \
         PYTHON3=%{__python3}
@@ -184,6 +187,10 @@ for service in ovn-controller ovn-controller-vtep ovn-northd ovn-ic ovn-ic-db ov
 done
 
 rm -rf $RPM_BUILD_ROOT/%{_datadir}/openvswitch/python/
+
+# The openvswitch user is managed by the Open vSwitch package's
+# sysusers.d configuration on Fedora and RHEL.
+rm -f $RPM_BUILD_ROOT%{_sysusersdir}/ovn-sysusers.conf
 
 install -d -m 0755 $RPM_BUILD_ROOT/%{_sharedstatedir}/ovn
 
@@ -343,6 +350,7 @@ fi
 
 %post
 ln -sf ovn_detrace.py %{_bindir}/ovn-detrace
+%tmpfiles_create ovn-tmpfiles.conf
 
 %if %{with libcapng}
 if [ $1 -eq 1 ]; then
@@ -531,6 +539,7 @@ fi
 %{_mandir}/man8/ovn-debug.8*
 %{_prefix}/lib/ocf/resource.d/ovn/ovndb-servers
 %config(noreplace) %{_sysconfdir}/logrotate.d/ovn
+%{_tmpfilesdir}/ovn-tmpfiles.conf
 %{_unitdir}/ovn-db@.service
 
 %files docker
