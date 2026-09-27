@@ -1179,8 +1179,9 @@ store_chassis_index_if_needed(
         /* All indices consumed: it's safer to just exit. */
         VLOG_ERR("All unique controller indices consumed. Exiting.");
         exit(EXIT_FAILURE);
-    }
 out:
+        sset_destroy(&used_indices);
+    }
     free(idx_key);
 }
 
