@@ -39278,6 +39278,81 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([concurrent chassis index allocation is unique])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+
+controllers="1 2 3 4"
+for i in $controllers; do
+    check ovs-vsctl set Open_vSwitch . \
+        external-ids:ovn-bridge-hv$i=br-int-$i \
+        external-ids:ovn-remote-hv$i="$OVN_SB_DB"
+    ovn-controller -n hv$i -vconsole:off --detach --no-chdir \
+        --pidfile=${OVS_RUNDIR}/ovn-controller-$i.pid \
+        --unixctl=${OVS_RUNDIR}/ovn-controller-$i.ctl \
+        --log-file=${OVS_RUNDIR}/ovn-controller-$i.log
+    pidfile=${OVS_RUNDIR}/ovn-controller-$i.pid
+    on_exit "test -e \"$pidfile\" && kill \`cat \"$pidfile\"\`"
+    OVS_WAIT_UNTIL([
+        ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv$i
+    ])
+done
+
+# Suspend ovsdb-server after atomically removing all indices.  This lets every
+# controller observe the same empty map and queue its allocation before any
+# transaction can commit and update the other controllers' IDL snapshots.
+for i in $controllers; do
+    ovs-appctl -t ${OVS_RUNDIR}/ovn-controller-$i.ctl debug/pause
+done
+
+set -- ovs-vsctl
+for i in $controllers; do
+    set -- "$@" -- remove Open_vSwitch . other_config ovn-chassis-idx-hv$i
+done
+check "$@"
+
+ovsdb_pid=$(cat ${OVS_RUNDIR}/ovsdb-server.pid)
+kill -STOP $ovsdb_pid
+on_exit "kill -CONT $ovsdb_pid 2>/dev/null || :"
+
+for i in $controllers; do
+    ovs-appctl -t ${OVS_RUNDIR}/ovn-controller-$i.ctl debug/resume
+done
+for round in 1 2; do
+    for i in $controllers; do
+        ovs-appctl -t ${OVS_RUNDIR}/ovn-controller-$i.ctl debug/status
+    done
+done
+
+kill -CONT $ovsdb_pid
+
+# No two controllers may commit the same index.
+OVS_WAIT_UNTIL([
+    for i in $controllers; do
+        ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv$i || exit 1
+    done > chassis-indices
+    test $(sort -u chassis-indices | wc -l) = 4
+], [
+    ovs-vsctl get Open_vSwitch . other_config
+    cat chassis-indices
+])
+
+for i in $controllers; do
+    OVS_APP_EXIT_AND_WAIT_BY_TARGET(
+        [${OVS_RUNDIR}/ovn-controller-$i.ctl],
+        [${OVS_RUNDIR}/ovn-controller-$i.pid])
+done
+
+OVN_CLEANUP_VSWITCH([hv1])
+OVN_CLEANUP
+
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([chassis-specific configuration options])
 ovn_start
 net_add n1
