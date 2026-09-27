@@ -8253,10 +8253,8 @@ main(int argc, char *argv[])
             }
         }
 
-        static bool chassis_idx_stored = false;
-        if (ovs_idl_txn && !chassis_idx_stored) {
+        if (ovs_idl_txn) {
             store_chassis_index_if_needed(ovs_table);
-            chassis_idx_stored = true;
         }
 
         if (ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl) &&
