@@ -38960,6 +38960,10 @@ ovn_attach n1 br-phys 192.168.0.1
 OVS_WAIT_UNTIL([ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1])
 OVS_WAIT_UNTIL([test x$(ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1) = 'x""'])
 
+# check that ovn-controller restores its chassis index if it is removed
+ovs-vsctl remove Open_vSwitch . other_config ovn-chassis-idx-hv1
+OVS_WAIT_UNTIL([ovs-vsctl get Open_vSwitch . other_config:ovn-chassis-idx-hv1])
+
 # exit ovn-controller which should clean up allocated index in the database
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
