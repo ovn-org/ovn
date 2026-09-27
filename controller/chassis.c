@@ -1117,6 +1117,7 @@ store_chassis_index_if_needed(
     char *idx_key = xasprintf(CHASSIS_IDX_PREFIX "%s", chassis_id);
     const char *chassis_idx = smap_get(&cfg->other_config, idx_key);
     if (!chassis_idx) {
+        ovsrec_open_vswitch_verify_other_config(cfg);
         /* Collect all indices so far consumed by other chassis. */
         struct sset used_indices = SSET_INITIALIZER(&used_indices);
         struct smap_node *node;
