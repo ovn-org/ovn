@@ -7987,7 +7987,7 @@ check ovn-nbctl set nb_global . options:svc_monitor_mac="33:33:33:33:33:33"
 check ovn-nbctl meter-add svc-meter drop 1 pktps 0
 check ovn-nbctl copp-add copp4 svc-monitor svc-meter
 check ovn-nbctl --wait=hv ls-copp-add copp4 sw0
-check ovn-appctl -t ovn-controller vlog/set vconn:dbg
+check ovn-appctl -t ovn-controller vlog/set pinctrl:file:dbg
 AT_CHECK([ovn-nbctl copp-list copp4], [0], [dnl
 svc-monitor: svc-meter
 ])
@@ -7998,7 +7998,7 @@ p = Ether(dst="33:33:33:33:33:33", src="f0:00:00:01:02:03") /\
 sendp(p, iface='sw01', loop=0, verbose=0, count=20)
 EOF
 
-OVS_WAIT_UNTIL([test "1" = "$(grep -c "dl_dst=33:33:33:33:33:33" ovn-controller.log)"])
+OVS_WAIT_UNTIL([test "1" = "$(grep -c "dst-mac=33:33:33:33:33:33" ovn-controller.log)"])
 
 OVN_CLEANUP_CONTROLLER([hv1])
 
