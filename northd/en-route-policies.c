@@ -26,43 +26,11 @@ VLOG_DEFINE_THIS_MODULE(en_route_policies);
 
 static struct route_policy *
 route_policies_lookup(struct hmap *route_policies, size_t hash,
-                      struct route_policy *new_rp)
+                      const struct nbrec_logical_router_policy *rule)
 {
     struct route_policy *rp;
     HMAP_FOR_EACH_WITH_HASH (rp, key_node, hash, route_policies) {
-        if (rp->rule != new_rp->rule) {
-            continue;
-        }
-
-        if (rp->chain_id != new_rp->chain_id) {
-            continue;
-        }
-
-        if (rp->jump_chain_id != new_rp->jump_chain_id) {
-            continue;
-        }
-
-        if (rp->n_valid_nexthops != new_rp->n_valid_nexthops) {
-            continue;
-        }
-
-        size_t i;
-        for (i = 0; i < new_rp->n_valid_nexthops; i++) {
-            size_t j;
-
-            for (j = 0; j < rp->n_valid_nexthops; j++) {
-                if (!strcmp(new_rp->valid_nexthops[i],
-                            rp->valid_nexthops[j])) {
-                    break;
-                }
-            }
-
-            if (j == rp->n_valid_nexthops) {
-                break;
-            }
-        }
-
-        if (i == new_rp->n_valid_nexthops) {
+        if (rp->rule == rule) {
             return rp;
         }
     }
@@ -161,8 +129,6 @@ build_route_policies(struct ovn_datapath *od,
                      struct hmap *bfd_active_connections,
                      struct simap *chain_ids)
 {
-    struct route_policy *rp;
-
     /* Create chain numeric ids for policies with chain name set */
     for (int i = 0; i < od->nbr->n_policies; i++) {
         const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
@@ -173,8 +139,13 @@ build_route_policies(struct ovn_datapath *od,
         }
     }
 
+    size_t hash = uuid_hash(&od->key);
     for (int i = 0; i < od->nbr->n_policies; i++) {
         const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
+
+        if (route_policies_lookup(route_policies, hash, rule)) {
+            continue;
+        }
 
         size_t n_valid_nexthops = 0;
         char **valid_nexthops = NULL;
@@ -301,15 +272,7 @@ build_route_policies(struct ovn_datapath *od,
         new_rp->valid_nexthops = valid_nexthops;
         new_rp->chain_id = chain_id;
         new_rp->jump_chain_id = jump_chain_id;
-
-        size_t hash = uuid_hash(&od->key);
-        rp = route_policies_lookup(route_policies, hash, new_rp);
-        if (!rp) {
-            hmap_insert(route_policies, &new_rp->key_node, hash);
-        } else {
-            free(valid_nexthops);
-            free(new_rp);
-        }
+        hmap_insert(route_policies, &new_rp->key_node, hash);
     }
 }
 
