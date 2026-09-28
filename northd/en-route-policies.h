@@ -17,10 +17,24 @@
 #ifndef EN_ROUTE_POLICIES_H
 #define EN_ROUTE_POLICIES_H
 
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "inc-proc-eng.h"
 
 #include "lib/simap.h"
 #include "openvswitch/hmap.h"
+#include "vec.h"
+
+/* Each instance of this represents a nexthop for a router
+ * policy with "reroute" action. The fields are used for
+ * building the associated logical flows later.
+ */
+struct route_policy_nexthop {
+    const char *nexthop_addr;
+    char src_addr[INET6_ADDRSTRLEN];
+    const char *outport_key;
+};
 
 /* Represents the data associated with an instance of a northbound
  * Logical Router Policy for a particular Logical Router.
@@ -28,8 +42,7 @@
 struct route_policy {
     struct hmap_node key_node;
     const struct nbrec_logical_router_policy *rule;
-    size_t n_valid_nexthops;
-    char **valid_nexthops;
+    struct vector valid_nexthops; /* struct route_policy_nexthop */
     uint32_t chain_id;
     uint32_t jump_chain_id;
 };

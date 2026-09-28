@@ -12343,61 +12343,6 @@ lrp_find_member_ip(const struct ovn_port *op, const char *ip_s)
     return find_lport_address(&op->lrp_networks, ip_s);
 }
 
-/* Returns true if the output port to be used for forwarding traffic through
- * this policy could be determined.  Stores a pointer to the output port
- * in 'p_output_port' and a pointer to the router IP address to be used for
- * this policy, in 'p_lrp_addr_s'. */
-bool
-find_policy_outport(struct ovn_datapath *od,
-                    const struct nbrec_logical_router_policy *policy,
-                    const char *nexthop, bool is_ipv4,
-                    const char **p_lrp_addr_s, struct ovn_port **p_out_port)
-{
-    if (nexthop == NULL) {
-        return false;
-    }
-
-    struct ovn_port *out_port = NULL;
-    const char *lrp_addr_s = NULL;
-
-    if (policy->output_port) {
-        if (!find_route_outport(od, policy->output_port->name,
-                                "policy", policy->match,
-                                nexthop, is_ipv4, true, &out_port,
-                                &lrp_addr_s)) {
-            return false;
-        }
-    } else {
-        /* If output_port is not specified, find the router port matching
-         * the next hop. */
-        HMAP_FOR_EACH (out_port, dp_node, &od->ports) {
-            lrp_addr_s = lrp_find_member_ip(out_port, nexthop);
-            if (lrp_addr_s) {
-                break;
-            }
-        }
-    }
-
-    if (!out_port || !lrp_addr_s) {
-        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Logical Router: %s, policy "
-                          "(chain: '%s', match: '%s', priority %"PRId64"): "
-                          "no path for next hop %s",
-                     od->nbr->name,
-                     policy->chain ? policy->chain : "<Default>",
-                     policy->match, policy->priority, nexthop);
-        return false;
-    }
-    if (p_out_port) {
-        *p_out_port = out_port;
-    }
-    if (p_lrp_addr_s) {
-        *p_lrp_addr_s = lrp_addr_s;
-    }
-
-    return true;
-}
-
 static void
 build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
                           struct route_policy *rp,
@@ -12409,19 +12354,21 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     if (!strcmp(rule->action, "reroute")) {
-        ovs_assert(rp->n_valid_nexthops <= 1);
+        ovs_assert(vector_len(&rp->valid_nexthops) <= 1);
 
-        if (!rp->n_valid_nexthops) {
+        if (vector_len(&rp->valid_nexthops) == 0) {
             return;
         }
 
-        char *nexthop = rp->valid_nexthops[0];
+        struct route_policy_nexthop *policy_nexthop =
+            vector_get_ptr(&rp->valid_nexthops, 0);
+        const char *nexthop = policy_nexthop->nexthop_addr;
         bool is_ipv4 = strchr(nexthop, '.') ? true : false;
-        const char *lrp_addr_s = NULL;
-        struct ovn_port *out_port = NULL;
+        const char *lrp_addr_s = policy_nexthop->src_addr;
+        const struct ovn_port *out_port =
+            ovn_port_find_in_datapath(od, policy_nexthop->outport_key);
 
-        if (!find_policy_outport(od, rule, nexthop, is_ipv4, &lrp_addr_s,
-                                 &out_port)) {
+        if (!out_port) {
             return;
         }
 
@@ -12482,21 +12429,24 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 struct lflow_ref *lflow_ref)
 {
     const struct nbrec_logical_router_policy *rule = rp->rule;
-    ovs_assert(rp->n_valid_nexthops > 1);
+    ovs_assert(vector_len(&rp->valid_nexthops) > 1);
 
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
 
-    for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
-        bool is_ipv4 = strchr(rp->valid_nexthops[i], '.') ? true : false;
-        const char *lrp_addr_s = NULL;
-        struct ovn_port *out_port = NULL;
+    struct route_policy_nexthop *policy_nexthop;
+    size_t i = 0;
+    VECTOR_FOR_EACH_PTR (&rp->valid_nexthops, policy_nexthop) {
+        const char *nexthop = policy_nexthop->nexthop_addr;
+        const char *lrp_addr_s = policy_nexthop->src_addr;
+        const struct ovn_port *out_port =
+            ovn_port_find_in_datapath(od, policy_nexthop->outport_key);
 
-        if (!find_policy_outport(od, rule, rp->valid_nexthops[i], is_ipv4,
-                                 &lrp_addr_s, &out_port)) {
-            goto cleanup;
+        if (!out_port) {
+            continue;
         }
 
+        bool is_ipv4 = strchr(nexthop, '.') ? true : false;
         ds_clear(&actions);
         uint32_t pkt_mark = smap_get_uint(&rule->options, "pkt_mark", 0);
         if (pkt_mark) {
@@ -12512,7 +12462,7 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                       REGBIT_NEXTHOP_IS_IPV4" = %d; "
                       "next;",
                       is_ipv4 ? REG_NEXT_HOP_IPV4 : REG_NEXT_HOP_IPV6,
-                      rp->valid_nexthops[i],
+                      nexthop,
                       is_ipv4 ? REG_SRC_IPV4 : REG_SRC_IPV6,
                       lrp_addr_s,
                       out_port->lrp_networks.ea_s,
@@ -12526,6 +12476,7 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
         ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY_ECMP, 100,
                       ds_cstr(&match), ds_cstr(&actions), lflow_ref,
                       WITH_HINT(&rule->header_));
+        i++;
     }
 
     ds_clear(&actions);
@@ -12533,17 +12484,19 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                   "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
                   REG_ECMP_MEMBER_ID);
 
-    for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
+    i = 0;
+    VECTOR_FOR_EACH_PTR (&rp->valid_nexthops, policy_nexthop) {
         if (i > 0) {
             ds_put_cstr(&actions, ", ");
         }
 
         ds_put_format(&actions, "%"PRIuSIZE, i + 1);
+        i++;
     }
     ds_put_cstr(&actions, ");");
+
     ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority, rule->match,
                   ds_cstr(&actions), lflow_ref, WITH_HINT(&rule->header_));
-cleanup:
     ds_destroy(&match);
     ds_destroy(&actions);
 }
@@ -15911,7 +15864,8 @@ build_ingress_policy_flows_for_lrouter(
                              route_policies) {
         const struct nbrec_logical_router_policy *rule = rp->rule;
         bool is_ecmp_reroute =
-            (!strcmp(rule->action, "reroute") && rp->n_valid_nexthops > 1);
+            (!strcmp(rule->action, "reroute") &&
+             vector_len(&rp->valid_nexthops) > 1);
 
         if (is_ecmp_reroute) {
             build_ecmp_routing_policy_flows(lflows, od, rp, ecmp_group_id,

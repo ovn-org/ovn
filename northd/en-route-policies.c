@@ -66,6 +66,61 @@ policy_chain_add(struct simap *chain_ids, const char *chain_name)
     }
 }
 
+/* Returns true if the output port to be used for forwarding traffic through
+ * this policy could be determined.  Stores a pointer to the output port
+ * in 'p_output_port' and a pointer to the router IP address to be used for
+ * this policy, in 'p_lrp_addr_s'. */
+static bool
+find_policy_outport(struct ovn_datapath *od,
+                    const struct nbrec_logical_router_policy *policy,
+                    const char *nexthop, bool is_ipv4,
+                    const char **p_lrp_addr_s, struct ovn_port **p_out_port)
+{
+    if (nexthop == NULL) {
+        return false;
+    }
+
+    struct ovn_port *out_port = NULL;
+    const char *lrp_addr_s = NULL;
+
+    if (policy->output_port) {
+        if (!find_route_outport(od, policy->output_port->name,
+                                "policy", policy->match,
+                                nexthop, is_ipv4, true, &out_port,
+                                &lrp_addr_s)) {
+            return false;
+        }
+    } else {
+        /* If output_port is not specified, find the router port matching
+         * the next hop. */
+        HMAP_FOR_EACH (out_port, dp_node, &od->ports) {
+            lrp_addr_s = lrp_find_member_ip(out_port, nexthop);
+            if (lrp_addr_s) {
+                break;
+            }
+        }
+    }
+
+    if (!out_port || !lrp_addr_s) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "Logical Router: %s, policy "
+                          "(chain: '%s', match: '%s', priority %"PRId64"): "
+                          "no path for next hop %s",
+                     od->nbr->name,
+                     policy->chain ? policy->chain : "<Default>",
+                     policy->match, policy->priority, nexthop);
+        return false;
+    }
+    if (p_out_port) {
+        *p_out_port = out_port;
+    }
+    if (p_lrp_addr_s) {
+        *p_lrp_addr_s = lrp_addr_s;
+    }
+
+    return true;
+}
+
 static bool
 check_bfd_state(const struct nbrec_logical_router_policy *rule,
                 struct ovn_port *out_port, const char *nexthop,
@@ -147,8 +202,6 @@ build_route_policies(struct ovn_datapath *od,
             continue;
         }
 
-        size_t n_valid_nexthops = 0;
-        char **valid_nexthops = NULL;
         uint32_t chain_id = 0;
         uint32_t jump_chain_id = 0;
 
@@ -186,6 +239,8 @@ build_route_policies(struct ovn_datapath *od,
             chain_id = -1;
         }
 
+        struct vector valid_nexthops =
+            VECTOR_EMPTY_INITIALIZER(struct route_policy_nexthop);
         if (!strcmp(rule->action, "reroute")) {
             if (rule->nexthop && rule->nexthop[0]) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
@@ -239,7 +294,7 @@ build_route_policies(struct ovn_datapath *od,
                 continue;
             }
 
-            valid_nexthops = xcalloc(rule->n_nexthops, sizeof *valid_nexthops);
+            vector_reserve(&valid_nexthops, rule->n_nexthops);
             for (size_t j = 0; j < rule->n_nexthops; j++) {
                 char *nexthop = rule->nexthops[j];
                 if (!nexthop || !nexthop[0]) {
@@ -247,9 +302,10 @@ build_route_policies(struct ovn_datapath *od,
                 }
 
                 struct ovn_port *out_port = NULL;
+                const char *lrp_addr_s = NULL;
 
-                if (!find_policy_outport(od, rule, nexthop, is_ipv4, NULL,
-                                         &out_port)) {
+                if (!find_policy_outport(od, rule, nexthop, is_ipv4,
+                                         &lrp_addr_s, &out_port)) {
                     continue;
                 }
                 if (!check_bfd_state(rule, out_port, nexthop,
@@ -257,21 +313,28 @@ build_route_policies(struct ovn_datapath *od,
                                      bfd_active_connections)) {
                     continue;
                 }
-                valid_nexthops[n_valid_nexthops++] = nexthop;
+                struct route_policy_nexthop policy_nexthop = {
+                    .nexthop_addr = nexthop,
+                    .outport_key = out_port->nbrp->name,
+                };
+                strncpy(policy_nexthop.src_addr, lrp_addr_s,
+                        sizeof(policy_nexthop.src_addr) - 1);
+                vector_push(&valid_nexthops, &policy_nexthop);
             }
 
-            if (!n_valid_nexthops) {
-                free(valid_nexthops);
+            if (vector_len(&valid_nexthops) == 0) {
+                vector_destroy(&valid_nexthops);
                 continue;
             }
         }
 
-        struct route_policy *new_rp = xzalloc(sizeof *new_rp);
-        new_rp->rule = rule;
-        new_rp->n_valid_nexthops = n_valid_nexthops;
-        new_rp->valid_nexthops = valid_nexthops;
-        new_rp->chain_id = chain_id;
-        new_rp->jump_chain_id = jump_chain_id;
+        struct route_policy *new_rp = xmalloc(sizeof *new_rp);
+        *new_rp = (struct route_policy) {
+            .rule = rule,
+            .valid_nexthops = vector_steal(&valid_nexthops),
+            .chain_id = chain_id,
+            .jump_chain_id = jump_chain_id,
+        };
         hmap_insert(route_policies, &new_rp->key_node, hash);
     }
 }
@@ -288,7 +351,7 @@ route_policies_destroy(struct route_policies_data *data)
 {
     struct route_policy *rp;
     HMAP_FOR_EACH_POP (rp, key_node, &data->route_policies) {
-        free(rp->valid_nexthops);
+        vector_destroy(&rp->valid_nexthops);
         free(rp);
     };
     hmap_destroy(&data->route_policies);

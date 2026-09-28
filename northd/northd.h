@@ -1019,12 +1019,6 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    const struct hmap *lr_lb_map,
                                    struct northd_tracked_data *);
 
-bool find_policy_outport(struct ovn_datapath *od,
-                         const struct nbrec_logical_router_policy *policy,
-                         const char *nexthop, bool is_ipv4,
-                         const char **p_lrp_addr_s,
-                         struct ovn_port **p_out_port);
-
 void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     const struct hmap *, const struct hmap *,
                     const struct hmap *, const struct hmap *,
