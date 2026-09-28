@@ -238,6 +238,36 @@ build_route_policies(struct ovn_datapath *od,
                 continue;
             }
 
+            /* Check that all the nexthops belong to the same addr family. */
+            bool is_ipv4 = true;
+            bool ips_match = true;
+            for (size_t j = 0; j < rule->n_nexthops; j++) {
+                const char *nexthop = rule->nexthops[j];
+                if (!nexthop || !nexthop[0]) {
+                    continue;
+                }
+
+                bool nexthop_is_ipv4 = !!strchr(nexthop, '.');
+
+                if (j == 0) {
+                    is_ipv4 = nexthop_is_ipv4;
+                }
+
+                if (nexthop_is_ipv4 != is_ipv4) {
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(5, 1);
+                    VLOG_WARN_RL(&rl, "nexthop [%s] of the router policy with "
+                                 "the match [%s] does not belong to the same "
+                                 "address family as other next hops",
+                                 rule->nexthops[j], rule->match);
+                    ips_match = false;
+                    break;
+                }
+            }
+            if (!ips_match) {
+                continue;
+            }
+
             valid_nexthops = xcalloc(rule->n_nexthops, sizeof *valid_nexthops);
             for (size_t j = 0; j < rule->n_nexthops; j++) {
                 char *nexthop = rule->nexthops[j];
@@ -246,7 +276,6 @@ build_route_policies(struct ovn_datapath *od,
                 }
 
                 struct ovn_port *out_port = NULL;
-                bool is_ipv4 = strchr(nexthop, '.') ? true : false;
 
                 if (!find_policy_outport(od, rule, nexthop, is_ipv4, NULL,
                                          &out_port)) {

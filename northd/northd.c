@@ -12481,28 +12481,8 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 uint16_t ecmp_group_id,
                                 struct lflow_ref *lflow_ref)
 {
-    bool nexthops_is_ipv4 = true;
     const struct nbrec_logical_router_policy *rule = rp->rule;
     ovs_assert(rp->n_valid_nexthops > 1);
-
-    /* Check that all the nexthops belong to the same addr family before
-     * adding logical flows. */
-    for (uint16_t i = 0; i < rp->n_valid_nexthops; i++) {
-        bool is_ipv4 = strchr(rp->valid_nexthops[i], '.') ? true : false;
-
-        if (i == 0) {
-            nexthops_is_ipv4 = is_ipv4;
-        }
-
-        if (is_ipv4 != nexthops_is_ipv4) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-            VLOG_WARN_RL(&rl, "nexthop [%s] of the router policy with "
-                         "the match [%s] do not belong to the same address "
-                         "family as other next hops",
-                         rp->valid_nexthops[i], rule->match);
-            return;
-        }
-    }
 
     struct ds match = DS_EMPTY_INITIALIZER;
     struct ds actions = DS_EMPTY_INITIALIZER;
