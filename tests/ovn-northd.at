@@ -25598,3 +25598,74 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policy invalid chain IDs])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lr-add lr1
+
+# Set up a policy on lr0 to jump to a policy on chain lr1
+check ovn-nbctl lr-policy-add lr0 102 "ip4.src == 10.0.0.0/24" jump inbound \
+    -- --chain=inbound lr-policy-add lr1 201 "1" allow
+check ovn-nbctl --wait=sb sync
+
+# The policy on lr0 should not be installed since it jumps to
+# a chain on a different router.
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep "lr_in_policy[[^_]]" | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+])
+
+# Double-check that we see the expected warning in the logs.
+check grep -qE "Logical router: lr0, policy action 'jump' follows to non-existent chain inbound" northd/ovn-northd.log
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policy chain IDs consistent lflows])
+ovn_start
+
+# For this test, we create two logical routers, one with policies with jump chains, and one with
+# simple allow policies. We then will do the same but swap the policies so that they are on the
+# opposite routers. We want to ensure that in both scenarios, the generated flows are consistent
+# for the router without the jump chains.
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lr-add lr1
+
+# First, let's put the jump policy on lr0
+check ovn-nbctl lr-policy-add lr0 102 "ip4.src == 10.0.0.0/24" jump inbound \
+    --  --chain=inbound lr-policy-add lr0 201 "1" allow
+
+# lr1 just gets an allow policy.
+check ovn-nbctl lr-policy-add lr1 102 "ip4.src == 10.0.0.0/24" allow
+check ovn-nbctl --wait=sb sync
+
+# The flow on lr1 should not check the chain ID register as part of its match.
+AT_CHECK([ovn-sbctl lflow-list lr1 | grep "lr_in_policy[[^_]]" | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=102  , match=(ip4.src == 10.0.0.0/24), action=(reg8[[0..15]] = 0; next;)
+])
+
+# Delete the policies from both routers
+check ovn-nbctl lr-policy-del lr0
+check ovn-nbctl lr-policy-del lr1
+
+# Install the same policies, but on the opposite routers.
+check ovn-nbctl lr-policy-add lr1 102 "ip4.src == 10.0.0.0/24" jump inbound \
+    --  --chain=inbound lr-policy-add lr1 201 "1" allow
+check ovn-nbctl lr-policy-add lr0 102 "ip4.src == 10.0.0.0/24" allow
+check ovn-nbctl --wait=sb sync
+
+# The flow on lr0 should not check the chain ID register as part of its match.
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep "lr_in_policy[[^_]]" | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=102  , match=(ip4.src == 10.0.0.0/24), action=(reg8[[0..15]] = 0; next;)
+])
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
