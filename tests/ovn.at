@@ -2453,6 +2453,8 @@ check ovstest test-vector shrink
 check ovstest test-vector clone
 
 check ovstest test-vector pointers
+
+check ovstest test-vector steal
 AT_CLEANUP
 
 AT_SETUP([Sparse array operations])
