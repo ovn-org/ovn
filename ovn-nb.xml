@@ -5453,8 +5453,7 @@ or
         </li>
 
         <li>
-          <code>reroute</code>: Reroute packet to <ref column="nexthop"/> or
-          <ref column="nexthops"/>.
+          <code>reroute</code>: Reroute packet to <ref column="nexthops"/>
         </li>
 
         <li>

@@ -25669,3 +25669,69 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Router policy selective nexthop deprecation warning])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-p1 00:00:00:00:00:01 172.16.1.1/24
+
+# Add a policy of each type to this router
+check ovn-nbctl lr-policy-add lr0 100 "ip4.src == 10.0.0.0/24" allow
+check ovn-nbctl lr-policy-add lr0 100 "ip4.src == 20.0.0.0/24" drop
+check ovn-nbctl lr-policy-add lr0 100 "ip4.src == 30.0.0.0/24" reroute 172.16.1.50
+check ovn-nbctl lr-policy-add lr0 100 "ip4.src == 40.0.0.0/24" jump target
+check ovn-nbctl --chain=target lr-policy-add lr0 200 "1" allow
+check ovn-nbctl --wait=sb sync
+
+# Let's double-check that all of the expected flows are present
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep "lr_in_policy[[^_]]" | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 10.0.0.0/24)), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 20.0.0.0/24)), action=(drop;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 30.0.0.0/24)), action=(reg0 = 172.16.1.50; reg5 = 172.16.1.1; eth.src = 00:00:00:00:00:01; outport = "lr0-p1"; flags.loopback = 1; reg8[[0..15]] = 0; reg9[[9]] = 1; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 40.0.0.0/24)), action=(reg9[[16..31]]=1; next(pipeline=ingress, table=??);)
+  table=??(lr_in_policy       ), priority=200  , match=(reg9[[16..31]] == 1 && (1)), action=(reg8[[0..15]] = 0; next;)
+])
+
+allow_uuid=$(fetch_column nb:Logical_Router_Policy _uuid priority=100 action=allow)
+drop_uuid=$(fetch_column nb:Logical_Router_Policy _uuid priority=100 action=drop)
+jump_uuid=$(fetch_column nb:Logical_Router_Policy _uuid priority=100 action=jump)
+reroute_uuid=$(fetch_column nb:Logical_Router_Policy _uuid priority=100 action=reroute)
+
+# For the allow, drop, and jump policies, we'll set the "nexthop" column. The policies
+# should remain unchanged, and we shouldn't see a warning in the log.
+check ovn-nbctl set Logical_Router_Policy $allow_uuid nexthop=50.0.0.50
+check ovn-nbctl set Logical_Router_Policy $drop_uuid nexthop=50.0.0.50
+check ovn-nbctl set Logical_Router_Policy $jump_uuid nexthop=50.0.0.50
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([grep -qE "policy uses deprecated" northd/ovn-northd.log], [1])
+
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep "lr_in_policy[[^_]]" | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 10.0.0.0/24)), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 20.0.0.0/24)), action=(drop;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 30.0.0.0/24)), action=(reg0 = 172.16.1.50; reg5 = 172.16.1.1; eth.src = 00:00:00:00:00:01; outport = "lr0-p1"; flags.loopback = 1; reg8[[0..15]] = 0; reg9[[9]] = 1; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 40.0.0.0/24)), action=(reg9[[16..31]]=1; next(pipeline=ingress, table=??);)
+  table=??(lr_in_policy       ), priority=200  , match=(reg9[[16..31]] == 1 && (1)), action=(reg8[[0..15]] = 0; next;)
+])
+
+# Now let's set the "nexthop" column on the reroute policy. This should result in the
+# warning appearing and the reroute policy not showing up in the lflows.
+check ovn-nbctl set Logical_Router_Policy $reroute_uuid nexthop=50.0.0.50
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([grep -qE "policy uses deprecated" northd/ovn-northd.log], [0])
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep "lr_in_policy[[^_]]" | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 10.0.0.0/24)), action=(reg8[[0..15]] = 0; next;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 20.0.0.0/24)), action=(drop;)
+  table=??(lr_in_policy       ), priority=100  , match=(reg9[[16..31]] == 0 && (ip4.src == 40.0.0.0/24)), action=(reg9[[16..31]]=1; next(pipeline=ingress, table=??);)
+  table=??(lr_in_policy       ), priority=200  , match=(reg9[[16..31]] == 1 && (1)), action=(reg8[[0..15]] = 0; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

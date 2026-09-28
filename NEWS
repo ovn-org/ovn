@@ -1,5 +1,10 @@
 Post v26.09.0
 --------------
+   - Router policies that used the deprecated "nexthop" column used to
+     always be skipped and not applied. Now these router policies are
+     only skipped if their action is "reroute". Router policies of type
+     "allow", "drop", and "jump" will still be accepted, even if the
+     "nexthop" column is set on those policies.
    - Learn ARP sender hardware address (arp.sha) and IPv6 Neighbor
      Discovery link-layer addresses (nd.tll, nd.sll) into the FDB
      table in addition to eth.src.  This allows VRRP virtual MACs to

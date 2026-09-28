@@ -176,14 +176,6 @@ build_route_policies(struct ovn_datapath *od,
     for (int i = 0; i < od->nbr->n_policies; i++) {
         const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
 
-        if (rule->nexthop && rule->nexthop[0]) {
-            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
-            VLOG_WARN_RL(&rl, "Logical router: %s, policy uses deprecated"
-                         " column \"nexthop\", this column is ignored. Please"
-                         "use \"nexthops\" column instead.", od->nbr->name);
-            continue;
-        }
-
         size_t n_valid_nexthops = 0;
         char **valid_nexthops = NULL;
         uint32_t chain_id = 0;
@@ -224,6 +216,15 @@ build_route_policies(struct ovn_datapath *od,
         }
 
         if (!strcmp(rule->action, "reroute")) {
+            if (rule->nexthop && rule->nexthop[0]) {
+                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
+                VLOG_WARN_RL(&rl, "Logical router: %s, policy uses deprecated"
+                             " column \"nexthop\", this policy is skipped. "
+                             "Please use \"nexthops\" column instead.",
+                             od->nbr->name);
+                continue;
+            }
+
             if (rule->output_port && rule->n_nexthops != 1) {
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
                 VLOG_WARN_RL(&rl,
