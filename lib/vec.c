@@ -168,6 +168,24 @@ vector_clone(struct vector *vec)
     return clone;
 }
 
+/* Performs a shallow copy of vec into another structure. vec is
+ * re-initialized after this operation and is safe to re-use or
+ * destroy. However, its buffer will be empty.
+ */
+struct vector
+vector_steal(struct vector *vec)
+{
+    struct vector thief = (struct vector) {
+        .buffer = vec->buffer,
+        .esize = vec->esize,
+        .len = vec->len,
+        .capacity = vec->capacity,
+    };
+
+    vector_init(vec);
+    return thief;
+}
+
 /* Reserves additional space to fit extra n items. */
 void
 vector_reserve(struct vector *vec, size_t n)

@@ -255,6 +255,59 @@ test_clone(struct ovs_cmdl_context *ctx OVS_UNUSED)
 }
 
 static void
+test_steal(struct ovs_cmdl_context *ctx OVS_UNUSED)
+{
+    uint32_t elements[3] = {0, 1, 2};
+    struct vector vec = VECTOR_CAPACITY_INITIALIZER(uint32_t, 10);
+    vector_push_array(&vec, elements, ARRAY_SIZE(elements));
+
+    struct vector thief = vector_steal(&vec);
+    ovs_assert(vector_capacity(&thief) == 10);
+    ovs_assert(vector_len(&thief) == 3);
+
+    ovs_assert(vector_capacity(&vec) == 0);
+    ovs_assert(vector_len(&vec) == 0);
+
+    size_t i = 0;
+    uint32_t num;
+    VECTOR_FOR_EACH (&thief, num) {
+        ovs_assert(elements[i++] == num);
+    }
+    ovs_assert(i == ARRAY_SIZE(elements));
+
+    vector_shrink_to_fit(&thief);
+    ovs_assert(vector_capacity(&thief) == 3);
+    ovs_assert(vector_len(&thief) == 3);
+
+    /* Let's make sure the original vec has been unaffected by
+     * the changes to thief.
+     */
+    ovs_assert(vector_capacity(&vec) == 0);
+    ovs_assert(vector_len(&vec) == 0);
+
+    /* The vast majority of the time, the reason you would want to steal a
+     * vector is because it is going to go out of scope and this prevents
+     * having to destroy it. However, it is also possible to steal a vector as
+     * a way of saving its contents elsewhere and resetting it. Let's make sure
+     * we can still operate on vec after it has been stolen.
+     */
+    uint32_t more_elements[5] = {3, 4, 5, 6, 7};
+    vector_push_array(&vec, more_elements, ARRAY_SIZE(more_elements));
+    ovs_assert(vector_capacity(&vec) == 5);
+    ovs_assert(vector_len(&vec) == 5);
+
+    /* And now let's make sure the thief is unaffected by changes to vec. */
+    ovs_assert(vector_capacity(&thief) == 3);
+    ovs_assert(vector_len(&thief) == 3);
+
+    /* Since we have re-added elements to vec, we now need to destroy it.
+     * If we had stolen from it and left it alone, this would be unnecessary.
+     */
+    vector_destroy(&vec);
+    vector_destroy(&thief);
+}
+
+static void
 test_pointers(struct ovs_cmdl_context *ctx OVS_UNUSED)
 {
     const char *elements[3] = {"a", "b", "c"};
@@ -305,6 +358,7 @@ test_vector_main(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
         {"shrink", NULL, 0, 0, test_shrink, OVS_RO},
         {"clone", NULL, 0, 0, test_clone, OVS_RO},
         {"pointers", NULL, 0, 0, test_pointers, OVS_RO},
+        {"steal", NULL, 0, 0, test_steal, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;

@@ -76,6 +76,7 @@ bool vector_remove_block(struct vector *vec, size_t start, size_t end);
 void *vector_get_ptr(const struct vector *vec, size_t index);
 void vector_shrink_to_fit(struct vector *vec);
 struct vector vector_clone(struct vector *vec);
+struct vector vector_steal(struct vector *vec);
 void vector_reserve(struct vector *vec, size_t n);
 
 /* Pushes element into the end of the vector. */
