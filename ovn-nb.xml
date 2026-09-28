@@ -4096,7 +4096,7 @@ or
 
     <column name="rate">
       <p>
-        The rate limit for this band, in kilobits per second or bits per
+        The rate limit for this band, in kilobits per second or packets per
         second, depending on whether the parent <ref table="Meter"/>
         entry's <ref column="unit" table="Meter"/> column specified
         <code>kbps</code> or <code>pktps</code>.
