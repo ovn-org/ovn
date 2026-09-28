@@ -6265,7 +6265,7 @@ NS_CHECK_EXEC([vm2], [ncat 66.66.66.66 666 -p 2001 -z], [0], [ignore], [ignore])
 # Check conntrack.  We expect two entries:
 # - one in vm1's zone (firewall)
 # - one in vm2's zone (dnat)
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 2001 |             \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep "sport=2001," |    \
 grep "orig=.src=42\.42\.42\.3" |                                    \
 sed -e 's/sport=2001/sport=<clnt_s_port>/g'                         \
     -e 's/dport=2001/dport=<clnt_s_port>/g'                         \
@@ -6284,7 +6284,7 @@ NS_CHECK_EXEC([vm2], [ncat 42.42.42.2 4242 -p 2001 -z], [0], [ignore], [ignore])
 # - one in vm1's zone (firewall) - reused from the previous connection.
 # - one in vm2's zone (dnat) - still in TIME_WAIT after the previous connection.
 # - one in vm2's zone (firewall + additional all-zero SNAT)
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 2001 |             \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep "sport=2001," |    \
 grep "orig=.src=42\.42\.42\.3" |                                    \
 sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
     -e 's/sport=4242,dport=[[0-9]]\+/sport=4242,dport=<rnd_port>/g' \
@@ -6365,7 +6365,7 @@ NS_CHECK_EXEC([vm2], [ncat 6666::1 666 -p 2001 -z], [0], [ignore], [ignore])
 # Check conntrack.  We expect two entries:
 # - one in vm1's zone (firewall)
 # - one in vm2's zone (dnat)
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 2001 |             \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep "sport=2001," |   \
 grep "orig=.src=4242::3" |                                         \
 sed -e 's/sport=2001/sport=<clnt_s_port>/g'                        \
     -e 's/dport=2001/dport=<clnt_s_port>/g'                        \
@@ -6384,7 +6384,7 @@ NS_CHECK_EXEC([vm2], [ncat 4242::2 4242 -p 2001 -z], [0], [ignore], [ignore])
 # - one in vm1's zone (firewall) - reused from the previous connection.
 # - one in vm2's zone (dnat) - still in TIME_WAIT after the previous connection.
 # - one in vm2's zone (firewall + additional all-zero SNAT)
-AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 2001 |             \
+AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep "sport=2001," |    \
 grep "orig=.src=4242::3" |                                          \
 sed -e 's/port=2001/port=<clnt_s_port>/g'                           \
     -e 's/sport=4242,dport=[[0-9]]\+/sport=4242,dport=<rnd_port>/g' \
