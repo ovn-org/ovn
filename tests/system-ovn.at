@@ -7599,7 +7599,10 @@ OVS_WAIT_UNTIL([ip netns exec server bfdd-control status | grep -qi state=Down])
 
 check ovn-nbctl --bfd lr-policy-add R1 100 "ip4.src == 200.0.0.0/8" reroute 172.16.1.50,172.16.1.60
 wait_column "up" nb:bfd status dst_ip=172.16.1.50
-OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 | grep lr_in_policy_ecmp | grep -q 172.16.1.50])
+
+# Even though the policy is an ECMP policy, only one route is actually valid.
+# Therefore, the policy is installed in lr_in_policy instead of lr_in_policy_ecmp.
+OVS_WAIT_UNTIL([ovn-sbctl dump-flows R1 | grep 'lr_in_policy[[^_]]' | grep -q 172.16.1.50])
 
 check ovn-nbctl lr-policy-del R1
 wait_column "admin_down" nb:bfd status dst_ip=172.16.1.50

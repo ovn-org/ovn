@@ -12409,7 +12409,7 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
     struct ds actions = DS_EMPTY_INITIALIZER;
 
     if (!strcmp(rule->action, "reroute")) {
-        ovs_assert(rule->n_nexthops <= 1);
+        ovs_assert(rp->n_valid_nexthops <= 1);
 
         if (!rp->n_valid_nexthops) {
             return;
@@ -12483,7 +12483,7 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 {
     bool nexthops_is_ipv4 = true;
     const struct nbrec_logical_router_policy *rule = rp->rule;
-    ovs_assert(rule->n_nexthops > 1);
+    ovs_assert(rp->n_valid_nexthops > 1);
 
     /* Check that all the nexthops belong to the same addr family before
      * adding logical flows. */
@@ -12549,24 +12549,18 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
     }
 
     ds_clear(&actions);
-    if (rp->n_valid_nexthops > 1) {
-        ds_put_format(&actions, "%s = %"PRIu16
-                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
-                      REG_ECMP_MEMBER_ID);
+    ds_put_format(&actions, "%s = %"PRIu16
+                  "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
+                  REG_ECMP_MEMBER_ID);
 
-        for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
-            if (i > 0) {
-                ds_put_cstr(&actions, ", ");
-            }
-
-            ds_put_format(&actions, "%"PRIuSIZE, i + 1);
+    for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
+        if (i > 0) {
+            ds_put_cstr(&actions, ", ");
         }
-        ds_put_cstr(&actions, ");");
-    } else {
-        ds_put_format(&actions, "%s = %"PRIu16
-                      "; %s = 1; next;", REG_ECMP_GROUP_ID,
-                      ecmp_group_id, REG_ECMP_MEMBER_ID);
+
+        ds_put_format(&actions, "%"PRIuSIZE, i + 1);
     }
+    ds_put_cstr(&actions, ");");
     ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority, rule->match,
                   ds_cstr(&actions), lflow_ref, WITH_HINT(&rule->header_));
 cleanup:
@@ -15937,7 +15931,7 @@ build_ingress_policy_flows_for_lrouter(
                              route_policies) {
         const struct nbrec_logical_router_policy *rule = rp->rule;
         bool is_ecmp_reroute =
-            (!strcmp(rule->action, "reroute") && rule->n_nexthops > 1);
+            (!strcmp(rule->action, "reroute") && rp->n_valid_nexthops > 1);
 
         if (is_ecmp_reroute) {
             build_ecmp_routing_policy_flows(lflows, od, rp, ecmp_group_id,
