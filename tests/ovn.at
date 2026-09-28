@@ -12698,6 +12698,144 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD packets on LRPs sharing a connected subnet])
+AT_KEYWORDS([ovn-bfd bfd-shared-subnet])
+ovn_start
+
+net_add underlay
+net_add provider
+
+for i in 1 2; do
+    sim_add gw$i
+    as gw$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach underlay br-phys 192.168.0.$i
+    check ovs-vsctl add-br br-ex
+    net_attach provider br-ex
+    check ovs-vsctl set Open_vSwitch . \
+        external-ids:ovn-bridge-mappings=phys:br-ex
+done
+OVN_POPULATE_ARP
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add-localnet-port ext ln-ext phys
+for i in 1 2; do
+    check ovn-nbctl lrp-add r0 r0-ext$i 00:00:00:00:00:0$i 10.0.0.$i/24
+    check ovn-nbctl lsp-add-router-port ext ext-r0-$i r0-ext$i
+    check ovn-nbctl lrp-set-gateway-chassis r0-ext$i gw$i
+    # Avoid depending on ARP replies from an external BFD peer.
+    check ovn-nbctl static-mac-binding-add r0-ext$i 10.0.0.254 \
+        00:00:00:00:00:fe
+done
+
+# Like Neutron, create the routes directly: lr-route-add rejects duplicate
+# ECMP nexthops even when the output ports differ.
+check_uuid ovn-nbctl --wait=hv \
+    --id=@bfd1 create BFD logical_port=r0-ext1 dst_ip=10.0.0.254 -- \
+    --id=@route1 create Logical_Router_Static_Route ip_prefix=0.0.0.0/0 \
+        nexthop=10.0.0.254 output_port=r0-ext1 bfd=@bfd1 -- \
+    add Logical_Router r0 static_routes @route1 -- \
+    --id=@bfd2 create BFD logical_port=r0-ext2 dst_ip=10.0.0.254 -- \
+    --id=@route2 create Logical_Router_Static_Route ip_prefix=0.0.0.0/0 \
+        nexthop=10.0.0.254 output_port=r0-ext2 bfd=@bfd2 -- \
+    add Logical_Router r0 static_routes @route2
+
+for i in 1 2; do
+    chassis=$(fetch_column Chassis _uuid name=gw$i)
+    wait_column "$chassis" Port_Binding chassis logical_port=cr-r0-ext$i
+
+    # Identify each controller-generated BFD session by its source port and
+    # discriminator, and check its Ethernet and IP addresses on the wire.
+    src_port=$(printf '%04x' $(fetch_column BFD src_port logical_port=r0-ext$i))
+    disc=$(printf '%08x' $(fetch_column BFD disc logical_port=r0-ext$i))
+    echo "0000000000fe00000000000${i}08000a00000${i}0a0000fe${src_port}0ec8${disc}" \
+        > bfd$i.expected
+done
+
+OVN_WAIT_PATCH_PORT_FLOWS([ln-ext], [gw1 gw2])
+check ovn-nbctl --wait=hv sync
+
+check_bfd_packets() {
+    local colocated=$1 gw
+
+    for gw in gw1 gw2; do
+        as $gw reset_pcap_file br-ex_provider $gw/br-ex_provider
+    done
+    if test "$colocated" = yes; then
+        cat bfd1.expected bfd2.expected | sort > gw1.expected
+        : > gw2.expected
+    else
+        cp bfd1.expected gw1.expected
+        cp bfd2.expected gw2.expected
+    fi
+
+    # These are packets emitted by pinctrl and forwarded by ovs-vswitchd,
+    # not traces or flow dumps.  Ignore ARP and compare the set of BFD
+    # sessions at each provider uplink, including the source MAC selected
+    # by routing.  Wait for several packets, and reject unexpected sessions.
+    OVS_WAIT_UNTIL([
+        for gw in gw1 gw2; do
+            $PYTHON "$ovs_srcdir/utilities/ovs-pcap.in" \
+                $gw/br-ex_provider-tx.pcap | \
+                grep -E '^.{24}080045.{16}11.{24}0ec8' | \
+                cut -c 1-28,53-76,93-100 > $gw.bfd
+            sort -u $gw.bfd > $gw.actual
+        done
+        test $(wc -l < gw1.bfd) -ge 3 &&
+        { test "$colocated" = yes || test $(wc -l < gw2.bfd) -ge 3; } &&
+        diff -u gw1.expected gw1.actual &&
+        diff -u gw2.expected gw2.actual
+    ])
+}
+
+AT_CAPTURE_FILE([gw1.actual])
+AT_CAPTURE_FILE([gw2.actual])
+AT_CAPTURE_FILE([gw1.expected])
+AT_CAPTURE_FILE([gw2.expected])
+
+AS_BOX([BFD sessions on separate gateways])
+# Each gateway must send only its own session through its provider uplink.
+check_bfd_packets no
+
+AS_BOX([BFD sessions after controller recompute])
+# Recomputing the controllers must not change either session's egress path.
+for gw in gw1 gw2; do
+    check as $gw ovn-appctl -t ovn-controller inc-engine/recompute
+done
+check ovn-nbctl --wait=hv sync
+check_bfd_packets no
+
+AS_BOX([BFD sessions on the same gateway])
+# Also check both LRPs on one chassis.  Without the fix only one of the
+# conflicting routes can win, so at least one session gets the wrong source
+# MAC regardless of flow ordering.  This makes the regression deterministic.
+check ovn-nbctl --wait=hv \
+    lrp-del-gateway-chassis r0-ext2 gw2 -- \
+    lrp-set-gateway-chassis r0-ext2 gw1
+chassis=$(fetch_column Chassis _uuid name=gw1)
+wait_column "$chassis" Port_Binding chassis logical_port=cr-r0-ext2
+check ovn-nbctl --wait=hv sync
+check_bfd_packets yes
+
+AS_BOX([BFD sessions back on separate gateways])
+check ovn-nbctl --wait=hv \
+    lrp-del-gateway-chassis r0-ext2 gw1 -- \
+    lrp-set-gateway-chassis r0-ext2 gw2
+chassis=$(fetch_column Chassis _uuid name=gw2)
+wait_column "$chassis" Port_Binding chassis logical_port=cr-r0-ext2
+check ovn-nbctl --wait=hv sync
+check_bfd_packets no
+
+OVN_CLEANUP([gw1
+ignored_tables=OFTABLE_PHY_TO_LOG
+], [gw2
+ignored_tables=OFTABLE_PHY_TO_LOG
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port])
 ovn_start
 
