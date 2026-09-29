@@ -39,6 +39,23 @@ try_checkpatch__() {
         AT_CHECK([$1 $top_srcdir/utilities/checkpatch.py -q test.patch])
     fi
 }
+
+try_checkpatch_stdin() {
+    echo "$1" | sed 's/^    //' > test.patch
+    if test -n "$2"; then
+        echo "$2" | sed 's/^    //' > expout
+    else
+        : > expout
+    fi
+
+    if test -s expout; then
+        AT_CHECK([$PYTHON3 $top_srcdir/utilities/checkpatch.py -q < test.patch],
+                 [1], [stdout])
+        AT_CHECK([sed '/^Lines checked:/,$d' stdout], [0], [expout])
+    else
+        AT_CHECK([$PYTHON3 $top_srcdir/utilities/checkpatch.py -q < test.patch])
+    fi
+}
 OVS_END_SHELL_HELPERS
 
 AT_SETUP([checkpatch - sign-offs])
@@ -430,6 +447,92 @@ try_checkpatch \
     #8 FILE: A.c:1:
          (int)a;
 "
+
+AT_CLEANUP
+
+AT_SETUP([checkpatch - commit message body length])
+
+body_75=$(printf '%75s' '' | tr ' ' x)
+body_76=${body_75}x
+long_tag_value=$(printf '%80s' '' | tr ' ' x)
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    $body_75
+    Signed-off-by: A"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    $body_76
+    Signed-off-by: A" \
+   "WARNING: Commit message body line is 76 characters long (recommended limit is 75)
+    1: $body_76
+"
+
+try_checkpatch_stdin \
+   "Author: A
+    Commit: A
+    Subject: checkpatch: Test body length.
+     $long_tag_value
+
+    $body_76
+    Signed-off-by: A
+    ---" \
+   "WARNING: Commit message body line is 76 characters long (recommended limit is 75)
+    6: $body_76
+"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Acked-by: B
+    Tested-at: https://example.com/test/1
+    Link: https://example.com/reviews/$long_tag_value
+    Arbitrary-Tag: $long_tag_value
+    Reported-at: https://example.com/bugs/$long_tag_value
+    Assisted-by: $long_tag_value
+    Fixes: 123456789abc (\"$long_tag_value\")
+    Signed-off-by: A"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    This is ordinary prose with a colon: $long_tag_value
+    Signed-off-by: A" \
+   "WARNING: Commit message body line is 117 characters long (recommended limit is 75)
+    1: This is ordinary prose with a colon: $long_tag_value
+"
+
+try_checkpatch \
+   "Author: A
+    Commit: A
+
+    Not/A/Trailer: $long_tag_value
+    Signed-off-by: A" \
+   "WARNING: Commit message body line is 95 characters long (recommended limit is 75)
+    1: Not/A/Trailer: $long_tag_value
+"
+
+raw_patch="From 123456789abc Mon Sep 17 00:00:00 2001
+From: A
+Date: Tue, 29 Sep 2026 08:00:00 +0000
+X-Long-Header: $long_tag_value
+ $long_tag_value
+Subject: [PATCH] checkpatch: Test body length.
+
+$body_75
+Link: https://example.com/reviews/$long_tag_value
+Signed-off-by: A
+---"
+
+try_checkpatch "$raw_patch"
+try_checkpatch_stdin "$raw_patch"
 
 AT_CLEANUP
 

@@ -886,7 +886,8 @@ def run_subject_checks(subject, spellcheck=False):
     return warnings
 
 
-def ovs_checkpatch_parse(text, filename, author=None, committer=None):
+def ovs_checkpatch_parse(text, filename, author=None, committer=None,
+                         body_only=False):
     global print_file_name, total_line, checking_file, \
         empty_return_check_state
 
@@ -915,6 +916,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                                      re.I | re.M | re.S)
     is_fixes = re.compile(r'(\s*(Fixes:)(.*))$', re.I | re.M | re.S)
     is_fixes_exact = re.compile(r'^Fixes: [0-9a-f]{12} \(".*"\)$')
+    is_trailer = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]*:[ \t]+\S')
 
     tags_typos = {
         r'^Acked by:': 'Acked-by:',
@@ -929,6 +931,8 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
     reset_counters()
 
     current_line = ""
+    subject_seen = False
+    in_commit_body = body_only
     for line in text.split("\n"):
         if current_file != previous_file:
             previous_file = current_file
@@ -953,6 +957,8 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
             # Form feed
             continue
         if len(line) <= 0:
+            if subject_seen:
+                in_commit_body = True
             continue
 
         if checking_file:
@@ -1022,6 +1028,7 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
             elif is_author.match(line):
                 author = is_author.match(line).group(2)
             elif is_subject.match(line):
+                subject_seen = True
                 run_subject_checks(line, spellcheck)
             elif is_signature.match(line):
                 m = is_signature.match(line)
@@ -1041,8 +1048,14 @@ def ovs_checkpatch_parse(text, filename, author=None, committer=None):
                             '--pretty=format:"Fixes: %h (\\\"%s\\\")" '
                             '--abbrev=12 COMMIT_REF\n')
                 print("%d: %s\n" % (lineno, line))
-            elif spellcheck:
-                check_spelling(line, False)
+            else:
+                if (in_commit_body and len(line) > 75
+                    and not is_trailer.match(line)):
+                    print_warning("Commit message body line is %d characters "
+                                  "long (recommended limit is 75)" % len(line))
+                    print("%d: %s\n" % (lineno, line))
+                if spellcheck:
+                    check_spelling(line, False)
             for typo, correct in tags_typos.items():
                 m = re.match(typo, line, re.I)
                 if m:
@@ -1136,7 +1149,7 @@ def ovs_checkpatch_file(filename):
             continue
     result = ovs_checkpatch_parse(part.get_payload(decode=False), filename,
                                   mail.get('Author', mail['From']),
-                                  mail['Commit'])
+                                  mail['Commit'], body_only=True)
 
     if not mail['Subject'] or not mail['Subject'].strip():
         if mail['Subject']:
