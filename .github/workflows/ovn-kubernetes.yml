@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OVNKUBE_COMMIT: "release-1.2"
+  OVNKUBE_COMMIT: "release-1.4"
   KIND_CLUSTER_NAME: ovn
   KIND_INSTALL_INGRESS: true
   KIND_ALLOW_SYSTEM_WRITES: true
@@ -165,11 +165,16 @@ jobs:
         cache-dependency-path: "**/*.sum"
       id: go
 
-    - name: Set up GOPATH
+    - name: Set up environment
       run: |
         export GOPATH=$(go env GOPATH)
         echo "GOPATH=$GOPATH" >> $GITHUB_ENV
         echo "$GOPATH/bin" >> $GITHUB_PATH
+        if [ $OVN_SECOND_BRIDGE == "true" ]; then
+          # must be "greater" lexigraphically than network "kind", therefore external gateway is named xgw
+          echo OVN_TEST_EX_GW_NETWORK=xgw >> $GITHUB_ENV
+          echo OVN_ENABLE_EX_GW_NETWORK_BRIDGE=true >> $GITHUB_ENV
+        fi
 
     - name: Disable ufw
       # For IPv6 and Dualstack, ufw (Uncomplicated Firewall) should be disabled.
