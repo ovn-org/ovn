@@ -219,6 +219,8 @@
       database server under the specified wrapper.</p>
     <p><code>--ovsdb-sb-wrapper=<var>WRAPPER</var></code> runs the Southbound
       database server under the specified wrapper.</p>
+    <p><code>--ovsdb-ovnbr-wrapper=<var>WRAPPER</var></code> runs the OVN
+      bridge controller database server under the specified wrapper.</p>
     <p><code>--ovn-user=<var>USER[:GROUP]</var></code> runs OVN daemons as the
       specified user and optional group.</p>
     <p><code>--ovn-manage-ovsdb=<var>yes|no</var></code> controls whether
@@ -330,11 +332,11 @@
       ovn-br-controller SSL/TLS CA certificate file.</p>
     <p><code>--ovnbr-controller-ssl-bootstrap-ca-cert=<var>CERT</var></code>
       bootstraps the ovn-br-controller SSL/TLS CA certificate file.</p>
-    <p><code>--ovnbr-db-ssl-key=<var>KEY</var></code> sets the
+    <p><code>--ovn-ovnbr-db-ssl-key=<var>KEY</var></code> sets the
       ovn-br-controller database SSL/TLS private key file.</p>
-    <p><code>--ovnbr-db-ssl-cert=<var>CERT</var></code> sets the
+    <p><code>--ovn-ovnbr-db-ssl-cert=<var>CERT</var></code> sets the
       ovn-br-controller database SSL/TLS certificate file.</p>
-    <p><code>--ovnbr-db-ssl-ca-cert=<var>CERT</var></code> sets the
+    <p><code>--ovn-ovnbr-db-ssl-ca-cert=<var>CERT</var></code> sets the
       ovn-br-controller database SSL/TLS CA certificate file.</p>
     <p><code>--db-ovnbr-sock=<var>SOCKET</var></code> sets the OVN bridge
       controller database socket.</p>
@@ -372,10 +374,12 @@
     <p><code>--ovn-nb-log=<var>STRING</var></code>,
       <code>--ovn-sb-log=<var>STRING</var></code>,
       <code>--ovn-ic-nb-log=<var>STRING</var></code>,
-      <code>--ovn-ic-sb-log=<var>STRING</var></code>, and
-      <code>--ovn-sb-relay-log=<var>STRING</var></code> set database-server
-      logging parameters.  The defaults for the NB, SB, IC-NB, and IC-SB
-      database servers are <code>-vconsole:off -vfile:info</code>.  The
+      <code>--ovn-ic-sb-log=<var>STRING</var></code>,
+      <code>--ovn-sb-relay-log=<var>STRING</var></code>, and
+      <code>--ovn-ovnbr-log=<var>STRING</var></code> set database-server
+      logging parameters.  The defaults for the NB, SB, IC-NB, IC-SB, and
+      OVN bridge controller database servers are
+      <code>-vconsole:off -vfile:info</code>.  The
       default for the SB relay database server is
       <code>-vconsole:emer -vsyslog:err -vfile:info</code>.</p>
     <p><code>--ovn-northd-logfile=<var>FILE</var></code>,
@@ -398,7 +402,7 @@
       <code>ovn-controller</code>, <code>ovn-northd</code>,
       <code>ovn-ic</code>, <code>ovn-nb-db</code>, <code>ovn-sb-db</code>,
       <code>ovn-ic-nb-db</code>, <code>ovn-ic-sb-db</code>,
-      <code>ovn-sb-relay-db</code>, and <code>ovnbr-db</code>;
+      <code>ovn-sb-relay-db</code>, and <code>ovn-ovnbr-db</code>;
       append <code>-ssl-key</code>, <code>-ssl-cert</code>,
       or <code>-ssl-ca-cert</code>.  Controller prefixes also accept
       <code>-ssl-bootstrap-ca-cert</code>.  Empty values leave the normal
@@ -439,18 +443,20 @@
     <p><code>--ovn-ic-nb-db-ssl-server-name=<var>NAME</var></code>.</p>
     <p><code>--ovn-ic-sb-db-ssl-server-name=<var>NAME</var></code>.</p>
     <p><code>--ovn-sb-relay-db-ssl-server-name=<var>NAME</var></code>.</p>
+    <p><code>--ovn-ovnbr-db-ssl-server-name=<var>NAME</var></code>.</p>
     <p><code>--ovnbr-controller-ssl-protocols=<var>PROTOCOLS</var></code> sets
       the ovn-br-controller SSL/TLS protocols.</p>
     <p><code>--ovnbr-controller-ssl-ciphers=<var>CIPHERS</var></code> sets the
       ovn-br-controller SSL/TLS cipher list.</p>
     <p><code>--ovnbr-controller-ssl-ciphersuites=<var>CIPHERSUITES</var></code>
       sets the ovn-br-controller TLS 1.3 and later ciphersuite list.</p>
-    <p><code>--ovnbr-db-ssl-protocols=<var>PROTOCOLS</var></code> sets the
+    <p><code>--ovn-ovnbr-db-ssl-protocols=<var>PROTOCOLS</var></code> sets the
       ovn-br-controller database SSL/TLS protocols.</p>
-    <p><code>--ovnbr-db-ssl-ciphers=<var>CIPHERS</var></code> sets the
+    <p><code>--ovn-ovnbr-db-ssl-ciphers=<var>CIPHERS</var></code> sets the
       ovn-br-controller database SSL/TLS cipher list.</p>
-    <p><code>--ovnbr-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code> sets
-      the ovn-br-controller database TLS 1.3 and later ciphersuite list.</p>
+    <p><code>--ovn-ovnbr-db-ssl-ciphersuites=<var>CIPHERSUITES</var></code>
+      sets the ovn-br-controller database TLS 1.3 and later ciphersuite
+      list.</p>
 
     <h1>Address and port options</h1>
     <p><code>--db-nb-sync-from-addr=<var>IP ADDRESS</var></code>.</p>

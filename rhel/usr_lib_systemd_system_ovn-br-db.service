@@ -7,11 +7,11 @@
 # /etc/systemd/system/ovn-br-db.d/local.conf:
 #
 #   [System]
-#   Environment="OVN_BR_DB_OPTS=--db-br-create-insecure-remote=yes"
+#   Environment="OVN_BR_DB_OPTS=--db-ovnbr-create-insecure-remote=yes"
 #
 # Alternatively, you may specify environment variables in the file /etc/sysconfig/ovn-br-db:
 #
-#   OVN_BR_DB_OPTS="--db-br-create-insecure-remote=yes"
+#   OVN_BR_DB_OPTS="--db-ovnbr-create-insecure-remote=yes"
 
 [Unit]
 Description=OVN Bridge Controller OVSDB server
