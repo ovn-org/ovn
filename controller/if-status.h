@@ -36,7 +36,8 @@ void if_status_mgr_claim_iface(struct if_status_mgr *,
                                bool sb_readonly, enum can_bind bind_type,
                                bool notify_up,
                                const struct sbrec_port_binding *parent_pb);
-void if_status_mgr_release_iface(struct if_status_mgr *, const char *iface_id);
+void if_status_mgr_release_iface(struct if_status_mgr *,
+                                 const struct sbrec_port_binding *);
 void if_status_mgr_delete_iface(struct if_status_mgr *, const char *iface_id,
                                 const struct ovsrec_interface *iface_rec);
 
