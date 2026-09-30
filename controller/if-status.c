@@ -390,13 +390,23 @@ get_claimed_cr(struct if_status_mgr *mgr)
 }
 
 void
-if_status_mgr_release_iface(struct if_status_mgr *mgr, const char *iface_id)
+if_status_mgr_release_iface(struct if_status_mgr *mgr,
+                            const struct sbrec_port_binding *pb)
 {
-    struct ovs_iface *iface = shash_find_data(&mgr->ifaces, iface_id);
+    struct ovs_iface *iface = shash_find_data(&mgr->ifaces, pb->logical_port);
 
     if (!iface) {
+        if (!pb->chassis && pb->n_up && pb->up[0]) {
+            /* Unbound but still up, e.g. bound by a previous ovn-controller
+             * instance and never claimed by this one: set it down. */
+            iface = ovs_iface_create(mgr, pb->logical_port, NULL,
+                                     OIF_UPDATE_PORT);
+            iface->pb_uuid = pb->header_.uuid;
+            return;
+        }
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-        VLOG_WARN_RL(&rl, "Trying to release unknown interface %s", iface_id);
+        VLOG_WARN_RL(&rl, "Trying to release unknown interface %s",
+                     pb->logical_port);
         return;
     }
 
@@ -436,9 +446,10 @@ if_status_mgr_delete_iface(struct if_status_mgr *mgr, const char *iface_id,
         return;
     }
 
-    if (iface_rec && strcmp(iface->name, iface_rec->name)) {
+    if (iface_rec && (!iface->name || strcmp(iface->name, iface_rec->name))) {
         VLOG_DBG("Interface %s not deleted as port %s bound to %s",
-                 iface_rec->name, iface_id, iface->name);
+                 iface_rec->name, iface_id,
+                 iface->name ? iface->name : "no interface");
         return;
     }
 
