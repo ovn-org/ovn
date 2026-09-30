@@ -12425,7 +12425,6 @@ static void
 build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                                 struct ovn_datapath *od,
                                 struct route_policy *rp,
-                                uint16_t ecmp_group_id,
                                 struct lflow_ref *lflow_ref)
 {
     const struct nbrec_logical_router_policy *rule = rp->rule;
@@ -12470,9 +12469,9 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
                       is_ipv4);
 
         ds_clear(&match);
-        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu16" && "
+        ds_put_format(&match, REG_ECMP_GROUP_ID" == %"PRIu32" && "
                       REG_ECMP_MEMBER_ID" == %"PRIuSIZE,
-                      ecmp_group_id, i + 1);
+                      rp->ecmp_group_id, i + 1);
         ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY_ECMP, 100,
                       ds_cstr(&match), ds_cstr(&actions), lflow_ref,
                       WITH_HINT(&rule->header_));
@@ -12480,8 +12479,8 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
     }
 
     ds_clear(&actions);
-    ds_put_format(&actions, "%s = %"PRIu16
-                  "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
+    ds_put_format(&actions, "%s = %"PRIu32
+                  "; %s = select(", REG_ECMP_GROUP_ID, rp->ecmp_group_id,
                   REG_ECMP_MEMBER_ID);
 
     i = 0;
@@ -15858,19 +15857,14 @@ build_ingress_policy_flows_for_lrouter(
                                lflow_ref);
 
     /* Convert routing policies to flows. */
-    uint16_t ecmp_group_id = 1;
     struct route_policy *rp;
     HMAP_FOR_EACH_WITH_HASH (rp, key_node, uuid_hash(&od->key),
                              route_policies) {
         const struct nbrec_logical_router_policy *rule = rp->rule;
-        bool is_ecmp_reroute =
-            (!strcmp(rule->action, "reroute") &&
-             vector_len(&rp->valid_nexthops) > 1);
+        bool is_ecmp_reroute = rp->ecmp_group_id != 0;
 
         if (is_ecmp_reroute) {
-            build_ecmp_routing_policy_flows(lflows, od, rp, ecmp_group_id,
-                                            lflow_ref);
-            ecmp_group_id++;
+            build_ecmp_routing_policy_flows(lflows, od, rp, lflow_ref);
         } else {
             build_routing_policy_flow(lflows, od, rp, &rule->header_,
                                       lflow_ref);

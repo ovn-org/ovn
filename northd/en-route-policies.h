@@ -45,6 +45,10 @@ struct route_policy {
     struct vector valid_nexthops; /* struct route_policy_nexthop */
     uint32_t chain_id;
     uint32_t jump_chain_id;
+    /* If the policy is ECMP, then this is the group ID for the policy.
+     * If the policy is not ECMP, then this is 0.
+     */
+    uint32_t ecmp_group_id;
 };
 
 /* Global route policy data exported by en-route-policies. */
