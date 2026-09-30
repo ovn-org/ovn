@@ -164,6 +164,8 @@ digraph "Incremental-Processing-Engine" {
 	routes -> bfd_sync [[label="bfd_sync_routes_change_handler"]];
 	route_policies -> bfd_sync [[label=""]];
 	northd -> bfd_sync [[label="bfd_sync_northd_change_handler"]];
+	SB_port_binding -> bfd_sync [[label="bfd_sync_sb_port_binding_change_handler"]];
+	SB_ha_chassis_group -> bfd_sync [[label=""]];
 	SB_learned_route [[style=filled, shape=box, fillcolor=white, label="SB_learned_route"]];
 	learned_route_sync [[style=filled, shape=box, fillcolor=white, label="learned_route_sync"]];
 	SB_learned_route -> learned_route_sync [[label="learned_route_sync_sb_learned_route_change_handler"]];
