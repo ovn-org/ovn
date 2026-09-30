@@ -8143,6 +8143,52 @@ bfd_monitor_check_sb_conf(const struct sbrec_bfd *sb_bt,
     }
 }
 
+/* Returns the Port_Binding that makes 'chassis' run the BFD session for
+ * 'bt': the chassisredirect binding of 'bt''s logical port, or the
+ * l3gateway binding itself.  Returns NULL if 'chassis' does not run it.
+ *
+ * If 'lrp_pbp' is nonnull, also stores the binding of 'bt''s logical port,
+ * or NULL if there is none, in '*lrp_pbp'. */
+static const struct sbrec_port_binding *
+bfd_session_owner_pb(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct sbrec_bfd *bt,
+                     const struct sbrec_chassis *chassis,
+                     const struct sbrec_port_binding **lrp_pbp)
+{
+    const struct sbrec_port_binding *pb
+        = lport_lookup_by_name(sbrec_port_binding_by_name, bt->logical_port);
+    if (lrp_pbp) {
+        *lrp_pbp = pb;
+    }
+    if (!pb) {
+        return NULL;
+    }
+
+    const char *peer_s = smap_get(&pb->options, "peer");
+    if (!peer_s) {
+        return NULL;
+    }
+
+    const struct sbrec_port_binding *peer
+        = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
+    if (!peer) {
+        return NULL;
+    }
+
+    char *redirect_name = xasprintf("cr-%s", pb->logical_port);
+    const struct sbrec_port_binding *cr_pb
+        = lport_lookup_by_name(sbrec_port_binding_by_name, redirect_name);
+    free(redirect_name);
+
+    if (lport_pb_is_chassis_resident(chassis, cr_pb)) {
+        return cr_pb;
+    }
+    if (!strcmp(pb->type, "l3gateway") && pb->chassis == chassis) {
+        return pb;
+    }
+    return NULL;
+}
+
 static void
 bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct sbrec_bfd_table *bfd_table,
@@ -8160,30 +8206,9 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     const struct sbrec_bfd *bt;
     SBREC_BFD_TABLE_FOR_EACH (bt, bfd_table) {
-        const struct sbrec_port_binding *pb
-            = lport_lookup_by_name(sbrec_port_binding_by_name,
-                                   bt->logical_port);
-        if (!pb) {
-            continue;
-        }
-
-        const char *peer_s = smap_get(&pb->options, "peer");
-        if (!peer_s) {
-            continue;
-        }
-
-        const struct sbrec_port_binding *peer
-            = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
-        if (!peer) {
-            continue;
-        }
-
-        char *redirect_name = xasprintf("cr-%s", pb->logical_port);
-        bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
-                                                  chassis, redirect_name);
-        free(redirect_name);
-        if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
-            !resident) {
+        const struct sbrec_port_binding *pb;
+        if (!bfd_session_owner_pb(sbrec_port_binding_by_name, bt, chassis,
+                                  &pb)) {
             continue;
         }
 
