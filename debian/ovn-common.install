@@ -9,4 +9,5 @@ usr/bin/ovn-debug
 usr/share/ovn/scripts/ovn-ctl
 usr/share/ovn/scripts/ovndb-servers.ocf
 usr/share/ovn/scripts/ovn-lib
+usr/lib/tmpfiles.d/ovn-tmpfiles.conf
 usr/lib/*/libovn*.so.*
