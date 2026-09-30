@@ -1580,7 +1580,7 @@ release_lport(const struct sbrec_port_binding *pb,
         VLOG_INFO("Releasing lport %s", pb->logical_port);
     }
     update_lport_tracking(pb, tracked_datapaths, false);
-    if_status_mgr_release_iface(if_mgr, pb->logical_port);
+    if_status_mgr_release_iface(if_mgr, pb);
     return true;
 }
 
@@ -2911,7 +2911,7 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
          * it is seen as never claimed.
          */
         if (if_status_is_port_claimed(b_ctx_out->if_mgr, pb->logical_port)) {
-            if_status_mgr_release_iface(b_ctx_out->if_mgr, pb->logical_port);
+            if_status_mgr_release_iface(b_ctx_out->if_mgr, pb);
         }
         return;
     }
@@ -2934,7 +2934,7 @@ handle_deleted_lport(const struct sbrec_port_binding *pb,
                                           ld);
         }
         if (if_status_is_port_claimed(b_ctx_out->if_mgr, pb->logical_port)) {
-            if_status_mgr_release_iface(b_ctx_out->if_mgr, pb->logical_port);
+            if_status_mgr_release_iface(b_ctx_out->if_mgr, pb);
         }
     }
 }
