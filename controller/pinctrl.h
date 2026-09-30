@@ -23,6 +23,7 @@
 #include "openvswitch/list.h"
 #include "openvswitch/meta-flow.h"
 
+struct ds;
 struct hmap;
 struct shash;
 struct lport_index;
@@ -63,6 +64,15 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  int64_t cur_cfg);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
+size_t pinctrl_bfd_exit_mark_down(
+    struct ovsdb_idl_txn *ovnsb_idl_txn,
+    const struct sbrec_bfd_table *,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_chassis *chassis, bool subset);
+size_t pinctrl_bfd_exit_pending(
+    const struct sbrec_bfd_table *,
+    struct ovsdb_idl_index *sbrec_port_binding_by_name,
+    const struct sbrec_chassis *chassis, struct ds *rows);
 void pinctrl_seqno_run(void);
 void pinctrl_seqno_flush(void);
 

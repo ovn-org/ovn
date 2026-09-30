@@ -29,6 +29,7 @@
 #include "chassis.h"
 #include "command-line.h"
 #include "compiler.h"
+#include "coverage.h"
 #include "daemon.h"
 #include "dirs.h"
 #include "openvswitch/dynamic-string.h"
@@ -107,6 +108,9 @@
 #include "evpn-mac-binding-sync.h"
 
 VLOG_DEFINE_THIS_MODULE(main);
+
+COVERAGE_DEFINE(bfd_exit_mark_down);
+COVERAGE_DEFINE(bfd_exit_mark_down_failed);
 
 static unixctl_cb_func ct_zone_list;
 static unixctl_cb_func extend_table_list;
@@ -7846,6 +7850,187 @@ ovsdb_idl_loop_next_cfg_inc(struct ovsdb_idl_loop *idl_loop)
     }
 }
 
+/* During a cleanup exit, bfd_exit_mark_down() makes at most
+ * BFD_EXIT_MAX_ATTEMPTS attempts, starts them only within
+ * BFD_EXIT_NEW_ATTEMPT_MSEC, and stops waiting for the Southbound database
+ * after BFD_EXIT_HARD_CAP_MSEC, so that releasing the port bindings is
+ * delayed by at most that much. */
+#define BFD_EXIT_MAX_ATTEMPTS 3
+#define BFD_EXIT_NEW_ATTEMPT_MSEC 1000
+#define BFD_EXIT_HARD_CAP_MSEC 1500
+
+/* Marks down the BFD sessions that this chassis runs and that no other
+ * registered chassis could take over (see pinctrl_bfd_exit_mark_down()),
+ * in a Southbound transaction of its own that completes before the cleanup
+ * loop releases the port bindings.
+ *
+ * The first attempt covers all such sessions.  After a transient failure
+ * (TXN_TRY_AGAIN) it is retried once.  After any other failure, for example
+ * an SB RBAC rejection, one more attempt covers only the sessions whose
+ * chassis_name is this chassis, because SB RBAC allows only those.
+ *
+ * On return no transaction is open on either IDL loop and none is in
+ * flight on the Southbound one, so the cleanup loop starts from a clean
+ * state, and at once. */
+static void
+bfd_exit_mark_down(struct ovsdb_idl_loop *ovs_idl_loop,
+                   struct ovsdb_idl_loop *ovnsb_idl_loop,
+                   struct ovsdb_idl_index *sbrec_chassis_by_name,
+                   struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                   struct shash *vif_plug_deleted_iface_ids,
+                   struct shash *vif_plug_changed_iface_ids)
+{
+    if (!ovsdb_idl_has_ever_connected(ovnsb_idl_loop->idl)) {
+        return;
+    }
+
+    long long int start = time_msec();
+    int n_all = 0;          /* Attempts on all rows. */
+    int n_subset = 0;       /* Attempts on the chassis_name subset. */
+    bool subset = false;    /* Whether the next attempt is on the subset. */
+    bool in_flight = false; /* Whether our attempt is being committed. */
+    bool stop = false;      /* Whether no new attempt may start. */
+    bool dropped = false;   /* Whether our attempt got no answer in time. */
+    size_t n_sent = 0;      /* Rows in the last attempt. */
+    size_t n_marked = 0;    /* Rows marked down by successful attempts. */
+    const struct sbrec_chassis *chassis;
+
+    for (;;) {
+        update_sb_db(ovs_idl_loop->idl, ovnsb_idl_loop->idl,
+                     NULL, NULL, NULL, NULL);
+        update_ssl_config(ovsrec_ssl_table_get(ovs_idl_loop->idl));
+
+        ovsdb_idl_loop_run(ovs_idl_loop);
+        struct ovsdb_idl_txn *ovnsb_idl_txn
+            = ovsdb_idl_loop_run(ovnsb_idl_loop);
+
+        const char *chassis_id
+            = get_ovs_chassis_id(ovsrec_open_vswitch_table_get(
+                                     ovs_idl_loop->idl));
+        chassis = (chassis_id
+                   ? chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id)
+                   : NULL);
+        long long int now = time_msec();
+
+        /* The outcome of our attempt, if it completed in this pass.  It is
+         * taken from the transaction: while the transaction is in flight,
+         * the IDL still shows the old status. */
+        enum ovsdb_idl_txn_status status = TXN_INCOMPLETE;
+        if (in_flight) {
+            /* ovsdb_idl_loop_run() reaps only a successful transaction.  On
+             * a transaction that was already sent, ovsdb_idl_txn_commit()
+             * just returns its status. */
+            status = (ovnsb_idl_loop->committing_txn
+                      ? ovsdb_idl_txn_commit(ovnsb_idl_loop->committing_txn)
+                      : TXN_SUCCESS);
+        } else if (!stop) {
+            if (!chassis || now - start >= BFD_EXIT_NEW_ATTEMPT_MSEC
+                || n_all + n_subset >= BFD_EXIT_MAX_ATTEMPTS) {
+                stop = true;
+            } else if (ovnsb_idl_txn) {
+                n_sent = pinctrl_bfd_exit_mark_down(
+                    ovnsb_idl_txn, sbrec_bfd_table_get(ovnsb_idl_loop->idl),
+                    sbrec_port_binding_by_name, chassis, subset);
+                if (!n_sent) {
+                    stop = true;
+                } else {
+                    in_flight = true;
+                    if (subset) {
+                        n_subset++;
+                    } else {
+                        n_all++;
+                    }
+                    /* Send it now, so that a failure that is known at once,
+                     * for example without a connection, is seen here. */
+                    status = ovsdb_idl_txn_commit(ovnsb_idl_txn);
+                }
+            }
+        }
+
+        /* Always commit, so that no transaction is left open. */
+        if (!ovsdb_idl_loop_commit_and_wait(ovnsb_idl_loop)) {
+            /* After a failure the IDL does not ask to be woken up. */
+            poll_immediate_wake();
+        }
+        int ovs_txn_status = ovsdb_idl_loop_commit_and_wait(ovs_idl_loop);
+        if (!ovs_txn_status) {
+            vif_plug_clear_deleted(vif_plug_deleted_iface_ids);
+            vif_plug_clear_changed(vif_plug_changed_iface_ids);
+        } else if (ovs_txn_status == 1) {
+            vif_plug_finish_deleted(vif_plug_deleted_iface_ids);
+            vif_plug_finish_changed(vif_plug_changed_iface_ids);
+        }
+
+        if (in_flight && status != TXN_INCOMPLETE) {
+            in_flight = false;
+            if (status == TXN_SUCCESS || status == TXN_UNCHANGED) {
+                /* The next pass finds what is left, normally nothing. */
+                COVERAGE_ADD(bfd_exit_mark_down, n_sent);
+                n_marked += n_sent;
+            } else if (status == TXN_TRY_AGAIN && !subset && n_all < 2) {
+                /* Try all rows again once the IDL has caught up. */
+            } else if (!subset) {
+                subset = true;
+            } else {
+                stop = true;
+            }
+            poll_immediate_wake();
+        }
+
+        /* Also wait for a transaction that the main loop left in flight. */
+        if (!ovnsb_idl_loop->committing_txn) {
+            if (stop) {
+                break;
+            }
+        } else if (now - start >= BFD_EXIT_HARD_CAP_MSEC) {
+            /* The server does not answer.  Forget the transaction, so that
+             * the cleanup loop does not inherit it; a late reply is
+             * ignored. */
+            ovsdb_idl_txn_destroy(ovnsb_idl_loop->committing_txn);
+            ovnsb_idl_loop->committing_txn = NULL;
+            dropped = in_flight;
+            break;
+        }
+
+        poll_timer_wait_until(start + (stop || in_flight
+                                       ? BFD_EXIT_HARD_CAP_MSEC
+                                       : BFD_EXIT_NEW_ATTEMPT_MSEC));
+        poll_block();
+    }
+
+    long long int elapsed = time_msec() - start;
+    if (dropped) {
+        VLOG_WARN("Southbound database did not answer the BFD status update "
+                  "within %d ms; dropped it and continuing exit.",
+                  BFD_EXIT_HARD_CAP_MSEC);
+    }
+
+    /* Nothing is in flight now, so the IDL shows what the database has. */
+    struct ds rows = DS_EMPTY_INITIALIZER;
+    size_t n_left = (chassis
+                     ? pinctrl_bfd_exit_pending(
+                           sbrec_bfd_table_get(ovnsb_idl_loop->idl),
+                           sbrec_port_binding_by_name, chassis, &rows)
+                     : 0);
+    if (n_left) {
+        COVERAGE_ADD(bfd_exit_mark_down_failed, n_left);
+        VLOG_WARN("Could not mark %"PRIuSIZE" BFD session(s) down during "
+                  "exit cleanup (%"PRIuSIZE" marked, %d attempt(s) on all "
+                  "rows, %d on rows with this chassis_name, %lld ms); "
+                  "continuing exit.  If SB RBAC is enabled, check BFD "
+                  "chassis_name: %s",
+                  n_left, n_marked, n_all, n_subset, elapsed, ds_cstr(&rows));
+    } else if (n_marked) {
+        VLOG_INFO("Marked %"PRIuSIZE" BFD session(s) down before releasing "
+                  "gateway bindings (no other registered HA chassis).",
+                  n_marked);
+    }
+    ds_destroy(&rows);
+
+    /* Let the cleanup loop start at once. */
+    poll_immediate_wake();
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -8814,6 +8999,13 @@ loop_done:
 
     /* It's time to exit.  Clean up the databases if we are not restarting */
     if (!restart) {
+        /* Before the bindings are released, so that nobody sees them
+         * released while the BFD sessions still look up. */
+        bfd_exit_mark_down(&ovs_idl_loop, &ovnsb_idl_loop,
+                           sbrec_chassis_by_name, sbrec_port_binding_by_name,
+                           &vif_plug_deleted_iface_ids,
+                           &vif_plug_changed_iface_ids);
+
         bool done = !ovsdb_idl_has_ever_connected(ovnsb_idl_loop.idl);
         while (!done) {
             update_sb_db(ovs_idl_loop.idl, ovnsb_idl_loop.idl,

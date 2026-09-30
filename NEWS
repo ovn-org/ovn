@@ -31,6 +31,14 @@ Post v26.09.0
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
    - Removed ovn-docker utility scripts.
+   - ovn-controller: A cleanup exit ("exit" without "--restart") now marks
+     down the BFD sessions that the chassis runs when no other chassis in
+     the gateway's HA chassis group is registered, before it releases the
+     port bindings.  Their routes are then removed instead of staying in
+     place with a stale "up" status.  A packaged "systemctl restart" of
+     ovn-controller also does a cleanup exit, so the only gateway's routes
+     are briefly removed until its sessions come up again; use
+     "ovn-ctl restart_controller" to avoid that.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

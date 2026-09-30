@@ -5590,6 +5590,15 @@ tcp.flags = RST;
             </li>
           </ul>
         </p>
+
+        <p>
+          The <code>ovn-controller</code> that runs the session updates this
+          column when the state of the session changes.  During a cleanup
+          exit, it also sets <code>down</code> for the sessions it runs if no
+          other chassis in the HA chassis group of the gateway port is
+          registered.  See <code>exit</code> in
+          <code>ovn-controller</code>(8).
+        </p>
       </column>
     </group>
   </table>
