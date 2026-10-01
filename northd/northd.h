@@ -265,7 +265,7 @@ struct lflow_input {
     const char *svc_monitor_mac;
     const struct sampling_app_table *sampling_apps;
     struct group_ecmp_route_data *route_data;
-    struct hmap *route_policies;
+    struct sparse_array *dp_route_policies;
     struct simap *route_tables;
     struct hmap *igmp_groups;
     struct lflow_ref *igmp_lflow_ref;

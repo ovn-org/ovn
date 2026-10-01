@@ -15802,6 +15802,23 @@ build_mcast_lookup_flows_for_lrouter(struct ovn_datapath *od,
     }
 }
 
+static void
+build_default_ingress_policy_flows_for_lrouter(struct ovn_datapath *od,
+                                               struct lflow_table *lflows,
+                                               struct lflow_ref *lflow_ref)
+{
+    ovs_assert(od->nbr);
+    /* This is a catch-all rule. It has the lowest priority (0)
+     * does a match-all("1") and pass-through (next) */
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, 0, "1",
+                  REG_ECMP_GROUP_ID" = 0; next;",
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY_ECMP, 150,
+                  REG_ECMP_GROUP_ID" == 0", "next;",
+                  lflow_ref);
+    ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_POLICY_ECMP,
+                               lflow_ref);
+}
 
 /* Logical router ingress table POLICY: Policy.
  *
@@ -15815,25 +15832,14 @@ build_mcast_lookup_flows_for_lrouter(struct ovn_datapath *od,
 static void
 build_ingress_policy_flows_for_lrouter(
         struct ovn_datapath *od, struct lflow_table *lflows,
-        struct hmap *route_policies,
+        const struct hmap *route_policies,
         struct lflow_ref *lflow_ref)
 {
     ovs_assert(od->nbr);
-    /* This is a catch-all rule. It has the lowest priority (0)
-     * does a match-all("1") and pass-through (next) */
-    ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, 0, "1",
-                  REG_ECMP_GROUP_ID" = 0; next;",
-                  lflow_ref);
-    ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY_ECMP, 150,
-                  REG_ECMP_GROUP_ID" == 0", "next;",
-                  lflow_ref);
-    ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_POLICY_ECMP,
-                               lflow_ref);
 
     /* Convert routing policies to flows. */
     struct route_policy *rp;
-    HMAP_FOR_EACH_WITH_HASH (rp, key_node, uuid_hash(&od->key),
-                             route_policies) {
+    HMAP_FOR_EACH (rp, key_node, route_policies) {
         const struct nbrec_logical_router_policy *rule = rp->rule;
         bool is_ecmp_reroute = rp->ecmp_group_id != 0;
 
@@ -20270,7 +20276,7 @@ struct lswitch_flow_build_info {
     const char *svc_monitor_mac;
     const struct sampling_app_table *sampling_apps;
     const struct group_ecmp_route_data *route_data;
-    struct hmap *route_policies;
+    struct sparse_array *dp_route_policies;
     struct simap *route_tables;
     const struct sbrec_acl_id_table *sbrec_acl_id_table;
 };
@@ -20336,8 +20342,7 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
                                   lsi->bfd_ports);
     build_mcast_lookup_flows_for_lrouter(od, lsi->lflows, &lsi->match,
                                          od->datapath_lflows);
-    build_ingress_policy_flows_for_lrouter(od, lsi->lflows,
-                                           lsi->route_policies,
+    build_default_ingress_policy_flows_for_lrouter(od, lsi->lflows,
                                            od->datapath_lflows);
     build_arp_resolve_flows_for_lrouter(od, lsi->lflows, od->datapath_lflows);
     build_check_pkt_len_flows_for_lrouter(od, lsi->lflows, lsi->lr_ports,
@@ -20468,6 +20473,7 @@ build_lflows_thread(void *arg)
      *    - lb_dps->lflow_ref
      *    - lr_stateful_rec->lflow_ref
      *    - ls_stateful_rec->lflow_ref
+     *    - dp_rp->lflow_ref
      * are not accessed by multiple threads at the same time. */
     while (!stop_parallel_processing()) {
         wait_for_work(control);
@@ -20611,6 +20617,23 @@ build_lflows_thread(void *arg)
                                             lsi->sbrec_acl_id_table);
                 }
             }
+            for (bnum = control->id;
+                    bnum < sparse_array_len(lsi->dp_route_policies);
+                    bnum += control->pool->size) {
+                struct datapath_route_policies *dp_rp =
+                    sparse_array_get(lsi->dp_route_policies, bnum);
+                if (!dp_rp) {
+                    /* It's perfectly reasonable for a sparse array to have a
+                     * gap in it. Just move on if that is the case.
+                     */
+                    continue;
+                }
+                od = sparse_array_get(&lsi->lr_datapaths->dps,
+                                      dp_rp->dp_index);
+                build_ingress_policy_flows_for_lrouter(od, lsi->lflows,
+                                                       &dp_rp->route_policies,
+                                                       dp_rp->lflow_ref);
+            }
             lsi->thread_lflow_counter = thread_lflow_counter;
         }
         post_completed_work(control);
@@ -20668,7 +20691,7 @@ build_lswitch_and_lrouter_flows(
     const char *svc_monitor_mac,
     const struct sampling_app_table *sampling_apps,
     const struct group_ecmp_route_data *route_data,
-    struct hmap *route_policies,
+    struct sparse_array *dp_route_policies,
     struct simap *route_tables,
     const struct sbrec_acl_id_table *sbrec_acl_id_table)
 {
@@ -20709,7 +20732,7 @@ build_lswitch_and_lrouter_flows(
             lsiv[index].sampling_apps = sampling_apps;
             lsiv[index].route_data = route_data;
             lsiv[index].route_tables = route_tables;
-            lsiv[index].route_policies = route_policies;
+            lsiv[index].dp_route_policies = dp_route_policies;
             lsiv[index].sbrec_acl_id_table = sbrec_acl_id_table;
             ds_init(&lsiv[index].match);
             ds_init(&lsiv[index].actions);
@@ -20757,7 +20780,7 @@ build_lswitch_and_lrouter_flows(
             .sampling_apps = sampling_apps,
             .route_data = route_data,
             .route_tables = route_tables,
-            .route_policies = route_policies,
+            .dp_route_policies = dp_route_policies,
             .match = DS_EMPTY_INITIALIZER,
             .actions = DS_EMPTY_INITIALIZER,
             .sbrec_acl_id_table = sbrec_acl_id_table,
@@ -20837,6 +20860,13 @@ build_lswitch_and_lrouter_flows(
                                     lsi.features,
                                     lsi.lflows,
                                     lsi.sbrec_acl_id_table);
+        }
+        struct datapath_route_policies *dp_rp;
+        SPARSE_ARRAY_FOR_EACH (lsi.dp_route_policies, dp_rp) {
+            od = sparse_array_get(&lsi.lr_datapaths->dps, dp_rp->dp_index);
+            build_ingress_policy_flows_for_lrouter(od, lsi.lflows,
+                                                   &dp_rp->route_policies,
+                                                   dp_rp->lflow_ref);
         }
 
         ds_destroy(&lsi.match);
@@ -20930,7 +20960,7 @@ void build_lflows(struct lflow_input *input_data,
                                     input_data->svc_monitor_mac,
                                     input_data->sampling_apps,
                                     input_data->route_data,
-                                    input_data->route_policies,
+                                    input_data->dp_route_policies,
                                     input_data->route_tables,
                                     input_data->sbrec_acl_id_table);
     build_igmp_lflows(input_data->igmp_groups,
@@ -20991,6 +21021,11 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
     HMAP_FOR_EACH (od, key_node, &lflow_input->ls_datapaths->datapaths) {
         lflow_ref_clear(od->datapath_lflows);
     }
+
+    struct datapath_route_policies *dp_rp;
+    SPARSE_ARRAY_FOR_EACH (lflow_input->dp_route_policies, dp_rp) {
+        lflow_ref_clear(dp_rp->lflow_ref);
+    }
 }
 
 void
@@ -21012,7 +21047,6 @@ lflow_handle_northd_lr_changes(struct tracked_dps *tracked_lrs,
         .lflows = lflows,
         .route_data = lflow_input->route_data,
         .route_tables = lflow_input->route_tables,
-        .route_policies = lflow_input->route_policies,
         .match = DS_EMPTY_INITIALIZER,
         .actions = DS_EMPTY_INITIALIZER,
     };

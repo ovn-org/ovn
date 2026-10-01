@@ -91,7 +91,7 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->bfd_ports = &bfd_sync_data->bfd_ports;
     lflow_input->route_data = group_ecmp_route_data;
     lflow_input->route_tables = &routes_data->route_tables;
-    lflow_input->route_policies = &route_policies_data->route_policies;
+    lflow_input->dp_route_policies = &route_policies_data->dp_route_policies;
     lflow_input->igmp_groups = &multicat_igmp_data->igmp_groups;
     lflow_input->igmp_lflow_ref = multicat_igmp_data->lflow_ref;
     lflow_input->ic_learned_svc_monitors_map =

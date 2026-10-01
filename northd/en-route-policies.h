@@ -26,6 +26,7 @@
 #include "openvswitch/hmap.h"
 #include "vec.h"
 #include "uuidset.h"
+#include "sparse-array.h"
 
 /* Each instance of this represents a nexthop for a router
  * policy with "reroute" action. The fields are used for
@@ -52,10 +53,23 @@ struct route_policy {
     uint32_t ecmp_group_id;
 };
 
+struct datapath_route_policies {
+    struct simap chain_ids;
+    struct hmap route_policies;
+    struct hmap ecmp_group_ids;
+    uint32_t dp_index;
+    struct lflow_ref *lflow_ref;
+};
+
+struct datapath_bfd_active_connections {
+    struct uuidset active_connections;
+};
+
 /* Global route policy data exported by en-route-policies. */
 struct route_policies_data {
-    struct hmap route_policies;
-    struct uuidset bfd_active_connections;
+    /* Each entry is a struct datapath_route_policies pointer */
+    struct sparse_array dp_route_policies;
+    struct sparse_array dp_bfd_active_connections;
 };
 
 void en_route_policies_cleanup(void *data);

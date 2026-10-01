@@ -525,9 +525,12 @@ en_bfd_sync_run(struct engine_node *node, void *data)
     struct uuidset bfd_active_connections =
         UUIDSET_INITIALIZER(&bfd_active_connections);
     struct uuidset_node *uuid_node;
-    UUIDSET_FOR_EACH (uuid_node,
-                      &route_policies_data->bfd_active_connections) {
-        uuidset_insert(&bfd_active_connections, &uuid_node->uuid);
+    struct datapath_bfd_active_connections *dp_bfd;
+    SPARSE_ARRAY_FOR_EACH (&route_policies_data->dp_bfd_active_connections,
+                           dp_bfd) {
+        UUIDSET_FOR_EACH (uuid_node, &dp_bfd->active_connections) {
+            uuidset_insert(&bfd_active_connections, &uuid_node->uuid);
+        }
     }
     UUIDSET_FOR_EACH (uuid_node, &routes_data->bfd_active_connections) {
         uuidset_insert(&bfd_active_connections, &uuid_node->uuid);

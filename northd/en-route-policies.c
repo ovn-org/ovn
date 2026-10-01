@@ -17,6 +17,7 @@
 
 #include "en-datapath-logical-router.h"
 #include "en-route-policies.h"
+#include "lflow-mgr.h"
 #include "northd.h"
 #include "ovn-nb-idl.h"
 
@@ -163,7 +164,8 @@ static void
 build_route_policies(struct ovn_datapath *od,
                      struct hmap *route_policies,
                      struct uuidset *bfd_active_connections,
-                     struct simap *chain_ids)
+                     struct simap *chain_ids,
+                     struct hmap *ecmp_group_ids)
 {
     /* Create chain numeric ids for policies with chain name set */
     for (int i = 0; i < od->nbr->n_policies; i++) {
@@ -175,11 +177,11 @@ build_route_policies(struct ovn_datapath *od,
         }
     }
 
-    size_t hash = uuid_hash(&od->key);
-    uint32_t ecmp_group_id = 1;
+    uint32_t last_ecmp_group_id = 0;
     for (int i = 0; i < od->nbr->n_policies; i++) {
         const struct nbrec_logical_router_policy *rule = od->nbr->policies[i];
 
+        size_t hash = uuid_hash(&rule->header_.uuid);
         if (route_policies_lookup(route_policies, hash, rule)) {
             continue;
         }
@@ -309,25 +311,24 @@ build_route_policies(struct ovn_datapath *od,
             }
         }
 
-        uint32_t group = 0;
+        uint32_t ecmp_group_id = 0;
         if (vector_len(&valid_nexthops) > 1) {
-            if (ecmp_group_id >= UINT16_MAX) {
-                static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
-                VLOG_WARN_RL(&rl, "Exhausted the range of ECMP group IDs for "
-                             "logical router policies. Any further ECMP "
-                             "routes will be skipped.");
+            ecmp_group_id = ovn_allocate_tnlid(ecmp_group_ids, "route_policy",
+                                               1, UINT16_MAX,
+                                               &last_ecmp_group_id);
+            if (ecmp_group_id == 0) {
                 vector_destroy(&valid_nexthops);
                 continue;
             }
-            group = ecmp_group_id++;
         }
+
         struct route_policy *new_rp = xmalloc(sizeof *new_rp);
         *new_rp = (struct route_policy) {
             .rule = rule,
             .valid_nexthops = vector_steal(&valid_nexthops),
             .chain_id = chain_id,
             .jump_chain_id = jump_chain_id,
-            .ecmp_group_id = group,
+            .ecmp_group_id = ecmp_group_id,
         };
         hmap_insert(route_policies, &new_rp->key_node, hash);
     }
@@ -336,20 +337,75 @@ build_route_policies(struct ovn_datapath *od,
 static void
 route_policies_init(struct route_policies_data *data)
 {
-    hmap_init(&data->route_policies);
-    uuidset_init(&data->bfd_active_connections);
+    sparse_array_init(&data->dp_route_policies, 0);
+    sparse_array_init(&data->dp_bfd_active_connections, 0);
+}
+
+static struct datapath_route_policies *
+datapath_route_policies_alloc(const struct ovn_datapath *od)
+{
+    struct datapath_route_policies *dp_rp = xmalloc(sizeof *dp_rp);
+    *dp_rp = (struct datapath_route_policies) {
+        .chain_ids = SIMAP_INITIALIZER(&dp_rp->chain_ids),
+        .route_policies = HMAP_INITIALIZER(&dp_rp->route_policies),
+        .ecmp_group_ids = HMAP_INITIALIZER(&dp_rp->ecmp_group_ids),
+        .dp_index = od->sdp->index,
+        .lflow_ref = lflow_ref_create(),
+    };
+
+    return dp_rp;
+}
+
+static void
+datapath_route_policies_destroy(struct datapath_route_policies *dp_rp)
+{
+    struct route_policy *rp;
+    HMAP_FOR_EACH_POP (rp, key_node, &dp_rp->route_policies) {
+        vector_destroy(&rp->valid_nexthops);
+        free(rp);
+    };
+    hmap_destroy(&dp_rp->route_policies);
+    ovn_destroy_tnlids(&dp_rp->ecmp_group_ids);
+    simap_destroy(&dp_rp->chain_ids);
+    lflow_ref_destroy(dp_rp->lflow_ref);
+    free(dp_rp);
+}
+
+static struct datapath_bfd_active_connections *
+dp_bfd_active_connections_alloc(void)
+{
+    struct datapath_bfd_active_connections *dp_bfd =
+        xmalloc(sizeof *dp_bfd);
+
+    *dp_bfd = (struct datapath_bfd_active_connections) {
+        .active_connections = UUIDSET_INITIALIZER(&dp_bfd->active_connections),
+    };
+
+    return dp_bfd;
+}
+
+static void
+dp_bfd_active_connections_destroy(
+    struct datapath_bfd_active_connections *dp_bfd)
+{
+    uuidset_destroy(&dp_bfd->active_connections);
+    free(dp_bfd);
 }
 
 static void
 route_policies_destroy(struct route_policies_data *data)
 {
-    struct route_policy *rp;
-    HMAP_FOR_EACH_POP (rp, key_node, &data->route_policies) {
-        vector_destroy(&rp->valid_nexthops);
-        free(rp);
-    };
-    hmap_destroy(&data->route_policies);
-    uuidset_destroy(&data->bfd_active_connections);
+    struct datapath_route_policies *dp_rp;
+    SPARSE_ARRAY_FOR_EACH (&data->dp_route_policies, dp_rp) {
+        datapath_route_policies_destroy(dp_rp);
+    }
+    sparse_array_destroy(&data->dp_route_policies);
+
+    struct datapath_bfd_active_connections *dp_bfd;
+    SPARSE_ARRAY_FOR_EACH (&data->dp_bfd_active_connections, dp_bfd) {
+        dp_bfd_active_connections_destroy(dp_bfd);
+    }
+    sparse_array_destroy(&data->dp_bfd_active_connections);
 }
 
 enum engine_node_state
@@ -363,12 +419,29 @@ en_route_policies_run(struct engine_node *node, void *data)
 
     struct ovn_datapath *od;
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
-        struct simap chain_ids = SIMAP_INITIALIZER(&chain_ids);
+        struct datapath_route_policies *dp_rp =
+            datapath_route_policies_alloc(od);
+        struct datapath_bfd_active_connections *dp_bfd =
+            dp_bfd_active_connections_alloc();
+        build_route_policies(od, &dp_rp->route_policies,
+                             &dp_bfd->active_connections,
+                             &dp_rp->chain_ids,
+                             &dp_rp->ecmp_group_ids);
 
-        build_route_policies(od, &route_policies_data->route_policies,
-                             &route_policies_data->bfd_active_connections,
-                             &chain_ids);
-        simap_destroy(&chain_ids);
+        if (hmap_is_empty(&dp_rp->route_policies)) {
+            datapath_route_policies_destroy(dp_rp);
+        } else {
+            sparse_array_add_at(&route_policies_data->dp_route_policies, dp_rp,
+                                od->sdp->index);
+        }
+
+        if (uuidset_is_empty(&dp_bfd->active_connections)) {
+            dp_bfd_active_connections_destroy(dp_bfd);
+        } else {
+            sparse_array_add_at(
+                &route_policies_data->dp_bfd_active_connections, dp_bfd,
+                od->sdp->index);
+        }
     }
 
     return EN_UPDATED;
