@@ -8366,6 +8366,7 @@ main(int argc, char *argv[])
                                         ovs_feature_max_meters_get());
             }
 
+            bool pinctrl_ran = false;
             if (br_int) {
                 ct_zones_data = engine_get_data(&en_ct_zones);
                 if (ofctrl_run(br_int_remote.target,
@@ -8554,6 +8555,7 @@ main(int argc, char *argv[])
                                     ovsrec_open_vswitch_table_get(
                                             ovs_idl_loop.idl),
                                     ovnsb_idl_loop.cur_cfg);
+                        pinctrl_ran = true;
                         stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
                                        time_msec());
                         mirror_run(ovs_idl_txn,
@@ -8684,6 +8686,15 @@ main(int argc, char *argv[])
                     stopwatch_stop(IF_STATUS_MGR_RUN_STOPWATCH_NAME,
                                    time_msec());
                 }
+            }
+
+            if (chassis && !pinctrl_ran) {
+                /* pinctrl_run() could not run, for example because
+                 * ovs-vswitchd is down.  Still time out the BFD sessions
+                 * that get no packets and publish their state. */
+                pinctrl_bfd_run(ovnsb_idl_txn,
+                                sbrec_bfd_table_get(ovnsb_idl_loop.idl),
+                                sbrec_port_binding_by_name, chassis);
             }
 
             if (!engine_has_run()) {
