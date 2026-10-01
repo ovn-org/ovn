@@ -13,7 +13,8 @@ enum engine_input_handler_result
 northd_output_sync_to_sb_handler(struct engine_node *node,
                                  void *data OVS_UNUSED);
 enum engine_input_handler_result
-northd_output_lflow_handler(struct engine_node *node, void *data OVS_UNUSED);
+northd_output_dp_group_handler(struct engine_node *node,
+                               void *data OVS_UNUSED);
 enum engine_input_handler_result
 northd_output_mac_binding_aging_handler(struct engine_node *node,
                                         void *data OVS_UNUSED);

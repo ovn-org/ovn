@@ -21038,10 +21038,9 @@ void run_update_worker_pool(int n_threads)
     }
 }
 
-/* Updates the Logical_Flow and Multicast_Group tables in the OVN_SB database,
- * constructing their contents based on the OVN_NB database. */
-void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
-                  struct lflow_input *input_data,
+/* Builds the in-memory logical flow table from the OVN_NB database.
+ * The flows are synced to the SB database by en_dp_group. */
+void build_lflows(struct lflow_input *input_data,
                   struct lflow_table *lflows)
 {
     struct svc_monitors_map_data svc_mons_data =
@@ -21085,14 +21084,6 @@ void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
     /* Parallel build may result in a suboptimal hash. Resize the
      * lflow map to a correct size before doing lookups */
     lflow_table_expand(lflows);
-
-    stopwatch_start(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
-    lflow_table_sync_to_sb(lflows, ovnsb_txn, input_data->dps,
-                           input_data->ovn_internal_version_changed,
-                           input_data->sbrec_logical_flow_table,
-                           input_data->sbrec_logical_dp_group_table);
-
-    stopwatch_stop(LFLOWS_TO_SB_STOPWATCH_NAME, time_msec());
 }
 
 void
@@ -21137,24 +21128,17 @@ lflow_reset_northd_refs(struct lflow_input *lflow_input)
     }
 }
 
-bool
-lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                struct tracked_dps *tracked_lrs,
-                                struct lflow_input *lflow_input,
-                                struct lflow_table *lflows)
+void
+lflow_handle_northd_lr_changes(struct tracked_dps *tracked_lrs,
+                               struct lflow_input *lflow_input,
+                               struct lflow_table *lflows,
+                               struct hmapx *dirty_lflow_refs)
 {
-    bool handled = true;
     struct hmapx_node *hmapx_node;
     HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->deleted) {
         struct ovn_datapath *od = hmapx_node->data;
-        handled = lflow_ref_resync_flows(
-            od->datapath_lflows, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            return handled;
-        }
+        lflow_ref_unlink_lflows(od->datapath_lflows, lflows);
+        hmapx_add(dirty_lflow_refs, od->datapath_lflows);
     }
 
     struct lswitch_flow_build_info lsi = {
@@ -21172,34 +21156,18 @@ lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
         lflow_ref_unlink_lflows(od->datapath_lflows, lflows);
         build_lswitch_and_lrouter_iterate_by_lr(od, &lsi);
-    }
-
-    /* We need to make sure that all datapath groups are allocated before
-     * trying to sync logical flows. Otherwise, we would need to recompute
-     * those datapath groups within those flows over and over again. */
-    HMAPX_FOR_EACH (hmapx_node, &tracked_lrs->crupdated) {
-        struct ovn_datapath *od = hmapx_node->data;
-
-        handled = lflow_ref_sync_lflows(
-            od->datapath_lflows, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            break;
-        }
+        hmapx_add(dirty_lflow_refs, od->datapath_lflows);
     }
 
     ds_destroy(&lsi.actions);
     ds_destroy(&lsi.match);
-    return handled;
 }
 
-bool
-lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                 struct tracked_ovn_ports *trk_lsps,
+void
+lflow_handle_northd_port_changes(struct tracked_ovn_ports *trk_lsps,
                                  struct lflow_input *lflow_input,
-                                 struct lflow_table *lflows)
+                                 struct lflow_table *lflows,
+                                 struct hmapx *dirty_lflow_refs)
 {
     struct hmapx_node *hmapx_node;
     struct ovn_port *op;
@@ -21208,14 +21176,8 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         op = hmapx_node->data;
         /* Make sure 'op' is an lsp and not lrp. */
         ovs_assert(op->nbsp);
-        bool handled = lflow_ref_resync_flows(
-            op->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            return false;
-        }
+        lflow_ref_unlink_lflows(op->lflow_ref, lflows);
+        hmapx_add(dirty_lflow_refs, op->lflow_ref);
         /* No need to update SB multicast groups, thanks to weak
          * references. */
     }
@@ -21236,33 +21198,17 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                                  &match, &actions,
                                                  lflow_input->svc_monitor_mac,
                                                  lflows);
-        /* Sync the new flows to SB. */
-        bool handled = lflow_ref_sync_lflows(
-            op->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (handled) {
-            /* Now regenerate the stateful lflows for 'op' */
-            /* Clear old lflows. */
-            lflow_ref_unlink_lflows(op->stateful_lflow_ref, lflows);
-            build_lbnat_lflows_iterate_by_lsp(op,
-                                              lflow_input->lr_stateful_table,
-                                              &match, &actions, lflows);
-            handled = lflow_ref_sync_lflows(
-                op->stateful_lflow_ref, lflows, ovnsb_txn,
-                lflow_input->dps,
-                lflow_input->ovn_internal_version_changed,
-                lflow_input->sbrec_logical_flow_table,
-                lflow_input->sbrec_logical_dp_group_table);
-        }
+        hmapx_add(dirty_lflow_refs, op->lflow_ref);
+
+        /* Now regenerate the stateful lflows for 'op' */
+        lflow_ref_unlink_lflows(op->stateful_lflow_ref, lflows);
+        build_lbnat_lflows_iterate_by_lsp(op,
+                                          lflow_input->lr_stateful_table,
+                                          &match, &actions, lflows);
+        hmapx_add(dirty_lflow_refs, op->stateful_lflow_ref);
 
         ds_destroy(&match);
         ds_destroy(&actions);
-
-        if (!handled) {
-            return false;
-        }
     }
 
     HMAPX_FOR_EACH (hmapx_node, &trk_lsps->created) {
@@ -21278,42 +21224,24 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                                  &match, &actions,
                                                  lflow_input->svc_monitor_mac,
                                                  lflows);
+        hmapx_add(dirty_lflow_refs, op->lflow_ref);
 
-        /* Sync the newly added flows to SB. */
-        bool handled = lflow_ref_sync_lflows(
-            op->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (handled) {
-            /* Now generate the stateful lflows for 'op' */
-            build_lbnat_lflows_iterate_by_lsp(op,
-                                              lflow_input->lr_stateful_table,
-                                              &match, &actions, lflows);
-            handled = lflow_ref_sync_lflows(
-                op->stateful_lflow_ref, lflows, ovnsb_txn,
-                lflow_input->dps,
-                lflow_input->ovn_internal_version_changed,
-                lflow_input->sbrec_logical_flow_table,
-                lflow_input->sbrec_logical_dp_group_table);
-        }
+        /* Now generate the stateful lflows for 'op' */
+        build_lbnat_lflows_iterate_by_lsp(op,
+                                          lflow_input->lr_stateful_table,
+                                          &match, &actions, lflows);
+        hmapx_add(dirty_lflow_refs, op->stateful_lflow_ref);
 
         ds_destroy(&match);
         ds_destroy(&actions);
-
-        if (!handled) {
-            return false;
-        }
     }
-
-    return true;
 }
 
-bool
-lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                               struct tracked_lbs *trk_lbs,
+void
+lflow_handle_northd_lb_changes(struct tracked_lbs *trk_lbs,
                                struct lflow_input *lflow_input,
-                               struct lflow_table *lflows)
+                               struct lflow_table *lflows,
+                               struct hmapx *dirty_lflow_refs)
 {
     struct ovn_lb_datapaths *lb_dps;
     struct hmapx_node *hmapx_node;
@@ -21325,12 +21253,8 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
 
     HMAPX_FOR_EACH (hmapx_node, &trk_lbs->deleted) {
         lb_dps = hmapx_node->data;
-
-        lflow_ref_resync_flows(
-            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
+        lflow_ref_unlink_lflows(lb_dps->lflow_ref, lflows);
+        hmapx_add(dirty_lflow_refs, lb_dps->lflow_ref);
     }
 
     HMAPX_FOR_EACH (hmapx_node, &trk_lbs->crupdated) {
@@ -21365,31 +21289,20 @@ lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
         ds_destroy(&match);
         ds_destroy(&actions);
 
-        /* Sync the new flows to SB. */
-        bool handled = lflow_ref_sync_lflows(
-            lb_dps->lflow_ref, lflows, ovnsb_txn, lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            return false;
-        }
+        hmapx_add(dirty_lflow_refs, lb_dps->lflow_ref);
     }
-
-    return true;
 }
 
-bool
-lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                struct lr_stateful_tracked_data *trk_data,
-                                struct lflow_input *lflow_input,
-                                struct lflow_table *lflows)
+void
+lflow_handle_lr_stateful_changes(struct lr_stateful_tracked_data *trk_data,
+                                 struct lflow_input *lflow_input,
+                                 struct lflow_table *lflows,
+                                 struct hmapx *dirty_lflow_refs)
 {
     struct lr_stateful_record *lr_stateful_rec;
     struct ds actions = DS_EMPTY_INITIALIZER;
     struct ds match = DS_EMPTY_INITIALIZER;
     struct hmapx_node *hmapx_node;
-    bool handled = true;
 
     HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
         lr_stateful_rec = hmapx_node->data;
@@ -21402,17 +21315,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                 &match, &actions,
                                 lflow_input->meter_groups,
                                 lflow_input->features);
-
-        /* Sync the new flows to SB. */
-        handled = lflow_ref_sync_lflows(
-            lr_stateful_rec->lflow_ref, lflows, ovnsb_txn,
-            lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            goto exit;
-        }
+        hmapx_add(dirty_lflow_refs, lr_stateful_rec->lflow_ref);
 
         const struct ovn_datapath *od =
             ovn_datapaths_find_by_index(lflow_input->lr_datapaths,
@@ -21427,16 +21330,7 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                               lflow_input->bfd_ports,
                                               &match, &actions,
                                               lflows);
-
-            handled = lflow_ref_sync_lflows(
-                op->stateful_lflow_ref, lflows, ovnsb_txn,
-                lflow_input->dps,
-                lflow_input->ovn_internal_version_changed,
-                lflow_input->sbrec_logical_flow_table,
-                lflow_input->sbrec_logical_dp_group_table);
-            if (!handled) {
-                goto exit;
-            }
+            hmapx_add(dirty_lflow_refs, op->stateful_lflow_ref);
 
             if (op->peer && op->peer->nbsp) {
                 lflow_ref_unlink_lflows(op->peer->stateful_lflow_ref, lflows);
@@ -21444,32 +21338,20 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
                 build_lbnat_lflows_iterate_by_lsp(
                     op->peer, lflow_input->lr_stateful_table, &match, &actions,
                     lflows);
-
-                handled = lflow_ref_sync_lflows(
-                    op->peer->stateful_lflow_ref, lflows, ovnsb_txn,
-                    lflow_input->dps,
-                    lflow_input->ovn_internal_version_changed,
-                    lflow_input->sbrec_logical_flow_table,
-                    lflow_input->sbrec_logical_dp_group_table);
-                if (!handled) {
-                    goto exit;
-                }
+                hmapx_add(dirty_lflow_refs, op->peer->stateful_lflow_ref);
             }
         }
     }
 
-exit:
     ds_destroy(&match);
     ds_destroy(&actions);
-
-    return handled;
 }
 
-bool
-lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                struct ls_stateful_tracked_data *trk_data,
-                                struct lflow_input *lflow_input,
-                                struct lflow_table *lflows)
+void
+lflow_handle_ls_stateful_changes(struct ls_stateful_tracked_data *trk_data,
+                                 struct lflow_input *lflow_input,
+                                 struct lflow_table *lflows,
+                                 struct hmapx *dirty_lflow_refs)
 {
     struct hmapx_node *hmapx_node;
 
@@ -21494,39 +21376,14 @@ lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
         build_network_function(od, lflows,
                                lflow_input->ls_port_groups,
                                ls_stateful_rec->lflow_ref);
-    }
-
-    /* We need to make sure that all datapath groups are allocated before
-     * trying to sync logical flows. Otherwise, we would need to recompute
-     * those datapath groups within those flows over and over again. */
-    HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
-        struct ls_stateful_record *ls_stateful_rec = hmapx_node->data;
-        /* Sync the new flows to SB. */
-        bool handled = lflow_ref_sync_lflows(
-            ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
-            lflow_input->dps,
-            lflow_input->ovn_internal_version_changed,
-            lflow_input->sbrec_logical_flow_table,
-            lflow_input->sbrec_logical_dp_group_table);
-        if (!handled) {
-            return false;
-        }
+        hmapx_add(dirty_lflow_refs, ls_stateful_rec->lflow_ref);
     }
 
     HMAPX_FOR_EACH (hmapx_node, &trk_data->deleted) {
         struct ls_stateful_record *ls_stateful_rec = hmapx_node->data;
-
-        if (!lflow_ref_resync_flows(
-                    ls_stateful_rec->lflow_ref, lflows, ovnsb_txn,
-                    lflow_input->dps,
-                    lflow_input->ovn_internal_version_changed,
-                    lflow_input->sbrec_logical_flow_table,
-                    lflow_input->sbrec_logical_dp_group_table)) {
-            return false;
-        }
+        lflow_ref_unlink_lflows(ls_stateful_rec->lflow_ref, lflows);
+        hmapx_add(dirty_lflow_refs, ls_stateful_rec->lflow_ref);
     }
-
-    return true;
 }
 
 static bool

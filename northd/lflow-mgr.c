@@ -261,6 +261,28 @@ lflow_table_set_size(struct lflow_table *lflow_table, size_t size)
     lflow_table->entries.n = size;
 }
 
+/* An lflow that applies to no datapaths (its dp group bitmap is empty) must
+ * not exist in the SB DB.  Such lflows can be left in the table by en_lflow's
+ * incremental handlers, which unlink lflows (clearing their dp bits) and defer
+ * the teardown to the dp-group-resolved sync stage.  Release the lflow's dp
+ * group and destroy it; its SB row (if any) is removed by the caller.  Returns
+ * true if the lflow was destroyed. */
+static bool
+lflow_prune_if_no_datapaths(struct lflow_table *lflow_table,
+                            struct ovn_lflow *lflow)
+{
+    if (dynamic_bitmap_count1(&lflow->dpg_bitmap)) {
+        return false;
+    }
+
+    enum ovn_datapath_type dp_type = ovn_stage_to_datapath_type(lflow->stage);
+    ovs_assert(dp_type < DP_MAX);
+    ovn_dp_group_release(&lflow_table->dp_groups[dp_type], lflow->dpg);
+    lflow->dpg = NULL;
+    ovn_lflow_destroy(lflow_table, lflow);
+    return true;
+}
+
 void
 lflow_table_sync_to_sb(struct lflow_table *lflow_table,
                        struct ovsdb_idl_txn *ovnsb_txn,
@@ -285,6 +307,12 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
 
         if (lflow->sync_state == LFLOW_STALE) {
             ovn_lflow_destroy(lflow_table, lflow);
+            continue;
+        }
+        /* An lflow with no datapaths must be removed from the SB DB.  It is
+         * skipped here (not added to 'sb_uuid_set'), so its SB row, if any, is
+         * deleted by the reconciliation loop below. */
+        if (lflow_prune_if_no_datapaths(lflow_table, lflow)) {
             continue;
         }
         sbflow = NULL;
@@ -372,7 +400,7 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
             lflows, &stage,
             sbflow->priority, sbflow->match, sbflow->actions,
             sbflow->controller_meter, acl_ct_translation, sbflow->hash);
-        if (lflow) {
+        if (lflow && !lflow_prune_if_no_datapaths(lflow_table, lflow)) {
             const struct ovn_synced_datapaths *datapaths;
             struct hmap *dp_groups;
             dp_groups = &lflow_table->dp_groups[dp_type];
@@ -392,6 +420,9 @@ lflow_table_sync_to_sb(struct lflow_table *lflow_table,
     HMAP_FOR_EACH_SAFE (lflow, hmap_node, lflows) {
         if (search_mode != LFLOW_TABLE_SEARCH_FIELDS) {
             break;
+        }
+        if (lflow_prune_if_no_datapaths(lflow_table, lflow)) {
+            continue;
         }
         const struct ovn_synced_datapaths *datapaths;
         struct hmap *dp_groups;
@@ -708,20 +739,32 @@ lflow_ref_unlink_lflows(struct lflow_ref *lflow_ref,
     }
 }
 
-bool
-lflow_ref_resync_flows(struct lflow_ref *lflow_ref,
-                       struct lflow_table *lflow_table,
-                       struct ovsdb_idl_txn *ovnsb_txn,
-                       const struct ovn_synced_datapaths dps[DP_MAX],
-                       bool ovn_internal_version_changed,
-                       const struct sbrec_logical_flow_table *sbflow_table,
-                       const struct sbrec_logical_dp_group_table *dpgrp_table)
+/* Unlinks and destroys all lrns in 'lflow_ref', then destroys any lflow
+ * whose referenced_by list is empty (no other lflow_ref references it).
+ * Unlike lflow_ref_unlink_lflows (which only clears dp bits and sets
+ * linked=false), this function removes the lrns and orphaned lflows
+ * from the in-memory table entirely, without writing to SB. */
+void
+lflow_ref_unlink_and_prune(struct lflow_ref *lflow_ref,
+                           struct lflow_table *lflow_table)
 {
     lflow_ref_unlink_lflows(lflow_ref, lflow_table);
-    return lflow_ref_sync_lflows__(lflow_ref, lflow_table, ovnsb_txn,
-                                   dps,
-                                   ovn_internal_version_changed, sbflow_table,
-                                   dpgrp_table);
+
+    struct lflow_ref_node *lrn;
+    HMAP_FOR_EACH_SAFE (lrn, ref_node, &lflow_ref->lflow_ref_nodes) {
+        struct ovn_lflow *lflow = lrn->lflow;
+        lflow_ref_node_destroy(lrn);
+
+        if (ovs_list_is_empty(&lflow->referenced_by)) {
+            enum ovn_datapath_type dp_type =
+                ovn_stage_to_datapath_type(lflow->stage);
+            ovs_assert(dp_type < DP_MAX);
+            ovn_dp_group_release(&lflow_table->dp_groups[dp_type],
+                                 lflow->dpg);
+            lflow->dpg = NULL;
+            ovn_lflow_destroy(lflow_table, lflow);
+        }
+    }
 }
 
 bool
@@ -808,10 +851,78 @@ lflow_table_add_lflow__(struct lflow_table *lflow_table,
             }
             ovs_list_insert(&lflow->referenced_by, &lrn->ref_list_node);
             hmap_insert(&lflow_ref->lflow_ref_nodes, &lrn->ref_node, hash);
+        } else if (sdp) {
+            /* Single-datapath (re-)add of an existing node. */
+            if (!lrn->dpgrp_lflow) {
+                if (!lrn->linked) {
+                    /* First add of this (re-)link cycle establishes the base
+                     * datapath this reference tracks for the lflow. */
+                    lrn->dp_index = sdp->index;
+                } else if (lrn->dp_index != sdp->index) {
+                    /* The same 'lflow_ref' references this lflow L(M, A) for a
+                     * second datapath in this cycle (e.g. the single lflow_ref
+                     * shared by all IGMP flows).  A single-datapath
+                     * lflow_ref_node tracks only one datapath index, so
+                     * lflow_ref_unlink_lflows() would leave the other
+                     * datapaths set in the lflow's dp group bitmap.  Upgrade
+                     * the node to track a datapath bitmap instead, so that
+                     * unlinking clears every datapath this reference
+                     * contributed. */
+                    size_t len = sparse_array_len(&sdp->dps->dps_array);
+                    lrn->dpgrp_bitmap = bitmap_allocate(len);
+                    lrn->dpgrp_bitmap_len = len;
+                    bitmap_set1(lrn->dpgrp_bitmap, lrn->dp_index);
+                    bitmap_set1(lrn->dpgrp_bitmap, sdp->index);
+                    lrn->dpgrp_lflow = true;
+
+                    /* This reference already accounted for 'lrn->dp_index'
+                     * (the first datapath it added this cycle) in the block
+                     * below.  This add contributes a second datapath, which
+                     * the block below will not see because it only runs on
+                     * the first link of the cycle.  Account for it here so
+                     * that a datapath shared with another reference is not
+                     * released prematurely. */
+                    if (dynamic_bitmap_is_set(&lflow->dpg_bitmap,
+                                              sdp->index)) {
+                        dp_refcnt_use(&lflow->dp_refcnts_map, sdp->index);
+                    }
+                }
+            } else {
+                /* A node previously upgraded to track a datapath bitmap is
+                 * re-linked one datapath at a time. */
+                if (!lrn->linked) {
+                    /* First add of this (re-)link cycle: rebuild the tracked
+                     * bitmap from scratch so it reflects the current datapath
+                     * set and the current datapath array length (which may
+                     * have grown or shrunk since the node was last linked). */
+                    size_t len = sparse_array_len(&sdp->dps->dps_array);
+                    bitmap_free(lrn->dpgrp_bitmap);
+                    lrn->dpgrp_bitmap = bitmap_allocate(len);
+                    lrn->dpgrp_bitmap_len = len;
+                } else if (!bitmap_is_set(lrn->dpgrp_bitmap, sdp->index)) {
+                    /* A second or later datapath this reference contributes in
+                     * the same cycle.  The first datapath was accounted for by
+                     * the block below (which only runs on the first link of
+                     * the cycle); account for this one too so that a datapath
+                     * shared with another reference is not released
+                     * prematurely. */
+                    if (dynamic_bitmap_is_set(&lflow->dpg_bitmap,
+                                              sdp->index)) {
+                        dp_refcnt_use(&lflow->dp_refcnts_map, sdp->index);
+                    }
+                }
+                bitmap_set1(lrn->dpgrp_bitmap, sdp->index);
+            }
         }
 
         if (!lrn->linked) {
-            if (lrn->dpgrp_lflow) {
+            /* Allocate a reference counter only if the datapath(s) added by
+             * this reference are already used by the lflow. */
+            if (sdp) {
+                if (dynamic_bitmap_is_set(&lflow->dpg_bitmap, sdp->index)) {
+                    dp_refcnt_use(&lflow->dp_refcnts_map, sdp->index);
+                }
+            } else {
                 ovs_assert(lrn->dpgrp_bitmap_len == dp_bitmap_len);
                 size_t index;
                 BITMAP_FOR_EACH_1 (index, dp_bitmap_len, dp_bitmap) {
@@ -819,11 +930,6 @@ lflow_table_add_lflow__(struct lflow_table *lflow_table,
                     if (dynamic_bitmap_is_set(&lflow->dpg_bitmap, index)) {
                         dp_refcnt_use(&lflow->dp_refcnts_map, index);
                     }
-                }
-            } else {
-                /* Allocate a reference counter only if already used. */
-                if (dynamic_bitmap_is_set(&lflow->dpg_bitmap, lrn->dp_index)) {
-                    dp_refcnt_use(&lflow->dp_refcnts_map, lrn->dp_index);
                 }
             }
         }
@@ -1258,17 +1364,12 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                 &lflow->dpg->dpg_uuid);
 
             if (!lflow->dpg->dp_group) {
-                /* Ideally this should not happen.  But it can still happen
-                 * due to 2 reasons:
-                 * 1. There is a bug in the dp_group management.  We should
-                 *    perhaps assert here.
-                 * 2. A User or CMS may delete the logical_dp_groups in SB DB
-                 *    or clear the SB:Logical_flow.logical_dp_groups column
-                 *    (intentionally or accidentally)
-                 *
-                 * Because of (2) it is better to return false instead of
-                 * assert,so that we recover from th inconsistent SB DB.
-                 */
+                /* The SB Logical_DP_Group row referenced by this in-memory dp
+                 * group no longer exists.  This can happen if a user or CMS
+                 * deletes the SB:Logical_DP_Group rows or clears the
+                 * SB:Logical_Flow.logical_dp_group column (intentionally or
+                 * accidentally).  Release the stale dp group and fall through
+                 * to create a fresh one. */
                 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
                 VLOG_WARN_RL(&rl, "SB Logical flow ["UUID_FMT"]'s "
                             "logical_dp_group column is not set "
@@ -1276,10 +1377,12 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
                             "referencing the dp group ["UUID_FMT"]",
                             UUID_ARGS(&sbflow->header_.uuid),
                             UUID_ARGS(&lflow->dpg->dpg_uuid));
-                lflow->sync_state = LFLOW_STALE;
-                return false;
+                ovn_dp_group_release(dp_groups, lflow->dpg);
+                lflow->dpg = NULL;
+                pre_sync_dpg = NULL;
             }
-        } else {
+        }
+        if (!lflow->dpg) {
             lflow->dpg = ovn_dp_group_create(
                                 ovnsb_txn, dp_groups, sbrec_dp_group,
                                 &lflow->dpg_bitmap,
@@ -1291,6 +1394,7 @@ sync_lflow_to_sb(struct ovn_lflow *lflow,
 
     if (pre_sync_dpg != lflow->dpg) {
         ovn_dp_group_use(lflow->dpg);
+        ovn_dp_group_release(dp_groups, pre_sync_dpg);
     }
 
     lflow->sync_state = LFLOW_SYNCED;

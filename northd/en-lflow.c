@@ -68,10 +68,6 @@ lflow_get_input_data(struct engine_node *node,
     struct all_synced_datapaths *all_dps =
         engine_get_input_data("datapath_sync", node);
 
-    lflow_input->sbrec_logical_flow_table =
-        EN_OVSDB_GET(engine_get_input("SB_logical_flow", node));
-    lflow_input->sbrec_logical_dp_group_table =
-        EN_OVSDB_GET(engine_get_input("SB_logical_dp_group", node));
     lflow_input->sbrec_acl_id_table =
         EN_OVSDB_GET(engine_get_input("SB_acl_id", node));
 
@@ -119,8 +115,6 @@ lflow_get_input_data(struct engine_node *node,
 enum engine_node_state
 en_lflow_run(struct engine_node *node, void *data)
 {
-    const struct engine_context *eng_ctx = engine_get_context();
-
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
 
@@ -130,8 +124,7 @@ en_lflow_run(struct engine_node *node, void *data)
     lflow_reset_northd_refs(&lflow_input);
     lflow_ref_clear(lflow_input.igmp_lflow_ref);
 
-    build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input,
-                 lflow_data->lflow_table);
+    build_lflows(&lflow_input, lflow_data->lflow_table);
 
     return EN_UPDATED;
 }
@@ -149,31 +142,25 @@ lflow_northd_handler(struct engine_node *node,
         return EN_UNHANDLED;
     }
 
-    const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
 
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
 
-    if (!lflow_handle_northd_lr_changes(eng_ctx->ovnsb_idl_txn,
-                                        &northd_data->trk_data.trk_routers,
-                                        &lflow_input,
-                                        lflow_data->lflow_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_handle_northd_lr_changes(&northd_data->trk_data.trk_routers,
+                                   &lflow_input,
+                                   lflow_data->lflow_table,
+                                   &lflow_data->trk_data.dirty_lflow_refs);
 
-    if (!lflow_handle_northd_port_changes(eng_ctx->ovnsb_idl_txn,
-                                          &northd_data->trk_data.trk_lsps,
-                                          &lflow_input,
-                                          lflow_data->lflow_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_handle_northd_port_changes(&northd_data->trk_data.trk_lsps,
+                                     &lflow_input,
+                                     lflow_data->lflow_table,
+                                     &lflow_data->trk_data.dirty_lflow_refs);
 
-    if (!lflow_handle_northd_lb_changes(
-            eng_ctx->ovnsb_idl_txn, &northd_data->trk_data.trk_lbs,
-            &lflow_input, lflow_data->lflow_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_handle_northd_lb_changes(&northd_data->trk_data.trk_lbs,
+                                   &lflow_input,
+                                   lflow_data->lflow_table,
+                                   &lflow_data->trk_data.dirty_lflow_refs);
 
     return EN_HANDLED_UPDATED;
 }
@@ -189,17 +176,14 @@ lflow_lr_stateful_handler(struct engine_node *node, void *data)
         return EN_UNHANDLED;
     }
 
-    const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
     struct lflow_input lflow_input;
 
     lflow_get_input_data(node, &lflow_input);
-    if (!lflow_handle_lr_stateful_changes(eng_ctx->ovnsb_idl_txn,
-                                          &lr_sful_data->trk_data,
-                                          &lflow_input,
-                                          lflow_data->lflow_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_handle_lr_stateful_changes(&lr_sful_data->trk_data,
+                                     &lflow_input,
+                                     lflow_data->lflow_table,
+                                     &lflow_data->trk_data.dirty_lflow_refs);
 
     return EN_HANDLED_UPDATED;
 }
@@ -214,17 +198,14 @@ lflow_ls_stateful_handler(struct engine_node *node, void *data)
         return EN_UNHANDLED;
     }
 
-    const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
     struct lflow_input lflow_input;
 
     lflow_get_input_data(node, &lflow_input);
-    if (!lflow_handle_ls_stateful_changes(eng_ctx->ovnsb_idl_txn,
-                                          &ls_sful_data->trk_data,
-                                          &lflow_input,
-                                          lflow_data->lflow_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_handle_ls_stateful_changes(&ls_sful_data->trk_data,
+                                     &lflow_input,
+                                     lflow_data->lflow_table,
+                                     &lflow_data->trk_data.dirty_lflow_refs);
 
     return EN_HANDLED_UPDATED;
 }
@@ -235,35 +216,19 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
     struct multicast_igmp_data *mcast_igmp_data =
         engine_get_input_data("multicast_igmp", node);
 
-    const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
 
-    if (!lflow_ref_resync_flows(mcast_igmp_data->lflow_ref,
-                                lflow_data->lflow_table,
-                                eng_ctx->ovnsb_idl_txn,
-                                lflow_input.dps,
-                                lflow_input.ovn_internal_version_changed,
-                                lflow_input.sbrec_logical_flow_table,
-                                lflow_input.sbrec_logical_dp_group_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_ref_unlink_and_prune(mcast_igmp_data->lflow_ref,
+                              lflow_data->lflow_table);
 
     build_igmp_lflows(&mcast_igmp_data->igmp_groups,
                       &lflow_input.ls_datapaths->datapaths,
                       lflow_data->lflow_table,
                       mcast_igmp_data->lflow_ref);
 
-    if (!lflow_ref_sync_lflows(mcast_igmp_data->lflow_ref,
-                               lflow_data->lflow_table,
-                               eng_ctx->ovnsb_idl_txn,
-                               lflow_input.dps,
-                               lflow_input.ovn_internal_version_changed,
-                               lflow_input.sbrec_logical_flow_table,
-                               lflow_input.sbrec_logical_dp_group_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_data->trk_data.needs_full_sync = true;
 
     return EN_HANDLED_UPDATED;
 }
@@ -280,7 +245,6 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
         return EN_UNHANDLED;
     }
 
-    const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
 
     struct lflow_input lflow_input;
@@ -289,26 +253,16 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
     struct group_ecmp_datapath *route_node;
     struct hmapx_node *hmapx_node;
 
-    /* We need to handle deletions before additions as they could potentially
-     * overlap. */
     HMAPX_FOR_EACH (hmapx_node,
                     &group_ecmp_route_data->trk_data.deleted_datapath_routes) {
         route_node = hmapx_node->data;
         lflow_ref_unlink_lflows(route_node->lflow_ref,
                                 lflow_data->lflow_table);
 
-        bool handled = lflow_ref_sync_lflows(
-            route_node->lflow_ref, lflow_data->lflow_table,
-            eng_ctx->ovnsb_idl_txn, lflow_input.dps,
-            lflow_input.ovn_internal_version_changed,
-            lflow_input.sbrec_logical_flow_table,
-            lflow_input.sbrec_logical_dp_group_table);
-        if (!handled) {
-            return EN_UNHANDLED;
-        }
+        hmapx_add(&lflow_data->trk_data.dirty_lflow_refs,
+                  route_node->lflow_ref);
     }
 
-    /* Now we handle created or updated route nodes. */
     struct hmapx *crupdated_datapath_routes =
         &group_ecmp_route_data->trk_data.crupdated_datapath_routes;
     HMAPX_FOR_EACH (hmapx_node, crupdated_datapath_routes) {
@@ -318,16 +272,8 @@ lflow_group_ecmp_route_change_handler(struct engine_node *node,
         build_route_data_flows_for_lrouter(
             route_node->od, lflow_data->lflow_table,
             route_node, lflow_input.bfd_ports);
-
-        bool handled = lflow_ref_sync_lflows(
-            route_node->lflow_ref, lflow_data->lflow_table,
-            eng_ctx->ovnsb_idl_txn, lflow_input.dps,
-            lflow_input.ovn_internal_version_changed,
-            lflow_input.sbrec_logical_flow_table,
-            lflow_input.sbrec_logical_dp_group_table);
-        if (!handled) {
-            return EN_UNHANDLED;
-        }
+        hmapx_add(&lflow_data->trk_data.dirty_lflow_refs,
+                  route_node->lflow_ref);
     }
 
     return EN_HANDLED_UPDATED;
@@ -340,7 +286,6 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
     struct ic_learned_svc_monitors_data *ic_learned_svc_monitors_data =
         engine_get_input_data("ic_learned_svcs", node);
 
-    const struct engine_context *eng_ctx = engine_get_context();
     struct lflow_data *lflow_data = data;
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
@@ -351,16 +296,8 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
             &ic_learned_svc_monitors_data->ic_learned_svc_monitors_map,
             ic_learned_svc_monitors_data->lflow_ref);
 
-    if (!lflow_ref_resync_flows(
-            ic_learned_svc_monitors_data->lflow_ref,
-            lflow_data->lflow_table,
-            eng_ctx->ovnsb_idl_txn,
-            lflow_input.dps,
-            lflow_input.ovn_internal_version_changed,
-            lflow_input.sbrec_logical_flow_table,
-            lflow_input.sbrec_logical_dp_group_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_ref_unlink_and_prune(ic_learned_svc_monitors_data->lflow_ref,
+                               lflow_data->lflow_table);
 
     build_lswitch_arp_nd_ic_learned_svc_mon(
         &svc_mons_data,
@@ -368,16 +305,7 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
         lflow_input.svc_monitor_mac,
         lflow_data->lflow_table);
 
-    if (!lflow_ref_sync_lflows(
-            ic_learned_svc_monitors_data->lflow_ref,
-            lflow_data->lflow_table,
-            eng_ctx->ovnsb_idl_txn,
-            lflow_input.dps,
-            lflow_input.ovn_internal_version_changed,
-            lflow_input.sbrec_logical_flow_table,
-            lflow_input.sbrec_logical_dp_group_table)) {
-        return EN_UNHANDLED;
-    }
+    lflow_data->trk_data.needs_full_sync = true;
 
     return EN_HANDLED_UPDATED;
 }
@@ -388,6 +316,9 @@ void *en_lflow_init(struct engine_node *node OVS_UNUSED,
     struct lflow_data *data = xmalloc(sizeof *data);
     data->lflow_table = lflow_table_alloc();
     lflow_table_init(data->lflow_table);
+    hmapx_init(&data->trk_data.dirty_lflow_refs);
+    data->trk_data.needs_full_sync = false;
+
     return data;
 }
 
@@ -395,4 +326,12 @@ void en_lflow_cleanup(void *data_)
 {
     struct lflow_data *data = data_;
     lflow_table_destroy(data->lflow_table);
+    hmapx_destroy(&data->trk_data.dirty_lflow_refs);
+}
+
+void en_lflow_clear_tracked_data(void *data_)
+{
+    struct lflow_data *data = data_;
+    hmapx_clear(&data->trk_data.dirty_lflow_refs);
+    data->trk_data.needs_full_sync = false;
 }

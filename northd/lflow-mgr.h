@@ -58,13 +58,7 @@ struct lflow_ref *lflow_ref_create(void);
 void lflow_ref_destroy(struct lflow_ref *);
 void lflow_ref_clear(struct lflow_ref *lflow_ref);
 void lflow_ref_unlink_lflows(struct lflow_ref *, struct lflow_table *);
-bool lflow_ref_resync_flows(struct lflow_ref *,
-                            struct lflow_table *lflow_table,
-                            struct ovsdb_idl_txn *ovnsb_txn,
-                            const struct ovn_synced_datapaths dps[DP_MAX],
-                            bool ovn_internal_version_changed,
-                            const struct sbrec_logical_flow_table *,
-                            const struct sbrec_logical_dp_group_table *);
+void lflow_ref_unlink_and_prune(struct lflow_ref *, struct lflow_table *);
 bool lflow_ref_sync_lflows(struct lflow_ref *,
                            struct lflow_table *lflow_table,
                            struct ovsdb_idl_txn *ovnsb_txn,

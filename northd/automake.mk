@@ -16,6 +16,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-datapath-logical-router.h \
 	northd/en-datapath-sync.c \
 	northd/en-datapath-sync.h \
+	northd/en-dp-group.c \
+	northd/en-dp-group.h \
 	northd/en-ecmp-nexthop.c \
 	northd/en-ecmp-nexthop.h \
 	northd/en-global-config.c \

@@ -260,9 +260,7 @@ struct lflow_ref;
 struct lr_nat_table;
 
 struct lflow_input {
-    /* Southbound table references */
-    const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
-    const struct sbrec_logical_dp_group_table *sbrec_logical_dp_group_table;
+    /* Southbound table references (used during lflow computation). */
     const struct sbrec_acl_id_table *sbrec_acl_id_table;
 
     /* Indexes */
@@ -979,8 +977,7 @@ struct lr_stateful_tracked_data;
 struct ls_stateful_tracked_data;
 struct group_ecmp_datapath;
 
-void build_lflows(struct ovsdb_idl_txn *ovnsb_txn,
-                  struct lflow_input *input_data,
+void build_lflows(struct lflow_input *input_data,
                   struct lflow_table *);
 void lflow_reset_northd_refs(struct lflow_input *);
 void build_route_data_flows_for_lrouter(
@@ -988,26 +985,26 @@ void build_route_data_flows_for_lrouter(
     const struct group_ecmp_datapath *route_node,
     const struct sset *bfd_ports);
 
-bool lflow_handle_northd_lr_changes(struct ovsdb_idl_txn *ovnsh_txn,
-                                     struct tracked_dps *,
-                                     struct lflow_input *,
-                                     struct lflow_table *lflows);
-bool lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                      struct tracked_ovn_ports *,
-                                      struct lflow_input *,
-                                      struct lflow_table *lflows);
-bool lflow_handle_northd_lb_changes(struct ovsdb_idl_txn *ovnsb_txn,
-                                    struct tracked_lbs *,
+void lflow_handle_northd_lr_changes(struct tracked_dps *,
                                     struct lflow_input *,
-                                    struct lflow_table *lflows);
-bool lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *,
-                                      struct lr_stateful_tracked_data *,
+                                    struct lflow_table *lflows,
+                                    struct hmapx *dirty_lflow_refs);
+void lflow_handle_northd_port_changes(struct tracked_ovn_ports *,
                                       struct lflow_input *,
-                                      struct lflow_table *lflows);
-bool lflow_handle_ls_stateful_changes(struct ovsdb_idl_txn *,
-                                      struct ls_stateful_tracked_data *,
+                                      struct lflow_table *lflows,
+                                      struct hmapx *dirty_lflow_refs);
+void lflow_handle_northd_lb_changes(struct tracked_lbs *,
+                                    struct lflow_input *,
+                                    struct lflow_table *lflows,
+                                    struct hmapx *dirty_lflow_refs);
+void lflow_handle_lr_stateful_changes(struct lr_stateful_tracked_data *,
                                       struct lflow_input *,
-                                      struct lflow_table *lflows);
+                                      struct lflow_table *lflows,
+                                      struct hmapx *dirty_lflow_refs);
+void lflow_handle_ls_stateful_changes(struct ls_stateful_tracked_data *,
+                                      struct lflow_input *,
+                                      struct lflow_table *lflows,
+                                      struct hmapx *dirty_lflow_refs);
 bool northd_handle_sb_port_binding_changes(
     const struct sbrec_port_binding_table *, struct hmap *ls_ports,
     struct hmap *lr_ports);

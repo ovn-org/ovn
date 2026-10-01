@@ -13736,17 +13736,7 @@ check ovn-nbctl --wait=sb set load_balancer lb1 options:bar=foo
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-# Clear the SB:Logical_Flow.logical_dp_groups column of all the
-# logical flows and then modify the NB:Load_balancer.  ovn-northd
-# should resync the logical flows.
-for l in $(ovn-sbctl --bare --columns _uuid list logical_flow)
-do
-    check ovn-sbctl clear logical_flow $l logical_dp_group
-done
-
-check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 check ovn-nbctl --wait=sb set load_balancer lb1 options:foo=bar
-check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80"')
@@ -13915,16 +13905,7 @@ AT_CHECK([echo $dpgrp_dps | grep $sw3_uuid], [0], [ignore])
 AT_CHECK([echo $dpgrp_dps | grep $sw4_uuid], [0], [ignore])
 AT_CHECK([echo $dpgrp_dps | grep $sw5_uuid], [0], [ignore])
 
-# Clear the SB:Logical_Flow.logical_dp_groups column of all the
-# logical flows and then modify the NB:Load_balancer.  ovn-northd
-# should resync the logical flows.
-for l in $(ovn-sbctl --bare --columns _uuid list logical_flow)
-do
-    check ovn-sbctl clear logical_flow $l logical_dp_group
-done
-
 check ovn-nbctl --wait=sb set load_balancer lb2 vips='{"10.0.0.10:80"="10.0.0.3:80,10.0.0.4:80"}'
-check_engine_stats lflow recompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 lb_lflow_uuid=$(fetch_column Logical_flow _uuid match='"ct.new && ip4.dst == 10.0.0.10 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80"')
@@ -24575,4 +24556,66 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+AT_SETUP([Datapath group SB writes only when bitmap changes])
+ovn_start
+
+# Create three switches, each with an ACL so they share the
+# "has ACLs" lflows in the same datapath group {sw0, sw1, sw2}.
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+check ovn-nbctl ls-add sw2
+check ovn-nbctl lsp-add sw0 sw0-p0
+check ovn-nbctl lsp-add sw1 sw1-p0
+check ovn-nbctl lsp-add sw2 sw2-p0
+check ovn-nbctl acl-add sw0 to-lport 1000 ip4 allow
+check ovn-nbctl acl-add sw1 to-lport 1000 ip6 allow
+check ovn-nbctl --wait=sb acl-add sw2 to-lport 1000 tcp allow
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Record dp_group state (UUIDs + content).
+ovn-sbctl --bare --columns=_uuid,datapaths list Logical_DP_Group \
+    | sort > dpg_before
+
+# ----------------------------------------------------------
+# Case 1: Change that triggers incremental lflow compute but
+#         does NOT alter the dp-group bitmap.
+#
+# Setting a port address rebuilds the port's lflows but the
+# set of datapaths that share the "has ACLs" lflows is still
+# {sw0, sw1, sw2}.  The dp_group rows should not change.
+# ----------------------------------------------------------
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lsp-set-addresses sw0-p0 "00:00:00:00:00:01"
+check_engine_stats lflow norecompute compute
+
+ovn-sbctl --bare --columns=_uuid,datapaths list Logical_DP_Group \
+    | sort > dpg_after
+AT_CHECK([diff dpg_before dpg_after])
+
+# ----------------------------------------------------------
+# Case 2: Change that removes a datapath from a shared flow,
+#         altering the dp-group bitmap.
+#
+# Move sw0's ACL to tier 1.  The egress "acl action" flows
+# now differ for sw0, so the {sw0, sw1, sw2} group loses sw0
+# and a {sw1, sw2} group appears (or the existing one is
+# updated).  The dp_group rows must change.
+# ----------------------------------------------------------
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+acl0=$(fetch_column nb:ACL _uuid match=ip4)
+check ovn-nbctl --wait=sb set ACL $acl0 tier=1
+check_engine_stats lflow norecompute compute
+
+ovn-sbctl --bare --columns=_uuid,datapaths list Logical_DP_Group \
+    | sort > dpg_changed
+AT_CHECK([diff dpg_before dpg_changed], [1], [ignore])
+
+check ovn-nbctl --wait=sb ls-del sw0
+
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
 
