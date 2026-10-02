@@ -176,6 +176,16 @@ struct controller_engine_ctx {
     struct if_status_mgr *if_mgr;
     const unsigned int *ovnsb_expected_cond_seqno;
     const bool *sb_monitor_all;
+    /* True once every table that the current monitor conditions request has
+     * been fully received (the SB condition seqno has caught up).  The
+     * route-exchange node uses this to defer its destructive kernel sync
+     * until the data it relies on is complete. */
+    bool sb_all_data_loaded;
+    /* True once the Advertised_Route monitor condition covers the local
+     * route-exchange datapaths (or, in monitor-all mode, everything).  It is
+     * false for the initial empty condition that is used before any local
+     * datapath is known. */
+    bool sb_ar_condition_scoped;
 };
 
 /* Pending packet to be injected into connected OVS. */
@@ -360,11 +370,13 @@ update_sb_monitors(struct ovsdb_idl *ovnsb_idl,
         sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l2gateway");
         sbrec_port_binding_add_clause_type(&pb, OVSDB_F_EQ, "l3gateway");
 
-        /* Monitor all advertised routes during startup.
-         * Otherwise, once we claim a port on startup we do not yet know the
-         * routes to advertise and might wrongly delete already installed
-         * ones. */
-        ovsdb_idl_condition_add_clause_true(&ar);
+        /* Do not monitor any Advertised_Route rows during startup. The
+         * route-exchange node defers its destructive kernel sync until it has
+         * seen the initial dump of the advertised routes of the local
+         * route-exchange datapaths, so there is no risk of deleting routes
+         * we installed previously. Once local datapaths are known the
+         * condition is scoped to them (below), which avoids pulling the whole
+         * cluster's advertised routes on startup. */
     }
     if (local_ifaces) {
         const char *name;
@@ -772,6 +784,11 @@ update_sb_db(struct ovsdb_idl *ovs_idl, struct ovsdb_idl *ovnsb_idl,
             update_sb_monitors(ovnsb_idl, NULL, NULL, NULL, NULL, true);
         if (sb_cond_seqno) {
             *sb_cond_seqno = next_cond_seqno;
+        }
+        /* In monitor-all mode the Advertised_Route condition matches
+         * everything, so it already covers the local datapaths. */
+        if (ctx) {
+            ctx->sb_ar_condition_scoped = true;
         }
     }
     if (monitor_all_p) {
@@ -5739,6 +5756,22 @@ struct ed_type_route_exchange {
     bool sb_changes_pending;
     /* What the last run learned from the kernel routing tables. */
     struct route_exchange_state *state;
+    /* True once the initial Advertised_Route dump for the local
+     * route-exchange datapaths is complete.  Until then the destructive
+     * kernel sync is deferred so that we cannot delete routes that we
+     * installed previously but that are not yet present in our (partial)
+     * view of the SB database. */
+    bool initial_routes_loaded;
+    /* True once the first armed kernel sync has run.  Unlike
+     * initial_routes_loaded, it is not cleared when the local
+     * route-exchange datapath set changes or on SB reconnect, so the
+     * sync can still run (to clean up VRFs and routes) once the set
+     * becomes empty.  The start-up danger window in which an empty
+     * Advertised_Route view would delete routes installed before the
+     * restart is guarded by sb_all_data_loaded, which is false both
+     * during the start-up bootstrap and while the Advertised_Route
+     * table is reloaded after an SB reconnect. */
+    bool initial_sync_completed;
 };
 
 static void
@@ -5789,6 +5822,51 @@ en_route_exchange_run(struct engine_node *node, void *data)
         return EN_STALE;
     }
 
+    struct ed_type_route *route_data =
+        engine_get_input_data("route", node);
+    struct controller_engine_ctx *ctrl_ctx =
+        engine_get_context()->client_ctx;
+
+    /* The set of local route-exchange datapaths selects the Advertised_Route
+     * rows that are relevant to this chassis.  Until the initial dump of
+     * exactly those rows is complete, we must not run the destructive kernel
+     * sync: it deletes every OVN route it does not see, so a partial view
+     * would delete routes we installed before a restart that have not
+     * reached our view yet.  With no local route-exchange datapaths there is
+     * no scoped dump to wait for, so once the first armed sync has run the
+     * view is complete and the sync may run to clean up the VRFs and routes
+     * of the removed datapaths. */
+    bool have_local_re_datapaths =
+        !hmap_is_empty(&route_data->announce_routes);
+    bool ready = ctrl_ctx->sb_all_data_loaded
+                 && (have_local_re_datapaths
+                     ? ctrl_ctx->sb_ar_condition_scoped
+                     : re->initial_sync_completed);
+
+    if (re->initial_routes_loaded && !ready) {
+        /* The set of local route-exchange datapaths changed or the SB
+         * connection reset; defer the destructive sync again until the new
+         * scoped dump is complete. */
+        re->initial_routes_loaded = false;
+        VLOG_INFO("Route-exchange datapath set changed; deferring route "
+                  "sync until the Advertised_Route dump completes.");
+        return EN_UNCHANGED;
+    }
+    if (!re->initial_routes_loaded) {
+        if (!ready) {
+            return EN_UNCHANGED;   /* still loading; kernel untouched */
+        }
+        re->initial_routes_loaded = true;
+        /* Past the start-up danger window from now on: the view has been
+         * complete enough to run the destructive sync once, so a later
+         * transition to an empty local route-exchange datapath set (the
+         * last dynamic-routing router removed) may run it to clean up. */
+        re->initial_sync_completed = true;
+        VLOG_INFO("Advertised_Route dump complete for local route-exchange "
+                  "datapaths; enabling route sync.");
+        /* Fall through: run once now to reconcile the kernel. */
+    }
+
     vector_clear(&rt_notify->watches);
 
     struct route_exchange_ctx_in r_ctx_in;
@@ -5810,6 +5888,13 @@ route_exchange_route_table_handler(struct engine_node *node, void *data)
     struct ed_type_route_exchange *re = data;
     struct ed_type_route_table_notify *rt_notify =
         engine_get_input_data("route_table_notify", node);
+
+    /* While the initial dump is still pending the full run has not happened
+     * yet, so no kernel route watches are registered and nothing was lost.
+     * The first armed run reconciles the kernel from scratch. */
+    if (!re->initial_routes_loaded) {
+        return EN_HANDLED_UNCHANGED;
+    }
 
     /* We were not told about every change, so the routes we know of are not
      * necessarily the ones the kernel has. */
@@ -7394,6 +7479,10 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_route_exchange, &en_route_exchange_status, NULL);
     engine_add_input(&en_route_exchange, &en_sb_ro,
                      route_exchange_sb_ro_handler);
+    /* Re-evaluate the initial-dump readiness gate whenever the SB monitor
+     * conditions change (including the final ack of the scoped
+     * Advertised_Route dump). */
+    engine_add_input(&en_route_exchange, &en_sb_cond_seqno, NULL);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);
@@ -8171,6 +8260,8 @@ main(int argc, char *argv[])
         .if_mgr = if_status_mgr_create(),
         .ovnsb_expected_cond_seqno = &ovnsb_expected_cond_seqno,
         .sb_monitor_all = &sb_monitor_all,
+        .sb_all_data_loaded = false,
+        .sb_ar_condition_scoped = false,
     };
     struct if_status_mgr *if_mgr = ctrl_engine_ctx.if_mgr;
 
@@ -8240,6 +8331,10 @@ main(int argc, char *argv[])
             if (!new_ovnsb_cond_seqno) {
                 VLOG_INFO("OVNSB IDL reconnected, force recompute.");
                 engine_set_force_recompute();
+                /* The monitor conditions are re-applied on reconnect, so the
+                 * previously scoped Advertised_Route condition no longer
+                 * holds. */
+                ctrl_engine_ctx.sb_ar_condition_scoped = false;
             }
             ovnsb_cond_seqno = new_ovnsb_cond_seqno;
         }
@@ -8253,6 +8348,18 @@ main(int argc, char *argv[])
             && ovnsb_expected_cond_seqno != UINT_MAX && sb_monitor_all) {
             daemon_started_recently_ignore();
         }
+
+        /* Whether the rows selected by the current monitor conditions are all
+         * present in the IDL.  This is recomputed every loop iteration so
+         * that engine nodes can rely on it being up to date for the
+         * conditions that were applied so far.
+         * If we have sb_monitor_all that means we have all data that we would
+         * ever need. */
+        ctrl_engine_ctx.sb_all_data_loaded =
+            sb_monitor_all ||
+            (ovnsb_cond_seqno == ovnsb_expected_cond_seqno
+             && ovnsb_expected_cond_seqno != UINT_MAX
+             && ovnsb_cond_seqno != 0);
 
         struct engine_context eng_ctx = {
             .ovs_idl_txn = ovs_idl_txn,
@@ -8574,6 +8681,15 @@ main(int argc, char *argv[])
                                     &runtime_data->lbinding_data.bindings,
                                     &runtime_data->local_datapaths,
                                     sb_monitor_all);
+                            /* The Advertised_Route condition now covers the
+                             * local datapaths (or everything, in
+                             * monitor-all mode).  If there are no local
+                             * datapaths yet, there is nothing to cover and
+                             * the empty condition is sufficient. */
+                            ctrl_engine_ctx.sb_ar_condition_scoped =
+                                sb_monitor_all ||
+                                !hmap_is_empty(
+                                    &runtime_data->local_datapaths);
                             bool condition_changed = ovnsb_cond_seqno !=
                                                      ovnsb_expected_cond_seqno;
                             if (had_all_data && condition_changed) {

@@ -15739,6 +15739,12 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
+# Route exchange defers its kernel sync until the initial Advertised_Route
+# dump for the local route-exchange datapaths is complete. The routes above
+# can only be installed once that happens, so verify the deferred sync was
+# actually enabled.
+OVS_WAIT_UNTIL([test "$(grep -c 'Advertised_Route dump complete for local route-exchange datapaths' ovn-controller.log)" -ge 1])
+
 # Changing the vrf name will switch to the new one.
 # The old vrf will be removed.
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
@@ -15757,7 +15763,10 @@ blackhole 198.51.100.0/24 proto ovn metric 1000
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
-# Stopping with --restart will not touch the routes.
+# Stopping with --restart will not touch the routes. While the restarted
+# controller loads its Advertised_Routes the kernel sync is deferred, so a
+# controller that synced from a partial view would have deleted the OVN routes
+# below; verify they all survive the restart.
 OVN_CONTROLLER_EXIT([],[--restart])
 OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
 blackhole 192.0.2.1 proto ovn metric 100

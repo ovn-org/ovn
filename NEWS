@@ -31,6 +31,10 @@ Post v26.09.0
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
    - Removed ovn-docker utility scripts.
+   - ovn-controller no longer monitors the whole cluster's Advertised_Route
+     table at startup; it defers its kernel route updates until the initial
+     dump of the advertised routes of the local route-exchange datapaths is
+     complete.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

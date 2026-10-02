@@ -469,6 +469,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_learned_route [[style=filled, shape=box, fillcolor=white, label="SB_learned_route"]];
 	route_table_notify [[style=filled, shape=box, fillcolor=white, label="route_table_notify"]];
 	route_exchange_status [[style=filled, shape=box, fillcolor=white, label="route_exchange_status"]];
+	sb_cond_seqno [[style=filled, shape=box, fillcolor=white, label="sb_cond_seqno"]];
 	route_exchange [[style=filled, shape=box, fillcolor=white, label="route_exchange"]];
 	OVS_open_vswitch -> route_exchange [[label=""]];
 	SB_chassis -> route_exchange [[label=""]];
@@ -478,6 +479,7 @@ digraph "Incremental-Processing-Engine" {
 	route_table_notify -> route_exchange [[label="route_exchange_route_table_handler"]];
 	route_exchange_status -> route_exchange [[label=""]];
 	sb_ro -> route_exchange [[label="route_exchange_sb_ro_handler"]];
+	sb_cond_seqno -> route_exchange [[label=""]];
 	garp_rarp [[style=filled, shape=box, fillcolor=white, label="garp_rarp"]];
 	OVS_open_vswitch -> garp_rarp [[label=""]];
 	SB_chassis -> garp_rarp [[label=""]];
@@ -497,7 +499,6 @@ digraph "Incremental-Processing-Engine" {
 	SB_acl_id [[style=filled, shape=box, fillcolor=white, label="SB_acl_id"]];
 	acl_id [[style=filled, shape=box, fillcolor=white, label="acl_id"]];
 	SB_acl_id -> acl_id [[label=""]];
-	sb_cond_seqno [[style=filled, shape=box, fillcolor=white, label="sb_cond_seqno"]];
 	datapaths_updated [[style=filled, shape=box, fillcolor=white, label="datapaths_updated"]];
 	sb_cond_seqno -> datapaths_updated [[label="datapaths_update_sb_cond_handler"]];
 	runtime_data -> datapaths_updated [[label="datapaths_updated_runtime_data_handler"]];
