@@ -180,7 +180,7 @@ static ENGINE_NODE(lb_data, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(lr_nat, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(lr_stateful, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(ls_stateful, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(route_policies);
+static ENGINE_NODE(route_policies, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(routes, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(bfd_sync, SB_WRITE);
 static ENGINE_NODE(ecmp_nexthop, SB_WRITE);

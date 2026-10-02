@@ -27,6 +27,7 @@
 #include "vec.h"
 #include "uuidset.h"
 #include "sparse-array.h"
+#include "hmapx.h"
 
 /* Each instance of this represents a nexthop for a router
  * policy with "reroute" action. The fields are used for
@@ -65,11 +66,37 @@ struct datapath_bfd_active_connections {
     struct uuidset active_connections;
 };
 
+struct route_policies_tracking_data {
+    /* Indicates that some data was incrementally
+     * processed by the en-route-policies node.
+     */
+    bool has_tracked;
+
+    /* Indicates that routing policies were incrementally
+     * processed by the en-route-policies node.
+     */
+    bool has_tracked_policies;
+    /* These contain struct datapath_route_policies. */
+    struct hmapx new_policies;
+    struct hmapx deleted_policies;
+
+    /* Indicates that BFD connections were incrementally
+     * processed by the en-route-policies node.
+     */
+    bool has_tracked_bfd;
+    /* These contain struct datapath_bfd_active_connections. */
+    struct hmapx new_bfd;
+    struct hmapx deleted_bfd;
+};
+
 /* Global route policy data exported by en-route-policies. */
 struct route_policies_data {
     /* Each entry is a struct datapath_route_policies pointer */
     struct sparse_array dp_route_policies;
     struct sparse_array dp_bfd_active_connections;
+
+    /* Tracking data. */
+    struct route_policies_tracking_data trk;
 };
 
 void en_route_policies_cleanup(void *data);
@@ -78,10 +105,11 @@ route_policies_northd_change_handler(struct engine_node *node,
                                      void *data OVS_UNUSED);
 enum engine_input_handler_result
 route_policies_datapath_synced_logical_router_handler(struct engine_node *node,
-                                                      void *data OVS_UNUSED);
+                                                      void *data);
 enum engine_node_state en_route_policies_run(struct engine_node *node,
                                              void *data);
 void *en_route_policies_init(struct engine_node *node OVS_UNUSED,
                              struct engine_arg *arg OVS_UNUSED);
+void en_route_policies_clear_tracked_data(void *data);
 
 #endif /* EN_ROUTE_POLICIES_H */
