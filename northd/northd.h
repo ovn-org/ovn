@@ -1016,6 +1016,12 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
 void bfd_table_sync(struct ovsdb_idl_txn *,
                     const struct hmap *, struct hmap *,
                     struct sset *);
+struct route_policies_data;
+bool lflow_handle_route_policies_changes(struct route_policies_data *rp_data,
+                                         struct lflow_input *lflow_input,
+                                         struct lflow_table *lflows,
+                                         struct hmapx *dirty_lflow_refs);
+
 void build_bfd_map(const struct nbrec_bfd_table *,
                    const struct sbrec_bfd_table *, struct hmap *,
                    const struct uuidset *);

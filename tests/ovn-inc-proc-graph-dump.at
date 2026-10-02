@@ -183,7 +183,7 @@ digraph "Incremental-Processing-Engine" {
 	sync_meters -> lflow [[label=""]];
 	SB_multicast_group -> lflow [[label=""]];
 	bfd_sync -> lflow [[label=""]];
-	route_policies -> lflow [[label=""]];
+	route_policies -> lflow [[label="lflow_route_policies_handler"]];
 	routes -> lflow [[label="engine_noop_handler"]];
 	group_ecmp_route -> lflow [[label="lflow_group_ecmp_route_change_handler"]];
 	global_config -> lflow [[label="node_global_config_handler"]];

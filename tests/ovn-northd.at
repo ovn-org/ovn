@@ -4806,7 +4806,11 @@ AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid]
 
 check_engine_stats northd norecompute incremental
 check_engine_stats route_policies norecompute compute
-check_engine_stats lflow recompute nocompute
+# The BFD changes trigger a recompute of en-lflow, since en-routes cannot
+# incrementally handle BFD changes. However, en-lflow is able to incrementally
+# handle the added logical router policy. This is why we see both recompute
+# and compute true for en-lflow.
+check_engine_stats lflow recompute compute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -25530,7 +25534,7 @@ check_engine_stats sync_from_sb norecompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Change router Policy to use a different priority.
@@ -25557,7 +25561,7 @@ check_engine_stats sync_from_sb norecompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
@@ -25583,7 +25587,7 @@ check_engine_stats sync_from_sb norecompute nocompute
 check_engine_stats sync_to_sb_lb norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # From this point on, operations we perform may result in
@@ -25602,7 +25606,7 @@ check ovn-nbctl --wait=sb sync
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Invalidate the policy by changing it to a jump policy but not
@@ -25614,7 +25618,7 @@ check ovn-nbctl set Logical_Router_Policy $policy_uuid action=jump
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Un-invalidate the policy by changing it back to an allow policy.
@@ -25624,7 +25628,7 @@ check ovn-nbctl set Logical_Router_Policy $policy_uuid action=allow
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Add a new logical router with an invalid policy in the same transaction
@@ -25650,7 +25654,7 @@ check ovn-nbctl --wait=sb lr-del lr1
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
-check_engine_stats lflow recompute nocompute
+check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP_NORTHD

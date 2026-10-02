@@ -400,7 +400,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_sync_meters, NULL);
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
     engine_add_input(&en_lflow, &en_bfd_sync, NULL);
-    engine_add_input(&en_lflow, &en_route_policies, NULL);
+    engine_add_input(&en_lflow, &en_route_policies,
+                     lflow_route_policies_handler);
     /* Route changes are propagated to en_lflow through the en_group_ecmp_route
      * input.  Any change to en_routes also triggers en_group_ecmp_route (via
      * group_ecmp_route_routes_change_handler), which then triggers en_lflow.
