@@ -4788,6 +4788,101 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([BFD chassis_name follows the chassis that runs the session])
+AT_KEYWORDS([northd-bfd])
+ovn_start
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw2 geneve 127.0.0.2
+check ovn-sbctl chassis-add hv1 geneve 127.0.0.3
+
+# The BFD sessions of a distributed gateway port run on the chassis where its
+# chassisredirect port is bound.  The port's own binding is a patch port that
+# no chassis claims.
+check ovn-nbctl lr-add r0
+check ovn-nbctl ls-add ext
+check ovn-nbctl lrp-add r0 r0-ext 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port ext ext-r0 r0-ext
+check ovn-nbctl lrp-set-gateway-chassis r0-ext gw1
+check ovn-nbctl --bfd lr-route-add r0 0.0.0.0/0 10.0.0.254 r0-ext
+# A distributed gateway port without BFD sessions, and a switch port.
+check ovn-nbctl lr-add r2
+check ovn-nbctl lrp-add r2 r2-ext 00:00:00:00:02:01 10.0.2.1/24
+check ovn-nbctl lsp-add-router-port ext ext-r2 r2-ext
+check ovn-nbctl lrp-set-gateway-chassis r2-ext gw1
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 vif1
+check ovn-nbctl --wait=sb sync
+wait_row_count BFD 1 dst_ip=10.0.0.254
+check_column "" BFD chassis_name dst_ip=10.0.0.254
+
+AS_BOX([The chassisredirect port is claimed])
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl lsp-bind cr-r0-ext gw1
+wait_column gw1 BFD chassis_name dst_ip=10.0.0.254
+check ovn-nbctl --wait=sb sync
+check_engine_stats bfd_sync recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([Other binding changes do not recompute bfd_sync])
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl lsp-bind vif1 hv1
+check ovn-sbctl lsp-bind cr-r2-ext gw1
+check ovn-sbctl set Port_Binding cr-r0-ext external_ids:foo=bar
+check ovn-sbctl remove Port_Binding cr-r0-ext external_ids foo
+check ovn-nbctl --wait=sb sync
+check_engine_stats bfd_sync norecompute compute
+check_column gw1 BFD chassis_name dst_ip=10.0.0.254
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([The chassisredirect port moves])
+check ovn-sbctl lsp-unbind cr-r0-ext -- lsp-bind cr-r0-ext gw2
+wait_column gw2 BFD chassis_name dst_ip=10.0.0.254
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([The chassisredirect port is released])
+# Like ovn-controller, also set "up" to false.
+check ovn-sbctl lsp-unbind cr-r0-ext -- set Port_Binding cr-r0-ext up=false
+wait_column "" BFD chassis_name dst_ip=10.0.0.254
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+AS_BOX([A session created while the chassisredirect port is bound])
+check ovn-sbctl lsp-bind cr-r0-ext gw1
+wait_column gw1 BFD chassis_name dst_ip=10.0.0.254
+check ovn-nbctl --wait=sb --bfd lr-route-add r0 10.1.0.0/16 10.0.0.253 r0-ext
+wait_row_count BFD 1 dst_ip=10.0.0.253 chassis_name=gw1
+# ovn-northd sets chassis_name when it creates the row.
+AT_CHECK([grep 'received request, method="transact"' ovn-sb/ovsdb-server.log | \
+          grep -c '"op":"insert","row":{"chassis_name":"gw1"[[^}]]*"dst_ip":"10.0.0.253"'],
+         [0], [1
+])
+
+AS_BOX([The distributed gateway port loses its gateway chassis])
+check ovn-nbctl --wait=sb lrp-del-gateway-chassis r0-ext gw1
+wait_column "" BFD chassis_name dst_ip=10.0.0.254
+wait_column "" BFD chassis_name dst_ip=10.0.0.253
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# The BFD sessions of a gateway router port run on the chassis where the
+# l3gateway port is bound.  ovn-controller claims it after ovn-northd created
+# the BFD row.
+AS_BOX([Gateway router port])
+check ovn-nbctl lr-add r1 -- set Logical_Router r1 options:chassis=gw1
+check ovn-nbctl ls-add ext1
+check ovn-nbctl lrp-add r1 r1-ext 00:00:00:00:01:01 10.0.1.1/24
+check ovn-nbctl lsp-add-router-port ext1 ext1-r1 r1-ext
+check ovn-nbctl --wait=sb --bfd lr-route-add r1 0.0.0.0/0 10.0.1.254 r1-ext
+wait_row_count BFD 1 dst_ip=10.0.1.254
+check_column "" BFD chassis_name dst_ip=10.0.1.254
+check ovn-sbctl lsp-bind r1-ext gw1
+wait_column gw1 BFD chassis_name dst_ip=10.0.1.254
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn -- check CoPP config])
 AT_KEYWORDS([northd-CoPP])
 
