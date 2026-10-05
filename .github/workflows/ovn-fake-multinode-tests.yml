@@ -33,7 +33,7 @@ jobs:
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
-        ref: 'v0.4'
+        ref: 'v0.7'
 
     # Check out ovn and ovs separately inside ovn-fake-multinode/ovn and ovn-fake-multinode/ovs
     # ovn-fake-multinode builds and installs ovs from ovn-fake-multinode/ovs
@@ -188,7 +188,7 @@ jobs:
       with:
         repository: 'ovn-org/ovn-fake-multinode'
         path: 'ovn-fake-multinode'
-        ref: 'v0.4'
+        ref: 'v0.7'
 
     - name: Start openvswitch
       run: |
