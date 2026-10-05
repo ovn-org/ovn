@@ -107,7 +107,13 @@ jobs:
         cfg:
         - { branch: "${{ github.ref_name }}", testsuiteflags: ""}
         - { branch: "branch-26.03", testsuiteflags: "-k 'basic test'" }
-    name: multinode tests ${{ join(matrix.cfg.*, ' ') }}
+        inline_br_ex:
+        - "no"
+        - "yes"
+        exclude:
+        - cfg: { branch: "branch-26.03", testsuiteflags: "-k 'basic test'" }
+          inline_br_ex: "yes"
+    name: multinode tests ${{ join(matrix.cfg.*, ' ') }} INLINE_BR_EX=${{ matrix.inline_br_ex }}
     env:
       RUNC_CMD: podman
       OS_IMAGE: "fedora:42"
@@ -197,7 +203,7 @@ jobs:
 
     - name: Start basic cluster
       run: |
-        sudo -E CHASSIS_COUNT=4 GW_COUNT=4 ./ovn_cluster.sh start
+        sudo -E CHASSIS_COUNT=4 GW_COUNT=4 INLINE_BR_EX=${{ matrix.inline_br_ex }} ./ovn_cluster.sh start
         sudo podman exec -it ovn-central-az1 ovn-nbctl show
         sudo podman exec -it ovn-central-az1 ovn-appctl -t ovn-northd version
         sudo podman exec -it ovn-chassis-1 ovn-appctl -t ovn-controller version
@@ -263,7 +269,7 @@ jobs:
       if: failure() || cancelled()
       uses: actions/upload-artifact@v7
       with:
-        name: logs-linux-${{ join(matrix.cfg.*, '-') }}
+        name: logs-linux-${{ join(matrix.cfg.*, '-') }}-inlinebrex-${{ matrix.inline_br_ex }}
         path: logs.tgz
 
     - name: Stop cluster
