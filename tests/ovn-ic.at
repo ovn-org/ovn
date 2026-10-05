@@ -6360,6 +6360,7 @@ OVS_WAIT_UNTIL([grep -q "OVN ISB lock acquired" az1/ic/ovn-ic.log])
 
 ovn_start az2
 
+OVS_WAIT_UNTIL([grep -q "Acquiring OVN ISB lock" az2/ic/ovn-ic.log])
 AS_BOX([az2 paused])
 check as az2 ovn-appctl -t ic/ovn-ic pause
 OVS_WAIT_UNTIL([test "x$(as az2 ovn-appctl -t ic/ovn-ic status | grep "Status")" = "xStatus: paused"])
