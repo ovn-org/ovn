@@ -10,6 +10,11 @@ Post v26.09.0
      (e.g. via the ovs-delete-transient-ports.service on RHEL/Fedora) will
      automatically remove stale tunnel ports on reboot, preventing them from
      interfering with BFD and HA failover after a gateway chassis reboot.
+   - Transit_Router_Port entries with an empty "chassis" column are now
+     instantiated as distributed router ports in every availability zone,
+     instead of being ignored.  Such ports are useful to connect a transit
+     router to a transit switch.  Accordingly, "ovn-ic-nbctl trp-add" no
+     longer requires a trailing network or chassis argument.
    - Dynamic Routing:
      * Remove the "other_config:dynamic-routing-arp-prefer-local"
        option from Logical Switches.  EVPN-learned MAC bindings are

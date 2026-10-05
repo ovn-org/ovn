@@ -5550,6 +5550,92 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- Add transit router port local in all AZs])
+
+ovn_init_ic_db
+net_add n1
+net_add n2
+ovn_start az1
+ovn_start az2
+
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+check ovn-ic-nbctl --wait=sb sync
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+wait_row_count Chassis 1 name=hv1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_az_attach az2 n2 br-phys 192.168.0.2
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+wait_row_count Chassis 1 name=hv2
+
+# No chassis is given, so the port must be local in every AZ.
+check ovn-ic-nbctl tr-add tr0
+check ovn-ic-nbctl trp-add tr0 tr0-p0 00:00:00:11:22:00 192.168.10.10/24
+
+# A single IC-SB port binding is shared by all the AZs.
+wait_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0
+check_row_count ic-sb:Port_Binding 1 type=transit-router-port
+wait_column "00:00:00:11:22:00" ic-sb:Port_Binding address logical_port=tr0-p0
+
+ovn_as az1
+wait_row_count Port_Binding 1 logical_port=tr0-p0
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0 type=patch
+check_column "00:00:00:11:22:00" nb:Logical_Router_Port mac name=tr0-p0
+AT_CHECK([ovn-nbctl get Logical_Router_Port tr0-p0 options:requested-chassis],
+[1], [], [ovn-nbctl: no key "requested-chassis" in Logical_Router_Port record "tr0-p0" column options
+])
+az1_tunnel_key=$(ovn-sbctl --bare --columns=tunnel_key find Port_Binding logical_port=tr0-p0)
+
+ovn_as az2
+wait_row_count Port_Binding 1 logical_port=tr0-p0
+check_row_count sb:Port_Binding 1 logical_port=tr0-p0 type=patch
+check_column "00:00:00:11:22:00" nb:Logical_Router_Port mac name=tr0-p0
+AT_CHECK([ovn-nbctl get Logical_Router_Port tr0-p0 options:requested-chassis],
+[1], [], [ovn-nbctl: no key "requested-chassis" in Logical_Router_Port record "tr0-p0" column options
+])
+az2_tunnel_key=$(ovn-sbctl --bare --columns=tunnel_key find Port_Binding logical_port=tr0-p0)
+
+# Both AZs must agree on the tunnel key of the shared port.
+check test "${az1_tunnel_key}" = "${az2_tunnel_key}"
+
+# A MAC change in IC-NB is propagated to the shared IC-SB port binding and
+# from there to the logical router port of every AZ.
+check ovn-ic-nbctl set Transit_Router_Port tr0-p0 mac='"00:00:00:11:22:01"'
+wait_column "00:00:00:11:22:01" ic-sb:Port_Binding address logical_port=tr0-p0
+
+ovn_as az1
+wait_column "00:00:00:11:22:01" nb:Logical_Router_Port mac name=tr0-p0
+
+ovn_as az2
+wait_column "00:00:00:11:22:01" nb:Logical_Router_Port mac name=tr0-p0
+
+# Deleting the port removes it from the IC-SB and from every AZ.
+check ovn-ic-nbctl --wait=sb trp-del tr0-p0
+wait_row_count ic-sb:Port_Binding 0 logical_port=tr0-p0
+
+ovn_as az1
+wait_row_count nb:Logical_Router_Port 0 name=tr0-p0
+wait_row_count Port_Binding 0 logical_port=tr0-p0
+
+ovn_as az2
+wait_row_count nb:Logical_Router_Port 0 name=tr0-p0
+wait_row_count Port_Binding 0 logical_port=tr0-p0
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- Add transit router remote port - race condition])
 
 ovn_init_ic_db

@@ -1024,6 +1024,21 @@ sync_tsp_pb(const struct icnbrec_transit_switch_port *tsp,
     }
 }
 
+/* Sync a transit router port's fields from ICNB->ISB. */
+static void
+sync_trp_pb(const struct icnbrec_transit_router_port *trp,
+            const struct icsbrec_port_binding *isb_pb)
+{
+    if (!isb_pb) {
+        return;
+    }
+
+    /* Sync address to ISB. */
+    if (strcmp(trp->mac, isb_pb->address)) {
+        icsbrec_port_binding_set_address(isb_pb, trp->mac);
+    }
+}
+
 /* For each local port:
  *   - Sync from NB to ISB.
  *   - Sync gateway from SB to ISB.
@@ -1229,7 +1244,7 @@ sync_router_port(const struct icsbrec_port_binding *isb_pb,
             nbrec_logical_router_port_update_options_setkey(
                 lrp, "requested-chassis", trp->chassis);
         }
-    } else {
+    } else if (smap_get(&lrp->options, "requested-chassis")) {
         nbrec_logical_router_port_update_options_delkey(
             lrp, "requested-chassis");
     }
@@ -1630,7 +1645,27 @@ port_binding_run(struct ic_context *ctx)
         for (size_t i = 0; i < tr->n_ports; i++) {
             const struct icnbrec_transit_router_port *trp = tr->ports[i];
 
-            if (chassis_is_remote(ctx, trp->chassis)) {
+            if (!trp->chassis[0]) {
+                /* The port is not bound to any chassis, so it is local to
+                 * every AZ.  A single ISB port binding, created by the AZ
+                 * leader, is shared by all the AZs, which guarantees that
+                 * they all use the same tunnel key for the port. */
+                isb_pb = shash_find_and_delete(&local_pbs, trp->name);
+                if (!isb_pb) {
+                    isb_pb = shash_find_and_delete(&remote_pbs, trp->name);
+                }
+
+                if (ctx->ovnisb_txn && is_az_leader(ctx->ovnisb_txn)) {
+                    if (!isb_pb) {
+                        isb_pb = create_isb_pb(ctx->ovnisb_txn, trp->name,
+                                               ctx->runned_az,
+                                               tr->name, &tr->header_.uuid,
+                                               "transit-router-port",
+                                               &pb_tnlids);
+                    }
+                    sync_trp_pb(trp, isb_pb);
+                }
+            } else if (chassis_is_remote(ctx, trp->chassis)) {
                 isb_pb = shash_find_and_delete(&remote_pbs, trp->name);
             } else {
                 isb_pb = shash_find_and_delete(&local_pbs, trp->name);
@@ -1639,8 +1674,8 @@ port_binding_run(struct ic_context *ctx)
                                            ctx->runned_az,
                                            tr->name, &tr->header_.uuid,
                                            "transit-router-port", &pb_tnlids);
-                    icsbrec_port_binding_set_address(isb_pb, trp->mac);
                 }
+                sync_trp_pb(trp, isb_pb);
             }
 
             /* Don't allow remote ports to create NB LRP until ICSB entry is
@@ -1659,6 +1694,13 @@ port_binding_run(struct ic_context *ctx)
         SHASH_FOR_EACH(node, &nb_ports) {
             nbrec_logical_router_port_delete(node->data);
             nbrec_logical_router_update_ports_delvalue(lr, node->data);
+        }
+
+        /* Delete extra port-binding from ISB.  Any local port binding that
+         * is not claimed by a transit router port above belongs to a port
+         * that has been removed, or that is no longer local to this AZ. */
+        SHASH_FOR_EACH (node, &local_pbs) {
+            icsbrec_port_binding_delete(node->data);
         }
 
         shash_destroy(&nb_ports);

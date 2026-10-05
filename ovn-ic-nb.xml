@@ -165,7 +165,11 @@
     </column>
 
     <column name="chassis">
-      The chassis this router port should be bound to.
+      The chassis this router port should be bound to.  If empty, the port
+      is local to all availability zones, that is, every availability zone
+      instantiates it as a distributed router port of its own copy of the
+      transit router.  This is useful for ports that connect a transit
+      router to a transit switch.
     </column>
 
     <column name="tr_uuid">

@@ -1570,7 +1570,7 @@ static const struct ctl_command_syntax ic_nbctl_commands[] = {
     { "tr-del", 1, 1, "ROUTER", NULL, ic_nbctl_tr_del, NULL, "--if-exists",
         RW },
     { "tr-list", 0, 0, "", NULL, ic_nbctl_tr_list, NULL, "", RO },
-    { "trp-add", 5, INT_MAX,
+    { "trp-add", 3, INT_MAX,
         "ROUTER PORT MAC [NETWORK]...[COLUMN[:KEY]=VALUE]...",
         NULL, ic_nbctl_trp_add, NULL, "--may-exist", RW },
     { "trp-del", 1, 1, "PORT", NULL, ic_nbctl_trp_del, NULL, "--if-exists",
