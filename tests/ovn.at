@@ -47594,13 +47594,11 @@ mld_packet=$(fmt_pkt \
 check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $mld_packet
 
 # IGMPv3 report.  Same scenario but with IPv4 multicast.
-igmp_packet=$(fmt_pkt \
-    "Ether(dst='01:00:5e:00:00:16', src='50:54:00:00:00:01') / \
-     IP(src='10.0.0.1', dst='224.0.0.22', ttl=1, \
-        options=IPOption_Router_Alert()) / \
-     IGMPv3(type=0x22) / \
-     IGMPv3mr(records=IGMPv3gr(rtype=4, maddr='239.1.2.3'))")
-check as hv1 ovs-appctl netdev-dummy/receive br-phys_n1 $igmp_packet
+send_igmp_v3_report br-phys_n1 hv1 \
+    505400000001 $(ip_to_hex 10 0 0 1) f9f8 \
+    $(ip_to_hex 239 1 2 3) 04 e8f9 \
+    igmp_packet.txt
+igmp_packet=$(cat igmp_packet.txt)
 
 # Wait for pinctrl to fully process the IGMP/MLD reports and sync them
 # to the SB database.  This guarantees that pinctrl has also re-injected
