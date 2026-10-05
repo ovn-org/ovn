@@ -305,6 +305,12 @@ multinode_setup_controller() {
     remote_ip=$4
     encap_type=${5:-"geneve"}
 
+    # Get info from eth1
+    local eth1_ip=""
+    if m_as $c ovs-vsctl list-ports br-ex | grep -qx eth1; then
+        eth1_ip=$(m_as $c ip -4 -o addr show eth1 | awk '{print $4}')
+    fi
+
     # Cleanup existing one
     m_as $c /usr/share/openvswitch/scripts/ovs-ctl stop
     m_as $c /usr/share/ovn/scripts/ovn-ctl stop_controller
@@ -324,6 +330,12 @@ multinode_setup_controller() {
     # Add back br-ex which was removed when removing ovs conf.db
     m_as $c ovs-vsctl --if-exists del-br br-ex
     m_as $c ovs-vsctl add-br br-ex
+    # Add eth1 back
+    if [[ -n "$eth1_ip" ]]; then
+        m_as $c ovs-vsctl add-port br-ex eth1 -- set interface eth1 type=internal
+        m_as $c ip addr add $eth1_ip dev eth1
+        m_as $c ip link set eth1 up
+    fi
     m_as $c ip link set eth2 down
     m_as $c ovs-vsctl add-port br-ex eth2
     m_as $c ip link set eth2 up

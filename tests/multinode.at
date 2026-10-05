@@ -2490,7 +2490,7 @@ cleanup_multinode_resources
 for i in 1 2; do
     chassis="ovn-chassis-$i"
     ip=$(m_as $chassis ip -4 addr show eth1 | grep inet | awk '{print $2}' | cut -d'/' -f1)
-    central_ip=$(m_central_as ip -4 addr show eth1 | grep inet | awk '{print $2}' | cut -d'/' -f1)
+    central_ip=$( (m_central_as ip -4 addr show eth1 2>/dev/null || m_central_as ip -4 addr show eth2) | grep inet | awk '{print $2}' | cut -d'/' -f1)
 
     multinode_setup_northd $chassis
     multinode_setup_controller $chassis $chassis $ip $ip
@@ -3546,6 +3546,9 @@ add_port() {
     ln -sf /proc/$pid/ns/net /var/run/netns/$pid
     port=$(host_ovs_vsctl --data=bare --no-heading --columns=name find interface \
            external_ids:container_id=ovn-gw-1 external_ids:container_iface="$interface")
+    if [[ -z "$port" ]]; then
+        return
+    fi
     port="${port:0:13}"
     ip link del "${port}_l" 2>/dev/null || true
     ip link del "${port}_c" 2>/dev/null || true
@@ -3703,6 +3706,8 @@ check_migration_between_gw1_and_gw2_kill_gw2() {
     check_packets "true" "false" "false" "true"
 
     start_openvswitch ovn-gw-2
+    m_as ovn-gw-2 ip addr add $gw2_ip_mask dev eth1
+    m_as ovn-gw-2 ip link set eth1 up
 
     echo "$(date +%H:%M:%S.%03N) Restarting gw2 ovn-controller"
     m_as ovn-gw-2 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}
@@ -3719,10 +3724,13 @@ check_migration_between_gw1_and_gw2_kill_gw1() {
     max_expected_loss2=$2
     prepare
 
+    gw1_ip_mask=$(m_as ovn-gw-1 ip -4 -o addr show eth1 | awk '{print $4}')
     on_exit 'm_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl status ||
              m_as ovn-gw-1 /usr/share/openvswitch/scripts/ovs-ctl start --system-id=ovn-gw-1'
     on_exit 'm_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl status_controller ||
              m_as ovn-gw-1 /usr/share/ovn/scripts/ovn-ctl start_controller ${CONTROLLER_SSL_ARGS}'
+    on_exit 'm_as ovn-gw-1 ip addr add $gw1_ip_mask dev eth1'
+    on_exit 'm_as ovn-gw-1 ip link set eth1 up'
 
     m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/ovn/ovn-controller.pid)
     m_as ovn-gw-1 kill -9 $(m_as ovn-gw-1 cat /run/openvswitch/ovs-vswitchd.pid)
@@ -3736,6 +3744,8 @@ check_migration_between_gw1_and_gw2_kill_gw1() {
     check_garps "false" "true" "false"
     check_packets "false" "true" "false" "true"
     start_openvswitch ovn-gw-1
+    m_as ovn-gw-1 ip addr add $gw1_ip_mask dev eth1
+    m_as ovn-gw-1 ip link set eth1 up
 
     # Wait some long time before restarting ovn-controller
     sleep 10
@@ -3758,6 +3768,8 @@ check_migration_between_gw1_and_gw2_reboot_gw1() {
     max_expected_loss2=$2
     prepare
 
+    gw1_ip_mask=$(m_as ovn-gw-1 ip -4 -o addr show eth1 | awk '{print $4}')
+
     podman stop -t 0 ovn-gw-1
     (exec 3>&- 4>&- 5>&- 6>&-; podman start ovn-gw-1)
 
@@ -3773,6 +3785,8 @@ check_migration_between_gw1_and_gw2_reboot_gw1() {
     check_packets "false" "true" "false" "true"
 
     start_openvswitch ovn-gw-1
+    m_as ovn-gw-1 ip addr add $gw1_ip_mask dev eth1
+    m_as ovn-gw-1 ip link set eth1 up
     M_START_TCPDUMPS([ovn-gw-1], [-neei eth1], [gw1_eth1])
 
     # Wait some long time before restarting ovn-controller
@@ -3882,7 +3896,7 @@ echo "$(date +%H:%M:%S.%03N) Checking it went through gw1 and not gw2"
 AT_CHECK([cat gw2.tcpdump | grep "ICMP echo"], [1], [dnl
 ])
 
-AT_CHECK([cat gw1.tcpdump | grep "ICMP echo" | cut -d  ' ' -f2-15], [0], [dnl
+AT_CHECK([cat gw1.tcpdump | grep -v genev | grep "ICMP echo" | cut -d  ' ' -f2-15], [0], [dnl
 f0:00:c0:a8:00:fe > 00:00:c0:a8:00:01, ethertype IPv4 (0x0800), length 98: 192.168.1.1 > 192.168.0.1: ICMP echo request,
 00:00:c0:a8:00:01 > f0:00:c0:a8:00:fe, ethertype IPv4 (0x0800), length 98: 192.168.0.1 > 192.168.1.1: ICMP echo reply,
 f0:00:c0:a8:00:fe > 00:00:c0:a8:00:01, ethertype IPv4 (0x0800), length 98: 192.168.1.1 > 192.168.0.1: ICMP echo request,
