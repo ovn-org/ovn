@@ -8,6 +8,9 @@ check_fake_multinode_setup
 # Delete the multinode NB and OVS resources before starting the test.
 cleanup_multinode_resources
 
+m_as ovn-chassis-1 ip link del sw0p1-p
+m_as ovn-chassis-2 ip link del sw0p2-p
+
 # Test East-West switching
 check multinode_nbctl ls-add sw0
 check multinode_nbctl lsp-add sw0 sw0-port1
