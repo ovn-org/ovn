@@ -100,6 +100,7 @@ OVN To-do List
 
   * Implement I-P for datapath groups.
   * Implement I-P for route exchange relevant ports.
+  * Implement I-P in en-routes based on BFD changes.
 
 * ovn-northd parallel logical flow processing
 

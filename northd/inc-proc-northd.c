@@ -182,7 +182,6 @@ static ENGINE_NODE(lr_stateful, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(ls_stateful, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(route_policies);
 static ENGINE_NODE(routes, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(bfd);
 static ENGINE_NODE(bfd_sync, SB_WRITE);
 static ENGINE_NODE(ecmp_nexthop, SB_WRITE);
 static ENGINE_NODE(multicast_igmp, SB_WRITE);
@@ -330,23 +329,18 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_fdb_aging, &en_global_config,
                      node_global_config_handler);
 
-    engine_add_input(&en_bfd, &en_nb_bfd, NULL);
-    engine_add_input(&en_bfd, &en_sb_bfd, NULL);
-
-    engine_add_input(&en_route_policies, &en_bfd, NULL);
     engine_add_input(&en_route_policies, &en_datapath_synced_logical_router,
                      route_policies_datapath_synced_logical_router_handler);
     engine_add_input(&en_route_policies, &en_northd,
                      route_policies_northd_change_handler);
 
-    engine_add_input(&en_routes, &en_bfd, NULL);
     engine_add_input(&en_routes, &en_northd,
                      routes_northd_change_handler);
     engine_add_input(&en_routes, &en_nb_logical_router_static_route,
                      routes_static_route_change_handler);
 
-    engine_add_input(&en_bfd_sync, &en_bfd, NULL);
     engine_add_input(&en_bfd_sync, &en_nb_bfd, NULL);
+    engine_add_input(&en_bfd_sync, &en_sb_bfd, NULL);
     engine_add_input(&en_bfd_sync, &en_routes, bfd_sync_routes_change_handler);
     engine_add_input(&en_bfd_sync, &en_route_policies, NULL);
     engine_add_input(&en_bfd_sync, &en_northd, bfd_sync_northd_change_handler);

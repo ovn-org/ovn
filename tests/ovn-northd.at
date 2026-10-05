@@ -4721,7 +4721,6 @@ wait_row_count bfd 1 logical_port=r0-sw3 detect_mult=5 dst_ip=192.168.3.2 \
                      min_rx=1000 min_tx=1000 status=admin_down
 
 check_engine_stats northd norecompute nocompute
-check_engine_stats bfd recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -4736,9 +4735,8 @@ wait_row_count bfd 1 logical_port=r0-sw2 min_rx=1000
 wait_row_count bfd 1 logical_port=r0-sw1 min_rx=1000 min_tx=1000 detect_mult=100
 
 check_engine_stats northd norecompute nocompute
-check_engine_stats bfd recompute nocompute
-check_engine_stats lflow recompute nocompute
-check_engine_stats northd_output norecompute compute
+check_engine_stats lflow norecompute nocompute
+check_engine_stats northd_output norecompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 
@@ -4747,7 +4745,6 @@ wait_column down bfd status logical_port=r0-sw1
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.1.2 | grep -q bfd], [0], [], [ignore])
 
 check_engine_stats northd norecompute compute
-check_engine_stats bfd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
@@ -4763,7 +4760,6 @@ wait_column down bfd status logical_port=r0-sw5
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.5.2 | grep -q bfd], [0], [], [ignore])
 
 check_engine_stats northd norecompute compute
-check_engine_stats bfd recompute nocompute
 check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
@@ -4775,8 +4771,7 @@ wait_column down bfd status logical_port=r0-sw6
 AT_CHECK([ovn-nbctl lr-route-list r0 | grep 192.168.6.1 | grep -q bfd], [0], [], [ignore])
 
 check_engine_stats northd norecompute compute
-check_engine_stats bfd recompute nocompute
-check_engine_stats route_policies recompute nocompute
+check_engine_stats routes recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -4810,8 +4805,10 @@ bfd_route_policy_uuid=$(fetch_column nb:bfd _uuid logical_port=r0-sw8)
 AT_CHECK([ovn-nbctl list logical_router_policy | grep -q $bfd_route_policy_uuid])
 
 check_engine_stats northd norecompute incremental
-check_engine_stats bfd recompute nocompute
-check_engine_stats routes recompute nocompute
+# route_policies was able to compute when the static route was
+# added earlier, but has to recompute as a result of the policy
+# being added.
+check_engine_stats route_policies recompute compute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
@@ -4825,7 +4822,9 @@ wait_column down bfd status dst_ip=192.168.9.3
 wait_column down bfd status dst_ip=192.168.9.4
 
 check_engine_stats northd norecompute compute
-check_engine_stats bfd recompute nocompute
+# In this case, though, the only operation that happened since
+# clearing incremental stats is that a policy was added. In this
+# case, route_policies has recomputed but has not computed.
 check_engine_stats route_policies recompute nocompute
 check_engine_stats lflow recompute nocompute
 check_engine_stats northd_output norecompute compute

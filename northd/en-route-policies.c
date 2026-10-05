@@ -124,8 +124,7 @@ find_policy_outport(struct ovn_datapath *od,
 static bool
 check_bfd_state(const struct nbrec_logical_router_policy *rule,
                 struct ovn_port *out_port, const char *nexthop,
-                const struct hmap *bfd_connections,
-                struct hmap *bfd_active_connections)
+                struct uuidset *bfd_active_connections)
 {
     struct in6_addr nexthop_v6;
     bool is_nexthop_v6 = ipv6_parse(nexthop, &nexthop_v6);
@@ -150,28 +149,11 @@ check_bfd_state(const struct nbrec_logical_router_policy *rule,
             continue;
         }
 
-        struct bfd_entry *bfd_e = bfd_port_lookup(bfd_connections,
-                                                  nb_bt->logical_port,
-                                                  nb_bt->dst_ip);
-        if (!bfd_e) {
-            continue;
-        }
+        uuidset_insert(bfd_active_connections, &nb_bt->header_.uuid);
 
-        /* This route policy is linked to an active bfd session. */
-        struct bfd_entry *bfd_rp = bfd_port_lookup(bfd_active_connections,
-                                                   nb_bt->logical_port,
-                                                   nb_bt->dst_ip);
-        if (!bfd_rp) {
-            bfd_rp = bfd_alloc_entry(bfd_active_connections,
-                                     nb_bt->logical_port, nb_bt->dst_ip,
-                                     bfd_e->status);
-        }
-
-        if (!strcmp(bfd_e->status, "admin_down")) {
-            bfd_set_status(bfd_rp, "down");
-        }
-
-        return strcmp(bfd_rp->status, "down");
+        const char *nb_status = bfd_get_status(nb_bt->status);
+        return strcmp(nb_status, "down") &&
+               strcmp(nb_status, "admin_down");
     }
 
     return true;
@@ -179,9 +161,8 @@ check_bfd_state(const struct nbrec_logical_router_policy *rule,
 
 static void
 build_route_policies(struct ovn_datapath *od,
-                     const struct hmap *bfd_connections,
                      struct hmap *route_policies,
-                     struct hmap *bfd_active_connections,
+                     struct uuidset *bfd_active_connections,
                      struct simap *chain_ids)
 {
     /* Create chain numeric ids for policies with chain name set */
@@ -310,7 +291,6 @@ build_route_policies(struct ovn_datapath *od,
                     continue;
                 }
                 if (!check_bfd_state(rule, out_port, nexthop,
-                                     bfd_connections,
                                      bfd_active_connections)) {
                     continue;
                 }
@@ -357,7 +337,7 @@ static void
 route_policies_init(struct route_policies_data *data)
 {
     hmap_init(&data->route_policies);
-    hmap_init(&data->bfd_active_connections);
+    uuidset_init(&data->bfd_active_connections);
 }
 
 static void
@@ -369,14 +349,13 @@ route_policies_destroy(struct route_policies_data *data)
         free(rp);
     };
     hmap_destroy(&data->route_policies);
-    bfd_destroy(&data->bfd_active_connections);
+    uuidset_destroy(&data->bfd_active_connections);
 }
 
 enum engine_node_state
 en_route_policies_run(struct engine_node *node, void *data)
 {
     struct northd_data *northd_data = engine_get_input_data("northd", node);
-    struct bfd_data *bfd_data = engine_get_input_data("bfd", node);
     struct route_policies_data *route_policies_data = data;
 
     route_policies_destroy(data);
@@ -386,8 +365,7 @@ en_route_policies_run(struct engine_node *node, void *data)
     HMAP_FOR_EACH (od, key_node, &northd_data->lr_datapaths.datapaths) {
         struct simap chain_ids = SIMAP_INITIALIZER(&chain_ids);
 
-        build_route_policies(od, &bfd_data->bfd_connections,
-                             &route_policies_data->route_policies,
+        build_route_policies(od, &route_policies_data->route_policies,
                              &route_policies_data->bfd_active_connections,
                              &chain_ids);
         simap_destroy(&chain_ids);

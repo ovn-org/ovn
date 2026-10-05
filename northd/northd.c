@@ -12091,6 +12091,20 @@ bfd_is_port_running(const struct sset *bfd_ports, const char *port)
     return !!sset_find(bfd_ports, port);
 }
 
+/* Returns the configured BFD status, or "admin_down" if the BFD
+ * status is NULL or zero-length. This is useful when trying to
+ * access BFD status from a database when it is not clear if the
+ * status actually exists.
+ */
+const char *
+bfd_get_status(const char *db_status)
+{
+    if (!db_status || !db_status[0]) {
+        return "admin_down";
+    }
+    return db_status;
+}
+
 #define BFD_DEF_MINTX       1000 /* 1s */
 #define BFD_DEF_MINRX       1000 /* 1s */
 #define BFD_DEF_DETECT_MULT 5
@@ -12107,8 +12121,10 @@ build_bfd_update_sb_conf(const struct nbrec_bfd *nb_bt,
         sbrec_bfd_set_logical_port(sb_bt, nb_bt->logical_port);
     }
 
-    if (strcmp(nb_bt->status, sb_bt->status)) {
-        sbrec_bfd_set_status(sb_bt, nb_bt->status);
+    const char *nb_status = bfd_get_status(nb_bt->status);
+    const char *sb_status = bfd_get_status(sb_bt->status);
+    if (strcmp(nb_status, sb_status)) {
+        sbrec_bfd_set_status(sb_bt, nb_status);
     }
 
     int detect_mult = nb_bt->n_detect_mult ? nb_bt->detect_mult[0]
@@ -12151,46 +12167,16 @@ static int bfd_get_unused_port(unsigned long *bfd_src_ports)
     return port + BFD_UDP_SRC_PORT_START;
 }
 
-static char *
-bfd_get_connection_status(const struct nbrec_bfd *nb_bt,
-                          const struct hmap *rp_bfd_connections,
-                          const struct hmap *sr_bfd_connections)
-{
-    struct bfd_entry *bfd_rp, *bfd_sr;
-
-    bfd_rp = bfd_port_lookup(rp_bfd_connections, nb_bt->logical_port,
-                             nb_bt->dst_ip);
-    if (!bfd_rp) {
-        bfd_sr = bfd_port_lookup(sr_bfd_connections, nb_bt->logical_port,
-                                 nb_bt->dst_ip);
-        if (!bfd_sr) {
-            return "admin_down";
-        }
-    }
-
-    return bfd_rp ? bfd_rp->status : bfd_sr->status;
-}
-
 void
 bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
-               const struct nbrec_bfd_table *nbrec_bfd_table,
                const struct hmap *lr_ports,
-               const struct hmap *bfd_connections,
-               const struct hmap *rp_bfd_connections,
-               const struct hmap *sr_bfd_connections,
+               struct hmap *bfd_connections,
                struct sset *bfd_ports)
 {
     unsigned long *bfd_src_ports = bitmap_allocate(BFD_UDP_SRC_PORT_LEN);
-    struct hmap sync_bfd_connections = HMAP_INITIALIZER(&sync_bfd_connections);
 
     struct bfd_entry *bfd_e;
     HMAP_FOR_EACH (bfd_e, hmap_node, bfd_connections) {
-        struct bfd_entry *e = bfd_alloc_entry(&sync_bfd_connections,
-                                              bfd_e->logical_port,
-                                              bfd_e->dst_ip, bfd_e->status);
-        e->nb_bt = bfd_e->nb_bt;
-        e->sb_bt = bfd_e->sb_bt;
-        e->stale = true;
         /* we need to check if this entry is even in the BFD nb db table */
         if (bfd_e->sb_bt) {
             bitmap_set1(bfd_src_ports,
@@ -12198,24 +12184,29 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
         }
     }
 
-    const struct nbrec_bfd *nb_bt;
-    NBREC_BFD_TABLE_FOR_EACH (nb_bt, nbrec_bfd_table) {
-        bfd_e = bfd_port_lookup(&sync_bfd_connections, nb_bt->logical_port,
-                                nb_bt->dst_ip);
-        if (!bfd_e) {
+    HMAP_FOR_EACH_SAFE (bfd_e, hmap_node, bfd_connections) {
+        if (!bfd_e->nb_bt) {
+            /* Northbound entry was removed or altered. Get rid of the
+             * old SB entry since we'll be creating a new one based on
+             * the NB entry's changes.
+             */
+            if (bfd_e->sb_bt) {
+                sbrec_bfd_delete(bfd_e->sb_bt);
+            }
+            hmap_remove(bfd_connections, &bfd_e->hmap_node);
+            bfd_erase_entry(bfd_e);
             continue;
         }
 
-        struct ovn_port *op = ovn_port_find(lr_ports, nb_bt->logical_port);
+        struct ovn_port *op = ovn_port_find(lr_ports,
+                                            bfd_e->nb_bt->logical_port);
         if (!op || !op->sb) {
             /* skip not bounded ports */
             continue;
         }
 
-        nbrec_bfd_set_status(nb_bt,
-                             bfd_get_connection_status(nb_bt,
-                                                       rp_bfd_connections,
-                                                       sr_bfd_connections));
+        nbrec_bfd_set_status(bfd_e->nb_bt, bfd_e->status);
+
         if (!bfd_e->sb_bt) {
             int udp_src = bfd_get_unused_port(bfd_src_ports);
             if (udp_src < 0) {
@@ -12224,33 +12215,38 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
 
             /* Add entry to bfd sb table. */
             const struct sbrec_bfd *sb_bt = sbrec_bfd_insert(ovnsb_txn);
-            sbrec_bfd_set_logical_port(sb_bt, nb_bt->logical_port);
-            sbrec_bfd_set_dst_ip(sb_bt, nb_bt->dst_ip);
+            sbrec_bfd_set_logical_port(sb_bt, bfd_e->nb_bt->logical_port);
+            sbrec_bfd_set_dst_ip(sb_bt, bfd_e->nb_bt->dst_ip);
             sbrec_bfd_set_disc(sb_bt, 1 + random_uint32());
             sbrec_bfd_set_src_port(sb_bt, udp_src);
-            sbrec_bfd_set_status(sb_bt, nb_bt->status);
+            sbrec_bfd_set_status(sb_bt, bfd_e->status);
             if (op->sb->chassis) {
                 sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
             }
 
-            int min_tx = nb_bt->n_min_tx ? nb_bt->min_tx[0] : BFD_DEF_MINTX;
+            int min_tx = bfd_e->nb_bt->n_min_tx
+                ? bfd_e->nb_bt->min_tx[0]
+                : BFD_DEF_MINTX;
             sbrec_bfd_set_min_tx(sb_bt, min_tx);
-            int min_rx = nb_bt->n_min_rx ? nb_bt->min_rx[0] : BFD_DEF_MINRX;
+            int min_rx = bfd_e->nb_bt->n_min_rx
+                ? bfd_e->nb_bt->min_rx[0]
+                : BFD_DEF_MINRX;
             sbrec_bfd_set_min_rx(sb_bt, min_rx);
-            int d_mult = nb_bt->n_detect_mult ? nb_bt->detect_mult[0]
-                                              : BFD_DEF_DETECT_MULT;
+            int d_mult = bfd_e->nb_bt->n_detect_mult
+                ? bfd_e->nb_bt->detect_mult[0]
+                : BFD_DEF_DETECT_MULT;
             sbrec_bfd_set_detect_mult(sb_bt, d_mult);
         } else {
-            if (strcmp(bfd_e->sb_bt->status, nb_bt->status)) {
-                if (!strcmp(nb_bt->status, "admin_down") ||
+            if (strcmp(bfd_e->sb_bt->status, bfd_e->nb_bt->status)) {
+                if (!strcmp(bfd_e->nb_bt->status, "admin_down") ||
                     !strcmp(bfd_e->sb_bt->status, "admin_down")) {
-                    sbrec_bfd_set_status(bfd_e->sb_bt, nb_bt->status);
+                    sbrec_bfd_set_status(bfd_e->sb_bt, bfd_e->nb_bt->status);
                 } else {
-                    nbrec_bfd_set_status(nb_bt, bfd_e->sb_bt->status);
+                    nbrec_bfd_set_status(bfd_e->nb_bt, bfd_e->sb_bt->status);
                 }
             }
 
-            build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
+            build_bfd_update_sb_conf(bfd_e->nb_bt, bfd_e->sb_bt);
             if (op->sb->chassis && !strcmp(op->sb->chassis->name,
                                            bfd_e->sb_bt->chassis_name)) {
                 sbrec_bfd_set_chassis_name(bfd_e->sb_bt,
@@ -12258,17 +12254,8 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             }
         }
 
-        sset_add(bfd_ports, nb_bt->logical_port);
-        bfd_e->stale = false;
+        sset_add(bfd_ports, bfd_e->nb_bt->logical_port);
     }
-
-    HMAP_FOR_EACH_POP (bfd_e, hmap_node, &sync_bfd_connections) {
-        if (bfd_e->stale && bfd_e->sb_bt) {
-            sbrec_bfd_delete(bfd_e->sb_bt);
-        }
-        bfd_erase_entry(bfd_e);
-    }
-    hmap_destroy(&sync_bfd_connections);
 
     bitmap_free(bfd_src_ports);
 }
@@ -12276,7 +12263,8 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
 void
 build_bfd_map(const struct nbrec_bfd_table *nbrec_bfd_table,
               const struct sbrec_bfd_table *sbrec_bfd_table,
-              struct hmap *bfd_connections)
+              struct hmap *bfd_connections,
+              const struct uuidset *bfd_active_connections)
 {
     struct bfd_entry *bfd_e;
 
@@ -12297,9 +12285,15 @@ build_bfd_map(const struct nbrec_bfd_table *nbrec_bfd_table,
         bfd_e = bfd_port_lookup(bfd_connections, nb_bt->logical_port,
                                 nb_bt->dst_ip);
         if (!bfd_e) {
-            /* brand new entry. */
             bfd_e = bfd_alloc_entry(bfd_connections, nb_bt->logical_port,
                                     nb_bt->dst_ip, "admin_down");
+        }
+        if (uuidset_contains(bfd_active_connections, &nb_bt->header_.uuid)) {
+            if (!strcmp(bfd_e->status, "admin_down")) {
+                bfd_set_status(bfd_e, "down");
+            }
+        } else {
+            bfd_set_status(bfd_e, "admin_down");
         }
         bfd_e->nb_bt = nb_bt;
     }
@@ -12813,9 +12807,8 @@ parsed_route_add(const struct ovn_datapath *od,
 struct parsed_route *
 parsed_routes_add_static(const struct ovn_datapath *od,
                          const struct nbrec_logical_router_static_route *route,
-                         const struct hmap *bfd_connections,
                          struct hmap *routes, struct simap *route_tables,
-                         struct hmap *bfd_active_connections)
+                         struct uuidset *bfd_active_connections)
 {
     /* Verify that the next hop is an IP address with an all-ones mask. */
     struct in6_addr *nexthop = NULL;
@@ -12869,29 +12862,10 @@ parsed_routes_add_static(const struct ovn_datapath *od,
 
     const struct nbrec_bfd *nb_bt = route->bfd;
     if (nb_bt && !strcmp(nb_bt->dst_ip, route->nexthop)) {
-        struct bfd_entry *bfd_e = bfd_port_lookup(bfd_connections,
-                                                  nb_bt->logical_port,
-                                                  nb_bt->dst_ip);
-        if (!bfd_e) {
-            free(nexthop);
-            return NULL;
-        }
-
-        /* This static route is linked to an active bfd session. */
-        struct bfd_entry *bfd_sr = bfd_port_lookup(bfd_active_connections,
-                                                   nb_bt->logical_port,
-                                                   nb_bt->dst_ip);
-        if (!bfd_sr) {
-            bfd_sr = bfd_alloc_entry(bfd_active_connections,
-                                     nb_bt->logical_port, nb_bt->dst_ip,
-                                     bfd_e->status);
-        }
-
-        if (!strcmp(bfd_e->status, "admin_down")) {
-            bfd_set_status(bfd_sr, "down");
-        }
-
-        if (!strcmp(bfd_sr->status, "down")) {
+        uuidset_insert(bfd_active_connections, &nb_bt->header_.uuid);
+        const char *nb_status = bfd_get_status(nb_bt->status);
+        if (!strcmp(nb_status, "down") ||
+            !strcmp(nb_status, "admin_down")) {
             free(nexthop);
             return NULL;
         }
@@ -12967,13 +12941,13 @@ parsed_routes_add_connected(const struct ovn_datapath *od,
 
 void
 build_parsed_routes(const struct ovn_datapath *od,
-                    const struct hmap *bfd_connections, struct hmap *routes,
+                    struct hmap *routes,
                     struct simap *route_tables,
-                    struct hmap *bfd_active_connections)
+                    struct uuidset *bfd_active_connections)
 {
     for (size_t i = 0; i < od->nbr->n_static_routes; i++) {
         parsed_routes_add_static(od, od->nbr->static_routes[i],
-                                 bfd_connections, routes, route_tables,
+                                 routes, route_tables,
                                  bfd_active_connections);
     }
 
@@ -21700,16 +21674,10 @@ routes_init(struct routes_data *data)
 {
     hmap_init(&data->parsed_routes);
     simap_init(&data->route_tables);
-    hmap_init(&data->bfd_active_connections);
+    uuidset_init(&data->bfd_active_connections);
     hmapx_init(&data->trk_data.trk_deleted_parsed_route);
     hmapx_init(&data->trk_data.trk_crupdated_parsed_route);
     data->tracked = false;
-}
-
-void
-bfd_init(struct bfd_data *data)
-{
-    hmap_init(&data->bfd_connections);
 }
 
 void
@@ -21814,7 +21782,7 @@ routes_destroy(struct routes_data *data)
     hmap_destroy(&data->parsed_routes);
 
     simap_destroy(&data->route_tables);
-    bfd_destroy(&data->bfd_active_connections);
+    uuidset_destroy(&data->bfd_active_connections);
     hmapx_destroy(&data->trk_data.trk_crupdated_parsed_route);
     hmapx_destroy(&data->trk_data.trk_deleted_parsed_route);
 }

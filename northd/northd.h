@@ -32,6 +32,7 @@
 #include "vec.h"
 #include "datapath-sync.h"
 #include "sparse-array.h"
+#include "uuidset.h"
 
 struct northd_input {
     /* Northbound table references */
@@ -218,13 +219,9 @@ struct route_tracked_data {
 struct routes_data {
     struct hmap parsed_routes; /* Stores struct parsed_route. */
     struct simap route_tables;
-    struct hmap bfd_active_connections;
+    struct uuidset bfd_active_connections;
     struct route_tracked_data trk_data;
     bool tracked;
-};
-
-struct bfd_data {
-    struct hmap bfd_connections;
 };
 
 struct bfd_sync_data {
@@ -893,9 +890,8 @@ struct parsed_route *parsed_route_add(
 struct parsed_route *parsed_routes_add_static(
     const struct ovn_datapath *od,
     const struct nbrec_logical_router_static_route *route,
-    const struct hmap *bfd_connections,
     struct hmap *routes, struct simap *route_tables,
-    struct hmap *bfd_active_connections);
+    struct uuidset *bfd_active_connections);
 
 struct svc_monitors_map_data {
     const struct hmap *local_svc_monitors_map;
@@ -933,8 +929,8 @@ void northd_init(struct northd_data *data);
 void northd_indices_create(struct northd_data *data,
                            struct ovsdb_idl *ovnsb_idl);
 
-void build_parsed_routes(const struct ovn_datapath *, const struct hmap *,
-                         struct hmap *, struct simap *, struct hmap *);
+void build_parsed_routes(const struct ovn_datapath *, struct hmap *,
+                         struct simap *, struct uuidset *);
 uint32_t get_route_table_id(struct simap *, const char *);
 void routes_init(struct routes_data *);
 void routes_destroy(struct routes_data *);
@@ -949,7 +945,6 @@ struct bfd_entry {
     char *logical_port;
     char *dst_ip;
     char *status;
-    bool stale;
 };
 
 struct bfd_entry *bfd_alloc_entry(struct hmap *bfd_connections,
@@ -957,12 +952,11 @@ struct bfd_entry *bfd_alloc_entry(struct hmap *bfd_connections,
                                   const char *status);
 void bfd_erase_entry(struct bfd_entry *bfd_e);
 void bfd_set_status(struct bfd_entry *bfd_e, const char *status);
+const char *bfd_get_status(const char *db_status);
 struct bfd_entry *bfd_port_lookup(const struct hmap *bfd_map,
                                   const char *logical_port,
                                   const char *dst_ip);
 void bfd_destroy(struct hmap *bfd_connections);
-
-void bfd_init(struct bfd_data *);
 
 void bfd_sync_init(struct bfd_sync_data *);
 void bfd_sync_swap(struct bfd_sync_data *, struct sset *bfd_ports);
@@ -1019,12 +1013,12 @@ bool northd_handle_lb_data_changes(struct tracked_lb_data *,
                                    const struct hmap *lr_lb_map,
                                    struct northd_tracked_data *);
 
-void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
-                    const struct hmap *, const struct hmap *,
-                    const struct hmap *, const struct hmap *,
+void bfd_table_sync(struct ovsdb_idl_txn *,
+                    const struct hmap *, struct hmap *,
                     struct sset *);
 void build_bfd_map(const struct nbrec_bfd_table *,
-                   const struct sbrec_bfd_table *, struct hmap *);
+                   const struct sbrec_bfd_table *, struct hmap *,
+                   const struct uuidset *);
 
 void build_ic_learned_svc_monitors_map(
     struct hmap *ic_learned_svc_monitors_map,

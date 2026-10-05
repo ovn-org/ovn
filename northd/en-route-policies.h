@@ -25,6 +25,7 @@
 #include "lib/simap.h"
 #include "openvswitch/hmap.h"
 #include "vec.h"
+#include "uuidset.h"
 
 /* Each instance of this represents a nexthop for a router
  * policy with "reroute" action. The fields are used for
@@ -54,7 +55,7 @@ struct route_policy {
 /* Global route policy data exported by en-route-policies. */
 struct route_policies_data {
     struct hmap route_policies;
-    struct hmap bfd_active_connections;
+    struct uuidset bfd_active_connections;
 };
 
 void en_route_policies_cleanup(void *data);
