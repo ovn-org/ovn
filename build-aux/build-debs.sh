@@ -87,6 +87,18 @@ export OVSDIR OVSBUILDDIR EXTRA_CONFIGURE_OPTS="--with-ovs-build=$OVSBUILDDIR"
 # Build OVN Debs (Artifacts land in parent of $ROOT, i.e., $ROOT/../)
 DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -b -us -uc
 
+# --- DEBUG SYMBOLS (optional, PF9_DEBUG_SYMBOLS=true) ---
+# dh_strip always generates -dbgsym packages, but Ubuntu's debhelper writes them as
+# *.ddeb, which the *.deb globs below never match, and pf9_build_reset would wipe the OVS
+# ones. When enabled, collect them before anything is deleted.
+if pf9_debug_symbols_enabled; then
+    DBGSYM_DIR="$TEAMCITY_ROOT/pkgs/${UBUNTU_VERSION}-dbgsym"
+    mkdir -p "$DBGSYM_DIR"
+    find "$ROOT" "$TEAMCITY_ROOT" -maxdepth 1 \( -name "*-dbgsym_*.ddeb" -o -name "*-dbgsym_*.deb" \) \
+        -exec mv -v {} "$DBGSYM_DIR" \;
+    ls -la "$DBGSYM_DIR"
+fi
+
 # Remove bloat packages before artifact collection
 find "$ROOT" "$TEAMCITY_ROOT" -maxdepth 1 -name "*.deb" \
     \( -name "*-doc_*" -o -name "*-source_*" -o -name "*-test_*" \
