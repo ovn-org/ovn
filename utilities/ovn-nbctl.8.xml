@@ -916,7 +916,7 @@
             </p>
             <p>
               All logical switch ports of that type have implicit 'unknown'
-              addresses and FDB learning enabled (unless port security is set).
+              addresses and FDB learning enabled.
               This comes with all the positive and negative sides of the
               'unknown' address.  Static addresses-to-port mappings don't need
               to be maintained on each node and only the actually used mappings

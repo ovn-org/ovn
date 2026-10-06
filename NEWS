@@ -5,6 +5,8 @@ OVN v26.09.1 - xx xxx xxxx
      table in addition to eth.src.  This allows VRRP virtual MACs to
      be learned from gratuitous ARP packets and unsolicited Neighbor
      Advertisements.
+   - Allow FDB learning on logical switch ports that have both
+     port_security and "unknown" addresses configured.
 
 OVN v26.09.0 - Sep 18 2026
 --------------------------
