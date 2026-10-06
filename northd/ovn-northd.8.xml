@@ -488,6 +488,30 @@
 
         <ul>
           <li>
+            Priority 120 flows for ARP packets with
+            <code>arp.sha == 00:00:00:00:00:00</code>,
+            ND packets with <code>nd.tll == 00:00:00:00:00:00</code>, or ND
+            packets with <code>nd.sll == 00:00:00:00:00:00</code>.  These
+            match ARP or ND packets whose inner MAC field is zero (i.e.,
+            the optional link-layer address option is absent).
+            The action looks up only <code>eth.src</code>:
+            <code>reg0[11] = lookup_fdb(inport, eth.src);</code> and sets
+            <code>reg0[22] = 1</code> to mark the inner MAC lookup as
+            satisfied (there is no inner MAC to learn).
+          </li>
+          <li>
+            Priority 110 flows for ARP packets (matching <code>arp</code>),
+            ND Neighbor Advertisements (matching <code>nd_na</code>), and
+            ND Neighbor Solicitations (matching <code>nd_ns</code>).
+            These match packets whose inner MAC field is non-zero (the
+            priority-120 zero-MAC guard flows take precedence when it is
+            zero).  The action looks up both <code>eth.src</code> and the
+            inner MAC field: <code>reg0[11] = lookup_fdb(inport, eth.src);
+            reg0[22] = lookup_fdb(inport, inner); next;</code> where
+            <code>inner</code> is <code>arp.sha</code> for ARP,
+            <code>nd.tll</code> for NA, or <code>nd.sll</code> for NS.
+          </li>
+          <li>
             Priority 100 flow with the match
             <code>inport == <var>p</var></code> and action
             <code>reg0[11] = lookup_fdb(inport, eth.src); next;</code>
@@ -554,6 +578,24 @@
         </p>
 
         <ul>
+          <li>
+            Priority 120 flows matching the same zero-MAC conditions as the
+            corresponding lookup flows (<code>arp.sha == 0</code>,
+            <code>nd.tll == 0</code>, or <code>nd.sll == 0</code>).
+            Guarded by <code>reg0[11] == 0</code>, these learn only
+            <code>eth.src</code> via
+            <code>put_fdb(inport, eth.src); next;</code>.
+          </li>
+          <li>
+            Priority 110 flows matching ARP, ND NA, or ND NS packets.
+            Guarded by <code>reg0[11] == 0 || reg0[22] == 0</code> (i.e.,
+            either the outer or the inner MAC is unknown), these learn both
+            <code>eth.src</code> and the inner MAC via
+            <code>put_fdb(inport, eth.src);
+            put_fdb(inport, inner); next;</code> where
+            <code>inner</code> is <code>arp.sha</code>,
+            <code>nd.tll</code>, or <code>nd.sll</code> respectively.
+          </li>
           <li>
             Priority 100 flow with the match
             <code>inport == <var>p</var> &amp;&amp; reg0[11] == 0</code> and
