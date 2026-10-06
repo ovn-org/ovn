@@ -470,10 +470,9 @@
     <p>
       This table looks up the MAC learning table of the logical switch
       datapath to check if the <code>port-mac</code> pair is present
-      or not. MAC is learnt for logical switch VIF ports whose
-      port security is disabled and 'unknown' address setn as well as
-      for localnet ports with option localnet_learn_fdb. A localnet
-      port entry does not overwrite a VIF port entry.
+      or not. MAC is learnt for logical switch with 'unknown' address
+      set as well as for localnet ports with option localnet_learn_fdb.
+      A localnet port entry does not overwrite a VIF port entry.
       Logical switch ports with type <code>switch</code> have implicit
       'unknown' addresses and so they are also eligible for MAC learning.
     </p>
@@ -481,9 +480,8 @@
     <ul>
       <li>
         <p>
-          For each such VIF logical port <var>p</var> whose port security
-          is disabled and 'unknown' address set following flow
-          is added.
+          For each such VIF logical port <var>p</var> with 'unknown'
+          address set following flow is added.
         </p>
 
         <ul>
@@ -560,21 +558,19 @@
 
     <p>
       This table learns the MAC addresses seen on the VIF or 'switch' logical
-      ports whose port security is disabled and 'unknown' address set (note:
-      'switch' ports have implicit 'unknown' addresses) as well
-      as on localnet ports with localnet_learn_fdb option set
-      if the <code>lookup_fdb</code> action returned false in the
-      previous table. For localnet ports (with flags.localnet = 1),
-      lookup_fdb returns true if (port, mac) is found or if a mac
-      is found for a port of type vif.
+      ports with'unknown' address set (note: 'switch' ports have implicit
+      'unknown' addresses) as well as on localnet ports with
+      localnet_learn_fdb option set if the <code>lookup_fdb</code> action
+      returned false in the previous table. For localnet ports
+      (with flags.localnet = 1), lookup_fdb returns true if (port, mac) is
+      found or if a mac is found for a port of type vif.
     </p>
 
     <ul>
       <li>
         <p>
-          For each such VIF logical port <var>p</var> whose port security is
-          disabled and 'unknown' address set and localnet port following flow
-          is added.
+          For each such VIF logical port <var>p</var> with 'unknown' address
+          set and localnet port following flow is added.
         </p>
 
         <ul>
