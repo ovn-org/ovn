@@ -5,6 +5,8 @@ Post v26.09.0
      table in addition to eth.src.  This allows VRRP virtual MACs to
      be learned from gratuitous ARP packets and unsolicited Neighbor
      Advertisements.
+   - Allow FDB learning on logical switch ports that have both
+     port_security and "unknown" addresses configured.
    - Added a new "options:ttl" key on the NB DNS table to make the TTL of
      DNS replies from OVN's native DNS resolver configurable per row.
    - Removed implementations of the commit_ecmp_nh, chk_ecmp_nh, and

@@ -8270,6 +8270,80 @@ AT_CLEANUP
 
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([FDB learning with port security and shared VMAC])
+AT_KEYWORDS([ovn])
+ovn_start
+
+check ovn-nbctl ls-add ls0
+
+check ovn-nbctl lsp-add ls0 p1
+check ovn-nbctl lsp-add ls0 p2
+check ovn-nbctl set Logical_Switch_Port p1 \
+    'addresses=["fa:16:3e:00:00:01 10.0.0.1", "unknown"]' \
+    'port_security=["fa:16:3e:00:00:01 10.0.0.1", "VRRPv3 fa:16:3e:00:00:01 00:00:5e:00:01:33/40"]'
+check ovn-nbctl set Logical_Switch_Port p2 \
+    'addresses=["fa:16:3e:00:00:02 10.0.0.2", "unknown"]' \
+    'port_security=["fa:16:3e:00:00:02 10.0.0.2", "VRRPv3 fa:16:3e:00:00:02 00:00:5e:00:01:33/40"]'
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > ls0flows
+AT_CAPTURE_FILE([ls0flows])
+
+dnl Static L2 lookup flows at priority 50 for each port's primary MAC.
+AT_CHECK([grep -e "ls_in_l2_lkup" ls0flows | grep -q "eth.dst == fa:16:3e:00:00:01"])
+AT_CHECK([grep -e "ls_in_l2_lkup" ls0flows | grep -q "eth.dst == fa:16:3e:00:00:02"])
+
+dnl No static L2 lookup flow for the VMAC (it is not in addresses).
+AT_CHECK([grep -e "ls_in_l2_lkup" ls0flows | grep -c "00:00:5e:00:01:33"], [1], [0
+])
+
+dnl FDB learning flows generated for both ports despite port_security.
+AT_CHECK([grep -e "ls_in_lookup_fdb" ls0flows | grep -q "p1"])
+AT_CHECK([grep -e "ls_in_lookup_fdb" ls0flows | grep -q "p2"])
+AT_CHECK([grep -e "ls_in_put_fdb" ls0flows | grep -q "p1"])
+AT_CHECK([grep -e "ls_in_put_fdb" ls0flows | grep -q "p2"])
+
+dnl FDB-based L2 lookup at priority 0 is present.
+AT_CHECK([grep -e "ls_in_l2_lkup" ls0flows | grep -q "get_fdb"])
+
+dnl Port security flows still present.
+AT_CHECK([grep -e "ls_in_check_port_sec" ls0flows | grep -q "p1"])
+AT_CHECK([grep -e "ls_in_check_port_sec" ls0flows | grep -q "p2"])
+
+dnl A port without port_security + unknown still gets FDB
+dnl learning flows (existing behavior preserved).
+check ovn-nbctl lsp-add ls0 p3
+check ovn-nbctl lsp-set-addresses p3 "fa:16:3e:00:00:03 10.0.0.3" unknown
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > ls0flows2
+AT_CAPTURE_FILE([ls0flows2])
+
+AT_CHECK([grep -e "ls_in_lookup_fdb" ls0flows2 | grep -q "p3"])
+AT_CHECK([grep -e "ls_in_put_fdb" ls0flows2 | grep -q "p3"])
+
+dnl A port with port_security but WITHOUT "unknown" does NOT
+dnl get FDB learning flows.
+check ovn-nbctl lsp-add ls0 p4
+check ovn-nbctl set Logical_Switch_Port p4 \
+    'addresses=["fa:16:3e:00:00:04 10.0.0.4"]' \
+    'port_security=["fa:16:3e:00:00:04 10.0.0.4"]'
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl dump-flows ls0 > ls0flows3
+AT_CAPTURE_FILE([ls0flows3])
+
+AT_CHECK([grep -e "ls_in_lookup_fdb" ls0flows3 | grep -c "p4"], [1], [0
+])
+AT_CHECK([grep -e "ls_in_put_fdb" ls0flows3 | grep -c "p4"], [1], [0
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([check options:pkt_clone_type for LSP])
 ovn_start
 check ovn-nbctl ls-add S1

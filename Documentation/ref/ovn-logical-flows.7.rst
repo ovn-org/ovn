@@ -124,14 +124,14 @@ Ingress Table 3: Lookup MAC address learning table
 
 This table looks up the MAC learning table of the logical switch datapath to
 check if the ``port-mac`` pair is present or not. MAC is learnt for logical
-switch VIF ports whose port security is disabled and 'unknown' address set as
-well as for localnet ports with option localnet_learn_fdb. A localnet port entry
+switch VIF ports with 'unknown' address set as well as for localnet ports with
+option localnet_learn_fdb. A localnet port entry
 does not overwrite a VIF port entry. Logical switch ports with type ``switch``
 have implicit 'unknown' addresses and so they are also eligible for MAC
 learning.
 
-- For each such VIF logical port *p* whose port security is disabled and
-  'unknown' address set following flow is added.
+- For each such VIF logical port *p* with 'unknown' address set following flow
+  is added.
 
   - Priority 120 flows for ARP packets with ``arp.sha == 00:00:00:00:00:00``,
     ND packets with ``nd.tll == 00:00:00:00:00:00``, or ND packets with
@@ -175,14 +175,14 @@ Ingress Table 4: Learn MAC of 'unknown' ports.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This table learns the MAC addresses seen on the VIF or 'switch' logical ports
-whose port security is disabled and 'unknown' address set (note: 'switch' ports
-have implicit 'unknown' addresses) as well as on localnet ports with
+with 'unknown' address set (note: 'switch' ports have implicit 'unknown'
+addresses) as well as on localnet ports with
 localnet_learn_fdb option set if the ``lookup_fdb`` action returned false in the
 previous table. For localnet ports (with flags.localnet = 1), lookup_fdb returns
 true if (port, mac) is found or if a mac is found for a port of type vif.
 
-- For each such VIF logical port *p* whose port security is disabled and
-  'unknown' address set and localnet port following flow is added.
+- For each such VIF logical port *p* with 'unknown' address set and localnet
+  port following flow is added.
 
   - Priority 120 flows matching the same zero-MAC conditions as the
     corresponding lookup flows (``arp.sha == 0``, ``nd.tll == 0``, or

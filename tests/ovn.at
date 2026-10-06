@@ -34615,6 +34615,175 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- FDB learning with port security and VRRP VMAC])
+AT_KEYWORDS([fdb port-security vrrp])
+CHECK_SCAPY
+ovn_start
+
+dnl Topology: one logical switch, one hypervisor, three ports.
+dnl p1 and p2 are VRRP members sharing a virtual MAC (VMAC).
+dnl p3 is a regular client that sends traffic to the VMAC.
+dnl
+dnl The VMAC is NOT in LSP.addresses (only in port_security).
+dnl "unknown" IS in addresses so FDB learning is enabled.
+dnl
+dnl FDB learning is triggered by gratuitous ARPs with
+dnl eth.src=physical MAC and arp.sha=VMAC.  The put_fdb action
+dnl records arp.sha (the VMAC) into the FDB table.
+
+vmac=00:00:5e:00:01:33
+vip=10.0.0.100
+p1_mac=fa:16:3e:00:00:01
+p1_ip=10.0.0.1
+p2_mac=fa:16:3e:00:00:02
+p2_ip=10.0.0.2
+p3_mac=fa:16:3e:00:00:03
+p3_ip=10.0.0.3
+
+check ovn-nbctl ls-add ls0
+
+check ovn-nbctl \
+    -- lsp-add ls0 p1 \
+    -- lsp-set-addresses p1 "fa:16:3e:00:00:01 10.0.0.1" unknown \
+    -- lsp-set-port-security p1 "fa:16:3e:00:00:01 10.0.0.1" \
+       "VRRPv3 fa:16:3e:00:00:01 00:00:5e:00:01:33"
+
+check ovn-nbctl \
+    -- lsp-add ls0 p2 \
+    -- lsp-set-addresses p2 "fa:16:3e:00:00:02 10.0.0.2" unknown \
+    -- lsp-set-port-security p2 "fa:16:3e:00:00:02 10.0.0.2" \
+       "VRRPv3 fa:16:3e:00:00:02 00:00:5e:00:01:33"
+
+check ovn-nbctl lsp-add ls0 p3
+check ovn-nbctl lsp-set-addresses p3 "fa:16:3e:00:00:03 10.0.0.3"
+
+net_add n1
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+check ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap
+check ovs-vsctl -- add-port br-int vif3 -- \
+    set interface vif3 external-ids:iface-id=p3 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([p1 sends a GARP to trigger FDB learning of the VMAC])
+
+dnl p1 sends a gratuitous ARP: eth.src=p1's physical MAC,
+dnl arp.sha=VMAC, arp.spa=arp.tpa=VIP.  The put_fdb action
+dnl records both eth.src (p1_mac) and arp.sha (VMAC) into FDB.
+trigger=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${p1_mac}')/ \
+                   ARP(op=1, hwsrc='${vmac}', psrc='${vip}', \
+                       hwdst='00:00:00:00:00:00', pdst='${vip}')")
+as hv1 ovs-appctl netdev-dummy/receive vif1 $trigger
+
+dnl The broadcast reaches p2 and p3.
+echo $trigger > p2.expected
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [p2.expected])
+
+dnl Wait for the VMAC FDB entry to be created.
+wait_row_count fdb 1 mac='"00:00:5e:00:01:33"'
+
+AS_BOX([After FDB learned: traffic to VMAC goes only to p1])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+as hv1 reset_pcap_file vif3 hv1/vif3
+
+dnl Send a UDP packet from p3 to the VMAC.  The FDB should direct
+dnl it to p1 only.
+packet=$(fmt_pkt "Ether(dst='${vmac}', src='${p3_mac}')/ \
+                  IP(src='${p3_ip}', dst='${vip}')/ \
+                  UDP(sport=12345, dport=5678)/ \
+                  Raw(b'to_vrrp_master')")
+as hv1 ovs-appctl netdev-dummy/receive vif3 $packet
+
+echo $packet > p1.expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [p1.expected])
+
+dnl p2 should NOT receive the packet.
+: > p2.expected
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [p2.expected])
+
+AS_BOX([VRRP failover: p2 claims VMAC via GARP])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+as hv1 reset_pcap_file vif3 hv1/vif3
+
+dnl p2 sends a GARP: eth.src=p2's physical MAC, arp.sha=VMAC.
+dnl FDB updates: VMAC -> p2.
+trigger2=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='${p2_mac}')/ \
+                    ARP(op=1, hwsrc='${vmac}', psrc='${vip}', \
+                        hwdst='00:00:00:00:00:00', pdst='${vip}')")
+as hv1 ovs-appctl netdev-dummy/receive vif2 $trigger2
+
+echo $trigger2 > p1.expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [p1.expected])
+
+dnl Wait for the FDB entry to update.
+p2_key=$(fetch_column port_binding tunnel_key logical_port=p2)
+wait_column "$p2_key" fdb port_key mac='"00:00:5e:00:01:33"'
+
+AS_BOX([After failover: traffic to VMAC goes only to p2])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+as hv1 reset_pcap_file vif3 hv1/vif3
+
+dnl Send a UDP packet from p3 to the VMAC.  The FDB should now
+dnl direct it to p2 only.
+packet=$(fmt_pkt "Ether(dst='${vmac}', src='${p3_mac}')/ \
+                  IP(src='${p3_ip}', dst='${vip}')/ \
+                  UDP(sport=12345, dport=5678)/ \
+                  Raw(b'after_failover')")
+as hv1 ovs-appctl netdev-dummy/receive vif3 $packet
+
+echo $packet > p2.expected
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [p2.expected])
+
+dnl p1 should NOT receive the packet.
+: > p1.expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [p1.expected])
+
+AS_BOX([Port security: disallowed MAC is dropped])
+
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+as hv1 reset_pcap_file vif3 hv1/vif3
+
+dnl Send a packet from p1 with a MAC not in its port_security.
+dnl It should be dropped by ingress port security.
+rogue_mac=de:ad:be:ef:00:01
+packet=$(fmt_pkt "Ether(dst='${p3_mac}', src='${rogue_mac}')/ \
+                  IP(src='${p1_ip}', dst='${p3_ip}')/ \
+                  UDP(sport=1111, dport=2222)/ \
+                  Raw(b'rogue')")
+as hv1 ovs-appctl netdev-dummy/receive vif1 $packet
+
+dnl Neither p2 nor p3 should receive the rogue packet.
+: > p2.expected
+: > p3.expected
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [p2.expected])
+OVN_CHECK_PACKETS([hv1/vif3-tx.pcap], [p3.expected])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([container port changed to normal port and then deleted])
 ovn_start
 
