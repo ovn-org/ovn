@@ -33972,6 +33972,30 @@ match=(1), action=(next;)
 match=(inport == "sw0-p1"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
   table=??(ls_in_lookup_fdb   ), priority=100  , dnl
 match=(inport == "sw0-p3"), action=(reg0[[11]] = lookup_fdb(inport, eth.src); next;)
+  table=??(ls_in_lookup_fdb   ), priority=110  , dnl
+match=(inport == "sw0-p1" && arp), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = lookup_fdb(inport, arp.sha); next;)
+  table=??(ls_in_lookup_fdb   ), priority=110  , dnl
+match=(inport == "sw0-p1" && nd_na), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]]= lookup_fdb(inport, nd.tll); next;)
+  table=??(ls_in_lookup_fdb   ), priority=110  , dnl
+match=(inport == "sw0-p1" && nd_ns), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]]= lookup_fdb(inport, nd.sll); next;)
+  table=??(ls_in_lookup_fdb   ), priority=110  , dnl
+match=(inport == "sw0-p3" && arp), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = lookup_fdb(inport, arp.sha); next;)
+  table=??(ls_in_lookup_fdb   ), priority=110  , dnl
+match=(inport == "sw0-p3" && nd_na), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]]= lookup_fdb(inport, nd.tll); next;)
+  table=??(ls_in_lookup_fdb   ), priority=110  , dnl
+match=(inport == "sw0-p3" && nd_ns), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]]= lookup_fdb(inport, nd.sll); next;)
+  table=??(ls_in_lookup_fdb   ), priority=120  , dnl
+match=(inport == "sw0-p1" && arp.sha == 00:00:00:00:00:00), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = 1; next;)
+  table=??(ls_in_lookup_fdb   ), priority=120  , dnl
+match=(inport == "sw0-p1" && nd.sll == 00:00:00:00:00:00), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = 1; next;)
+  table=??(ls_in_lookup_fdb   ), priority=120  , dnl
+match=(inport == "sw0-p1" && nd.tll == 00:00:00:00:00:00), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = 1; next;)
+  table=??(ls_in_lookup_fdb   ), priority=120  , dnl
+match=(inport == "sw0-p3" && arp.sha == 00:00:00:00:00:00), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = 1; next;)
+  table=??(ls_in_lookup_fdb   ), priority=120  , dnl
+match=(inport == "sw0-p3" && nd.sll == 00:00:00:00:00:00), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = 1; next;)
+  table=??(ls_in_lookup_fdb   ), priority=120  , dnl
+match=(inport == "sw0-p3" && nd.tll == 00:00:00:00:00:00), action=(reg0[[11]] = lookup_fdb(inport, eth.src); reg0[[22]] = 1; next;)
 ])
 
 AT_CHECK([grep "ls_in_put_fdb" sw0flows | ovn_strip_lflows], [0], [dnl
@@ -33981,6 +34005,30 @@ match=(1), action=(next;)
 match=(inport == "sw0-p1" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
   table=??(ls_in_put_fdb      ), priority=100  , dnl
 match=(inport == "sw0-p3" && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=110  , dnl
+match=(inport == "sw0-p1" && arp && (reg0[[11]] == 0 || reg0[[22]] == 0)), action=(put_fdb(inport, eth.src); put_fdb(inport, arp.sha); next;)
+  table=??(ls_in_put_fdb      ), priority=110  , dnl
+match=(inport == "sw0-p1" && nd_na && (reg0[[11]] == 0 || reg0[[22]] == 0)), action=(put_fdb(inport, eth.src); put_fdb(inport, nd.tll); next;)
+  table=??(ls_in_put_fdb      ), priority=110  , dnl
+match=(inport == "sw0-p1" && nd_ns && (reg0[[11]] == 0 || reg0[[22]] == 0)), action=(put_fdb(inport, eth.src); put_fdb(inport, nd.sll); next;)
+  table=??(ls_in_put_fdb      ), priority=110  , dnl
+match=(inport == "sw0-p3" && arp && (reg0[[11]] == 0 || reg0[[22]] == 0)), action=(put_fdb(inport, eth.src); put_fdb(inport, arp.sha); next;)
+  table=??(ls_in_put_fdb      ), priority=110  , dnl
+match=(inport == "sw0-p3" && nd_na && (reg0[[11]] == 0 || reg0[[22]] == 0)), action=(put_fdb(inport, eth.src); put_fdb(inport, nd.tll); next;)
+  table=??(ls_in_put_fdb      ), priority=110  , dnl
+match=(inport == "sw0-p3" && nd_ns && (reg0[[11]] == 0 || reg0[[22]] == 0)), action=(put_fdb(inport, eth.src); put_fdb(inport, nd.sll); next;)
+  table=??(ls_in_put_fdb      ), priority=120  , dnl
+match=(inport == "sw0-p1" && arp.sha == 00:00:00:00:00:00 && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=120  , dnl
+match=(inport == "sw0-p1" && nd.sll == 00:00:00:00:00:00 && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=120  , dnl
+match=(inport == "sw0-p1" && nd.tll == 00:00:00:00:00:00 && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=120  , dnl
+match=(inport == "sw0-p3" && arp.sha == 00:00:00:00:00:00 && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=120  , dnl
+match=(inport == "sw0-p3" && nd.sll == 00:00:00:00:00:00 && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
+  table=??(ls_in_put_fdb      ), priority=120  , dnl
+match=(inport == "sw0-p3" && nd.tll == 00:00:00:00:00:00 && reg0[[11]] == 0), action=(put_fdb(inport, eth.src); next;)
 ])
 
 # Send a packet from sw0-p1 with a different mac not present
@@ -34319,6 +34367,132 @@ AT_CHECK([cat hv2_offlows_table72.txt | grep -v NXST], [1], [dnl
 ])
 
 OVN_CLEANUP([hv1], [hv2], [hv3])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn -- FDB learning from ARP/ND sender hardware address])
+AT_KEYWORDS([fdb arp nd])
+CHECK_SCAPY
+ovn_start
+
+dnl Three ports on a logical switch.  p1 and p2 have "unknown" to enable
+dnl FDB learning.  pr is a regular client.
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 p1
+check ovn-nbctl lsp-set-addresses p1 "fa:16:3e:00:00:01 10.0.0.1" unknown
+check ovn-nbctl lsp-add ls0 p2
+check ovn-nbctl lsp-set-addresses p2 "fa:16:3e:00:00:02 10.0.0.2" unknown
+check ovn-nbctl lsp-add ls0 p3
+check ovn-nbctl lsp-set-addresses p3 "fa:16:3e:00:00:03 10.0.0.3"
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+check ovs-vsctl -- add-port br-int vif2 -- \
+    set interface vif2 external-ids:iface-id=p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap
+check ovs-vsctl -- add-port br-int vif3 -- \
+    set interface vif3 external-ids:iface-id=p3 \
+    options:tx_pcap=hv1/vif3-tx.pcap \
+    options:rxq_pcap=hv1/vif3-rx.pcap
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dnl p1 sends a GARP with eth.src=phys_mac, arp.sha=other_mac.
+dnl where phys_mac=fa:16:3e:00:00:01 and other_mac=fa:16:3e:aa:bb:cc
+dnl Both MACs should be learned into the FDB for p1.
+
+garp=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='fa:16:3e:00:00:01')/ \
+                ARP(op=1, hwsrc='fa:16:3e:aa:bb:cc', psrc='10.0.0.100', \
+                    hwdst='00:00:00:00:00:00', pdst='10.0.0.100')")
+as hv1 ovs-appctl netdev-dummy/receive vif1 $garp
+
+dnl Wait for arp.sha (other_mac) to appear in the FDB table.
+OVS_WAIT_UNTIL([ovn-sbctl find fdb mac='"fa:16:3e:aa:bb:cc"' | grep -q port_key])
+
+dnl Verify both MACs are in the FDB.  Each put_fdb generates a separate
+dnl packet-in with an independent random delay, so both need a wait.
+wait_row_count fdb 1 mac='"fa:16:3e:00:00:01"'
+wait_row_count fdb 1 mac='"fa:16:3e:aa:bb:cc"'
+
+dnl Send unicast traffic from p2 to other_mac.  The FDB should
+dnl only direct it to p1.
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:aa:bb:cc', src='fa:16:3e:00:00:03')/ \
+                  IP(src='10.0.0.3', dst='10.0.0.100')/ \
+                  UDP(sport=12345, dport=5678)/ \
+                  Raw(b'to_other_mac')")
+echo $packet > p1.expected
+as hv1 ovs-appctl netdev-dummy/receive vif3 $packet
+
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:00:00:01', src='fa:16:3e:00:00:03')/ \
+                  IP(src='10.0.0.3', dst='10.0.0.101')/ \
+                  UDP(sport=12345, dport=5678)/ \
+                  Raw(b'to_other_mac')")
+echo $packet >> p1.expected
+as hv1 ovs-appctl netdev-dummy/receive vif3 $packet
+
+ > p2.expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [p1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [p2.expected])
+
+dnl Add IPv6 addresses for the ND test.
+check ovn-nbctl lsp-set-addresses p1 "fa:16:3e:00:00:01 10.0.0.1 fd00::1" unknown
+check ovn-nbctl lsp-set-addresses p2 "fa:16:3e:00:00:02 10.0.0.2 fd00::2" unknown
+check ovn-nbctl lsp-set-addresses p3 "fa:16:3e:00:00:03 10.0.0.3 fd00::3"
+check ovn-nbctl --wait=hv sync
+
+dnl Clear FDB entries from the ARP section.
+check ovn-sbctl --all destroy fdb
+check ovn-nbctl --wait=hv sync
+
+dnl p1 sends an unsolicited NA with eth.src=phys_mac,
+dnl nd.tll=virtual_mac (fa:16:3e:cc:dd:ee).
+na=$(fmt_pkt "Ether(dst='33:33:00:00:00:01', src='fa:16:3e:00:00:01')/ \
+              IPv6(src='fd00::1', dst='ff02::1')/ \
+              ICMPv6ND_NA(tgt='fd00::100', R=0, S=0, O=1)/ \
+              ICMPv6NDOptDstLLAddr(lladdr='fa:16:3e:cc:dd:ee')")
+as hv1 ovs-appctl netdev-dummy/receive vif1 $na
+
+dnl Wait for nd.tll (virtual_mac) to appear in the FDB table.
+wait_row_count fdb 1 mac='"fa:16:3e:cc:dd:ee"'
+
+dnl Verify both MACs are in the FDB.
+wait_row_count fdb 1 mac='"fa:16:3e:00:00:01"'
+wait_row_count fdb 1 mac='"fa:16:3e:cc:dd:ee"'
+
+dnl Reset pcap files after FDB learning so the multicast NA
+dnl does not appear in the packet captures below.
+as hv1 reset_pcap_file vif1 hv1/vif1
+as hv1 reset_pcap_file vif2 hv1/vif2
+as hv1 reset_pcap_file vif3 hv1/vif3
+
+dnl Send unicast IPv6/UDP traffic from p3 to the virtual MAC.
+dnl The FDB should direct it only to p1 (not flooded to p2).
+packet=$(fmt_pkt "Ether(dst='fa:16:3e:cc:dd:ee', src='fa:16:3e:00:00:03')/ \
+                  IPv6(src='fd00::3', dst='fd00::100')/ \
+                  UDP(sport=12345, dport=5678)/ \
+                  Raw(b'to_nd_mac')")
+echo $packet > p1.expected
+as hv1 ovs-appctl netdev-dummy/receive vif3 $packet
+
+> p2.expected
+OVN_CHECK_PACKETS([hv1/vif1-tx.pcap], [p1.expected])
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [p2.expected])
+
+OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
@@ -40998,12 +41172,12 @@ sleep_sb
 sleep_controller hv2
 
 AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 14 -> 24])
-arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:14')/ARP(op=1, pdst='192.168.10.24', psrc='192.168.10.14')")
+arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:14')/ARP(op=1, hwsrc='00:00:00:00:10:14', pdst='192.168.10.24', psrc='192.168.10.14')")
 as hv1 ovs-appctl netdev-dummy/receive vif14 $arp_req
 ensure_controller_run hv1
 
 AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 24 -> 14])
-arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:14', src='00:00:00:00:10:24')/ARP(op=2, pdst='192.168.10.14', psrc='192.168.10.24')")
+arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:14', src='00:00:00:00:10:24')/ARP(op=2, hwsrc='00:00:00:00:10:24', hwdst='00:00:00:00:10:14', pdst='192.168.10.14', psrc='192.168.10.24')")
 as hv2 ovs-appctl netdev-dummy/receive vif24 $arp_req
 sleep 1
 
@@ -41031,12 +41205,12 @@ sleep_sb
 sleep_controller hv2
 
 AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 15 -> 25])
-arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:15')/ARP(op=1, pdst='192.168.10.25', psrc='192.168.10.15')")
+arp_req=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='00:00:00:00:10:15')/ARP(op=1, hwsrc='00:00:00:00:10:15', pdst='192.168.10.25', psrc='192.168.10.15')")
 as hv1 ovs-appctl netdev-dummy/receive vif15 $arp_req
 ensure_controller_run hv1
 
 AS_BOX([$(date +%H:%M:%S.%03N) Sending ARP 25 -> 15])
-arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:15', src='00:00:00:00:10:25')/ARP(op=2, pdst='192.168.10.15', psrc='192.168.10.25')")
+arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:15', src='00:00:00:00:10:25')/ARP(op=2, hwsrc='00:00:00:00:10:25', hwdst='00:00:00:00:10:15', pdst='192.168.10.15', psrc='192.168.10.25')")
 as hv2 ovs-appctl netdev-dummy/receive vif25 $arp_req
 
 sleep 1
@@ -41060,7 +41234,10 @@ expected_flow_count=$(($expected_flow_count + 4))
 check_flow_count hv1 $expected_flow_count
 check_flow_count hv2 $expected_flow_count
 
-AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
+# 5 original packet-ins + 3 extra for arp.sha learning
+# (one per ARP sent from hv1: vif14->vif24, vif15->vif25,
+#  vif99->unknown).
+AT_CHECK([test 8 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 # Do not check number of PACKET_IN2 on hv2, as vif14 => 99 as well as vif15 => vif25
 # might have caused PACKET_IN2, but without any guarantee.
 # e.g. (1) packet => hv1 ovs, (2) PACKET_IN2 => hv1 ovn, (3) FDB => sb,
@@ -41072,7 +41249,7 @@ AT_CHECK([test 5 = `cat hv1/ovs-vswitchd.log | grep NXT_PACKET_IN2 | wc -l`])
 # hv1 is expected to be stable.
 
 AS_BOX([$(date +%H:%M:%S.%03N) Packet from external])
-arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:50', src='00:00:00:00:10:40')/ARP(op=2, pdst='192.168.10.50', psrc='192.168.10.40')")
+arp_req=$(fmt_pkt "Ether(dst='00:00:00:00:10:50', src='00:00:00:00:10:40')/ARP(op=2, hwsrc='00:00:00:00:10:40', hwdst='00:00:00:00:10:50', pdst='192.168.10.50', psrc='192.168.10.40')")
 as hv2 ovs-appctl netdev-dummy/receive ext0 $arp_req
 wait_column "$ln_port_key" fdb port_key mac='"00:00:00:00:10:40"'
 

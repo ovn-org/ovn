@@ -1,5 +1,10 @@
 OVN v26.09.1 - xx xxx xxxx
 --------------------------
+   - Learn ARP sender hardware address (arp.sha) and IPv6 Neighbor
+     Discovery link-layer addresses (nd.tll, nd.sll) into the FDB
+     table in addition to eth.src.  This allows VRRP virtual MACs to
+     be learned from gratuitous ARP packets and unsolicited Neighbor
+     Advertisements.
 
 OVN v26.09.0 - Sep 18 2026
 --------------------------

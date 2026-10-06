@@ -133,6 +133,23 @@ learning.
 - For each such VIF logical port *p* whose port security is disabled and
   'unknown' address set following flow is added.
 
+  - Priority 120 flows for ARP packets with ``arp.sha == 00:00:00:00:00:00``,
+    ND packets with ``nd.tll == 00:00:00:00:00:00``, or ND packets with
+    ``nd.sll == 00:00:00:00:00:00``.  These match ARP or ND packets whose inner
+    MAC field is zero (i.e., the optional link-layer address option is absent).
+    The action looks up only ``eth.src``: ``reg0[11] = lookup_fdb(inport,
+    eth.src);`` and sets ``reg0[22] = 1`` to mark the inner MAC lookup as
+    satisfied (there is no inner MAC to learn).
+
+  - Priority 110 flows for ARP packets (matching ``arp``), ND Neighbor
+    Advertisements (matching ``nd_na``), and ND Neighbor Solicitations
+    (matching ``nd_ns``).  These match packets whose inner MAC field is
+    non-zero (the priority-120 zero-MAC guard flows take precedence when it is
+    zero).  The action looks up both ``eth.src`` and the inner MAC field:
+    ``reg0[11] = lookup_fdb(inport, eth.src); reg0[22] = lookup_fdb(inport,
+    <inner>); next;`` where ``<inner>`` is ``arp.sha`` for ARP, ``nd.tll`` for
+    NA, or ``nd.sll`` for NS.
+
   - Priority 100 flow with the match ``inport == p`` and action ``reg0[11] =
     lookup_fdb(inport, eth.src); next;``
 
@@ -166,6 +183,17 @@ true if (port, mac) is found or if a mac is found for a port of type vif.
 
 - For each such VIF logical port *p* whose port security is disabled and
   'unknown' address set and localnet port following flow is added.
+
+  - Priority 120 flows matching the same zero-MAC conditions as the
+    corresponding lookup flows (``arp.sha == 0``, ``nd.tll == 0``, or
+    ``nd.sll == 0``).  Guarded by ``reg0[11] == 0``, these learn only
+    ``eth.src`` via ``put_fdb(inport, eth.src); next;``.
+
+  - Priority 110 flows matching ARP, ND NA, or ND NS packets.  Guarded by
+    ``reg0[11] == 0 || reg0[22] == 0`` (i.e., either the outer or the inner
+    MAC is unknown), these learn both ``eth.src`` and the inner MAC via
+    ``put_fdb(inport, eth.src); put_fdb(inport, <inner>); next;`` where
+    ``<inner>`` is ``arp.sha``, ``nd.tll``, or ``nd.sll`` respectively.
 
   - Priority 100 flow with the match ``inport == p && reg0[11] == 0`` and action
     ``put_fdb(inport, eth.src); next;`` which stores the ``port-mac`` in the mac

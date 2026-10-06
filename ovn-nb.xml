@@ -1951,12 +1951,23 @@
 
           <dt><code>unknown</code></dt>
           <dd>
-            This indicates that the logical port has an unknown set of Ethernet
-            addresses.  When an OVN logical switch processes a unicast Ethernet
-            frame whose destination MAC address is not in any logical port's
-            <ref column="addresses"/> column, it delivers it to the port (or
-            ports) whose <ref column="addresses"/> columns include
-            <code>unknown</code>.
+            <p>
+              This indicates that the logical port has an unknown set of
+              Ethernet addresses.  When an OVN logical switch processes a
+              unicast Ethernet frame whose destination MAC address is not in
+              any logical port's <ref column="addresses"/> column, it delivers
+              it to the port (or ports) whose <ref column="addresses"/>
+              columns include <code>unknown</code>.
+            </p>
+            <p>
+              When <code>unknown</code> is present, FDB learning is enabled
+              for this port: source MACs are recorded via <code>put_fdb</code>
+              and destination MACs are resolved via <code>get_fdb</code>.
+              For ARP packets, the sender hardware address is also learned.
+              For IPv6 Neighbor Advertisements, the target link-layer address
+              is learned; for Neighbor Solicitations, the source link-layer
+              address is learned.
+            </p>
           </dd>
 
           <dt><code>dynamic</code></dt>
