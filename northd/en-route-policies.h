@@ -101,9 +101,6 @@ struct route_policies_data {
 
 void en_route_policies_cleanup(void *data);
 enum engine_input_handler_result
-route_policies_northd_change_handler(struct engine_node *node,
-                                     void *data OVS_UNUSED);
-enum engine_input_handler_result
 route_policies_datapath_synced_logical_router_handler(struct engine_node *node,
                                                       void *data);
 enum engine_node_state en_route_policies_run(struct engine_node *node,

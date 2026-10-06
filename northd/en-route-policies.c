@@ -558,27 +558,6 @@ en_route_policies_cleanup(void *data)
     route_policies_destroy(data);
 }
 
-enum engine_input_handler_result
-route_policies_northd_change_handler(struct engine_node *node,
-                                     void *data OVS_UNUSED)
-{
-    struct northd_data *northd_data = engine_get_input_data("northd", node);
-    if (!northd_has_tracked_data(&northd_data->trk_data)) {
-        return EN_UNHANDLED;
-    }
-
-    /* This node uses the below data from the en_northd engine node.
-     * See (lr_stateful_get_input_data())
-     *   1. northd_data->lr_datapaths
-     *      This data gets updated when a logical router or logical router port
-     *      is created or deleted.
-     *      Northd engine node presently falls back to full recompute when
-     *      this happens and so does this node.
-     */
-
-    return EN_HANDLED_UNCHANGED;
-}
-
 static bool
 logical_router_policies_updated(const struct nbrec_logical_router *lr)
 {
@@ -590,6 +569,39 @@ logical_router_policies_updated(const struct nbrec_logical_router *lr)
         const struct nbrec_logical_router_policy *rule = lr->policies[i];
         if (nbrec_logical_router_policy_row_get_seqno(
                 rule, OVSDB_IDL_CHANGE_MODIFY) > 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool
+logical_router_ports_updated(const struct nbrec_logical_router *lr)
+{
+    /* We only care if ports change if the lr has policies with a
+     * "reroute" action. Otherwise, we don't care about the ports.
+     */
+    bool has_reroute = false;
+    for (size_t i = 0; i < lr->n_policies; i++) {
+        const struct nbrec_logical_router_policy *rule = lr->policies[i];
+        if (!strcmp(rule->action, "reroute")) {
+            has_reroute = true;
+            break;
+        }
+    }
+    if (!has_reroute) {
+        return false;
+    }
+
+    if (nbrec_logical_router_is_updated(lr,
+                                        NBREC_LOGICAL_ROUTER_COL_PORTS)) {
+        return true;
+    }
+    for (size_t i = 0; i < lr->n_ports; i++) {
+        const struct nbrec_logical_router_port *lrp = lr->ports[i];
+        if (nbrec_logical_router_port_row_get_seqno(
+                lrp, OVSDB_IDL_CHANGE_MODIFY) > 0) {
             return true;
         }
     }
@@ -675,7 +687,8 @@ route_policies_datapath_synced_logical_router_handler(struct engine_node *node,
     HMAPX_FOR_EACH (lr_node, &synced_lrs->updated) {
         const struct ovn_synced_logical_router *lr = lr_node->data;
 
-        if (!logical_router_policies_updated(lr->nb)) {
+        if (!logical_router_policies_updated(lr->nb) &&
+            !logical_router_ports_updated(lr->nb)) {
             continue;
         }
         struct ovn_datapath *od =

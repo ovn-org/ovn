@@ -16783,7 +16783,7 @@ check_engine_stats lflow recompute nocompute
 # For the below engine nodes, en_northd is input.  So check
 # their engine status.
 check_engine_stats lr_stateful recompute nocompute
-check_engine_stats route_policies recompute nocompute
+check_engine_stats route_policies norecompute compute
 check_engine_stats routes recompute nocompute
 check_engine_stats bfd_sync recompute nocompute
 check_engine_stats sync_to_sb_lb recompute nocompute
@@ -25646,15 +25646,55 @@ check_engine_stats bfd_sync norecompute compute
 check_engine_stats lflow norecompute compute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
-# Delete the logical router that has policies on it.
-# This should also not require a recompute in route_policies
+# Add a port to lr1. This should trigger a recompute in northd,
+# but route_policies should be able to handle the change incrementally.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl --wait=sb lr-del lr1
+check ovn-nbctl lrp-add lr1 new_port 00:00:00:00:00:05 20.0.0.1/24
+check ovn-nbctl --wait=sb sync
+
+check_engine_stats northd recompute compute
+check_engine_stats route_policies norecompute compute
+# bfd_sync has to recompute because northd recomputed.
+# Since bfd_sync recomputes, so does lflow.
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add a reroute policy to lr1. Like other policy additions, this should
+# be handled incrementally everywhere now.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl lr-policy-add lr1 101 "ip4.src == 10.0.0.1" reroute 20.0.0.10
 
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
 check_engine_stats bfd_sync recompute nocompute
 check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Add another port to lr1. Like before, we should be able to handle this
+# incrementally, even though northd has to recompute.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl lrp-add lr1 newer_port 00:00:00:00:00:06 30.0.0.1/24
+
+check_engine_stats northd recompute compute
+check_engine_stats route_policies norecompute compute
+# bfd_sync has to recompute because northd recomputed.
+# Since bfd_sync recomputes, so does lflow.
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Delete the logical router that has policies on it.
+# This should also not require a recompute in route_policies
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-nbctl --wait=sb lr-del lr1
+
+# northd will recompute when this router is deleted since it
+# had ports.
+check_engine_stats northd recompute compute
+check_engine_stats route_policies norecompute compute
+check_engine_stats bfd_sync recompute nocompute
+check_engine_stats lflow recompute nocompute
 CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP_NORTHD
