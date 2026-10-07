@@ -187,7 +187,7 @@ en_global_config_run(struct engine_node *node , void *data)
     bool ic_vxlan_mode = false;
     const struct nbrec_logical_switch *nbs;
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbs, nbrec_ls_table) {
-        if (smap_get(&nbs->other_config, "ic-vxlan_mode")) {
+        if (smap_get_bool(&nbs->other_config, "ic-vxlan_mode", false)) {
             ic_vxlan_mode = true;
             break;
         }
@@ -478,7 +478,7 @@ global_config_nb_logical_switch_handler(struct engine_node *node,
     bool ic_vxlan_mode = false;
     const struct nbrec_logical_switch *nbs;
     NBREC_LOGICAL_SWITCH_TABLE_FOR_EACH (nbs, nbrec_ls_table) {
-        if (smap_get(&nbs->other_config, "ic-vxlan_mode")) {
+        if (smap_get_bool(&nbs->other_config, "ic-vxlan_mode", false)) {
             ic_vxlan_mode = true;
             break;
         }

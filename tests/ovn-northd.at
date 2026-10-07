@@ -3583,6 +3583,24 @@ check ovn-nbctl --wait=sb set logical-switch LS other-config:interconn-ts=LS
 check ovn-nbctl --wait=sb set logical-switch LS other-config:ic-vxlan_mode=true
 AT_CHECK([test "$(get_max_tunid)" -eq 1023])
 
+dnl ovn-ic stamps ic-vxlan_mode on every transit switch, including with the
+dnl value "false".  Only a true value must restrict the tunnel key range.
+check ovn-nbctl --wait=sb set logical-switch LS other-config:ic-vxlan_mode=false
+AT_CHECK([test "$(get_max_tunid)" -eq 4095])
+
+dnl Anything that is not a boolean true is treated as false.
+check ovn-nbctl --wait=sb set logical-switch LS other-config:ic-vxlan_mode=foo
+AT_CHECK([test "$(get_max_tunid)" -eq 4095])
+
+dnl The same must hold on a full recompute, not only on the incremental path.
+check ovn-appctl -t northd/ovn-northd inc-engine/recompute
+check ovn-nbctl --wait=sb sync
+AT_CHECK([test "$(get_max_tunid)" -eq 4095])
+
+dnl Setting it back to true restricts the range again.
+check ovn-nbctl --wait=sb set logical-switch LS other-config:ic-vxlan_mode=true
+AT_CHECK([test "$(get_max_tunid)" -eq 1023])
+
 check ovn-nbctl --wait=sb clear logical-switch LS other-config
 AT_CHECK([test "$(get_max_tunid)" -eq 4095])
 
