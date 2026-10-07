@@ -218,14 +218,23 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_gateway, &en_sb_encap, NULL);
 
     /* en_ts: sync transit switches to their AZ NB Logical_Switch mirrors.
+     *
      * en_ts builds its own transit-switch IC-SB Datapath_Binding map each run
-     * and only maintains the NB mirror; IC-SB Datapath_Binding creation/keying
-     * is owned by en_tunnel_key (downstream). */
+     * (local data, never shared) and only maintains the NB mirror.  IC-SB
+     * Datapath_Binding creation/keying is owned by en_tunnel_key (downstream),
+     * so en_ts no longer allocates tunnel keys.  en_icsb_datapath_binding
+     * drives the follow-up NB requested-tnl-key sync after en_tunnel_key
+     * (re)assigns a key - notably the global refresh from an IC-NB vxlan_mode
+     * change (see en_ts_icsb_datapath_binding_handler). */
     engine_add_input(&en_ts, &en_az, NULL);
-    engine_add_input(&en_ts, &en_icsb_datapath_binding, NULL);
-    engine_add_input(&en_ts, &en_icnb_ic_nb_global, NULL);
-    engine_add_input(&en_ts, &en_icnb_transit_switch, NULL);
-    engine_add_input(&en_ts, &en_nb_logical_switch, NULL);
+    engine_add_input(&en_ts, &en_icsb_datapath_binding,
+                     en_ts_icsb_datapath_binding_handler);
+    engine_add_input(&en_ts, &en_icnb_ic_nb_global,
+                     ic_nb_global_options_handler);
+    engine_add_input(&en_ts, &en_icnb_transit_switch,
+                     en_ts_icnb_transit_switch_handler);
+    engine_add_input(&en_ts, &en_nb_logical_switch,
+                     en_ts_nb_logical_switch_handler);
     engine_add_input(&en_ts, &en_icsb_encap, NULL);
 
     /* en_tr: sync transit routers to their AZ NB Logical_Router mirrors.
