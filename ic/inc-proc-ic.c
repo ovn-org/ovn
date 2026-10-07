@@ -27,6 +27,14 @@
 #include "openvswitch/vlog.h"
 #include "inc-proc-ic.h"
 #include "en-ic.h"
+#include "en-dp-enum.h"
+#include "en-gateway.h"
+#include "en-ts.h"
+#include "en-tr.h"
+#include "en-port-binding.h"
+#include "en-route.h"
+#include "en-service-monitor.h"
+#include "en-address-set.h"
 #include "ovn-util.h"
 #include "unixctl.h"
 #include "util.h"
@@ -108,8 +116,11 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_ic);
     ICNB_NODES
 #undef ICNB_NODE
 
+/* Note: the ic_sb_global table is intentionally not modeled as an engine input
+ * node.  It only carries IC-SB sequence numbers, which are written by
+ * update_sequence_numbers() in the main loop (outside the engine) and are not
+ * read by any subsystem node. */
 #define ICSB_NODES \
-    ICSB_NODE(ic_sb_global, "ic_sb_global") \
     ICSB_NODE(availability_zone, "availability_zone") \
     ICSB_NODE(service_monitor, "service_monitor") \
     ICSB_NODE(route, "route") \
@@ -162,6 +173,14 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_ic);
 
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
+static ENGINE_NODE(dp_enum);
+static ENGINE_NODE(gateway);
+static ENGINE_NODE(ts);
+static ENGINE_NODE(tr);
+static ENGINE_NODE(port_binding);
+static ENGINE_NODE(route);
+static ENGINE_NODE(service_monitor);
+static ENGINE_NODE(address_set);
 static ENGINE_NODE(ic);
 
 void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
@@ -169,41 +188,104 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
                       struct ovsdb_idl_loop *icnb,
                       struct ovsdb_idl_loop *icsb)
 {
-    /* Define relationships between nodes where first argument is dependent
-     * on the second argument */
-    engine_add_input(&en_ic, &en_nb_nb_global, NULL);
-    engine_add_input(&en_ic, &en_nb_logical_router_static_route, NULL);
-    engine_add_input(&en_ic, &en_nb_logical_router, NULL);
-    engine_add_input(&en_ic, &en_nb_logical_router_port, NULL);
-    engine_add_input(&en_ic, &en_nb_logical_switch, NULL);
-    engine_add_input(&en_ic, &en_nb_logical_switch_port, NULL);
-    engine_add_input(&en_ic, &en_nb_load_balancer, NULL);
-    engine_add_input(&en_ic, &en_nb_load_balancer_group, NULL);
-    engine_add_input(&en_ic, &en_nb_address_set, NULL);
+    /* Define relationships between nodes where the first argument is dependent
+     * on the second argument.
+     *
+     * Each subsystem node below depends on the table input nodes it reads, so
+     * the engine only re-runs a subsystem when one of its inputs changed.  No
+     * change handlers are wired yet: every dependency uses a NULL handler, so
+     * any tracked change to an input triggers a full recompute of just that
+     * subsystem (run() method).  This preserves the previous behavior while
+     * splitting the monolithic ovn_db_run() into independently-gated nodes.
+     * Change handlers are added incrementally in a later step. */
 
-    engine_add_input(&en_ic, &en_sb_sb_global, NULL);
-    engine_add_input(&en_ic, &en_sb_chassis, NULL);
-    engine_add_input(&en_ic, &en_sb_encap, NULL);
-    engine_add_input(&en_ic, &en_sb_datapath_binding, NULL);
-    engine_add_input(&en_ic, &en_sb_port_binding, NULL);
-    engine_add_input(&en_ic, &en_sb_service_monitor, NULL);
-    engine_add_input(&en_ic, &en_sb_learned_route, NULL);
-    engine_add_input(&en_ic, &en_sb_address_set, NULL);
+    /* en_dp_enum: enumerate IC-SB datapath bindings (tunnel-key allocator and
+     * transit switch/router datapath maps shared by en_ts and en_tr).
+     *
+     * en_ts and en_tr allocate datapath tunnel keys from the shared
+     * 'dp_tnlids' set owned by this node, mutating it during their run.  To
+     * keep that allocator correct, en_dp_enum must rebuild it from scratch in
+     * the same iteration as any allocation.  It therefore depends not only on
+     * the IC-SB datapath bindings themselves, but also on every input that can
+     * cause en_ts/en_tr to allocate a key: a new transit switch or router, or
+     * a change of vxlan_mode (which forces a tunnel-key refresh). */
+    engine_add_input(&en_dp_enum, &en_icsb_datapath_binding, NULL);
+    engine_add_input(&en_dp_enum, &en_icnb_transit_switch, NULL);
+    engine_add_input(&en_dp_enum, &en_icnb_transit_router, NULL);
+    engine_add_input(&en_dp_enum, &en_icnb_ic_nb_global, NULL);
 
-    engine_add_input(&en_ic, &en_icnb_ic_nb_global, NULL);
-    engine_add_input(&en_ic, &en_icnb_transit_switch, NULL);
-    engine_add_input(&en_ic, &en_icnb_transit_router, NULL);
-    engine_add_input(&en_ic, &en_icnb_transit_router_port, NULL);
+    /* en_gateway: sync gateways/chassis between SB and IC-SB. */
+    engine_add_input(&en_gateway, &en_icsb_availability_zone, NULL);
+    engine_add_input(&en_gateway, &en_icsb_gateway, NULL);
+    engine_add_input(&en_gateway, &en_icsb_encap, NULL);
+    engine_add_input(&en_gateway, &en_sb_chassis, NULL);
+    engine_add_input(&en_gateway, &en_sb_encap, NULL);
 
-    engine_add_input(&en_ic, &en_icsb_encap, NULL);
-    engine_add_input(&en_ic, &en_icsb_service_monitor, NULL);
-    engine_add_input(&en_ic, &en_icsb_ic_sb_global, NULL);
-    engine_add_input(&en_ic, &en_icsb_port_binding, NULL);
-    engine_add_input(&en_ic, &en_icsb_availability_zone, NULL);
-    engine_add_input(&en_ic, &en_icsb_gateway, NULL);
-    engine_add_input(&en_ic, &en_icsb_route, NULL);
-    engine_add_input(&en_ic, &en_icsb_datapath_binding, NULL);
-    engine_add_input(&en_ic, &en_icsb_address_set, NULL);
+    /* en_ts: sync transit switches to NB and IC-SB datapath bindings. */
+    engine_add_input(&en_ts, &en_dp_enum, NULL);
+    engine_add_input(&en_ts, &en_icnb_ic_nb_global, NULL);
+    engine_add_input(&en_ts, &en_icnb_transit_switch, NULL);
+    engine_add_input(&en_ts, &en_nb_logical_switch, NULL);
+    engine_add_input(&en_ts, &en_icsb_encap, NULL);
+
+    /* en_tr: sync transit routers to NB and IC-SB datapath bindings. */
+    engine_add_input(&en_tr, &en_dp_enum, NULL);
+    engine_add_input(&en_tr, &en_icnb_transit_router, NULL);
+    engine_add_input(&en_tr, &en_nb_logical_router, NULL);
+
+    /* en_port_binding: sync cross-AZ port bindings. */
+    engine_add_input(&en_port_binding, &en_icsb_availability_zone, NULL);
+    engine_add_input(&en_port_binding, &en_icsb_port_binding, NULL);
+    engine_add_input(&en_port_binding, &en_icnb_transit_switch, NULL);
+    engine_add_input(&en_port_binding, &en_icnb_transit_router, NULL);
+    engine_add_input(&en_port_binding, &en_icnb_transit_router_port, NULL);
+    engine_add_input(&en_port_binding, &en_nb_logical_switch, NULL);
+    engine_add_input(&en_port_binding, &en_nb_logical_switch_port, NULL);
+    engine_add_input(&en_port_binding, &en_nb_logical_router, NULL);
+    engine_add_input(&en_port_binding, &en_nb_logical_router_port, NULL);
+    engine_add_input(&en_port_binding, &en_sb_port_binding, NULL);
+    engine_add_input(&en_port_binding, &en_sb_chassis, NULL);
+
+    /* en_route: advertise/learn cross-AZ routes. */
+    engine_add_input(&en_route, &en_icsb_availability_zone, NULL);
+    engine_add_input(&en_route, &en_icsb_port_binding, NULL);
+    engine_add_input(&en_route, &en_icsb_route, NULL);
+    engine_add_input(&en_route, &en_icnb_transit_switch, NULL);
+    engine_add_input(&en_route, &en_nb_nb_global, NULL);
+    engine_add_input(&en_route, &en_nb_logical_router, NULL);
+    engine_add_input(&en_route, &en_nb_logical_router_port, NULL);
+    engine_add_input(&en_route, &en_nb_logical_router_static_route, NULL);
+    engine_add_input(&en_route, &en_nb_logical_switch_port, NULL);
+    engine_add_input(&en_route, &en_nb_load_balancer, NULL);
+    engine_add_input(&en_route, &en_nb_load_balancer_group, NULL);
+    engine_add_input(&en_route, &en_sb_datapath_binding, NULL);
+    engine_add_input(&en_route, &en_sb_learned_route, NULL);
+
+    /* en_service_monitor: sync load-balancer health checks across AZs. */
+    engine_add_input(&en_service_monitor, &en_icsb_availability_zone, NULL);
+    engine_add_input(&en_service_monitor, &en_icsb_service_monitor, NULL);
+    engine_add_input(&en_service_monitor, &en_sb_sb_global, NULL);
+    engine_add_input(&en_service_monitor, &en_sb_service_monitor, NULL);
+    engine_add_input(&en_service_monitor, &en_sb_port_binding, NULL);
+
+    /* en_address_set: advertise/learn address sets across AZs. */
+    engine_add_input(&en_address_set, &en_icsb_availability_zone, NULL);
+    engine_add_input(&en_address_set, &en_nb_nb_global, NULL);
+    engine_add_input(&en_address_set, &en_nb_address_set, NULL);
+    engine_add_input(&en_address_set, &en_sb_address_set, NULL);
+    engine_add_input(&en_address_set, &en_icsb_address_set, NULL);
+
+    /* en_ic: output node aggregating all subsystems.  Order matches the
+     * previous ovn_db_run() call order; in particular en_ts is added before
+     * en_tr so they allocate datapath tunnel keys from the shared en_dp_enum
+     * allocator in the same order as before. */
+    engine_add_input(&en_ic, &en_gateway, NULL);
+    engine_add_input(&en_ic, &en_ts, NULL);
+    engine_add_input(&en_ic, &en_tr, NULL);
+    engine_add_input(&en_ic, &en_port_binding, NULL);
+    engine_add_input(&en_ic, &en_route, NULL);
+    engine_add_input(&en_ic, &en_service_monitor, NULL);
+    engine_add_input(&en_ic, &en_address_set, NULL);
 
     struct engine_arg engine_arg = {
         .nb_idl = nb->idl,

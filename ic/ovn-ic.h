@@ -65,8 +65,6 @@ enum ic_port_binding_type { IC_SWITCH_PORT, IC_ROUTER_PORT, IC_PORT_MAX };
 struct hmap;
 struct shash;
 
-void ovn_db_run(struct ic_context *ctx);
-
 /* Per-subsystem entry points, invoked by the incremental-processing engine
  * nodes (see ic/en-*.c).  Each performs a full recompute of its subsystem and
  * may be invoked independently when its engine inputs change. */

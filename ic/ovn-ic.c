@@ -3824,27 +3824,6 @@ inc_proc_graph_dump(const char *end_node)
     ovsdb_idl_loop_destroy(&ovnisb_idl_loop);
 }
 
-void
-ovn_db_run(struct ic_context *ctx)
-{
-    struct hmap dp_tnlids = HMAP_INITIALIZER(&dp_tnlids);
-    struct shash isb_ts_dps = SHASH_INITIALIZER(&isb_ts_dps);
-    struct shash isb_tr_dps = SHASH_INITIALIZER(&isb_tr_dps);
-
-    gateway_run(ctx);
-    enumerate_datapaths(ctx, &dp_tnlids, &isb_ts_dps, &isb_tr_dps);
-    ts_run(ctx, &dp_tnlids, &isb_ts_dps);
-    tr_run(ctx, &dp_tnlids, &isb_tr_dps);
-    port_binding_run(ctx);
-    route_run(ctx);
-    sync_service_monitor(ctx);
-    address_set_run(ctx);
-
-    ovn_destroy_tnlids(&dp_tnlids);
-    shash_destroy(&isb_ts_dps);
-    shash_destroy(&isb_tr_dps);
-}
-
 static void
 parse_options(int argc OVS_UNUSED, char *argv[] OVS_UNUSED)
 {

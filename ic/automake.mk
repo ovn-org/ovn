@@ -4,6 +4,22 @@ ic_ovn_ic_SOURCES = ic/ovn-ic.c \
 	ic/ovn-ic.h \
 	ic/en-ic.c \
 	ic/en-ic.h \
+	ic/en-dp-enum.c \
+	ic/en-dp-enum.h \
+	ic/en-gateway.c \
+	ic/en-gateway.h \
+	ic/en-ts.c \
+	ic/en-ts.h \
+	ic/en-tr.c \
+	ic/en-tr.h \
+	ic/en-port-binding.c \
+	ic/en-port-binding.h \
+	ic/en-route.c \
+	ic/en-route.h \
+	ic/en-service-monitor.c \
+	ic/en-service-monitor.h \
+	ic/en-address-set.c \
+	ic/en-address-set.h \
 	ic/inc-proc-ic.c \
 	ic/inc-proc-ic.h
 ic_ovn_ic_LDADD = \

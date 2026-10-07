@@ -10,40 +10,37 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
-*/
+ */
 
 #include <config.h>
 
-#include <getopt.h>
-#include <stdlib.h>
-#include <stdio.h>
-
-#include "en-ic.h"
+#include "en-service-monitor.h"
 #include "lib/inc-proc-eng.h"
-#include "lib/stopwatch-names.h"
-#include "ovn-ic.h"
 #include "openvswitch/vlog.h"
+#include "ovn-ic.h"
 
-VLOG_DEFINE_THIS_MODULE(en_ic);
+VLOG_DEFINE_THIS_MODULE(en_ic_service_monitor);
 
 enum engine_node_state
-en_ic_run(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
+en_service_monitor_run(struct engine_node *node OVS_UNUSED,
+                       void *data OVS_UNUSED)
 {
-    /* 'en_ic' is the engine's output node and only aggregates the per
-     * subsystem nodes (gateway, ts, tr, port_binding, route, service_monitor
-     * and address_set).  Each of those nodes performs (and gates) its own
-     * work, so this node has nothing to compute itself. */
+    const struct engine_context *eng_ctx = engine_get_context();
+    struct ic_context *ctx = eng_ctx->client_ctx;
+
+    sync_service_monitor(ctx);
+
     return EN_UPDATED;
 }
 
 void *
-en_ic_init(struct engine_node *node OVS_UNUSED,
-            struct engine_arg *arg OVS_UNUSED)
+en_service_monitor_init(struct engine_node *node OVS_UNUSED,
+                        struct engine_arg *arg OVS_UNUSED)
 {
     return NULL;
 }
 
 void
-en_ic_cleanup(void *data OVS_UNUSED)
+en_service_monitor_cleanup(void *data OVS_UNUSED)
 {
 }
