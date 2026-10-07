@@ -181,7 +181,7 @@ static ENGINE_NODE(ts);
 static ENGINE_NODE(tr);
 static ENGINE_NODE(tunnel_key);
 static ENGINE_NODE(port_binding, CLEAR_TRACKED_DATA);
-static ENGINE_NODE(route);
+static ENGINE_NODE(route, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(service_monitor);
 static ENGINE_NODE(address_set);
 static ENGINE_NODE(ic);
@@ -313,21 +313,43 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_port_binding, &en_sb_chassis,
                      port_binding_sb_chassis_handler);
 
-    /* en_route: advertise/learn cross-AZ routes. */
+    /* en_route: advertise/learn cross-AZ routes.
+     *
+     * Like en_gateway and en_port_binding, this node uses only the AZ identity
+     * (en_az's resolved AZ and the by-AZ route/port-binding indexes) and
+     * does not read the Availability_Zone table, so it does not depend on
+     * en_icsb_availability_zone and is not churned by its nb_ic_cfg sequence
+     * number. */
     engine_add_input(&en_route, &en_az, NULL);
-    engine_add_input(&en_route, &en_icsb_availability_zone, NULL);
-    engine_add_input(&en_route, &en_icsb_port_binding, NULL);
-    engine_add_input(&en_route, &en_icsb_route, NULL);
-    engine_add_input(&en_route, &en_icnb_transit_switch, NULL);
-    engine_add_input(&en_route, &en_nb_nb_global, NULL);
-    engine_add_input(&en_route, &en_nb_logical_router, NULL);
-    engine_add_input(&en_route, &en_nb_logical_router_port, NULL);
-    engine_add_input(&en_route, &en_nb_logical_router_static_route, NULL);
-    engine_add_input(&en_route, &en_nb_logical_switch_port, NULL);
-    engine_add_input(&en_route, &en_nb_load_balancer, NULL);
-    engine_add_input(&en_route, &en_nb_load_balancer_group, NULL);
-    engine_add_input(&en_route, &en_sb_datapath_binding, NULL);
-    engine_add_input(&en_route, &en_sb_learned_route, NULL);
+    /* en_port_binding is an ordering dependency only: en_route reads IC-SB
+     * port bindings synced by en_port_binding, so it must run after it.  The
+     * real port-binding data arrives via en_icsb_port_binding, so a no-op
+     * handler avoids forcing a recompute. */
+    engine_add_input(&en_route, &en_port_binding, engine_noop_handler);
+    engine_add_input(&en_route, &en_icsb_port_binding,
+                     route_icsb_port_binding_handler);
+    engine_add_input(&en_route, &en_icsb_route, route_icsb_route_handler);
+    engine_add_input(&en_route, &en_icnb_transit_switch,
+                     route_icnb_transit_switch_handler);
+    engine_add_input(&en_route, &en_nb_nb_global, route_nb_nb_global_handler);
+    engine_add_input(&en_route, &en_nb_logical_switch,
+                     route_nb_logical_switch_handler);
+    engine_add_input(&en_route, &en_nb_logical_router,
+                     route_nb_logical_router_handler);
+    engine_add_input(&en_route, &en_nb_logical_router_port,
+                     route_nb_logical_router_port_handler);
+    engine_add_input(&en_route, &en_nb_logical_router_static_route,
+                     route_nb_logical_router_static_route_handler);
+    engine_add_input(&en_route, &en_nb_logical_switch_port,
+                     route_nb_logical_switch_port_handler);
+    engine_add_input(&en_route, &en_nb_load_balancer,
+                     route_nb_load_balancer_handler);
+    engine_add_input(&en_route, &en_nb_load_balancer_group,
+                     route_nb_load_balancer_group_handler);
+    engine_add_input(&en_route, &en_sb_datapath_binding,
+                     route_sb_datapath_binding_handler);
+    engine_add_input(&en_route, &en_sb_learned_route,
+                     route_sb_learned_route_handler);
 
     /* en_service_monitor: sync load-balancer health checks across AZs. */
     engine_add_input(&en_service_monitor, &en_az, NULL);

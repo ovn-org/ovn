@@ -1063,6 +1063,192 @@ OVN_CLEANUP_IC([az1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - route handlers])
+
+# Exercises the en_route change handlers on a single AZ (so engine stats are
+# not perturbed by other AZs' route write-backs).  CHECK_ROUTE_RECOMPUTE()
+# (ovn-macros.at) quiesces the engine, resets the stats, applies one change and
+# asserts whether the route node was fully recomputed.  A route advertised
+# from this AZ has its metadata (ad_route_sync_external_ids) ignored by the
+# IC-SB Route handler, so the stats stay clean between checks.
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb sync
+check ovn-nbctl set nb_global . options:ic-route-adv=true
+check ovn-nbctl set nb_global . options:ic-route-learn=true
+check ovn-nbctl lr-add lr11
+check ovn-nbctl lrp-add lr11 lrp-lr11-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr11 lrp-lr11-ts1
+check ovn-nbctl lrp-add lr11 lrp-local 00:00:00:00:00:01 192.168.1.1/24
+# A tenant logical switch unrelated to interconnection.
+check ovn-nbctl --wait=sb ls-add sw0
+
+# Wait until lr11's connected subnet is advertised to IC-SB.
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=ip_prefix \
+                            find route ip_prefix=192.168.1.1/24)" \
+                    = 192.168.1.1/24])
+
+# --- Changes that must NOT recompute the route node ---
+
+# NB Global handler: a non-'options' column change is irrelevant.
+CHECK_ROUTE_RECOMPUTE([check ovn-nbctl set nb_global . external_ids:foo=bar],
+                      [norecompute])
+
+# NB Global handler: an 'options' change that touches no route gate key (e.g.
+# ovn-northd's 'max_tunid' bookkeeping) is irrelevant and must not recompute.
+CHECK_ROUTE_RECOMPUTE([check ovn-nbctl set nb_global . options:max_tunid=1023],
+                      [norecompute])
+
+# NB Logical_Switch handler: a switch without other_config:interconn-ts is not
+# a transit-switch mirror and is irrelevant.
+CHECK_ROUTE_RECOMPUTE(
+    [check ovn-nbctl set logical_switch sw0 other_config:foo=bar],
+    [norecompute])
+
+# NB Logical_Router handler: a column the route engine does not read
+# (external_ids) is irrelevant.
+CHECK_ROUTE_RECOMPUTE([check ovn-nbctl set logical_router lr11 \
+                           external_ids:foo=bar],
+                      [norecompute])
+
+# --- Changes handled incrementally (scoped per transit switch, NOT a full
+# recompute of the route node) ---
+
+# NB Logical_Router_Static_Route handler: a user route is (re)advertised on the
+# transit switches of its owning router, scoped rather than fully recomputed.
+CHECK_ROUTE_RECOMPUTE(
+    [check ovn-nbctl lr-route-add lr11 10.99.0.0/24 192.168.1.10],
+    [norecompute])
+
+# NB Logical_Router handler: an 'options' change re-syncs only the router's
+# transit switches.
+CHECK_ROUTE_RECOMPUTE([check ovn-nbctl set logical_router lr11 options:foo=bar],
+                      [norecompute])
+
+# IC-NB Transit_Switch handler: a new transit switch is scoped to itself.
+CHECK_ROUTE_RECOMPUTE([check ovn-ic-nbctl --wait=sb ts-add ts2],
+                      [norecompute])
+
+# --- Changes that MUST fall back to a full recompute of the route node ---
+
+# NB Global handler: an 'options' change affects the global advertise/learn
+# filters of every transit switch, so it cannot be scoped.
+CHECK_ROUTE_RECOMPUTE(
+    [check ovn-nbctl set nb_global . options:ic-route-adv-default=true],
+    [recompute])
+
+# Recompute equivalence: a forced full recompute must not change the routing
+# tables this AZ manages.
+check ovn-ic-nbctl --wait=sb sync
+OVN_IC_ROUTE_DUMP([route_before])
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+OVN_IC_ROUTE_DUMP([route_after])
+AT_CHECK([diff route_before route_after])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - route handler scoping])
+
+# Exercises the per-transit-switch scoping of the en_route handlers on a single
+# AZ, including the inputs that previously forced a full recompute (NB
+# load_balancer, NB logical_router_port).  Two routers share ts1 and a third
+# router lives on ts2, so changes can be confined to one transit switch while
+# leaving the other untouched.  CHECK_ROUTE_RECOMPUTE() and OVN_IC_ROUTE_DUMP()
+# are defined in ovn-macros.at.
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+ovn-ic-nbctl ts-add ts2
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb sync
+check ovn-nbctl set nb_global . options:ic-route-adv=true
+check ovn-nbctl set nb_global . options:ic-route-learn=true
+check ovn-nbctl set nb_global . options:ic-route-adv-lb=true
+
+# Two routers on ts1.
+check ovn-nbctl lr-add lr11
+check ovn-nbctl lrp-add lr11 lrp-lr11-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr11 lrp-lr11-ts1
+check ovn-nbctl lrp-add lr11 lrp-lr11-local 00:00:00:00:01:01 192.168.1.1/24
+
+check ovn-nbctl lr-add lr12
+check ovn-nbctl lrp-add lr12 lrp-lr12-ts1 aa:aa:aa:aa:aa:02 169.254.100.2/24
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr12 lrp-lr12-ts1
+check ovn-nbctl lrp-add lr12 lrp-lr12-local 00:00:00:00:01:02 192.168.2.1/24
+
+# One router on ts2.
+check ovn-nbctl lr-add lr21
+check ovn-nbctl lrp-add lr21 lrp-lr21-ts2 aa:aa:aa:aa:aa:03 169.254.200.1/24
+check ovn-nbctl lsp-add-router-port ts2 lsp-ts2-lr21 lrp-lr21-ts2
+check ovn-nbctl --wait=sb lrp-add lr21 lrp-lr21-local 00:00:00:00:02:01 \
+    192.168.3.1/24
+
+# Wait until all three connected subnets are advertised to IC-SB.
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=ip_prefix find route \
+                            | grep -c 192.168)" = 3])
+
+# A load balancer attached to lr11: its VIP must be advertised on ts1 only.
+check ovn-nbctl lb-add lb0 10.0.0.10:80 192.168.1.5:80
+check ovn-nbctl --wait=sb lr-lb-add lr11 lb0
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=transit_switch find \
+                            route ip_prefix=10.0.0.10/32)" = ts1])
+
+# --- New handlers must be incremental (no full recompute of the route node) ---
+
+# NB Load_Balancer handler: a VIP change on an attached LB is scoped to its
+# router's transit switch.
+CHECK_ROUTE_RECOMPUTE(
+    [check ovn-nbctl set load_balancer lb0 \
+         vips:'"10.0.0.20:80"'='"192.168.1.6:80"'],
+    [norecompute])
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=transit_switch find \
+                            route ip_prefix=10.0.0.20/32)" = ts1])
+
+# NB Logical_Router_Port handler: an options change on an existing port is
+# scoped to the owning router's transit switch.
+CHECK_ROUTE_RECOMPUTE(
+    [check ovn-nbctl set logical_router_port lrp-lr11-local options:foo=bar],
+    [norecompute])
+
+# A load balancer not attached to any router is irrelevant.
+CHECK_ROUTE_RECOMPUTE([check ovn-nbctl lb-add lb1 10.1.0.10:80 192.168.9.9:80],
+                      [norecompute])
+
+# --- Cross-transit-switch isolation ---
+
+# A new route on lr11 (ts1) must leave lr21's ts2 routes intact and not force a
+# full recompute.
+ovn-ic-sbctl --bare --columns=ip_prefix,transit_switch list route \
+    | grep ts2 | sort > ts2_before
+CHECK_ROUTE_RECOMPUTE(
+    [check ovn-nbctl lr-route-add lr11 10.99.0.0/24 192.168.1.10],
+    [norecompute])
+ovn-ic-sbctl --bare --columns=ip_prefix,transit_switch list route \
+    | grep ts2 | sort > ts2_after
+AT_CHECK([diff ts2_before ts2_after])
+
+# --- Recompute equivalence: scoped syncs produced the same state a full
+# recompute would. ---
+check ovn-ic-nbctl --wait=sb sync
+OVN_IC_ROUTE_DUMP([route_before])
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+OVN_IC_ROUTE_DUMP([route_after])
+AT_CHECK([diff route_before route_after])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
 AT_SETUP([ovn-ic -- incremental processing - port binding handler scoping])
 
 # Exercises the per-transit-switch/router scoping of the en_port_binding change
@@ -1209,6 +1395,116 @@ AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
 
 OVN_CLEANUP_IC([az1])
 AT_CLEANUP
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - route learn and withdraw])
+
+# Covers the IC-SB Route handler's cheap remote-route delete path: when a
+# remote AZ withdraws a route, the learned NB static route is removed by the
+# handler (the route node computes) without re-learning anything.
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+    lr=lr1$i
+    check ovn-nbctl lr-add $lr
+    check ovn-nbctl lrp-add $lr lrp-$lr-ts1 aa:aa:aa:aa:aa:0$i 169.254.100.$i/24
+    check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-$lr lrp-$lr-ts1
+    check ovn-nbctl --wait=sb lrp-add $lr lrp-local 00:00:00:00:00:0$i \
+        192.168.$i.1/24
+done
+check ovn-ic-nbctl --wait=sb sync
+
+# az1 learns az2's connected subnet.
+ovn_as az1
+OVS_WAIT_UNTIL([ovn-nbctl lr-route-list lr11 | grep -q "192.168.2.0/24"])
+as az1
+
+# Withdraw: az2 stops advertising.  az1 must un-learn the route through the
+# IC-SB Route delete handler, which computes (handles the change) rather than
+# being skipped.
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+check ovn_as az2 ovn-nbctl set nb_global . options:ic-route-adv=false
+as az1
+OVS_WAIT_UNTIL([! ovn-nbctl lr-route-list lr11 | grep -q "192.168.2.0/24"])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats route compute)" -gt 0])
+
+# A forced recompute confirms the incremental result is correct (the route
+# stays withdrawn).
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([test "$(ovn_as az1 ovn-nbctl lr-route-list lr11 \
+                      | grep -c '192.168.2.0/24')" = 0])
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - route withdraw from multiple routers])
+
+# Every local router attached to a transit switch learns the same remote
+# route, each with the same external_ids:ic-learned-route.  Withdrawing the
+# remote route must un-learn it from all of them, not just from one.
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+for i in 1 2; do
+    ovn_start az$i
+    ovn_as az$i
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-nbctl set nb_global . options:ic-route-adv=true
+    check ovn-nbctl set nb_global . options:ic-route-learn=true
+done
+
+# az1: two local logical routers, both attached to ts1.
+ovn_as az1
+for i in 1 2; do
+    check ovn-nbctl lr-add lr$i
+    check ovn-nbctl lrp-add lr$i lrp-lr$i-ts1 aa:aa:aa:aa:aa:0$i \
+        169.254.100.$i/24
+    check ovn-nbctl --wait=sb lsp-add-router-port ts1 lsp-ts1-lr$i lrp-lr$i-ts1
+done
+
+# az2: one router advertising a connected subnet.
+ovn_as az2
+check ovn-nbctl lr-add lr3
+check ovn-nbctl lrp-add lr3 lrp-lr3-ts1 aa:aa:aa:aa:aa:03 169.254.100.3/24
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr3 lrp-lr3-ts1
+check ovn-nbctl --wait=sb lrp-add lr3 lrp-local 00:00:00:00:00:03 \
+    192.168.3.1/24
+check ovn-ic-nbctl --wait=sb sync
+
+ovn_as az1
+OVS_WAIT_UNTIL([ovn-nbctl lr-route-list lr1 | grep -q "192.168.3.0/24"])
+OVS_WAIT_UNTIL([ovn-nbctl lr-route-list lr2 | grep -q "192.168.3.0/24"])
+
+# Withdraw: az2 stops advertising.  Both local routers must un-learn it
+# through the IC-SB Route delete handler.
+check ovn_as az2 ovn-nbctl --wait=sb set nb_global . options:ic-route-adv=false
+check ovn-ic-nbctl --wait=sb sync
+ovn_as az1
+OVS_WAIT_UNTIL([! ovn-nbctl lr-route-list lr1 | grep -q "192.168.3.0/24"])
+OVS_WAIT_UNTIL([! ovn-nbctl lr-route-list lr2 | grep -q "192.168.3.0/24"])
+
+# A forced recompute confirms the incremental result is correct.
+as az1
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+AT_CHECK([test "$(ovn_as az1 ovn-nbctl lr-route-list lr1 \
+                      | grep -c '192.168.3.0/24')" = 0])
+AT_CHECK([test "$(ovn_as az1 ovn-nbctl lr-route-list lr2 \
+                      | grep -c '192.168.3.0/24')" = 0])
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
 
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- port sync])

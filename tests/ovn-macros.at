@@ -579,6 +579,38 @@ m4_define([OVN_CLEANUP_IC],[
     fi
 ])
 
+# CHECK_ROUTE_RECOMPUTE(CHANGE_CMD, EXPECT)
+#
+# Quiesces the ovn-ic engine and clears its stats, runs CHANGE_CMD, and then
+# asserts that the en_route node's recompute count is "0" (EXPECT=norecompute)
+# or non-zero (EXPECT=recompute).
+m4_define([CHECK_ROUTE_RECOMPUTE], [
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+    $1
+    check ovn-ic-nbctl --wait=sb sync
+    rc=$(ovn-appctl -t ic/ovn-ic inc-engine/show-stats route recompute)
+    echo "route recompute count after '$1': $rc (expect $2)"
+    if test "$2" = norecompute; then
+        AT_CHECK([test "$rc" = 0])
+    else
+        AT_CHECK([test "$rc" -gt 0])
+    fi
+])
+
+# OVN_IC_ROUTE_DUMP(FILE)
+#
+# Dumps the routing state this AZ manages - its NB static routes and the IC-SB
+# routes - into FILE, so two dumps can be compared.
+m4_define([OVN_IC_ROUTE_DUMP], [
+    ovn-nbctl --columns=ip_prefix,nexthop list logical_router_static_route \
+        | sort > $1
+    ovn-ic-sbctl --columns=ip_prefix,nexthop,transit_switch list route \
+        | sort >> $1
+])
+
 m4_define([CHECK_SCAPY],[
     AT_SKIP_IF([test $HAVE_SCAPY = no])
     start_scapy_server
