@@ -869,6 +869,70 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - tunnel_key and gateway])
+
+# Validates the incremental-processing change handlers of the en_tunnel_key and
+# en_gateway engine nodes in two ways:
+#  - the change handler of the node that reads the affected table fires
+#    (its compute stat is non-zero), and
+#  - forcing a full recompute afterwards leaves the databases unchanged,
+#    i.e. the incremental result matches a full recompute.
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+sim_add gw1
+as gw1
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true \
+                          external-ids:hostname=gw1
+as az1
+
+# Wait until the local gateway is registered in IC-SB.
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=hostname \
+                            find gateway name=gw1)" = gw1])
+check ovn-ic-nbctl --wait=sb sync
+
+# A targeted SB Chassis change is handled by the gateway node's change
+# handler: its compute stat becomes non-zero.
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+as gw1
+check ovs-vsctl set open . external-ids:hostname=gw1-new
+as az1
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=hostname \
+                            find gateway name=gw1)" = gw1-new])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats gateway compute)" -gt 0])
+
+# Exercise the tunnel_key handler too: a transit switch creates an IC-SB
+# datapath binding, and adding a port binding drives further IC-SB updates.
+check ovn-ic-nbctl --wait=sb ts-add ts1
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts1)" = ts1])
+check ovn-ic-nbctl --wait=sb sync
+
+# After all the incremental updates above, a forced full recompute must not
+# change any IC-managed table: incremental processing produced the same result.
+m4_define([_IC_DUMP], [
+    ovn-ic-sbctl --columns=name,hostname,availability_zone list gateway \
+        | sort > $1
+    ovn-ic-sbctl --columns=transit_switch,type,tunnel_key \
+        list datapath_binding | sort >> $1
+    ovn-nbctl --columns=name,other_config list logical_switch | sort >> $1
+    ovn-sbctl --columns=name,hostname,other_config list chassis | sort >> $1
+])
+_IC_DUMP([ic_before])
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+_IC_DUMP([ic_after])
+AT_CHECK([diff ic_before ic_after])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- port sync])
 
 ovn_init_ic_db
