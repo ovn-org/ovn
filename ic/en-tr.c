@@ -124,6 +124,78 @@ en_tr_run(struct engine_node *node, void *data OVS_UNUSED)
     return EN_UPDATED;
 }
 
+/* Only transit-router mirror logical routers (options:interconn-tr) affect
+ * en_tr.  A change to such a logical router is left to a full recompute
+ * (returns EN_UNHANDLED); any other logical router is irrelevant to en_tr, so
+ * its change is handled as a no-op, avoiding a recompute on unrelated NB
+ * Logical_Router updates. */
+enum engine_input_handler_result
+en_tr_nb_logical_router_handler(struct engine_node *node,
+                                void *data OVS_UNUSED)
+{
+    const struct ed_type_az *az = engine_get_input_data("az", node);
+
+    if (!az->runned_az) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    const struct nbrec_logical_router_table *tbl =
+        EN_OVSDB_GET(engine_get_input("NB_logical_router", node));
+    const struct nbrec_logical_router *lr;
+    NBREC_LOGICAL_ROUTER_TABLE_FOR_EACH_TRACKED (lr, tbl) {
+        if (smap_get(&lr->options, "interconn-tr")) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
+/* IC-SB Datapath_Binding: tr_run() reads only transit-router datapath bindings
+ * (it mirrors their tunnel_key into the NB logical router as
+ * requested-tnl-key).  A new/deleted/modified transit-router binding - created
+ * by en_tunnel_key - forces a recompute so tr_run() publishes the committed
+ * key.  Transit-switch datapath bindings - the bulk of the churn here - do not
+ * affect en_tr and are a no-op.  A change to the type column cannot be
+ * classified (the old type is gone), so recompute to be safe. */
+enum engine_input_handler_result
+en_tr_icsb_datapath_binding_handler(struct engine_node *node,
+                                    void *data OVS_UNUSED)
+{
+    const struct ed_type_az *az = engine_get_input_data("az", node);
+
+    if (!az->runned_az) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    const struct icsbrec_datapath_binding_table *tbl =
+        EN_OVSDB_GET(engine_get_input("ICSB_datapath_binding", node));
+    const struct icsbrec_datapath_binding *isb_dp;
+    ICSBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (isb_dp, tbl) {
+        if (icsbrec_datapath_binding_is_new(isb_dp) ||
+            icsbrec_datapath_binding_is_deleted(isb_dp)) {
+            /* A new/deleted transit-router binding is the trigger en_tr needs;
+             * a transit-switch binding (the common churn) is a no-op. Classify
+             * by the row's own type, which is available on tracked deleted
+             * rows too - unlike track_is_updated(), which reports every
+             * column as updated on insert. */
+            if (ic_dp_get_type(isb_dp) == IC_ROUTER) {
+                return EN_UNHANDLED;
+            }
+        } else if (ic_dp_get_type(isb_dp) == IC_ROUTER ||
+                   ovsdb_idl_track_is_updated(
+                       &isb_dp->header_,
+                       &icsbrec_datapath_binding_col_type)) {
+            /* A modified transit-router binding (e.g. tunnel_key/nb_ic_uuid),
+             * or a type change that can no longer be classified, forces a
+             * recompute. */
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 void *
 en_tr_init(struct engine_node *node OVS_UNUSED,
            struct engine_arg *arg OVS_UNUSED)

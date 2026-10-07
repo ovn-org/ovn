@@ -238,12 +238,18 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_ts, &en_icsb_encap, NULL);
 
     /* en_tr: sync transit routers to their AZ NB Logical_Router mirrors.
-     * Like en_ts, IC-SB Datapath_Binding creation/keying is owned by
-     * en_tunnel_key. */
+     *
+     * Like en_ts, en_tr builds its own transit-router IC-SB Datapath_Binding
+     * map each run and only maintains the NB mirror; IC-SB Datapath_Binding
+     * creation/keying is owned by en_tunnel_key.  A transit-router binding
+     * change (created by en_tunnel_key) forces a recompute so en_tr publishes
+     * the committed key to requested-tnl-key. */
     engine_add_input(&en_tr, &en_az, NULL);
-    engine_add_input(&en_tr, &en_icsb_datapath_binding, NULL);
+    engine_add_input(&en_tr, &en_icsb_datapath_binding,
+                     en_tr_icsb_datapath_binding_handler);
     engine_add_input(&en_tr, &en_icnb_transit_router, NULL);
-    engine_add_input(&en_tr, &en_nb_logical_router, NULL);
+    engine_add_input(&en_tr, &en_nb_logical_router,
+                     en_tr_nb_logical_router_handler);
 
     /* en_tunnel_key: the single owner of IC-SB Datapath_Binding creation,
      * tunnel-key allocation, VXLAN-range refresh and GC, for both transit

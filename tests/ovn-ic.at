@@ -933,6 +933,137 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - transit switch and router])
+
+# The en_ts/en_tr NB Logical_Switch/Logical_Router change handlers must not
+# trigger a full recompute for logical switches/routers that are not transit
+# switch/router mirrors.
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb ts-add ts1
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts1)" = ts1])
+
+# Quiesce the engine and reset stats so only the change under test counts.
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+
+# Adding a regular logical switch and a regular logical router must be handled
+# by the en_ts/en_tr handlers without a full recompute of those nodes.
+check ovn-nbctl --wait=sb ls-add sw0
+check ovn-nbctl --wait=sb lr-add lr0
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_router name=lr0)" = lr0])
+check ovn-ic-nbctl --wait=sb sync
+
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts recompute)" = 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tr compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tr recompute)" = 0])
+
+# The transit switch mirror is still intact after the incremental update.
+AT_CHECK([test "$(ovn-nbctl --bare --columns=name \
+                      find logical_switch name=ts1)" = ts1])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - transit switch handler scoping])
+
+# A transit-switch add/delete in IC-NB must be applied by the en_ts
+# en_icnb_transit_switch change handler without a full recompute of en_ts,
+# keeping the NB Logical_Switch mirror and the IC-SB Datapath_Binding in sync.
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb ts-add ts1
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts1)" = ts1])
+
+# Quiesce the engine and reset stats so only the change under test counts.
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+
+# Adding a second transit switch is handled incrementally (no en_ts recompute)
+# and creates its NB mirror and IC-SB datapath binding.
+check ovn-ic-nbctl --wait=sb ts-add ts2
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts2)" = ts2])
+check ovn-ic-nbctl --wait=sb sync
+
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts recompute)" = 0])
+# The transit-switch IC-SB datapath binding en_tunnel_key creates must not
+# churn en_tr: en_tr only consumes transit-router datapath bindings, so its
+# en_icsb_datapath_binding handler treats a transit-switch binding as a no-op.
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tr compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tr recompute)" = 0])
+# en_tunnel_key owns IC-SB datapath binding creation: a transit-switch add is
+# handled by its scoped en_icnb_transit_switch handler, so it must not full
+# recompute.
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tunnel_key compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tunnel_key recompute)" = 0])
+AT_CHECK([test "$(ovn-ic-sbctl --bare --columns=type \
+                      find datapath_binding transit_switch=ts2)" = transit-switch])
+
+# Deleting a transit switch is also handled incrementally: its NB mirror and
+# IC-SB datapath binding are garbage-collected without a full recompute.
+check ovn-ic-nbctl --wait=sb ts-del ts1
+OVS_WAIT_UNTIL([test -z "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts1)"])
+check ovn-ic-nbctl --wait=sb sync
+
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts recompute)" = 0])
+# A transit-switch delete is likewise reconciled incrementally in en_tunnel_key
+# (its scoped en_icnb_transit_switch handler GCs the binding), not by a full
+# recompute.
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tunnel_key compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats tunnel_key recompute)" = 0])
+AT_CHECK([test -z "$(ovn-ic-sbctl --bare --columns=type \
+                      find datapath_binding transit_switch=ts1)"])
+
+# Deleting the NB mirror of a live transit switch out-of-band recreates it via
+# the en_ts NB Logical_Switch handler, still without a full recompute.
+check ovn-nbctl --wait=sb ls-del ts2
+check ovn-ic-nbctl --wait=sb sync
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts2)" = ts2])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats ts recompute)" = 0])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- port sync])
 
 ovn_init_ic_db
