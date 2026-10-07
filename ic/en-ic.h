@@ -1,8 +1,6 @@
 #ifndef EN_IC_H
 #define EN_IC_H 1
 
-#include <config.h>
-
 #include <getopt.h>
 #include <stdlib.h>
 #include <stdio.h>

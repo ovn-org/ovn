@@ -1,8 +1,6 @@
 #ifndef INC_PROC_IC_H
 #define INC_PROC_IC_H 1
 
-#include <config.h>
-
 #include "ovn-ic.h"
 #include "ovsdb-idl.h"
 #include "lib/inc-proc-eng.h"
