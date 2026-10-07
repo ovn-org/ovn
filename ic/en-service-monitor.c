@@ -15,6 +15,7 @@
 #include <config.h>
 
 #include "en-service-monitor.h"
+#include "en-az.h"
 #include "lib/inc-proc-eng.h"
 #include "openvswitch/vlog.h"
 #include "ovn-ic.h"
@@ -22,13 +23,20 @@
 VLOG_DEFINE_THIS_MODULE(en_ic_service_monitor);
 
 enum engine_node_state
-en_service_monitor_run(struct engine_node *node OVS_UNUSED,
+en_service_monitor_run(struct engine_node *node,
                        void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct ic_context *ctx = eng_ctx->client_ctx;
+    const struct ed_type_az *az = engine_get_input_data("az", node);
 
-    sync_service_monitor(ctx);
+    /* runned_az is resolved by the upstream en_az node.  Without an AZ there
+     * is nothing to sync (mirrors the previous main-loop gating). */
+    if (!az->runned_az) {
+        return EN_UNCHANGED;
+    }
+
+    sync_service_monitor(ctx, az->runned_az);
 
     return EN_UPDATED;
 }

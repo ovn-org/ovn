@@ -16,6 +16,7 @@
 
 #include "en-dp-enum.h"
 #include "en-tr.h"
+#include "en-az.h"
 #include "lib/inc-proc-eng.h"
 #include "openvswitch/vlog.h"
 #include "ovn-ic.h"
@@ -28,6 +29,13 @@ en_tr_run(struct engine_node *node, void *data OVS_UNUSED)
     const struct engine_context *eng_ctx = engine_get_context();
     struct ic_context *ctx = eng_ctx->client_ctx;
     struct ed_type_dp_enum *dp = engine_get_input_data("dp_enum", node);
+    const struct ed_type_az *az = engine_get_input_data("az", node);
+
+    /* runned_az is resolved by the upstream en_az node.  Without an AZ there
+     * is nothing to sync (mirrors the previous main-loop gating). */
+    if (!az->runned_az) {
+        return EN_UNCHANGED;
+    }
 
     tr_run(ctx, &dp->dp_tnlids, &dp->isb_tr_dps);
 

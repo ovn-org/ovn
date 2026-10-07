@@ -40,6 +40,13 @@ bool inc_proc_ic_run(struct ic_context *ctx,
 void inc_proc_ic_cleanup(void);
 bool inc_proc_ic_can_run(struct ic_engine_context *ctx);
 
+struct icsbrec_availability_zone;
+
+/* Returns the availability zone resolved by the en_az engine node during the
+ * last inc_proc_ic_run(), or NULL if none is resolved yet.  Used by the main
+ * loop, which runs the AZ sequence-number bookkeeping outside the engine. */
+const struct icsbrec_availability_zone *inc_proc_ic_get_runned_az(void);
+
 static inline void
 inc_proc_ic_force_recompute(void)
 {

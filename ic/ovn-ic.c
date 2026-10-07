@@ -99,68 +99,6 @@ Options:\n\
     stream_usage("database", true, true, false);
 }
 
-static const struct icsbrec_availability_zone *
-az_run(struct ic_context *ctx)
-{
-    const struct nbrec_nb_global *nb_global =
-        nbrec_nb_global_first(ctx->ovnnb_idl);
-
-    if (!nb_global) {
-        VLOG_INFO("NB Global not exist.");
-        return NULL;
-    }
-
-    /* Update old AZ if name changes.  Note: if name changed when ovn-ic
-     * is not running, one has to manually delete/update the old AZ with:
-     * "ovn-ic-sbctl destroy avail <az>". */
-    static char *az_name;
-    const struct icsbrec_availability_zone *az;
-    if (ctx->ovnisb_unlocked_txn && az_name
-        && strcmp(az_name, nb_global->name)) {
-        ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_unlocked_idl) {
-            /* AZ name update locally need to update az in ISB. */
-            if (nb_global->name[0] && !strcmp(az->name, az_name)) {
-                icsbrec_availability_zone_set_name(az, nb_global->name);
-                break;
-            } else if (!nb_global->name[0] && !strcmp(az->name, az_name)) {
-                icsbrec_availability_zone_delete(az);
-                break;
-            }
-        }
-        free(az_name);
-        az_name = NULL;
-    }
-
-    if (!nb_global->name[0]) {
-        return NULL;
-    }
-
-    if (!az_name) {
-        az_name = xstrdup(nb_global->name);
-    }
-
-    if (ctx->ovnisb_unlocked_txn) {
-        ovsdb_idl_txn_add_comment(ctx->ovnisb_unlocked_txn, "AZ %s", az_name);
-    }
-
-    ICSBREC_AVAILABILITY_ZONE_FOR_EACH (az, ctx->ovnisb_unlocked_idl) {
-        if (!strcmp(az->name, az_name)) {
-            ctx->runned_az = az;
-            return az;
-        }
-    }
-
-    /* Create AZ in ISB */
-    if (ctx->ovnisb_unlocked_txn) {
-        VLOG_INFO("Register AZ %s to interconnection DB.", az_name);
-        az = icsbrec_availability_zone_insert(ctx->ovnisb_unlocked_txn);
-        icsbrec_availability_zone_set_name(az, az_name);
-        ctx->runned_az = az;
-        return az;
-    }
-    return NULL;
-}
-
 static uint32_t
 allocate_dp_key(struct hmap *dp_tnlids, bool vxlan_mode, const char *name)
 {
@@ -611,7 +549,8 @@ sync_addr_set_from_icsb(struct ovsdb_idl_txn *ovnnb_txn,
 }
 
 void
-address_set_run(struct ic_context *ctx)
+address_set_run(struct ic_context *ctx,
+                const struct icsbrec_availability_zone *runned_az)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
         return;
@@ -621,7 +560,7 @@ address_set_run(struct ic_context *ctx)
     struct shash ic_remote_as = SHASH_INITIALIZER(&ic_remote_as);
     const struct icsbrec_address_set *ic_as;
     ICSBREC_ADDRESS_SET_FOR_EACH (ic_as, ctx->ovnisb_unlocked_idl) {
-        if (ic_as->availability_zone == ctx->runned_az) {
+        if (ic_as->availability_zone == runned_az) {
             shash_add(&ic_local_as, ic_as->name, ic_as);
         } else {
             /* Merge addresses from all remote AZs that share the same
@@ -659,7 +598,7 @@ address_set_run(struct ic_context *ctx)
                 const struct icsbrec_address_set *icsb_as;
                 icsb_as = shash_find_and_delete(&ic_local_as, sb_as->name);
                 sync_addr_set_to_icsb(ctx->ovnisb_unlocked_txn, sb_as, icsb_as,
-                                      ctx->runned_az);
+                                      runned_az);
             }
         }
     }
@@ -711,7 +650,8 @@ address_set_run(struct ic_context *ctx)
 }
 
 void
-gateway_run(struct ic_context *ctx)
+gateway_run(struct ic_context *ctx,
+            const struct icsbrec_availability_zone *runned_az)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
         return;
@@ -721,7 +661,7 @@ gateway_run(struct ic_context *ctx)
     struct shash remote_gws = SHASH_INITIALIZER(&remote_gws);
     const struct icsbrec_gateway *gw;
     ICSBREC_GATEWAY_FOR_EACH (gw, ctx->ovnisb_unlocked_idl) {
-        if (gw->availability_zone == ctx->runned_az) {
+        if (gw->availability_zone == runned_az) {
             shash_add(&local_gws, gw->name, gw);
         } else {
             shash_add(&remote_gws, gw->name, gw);
@@ -734,7 +674,8 @@ gateway_run(struct ic_context *ctx)
             gw = shash_find_and_delete(&local_gws, chassis->name);
             if (!gw) {
                 gw = icsbrec_gateway_insert(ctx->ovnisb_unlocked_txn);
-                icsbrec_gateway_set_availability_zone(gw, ctx->runned_az);
+                icsbrec_gateway_set_availability_zone(gw,
+                                                runned_az);
                 icsbrec_gateway_set_name(gw, chassis->name);
                 sync_sb_gw_to_isb(ctx, chassis, gw);
             } else if (is_gateway_data_changed(gw, chassis)) {
@@ -1415,7 +1356,8 @@ find_lsp_in_sb(struct ic_context *ctx,
 }
 
 void
-port_binding_run(struct ic_context *ctx)
+port_binding_run(struct ic_context *ctx,
+                 const struct icsbrec_availability_zone *runned_az)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
         return;
@@ -1432,7 +1374,7 @@ port_binding_run(struct ic_context *ctx)
     const struct icsbrec_port_binding *isb_pb_key =
         icsbrec_port_binding_index_init_row(ctx->icsbrec_port_binding_by_az);
     icsbrec_port_binding_index_set_availability_zone(isb_pb_key,
-                                                     ctx->runned_az);
+                                                runned_az);
 
     ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                          ctx->icsbrec_port_binding_by_az) {
@@ -1471,7 +1413,7 @@ port_binding_run(struct ic_context *ctx)
 
         ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                              ctx->icsbrec_port_binding_by_ts) {
-            if (isb_pb->availability_zone == ctx->runned_az) {
+            if (isb_pb->availability_zone == runned_az) {
                 shash_add(&local_pbs, isb_pb->logical_port, isb_pb);
                 shash_find_and_delete(&switch_all_local_pbs,
                                       isb_pb->logical_port);
@@ -1493,8 +1435,9 @@ port_binding_run(struct ic_context *ctx)
                 if (ctx->ovnisb_txn && is_az_leader(ctx->ovnisb_txn)) {
                     if (!isb_pb) {
                         isb_pb = create_isb_pb(
-                            ctx->ovnisb_txn, tsp->name, ctx->runned_az,
-                            ts->name, &ts->header_.uuid, "transit-switch-port",
+                            ctx->ovnisb_txn, tsp->name,
+                            runned_az, ts->name,
+                            &ts->header_.uuid, "transit-switch-port",
                             &pb_tnlids);
                     }
                     sync_tsp_pb(tsp, isb_pb);
@@ -1504,7 +1447,7 @@ port_binding_run(struct ic_context *ctx)
                 isb_pb = shash_find_and_delete(&local_pbs, tsp->name);
                 if (!isb_pb) {
                     isb_pb = create_isb_pb(ctx->ovnisb_unlocked_txn, tsp->name,
-                                           ctx->runned_az,
+                                           runned_az,
                                            ts->name, &ts->header_.uuid,
                                            "transit-switch-port", &pb_tnlids);
                 }
@@ -1547,8 +1490,8 @@ port_binding_run(struct ic_context *ctx)
                 if (!isb_pb) {
                     isb_pb = create_isb_pb(
                         ctx->ovnisb_unlocked_txn, sb_pb->logical_port,
-                        ctx->runned_az, ts->name, &ts->header_.uuid,
-                        "transit-switch-port", &pb_tnlids);
+                        runned_az, ts->name,
+                        &ts->header_.uuid, "transit-switch-port", &pb_tnlids);
                     sync_ts_isb_pb(ctx, sb_pb, isb_pb);
                 } else {
                     sync_local_port(ctx, isb_pb, sb_pb, lsp);
@@ -1632,7 +1575,7 @@ port_binding_run(struct ic_context *ctx)
 
         ICSBREC_PORT_BINDING_FOR_EACH_EQUAL (isb_pb, isb_pb_key,
                                              ctx->icsbrec_port_binding_by_ts) {
-            if (isb_pb->availability_zone == ctx->runned_az) {
+            if (isb_pb->availability_zone == runned_az) {
                 shash_add(&local_pbs, isb_pb->logical_port, isb_pb);
                 shash_find_and_delete(&router_all_local_pbs,
                                       isb_pb->logical_port);
@@ -1658,7 +1601,7 @@ port_binding_run(struct ic_context *ctx)
                 if (ctx->ovnisb_txn && is_az_leader(ctx->ovnisb_txn)) {
                     if (!isb_pb) {
                         isb_pb = create_isb_pb(ctx->ovnisb_txn, trp->name,
-                                               ctx->runned_az,
+                                               runned_az,
                                                tr->name, &tr->header_.uuid,
                                                "transit-router-port",
                                                &pb_tnlids);
@@ -1671,7 +1614,7 @@ port_binding_run(struct ic_context *ctx)
                 isb_pb = shash_find_and_delete(&local_pbs, trp->name);
                 if (!isb_pb) {
                     isb_pb = create_isb_pb(ctx->ovnisb_unlocked_txn, trp->name,
-                                           ctx->runned_az,
+                                           runned_az,
                                            tr->name, &tr->header_.uuid,
                                            "transit-router-port", &pb_tnlids);
                 }
@@ -2653,6 +2596,7 @@ route_learn_tag_rules_allow(const struct route_learn_tag_rules *rules,
 
 static void
 sync_learned_routes(struct ic_context *ctx,
+                    const struct icsbrec_availability_zone *runned_az,
                     struct ic_router_info *ic_lr)
 {
     ovs_assert(ctx->ovnnb_txn);
@@ -2715,7 +2659,8 @@ sync_learned_routes(struct ic_context *ctx,
                     || uuid_equals(&ic_lr->lr->header_.uuid, &lr_uuid)) {
                     continue;
                 }
-            } else if (isb_route->availability_zone == ctx->runned_az) {
+            } else if (isb_route->availability_zone ==
+                       runned_az) {
                 continue;
             }
 
@@ -3177,20 +3122,21 @@ delete_orphan_ic_routes(struct ic_context *ctx,
 }
 
 void
-route_run(struct ic_context *ctx)
+route_run(struct ic_context *ctx,
+          const struct icsbrec_availability_zone *runned_az)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
         return;
     }
 
-    delete_orphan_ic_routes(ctx, ctx->runned_az);
+    delete_orphan_ic_routes(ctx, runned_az);
 
     struct hmap ic_lrs = HMAP_INITIALIZER(&ic_lrs);
     const struct icsbrec_port_binding *isb_pb;
     const struct icsbrec_port_binding *isb_pb_key =
         icsbrec_port_binding_index_init_row(ctx->icsbrec_port_binding_by_az);
     icsbrec_port_binding_index_set_availability_zone(isb_pb_key,
-        ctx->runned_az);
+        runned_az);
 
     /* Each port on TS maps to a logical router, which is stored in the
      * external_ids:router-id of the IC SB port_binding record.
@@ -3267,7 +3213,7 @@ route_run(struct ic_context *ctx)
     struct shash routes_ad_by_ts = SHASH_INITIALIZER(&routes_ad_by_ts);
     HMAP_FOR_EACH_SAFE (ic_lr, node, &ic_lrs) {
         collect_lr_routes(ctx, ic_lr, &routes_ad_by_ts);
-        sync_learned_routes(ctx, ic_lr);
+        sync_learned_routes(ctx, runned_az, ic_lr);
         vector_destroy(&ic_lr->isb_pbs);
         hmap_destroy(&ic_lr->routes_learned);
         hmap_remove(&ic_lrs, &ic_lr->node);
@@ -3275,7 +3221,8 @@ route_run(struct ic_context *ctx)
     }
     struct shash_node *node;
     SHASH_FOR_EACH (node, &routes_ad_by_ts) {
-        advertise_routes(ctx, ctx->runned_az, node->name, node->data);
+        advertise_routes(ctx, runned_az, node->name,
+                         node->data);
         hmap_destroy(node->data);
     }
     shash_destroy_free_data(&routes_ad_by_ts);
@@ -3410,6 +3357,7 @@ remove_unused_sb_records(struct hmap *local_sb_svcs_map)
 
 static void
 create_pushed_svcs_mon(struct ic_context *ctx,
+                       const struct icsbrec_availability_zone *runned_az,
                        struct hmap *pushed_svcs_map)
 {
     struct sbrec_service_monitor *key =
@@ -3428,8 +3376,8 @@ create_pushed_svcs_mon(struct ic_context *ctx,
         }
         create_service_monitor_info(pushed_svcs_map, sb_rec,
                                     &sb_rec->header_.uuid,
-                                    ctx->runned_az->name, target_az_name,
-                                    NULL, false);
+                                    runned_az->name,
+                                    target_az_name, NULL, false);
     }
 
     sbrec_service_monitor_index_destroy_row(key);
@@ -3437,6 +3385,7 @@ create_pushed_svcs_mon(struct ic_context *ctx,
 
 static void
 create_synced_svcs_mon(struct ic_context *ctx,
+                       const struct icsbrec_availability_zone *runned_az,
                        struct hmap *synced_svcs_map)
 {
     struct icsbrec_service_monitor *key =
@@ -3444,7 +3393,7 @@ create_synced_svcs_mon(struct ic_context *ctx,
           ctx->icsbrec_service_monitor_by_target_az);
 
     icsbrec_service_monitor_index_set_target_availability_zone(
-        key, ctx->runned_az->name);
+        key, runned_az->name);
 
     const struct icsbrec_service_monitor *ic_rec;
     ICSBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (ic_rec, key,
@@ -3461,7 +3410,7 @@ create_synced_svcs_mon(struct ic_context *ctx,
         const char *chassis_name = pb->chassis ? pb->chassis->name : NULL;
         create_service_monitor_info(synced_svcs_map, ic_rec,
                                     &ic_rec->header_.uuid,
-                                    ctx->runned_az->name,
+                                    runned_az->name,
                                     NULL, chassis_name, true);
     }
 
@@ -3470,6 +3419,7 @@ create_synced_svcs_mon(struct ic_context *ctx,
 
 static void
 create_local_ic_svcs_map(struct ic_context *ctx,
+                         const struct icsbrec_availability_zone *runned_az,
                          struct hmap *owned_svc_map)
 {
     struct icsbrec_service_monitor *key =
@@ -3477,14 +3427,14 @@ create_local_ic_svcs_map(struct ic_context *ctx,
           ctx->icsbrec_service_monitor_by_source_az);
 
     icsbrec_service_monitor_index_set_source_availability_zone(
-        key, ctx->runned_az->name);
+        key, runned_az->name);
 
     const struct icsbrec_service_monitor *ic_rec;
     ICSBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (ic_rec, key,
         ctx->icsbrec_service_monitor_by_source_az) {
         create_service_monitor_info(owned_svc_map, ic_rec,
                                     &ic_rec->header_.uuid,
-                                    ctx->runned_az->name, NULL,
+                                    runned_az->name, NULL,
                                     NULL, true);
     }
 
@@ -3493,6 +3443,7 @@ create_local_ic_svcs_map(struct ic_context *ctx,
 
 static void
 create_local_sb_svcs_map(struct ic_context *ctx,
+                         const struct icsbrec_availability_zone *runned_az,
                          struct hmap *owned_svc_map)
 {
     struct sbrec_service_monitor *key =
@@ -3507,7 +3458,7 @@ create_local_sb_svcs_map(struct ic_context *ctx,
         ctx->sbrec_service_monitor_by_ic_learned) {
         create_service_monitor_info(owned_svc_map, sb_rec,
                                     &sb_rec->header_.uuid,
-                                    ctx->runned_az->name, NULL,
+                                    runned_az->name, NULL,
                                     NULL, false);
     }
 
@@ -3587,6 +3538,7 @@ lookup_icsb_svc_rec(struct ic_context *ctx,
 
 static void
 create_service_monitor_data(struct ic_context *ctx,
+                            const struct icsbrec_availability_zone *runned_az,
                             struct sync_service_monitor_data *sync_data)
 {
     const struct sbrec_sb_global *ic_sb = sbrec_sb_global_first(
@@ -3599,10 +3551,11 @@ create_service_monitor_data(struct ic_context *ctx,
     }
 
     sync_data->prpg_svc_monitor_mac = xstrdup(svc_monitor_mac);
-    create_pushed_svcs_mon(ctx, &sync_data->pushed_svcs_map);
-    create_synced_svcs_mon(ctx, &sync_data->synced_svcs_map);
-    create_local_ic_svcs_map(ctx, &sync_data->local_ic_svcs_map);
-    create_local_sb_svcs_map(ctx, &sync_data->local_sb_svcs_map);
+    create_pushed_svcs_mon(ctx, runned_az, &sync_data->pushed_svcs_map);
+    create_synced_svcs_mon(ctx, runned_az, &sync_data->synced_svcs_map);
+    create_local_ic_svcs_map(ctx, runned_az, &sync_data->local_ic_svcs_map);
+    create_local_sb_svcs_map(ctx, runned_az,
+                             &sync_data->local_sb_svcs_map);
 }
 
 static void
@@ -3623,7 +3576,8 @@ destroy_service_monitor_data(struct sync_service_monitor_data *sync_data)
 }
 
 void
-sync_service_monitor(struct ic_context *ctx)
+sync_service_monitor(struct ic_context *ctx,
+                     const struct icsbrec_availability_zone *runned_az)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
         return;
@@ -3636,7 +3590,7 @@ sync_service_monitor(struct ic_context *ctx)
     hmap_init(&sync_data.local_ic_svcs_map);
     hmap_init(&sync_data.local_sb_svcs_map);
 
-    create_service_monitor_data(ctx, &sync_data);
+    create_service_monitor_data(ctx, runned_az, &sync_data);
 
     struct service_monitor_info *svc_mon;
     HMAP_FOR_EACH_SAFE (svc_mon, hmap_node, &sync_data.pushed_svcs_map) {
@@ -3750,6 +3704,7 @@ sync_service_monitor(struct ic_context *ctx)
  */
 static void
 update_sequence_numbers(struct ic_context *ctx,
+                        const struct icsbrec_availability_zone *runned_az,
                         struct ovsdb_idl_loop *ic_sb_loop)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovninb_txn) {
@@ -3768,14 +3723,14 @@ update_sequence_numbers(struct ic_context *ctx,
     }
 
     if ((ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) &&
-                          (ic_nb->nb_ic_cfg != ctx->runned_az->nb_ic_cfg)) {
+                          (ic_nb->nb_ic_cfg != runned_az->nb_ic_cfg)) {
         /* Deal with potential overflows. */
-        if (ctx->runned_az->nb_ic_cfg == INT64_MAX) {
-            icsbrec_availability_zone_set_nb_ic_cfg(ctx->runned_az, 0);
+        if (runned_az->nb_ic_cfg == INT64_MAX) {
+            icsbrec_availability_zone_set_nb_ic_cfg(runned_az, 0);
         }
         ic_sb_loop->next_cfg = ic_nb->nb_ic_cfg;
         ovsdb_idl_txn_increment(ctx->ovnisb_unlocked_txn,
-                                &ctx->runned_az->header_,
+                                &runned_az->header_,
             &icsbrec_availability_zone_col_nb_ic_cfg, true);
         return;
     }
@@ -3783,22 +3738,22 @@ update_sequence_numbers(struct ic_context *ctx,
     /* handle cases where accidentally AZ:ic_nb_cfg exceeds
      * the INB:ic_nb_cfg.
      */
-    if (ctx->runned_az->nb_ic_cfg != ic_sb_loop->cur_cfg) {
-        icsbrec_availability_zone_set_nb_ic_cfg(ctx->runned_az,
+    if (runned_az->nb_ic_cfg != ic_sb_loop->cur_cfg) {
+        icsbrec_availability_zone_set_nb_ic_cfg(runned_az,
                                                 ic_sb_loop->cur_cfg);
         return;
     }
 
     const struct icsbrec_availability_zone *other_az;
     ICSBREC_AVAILABILITY_ZONE_FOR_EACH (other_az, ctx->ovnisb_unlocked_idl) {
-        if (other_az->nb_ic_cfg != ctx->runned_az->nb_ic_cfg) {
+        if (other_az->nb_ic_cfg != runned_az->nb_ic_cfg) {
             return;
         }
     }
     /* All the AZs are updated successfully, update SB/NB counter. */
     if (ic_nb->nb_ic_cfg != ic_sb->nb_ic_cfg) {
-        icsbrec_ic_sb_global_set_nb_ic_cfg(ic_sb, ctx->runned_az->nb_ic_cfg);
-        icnbrec_ic_nb_global_set_sb_ic_cfg(ic_nb, ctx->runned_az->nb_ic_cfg);
+        icsbrec_ic_sb_global_set_nb_ic_cfg(ic_sb, runned_az->nb_ic_cfg);
+        icnbrec_ic_nb_global_set_sb_ic_cfg(ic_nb, runned_az->nb_ic_cfg);
     }
 }
 
@@ -4375,6 +4330,17 @@ main(int argc, char *argv[])
                                   ovnisb_idl_loop.idl,
                                   ovnisb_unlocked_idl_loop.idl,
                                   ovninb_idl_loop.idl);
+
+        /* Postpone the next engine run by the length of the previous one, up
+         * to this interval, to coalesce bursts of change-driven runs.  A
+         * forced recompute (set_force_recompute) still runs immediately, so
+         * this only throttles the natural, incremental path. */
+        const struct icnbrec_ic_nb_global *ic_nb_global =
+            icnbrec_ic_nb_global_first(ovninb_idl_loop.idl);
+        eng_ctx.backoff_ms = ic_nb_global
+            ? smap_get_uint(&ic_nb_global->options,
+                            "ic-backoff-interval-ms", 0) : 0;
+
         memory_run();
         if (memory_should_report()) {
             struct simap usage = SIMAP_INITIALIZER(&usage);
@@ -4554,12 +4520,16 @@ main(int argc, char *argv[])
                 ovsdb_idl_has_ever_connected(ctx.ovnisb_unlocked_idl)) {
                 if (ctx.ovnnb_txn && ctx.ovnsb_txn && ctx.ovninb_txn &&
                     ctx.ovnisb_unlocked_txn && inc_proc_ic_can_run(&eng_ctx)) {
-                    ctx.runned_az = az_run(&ctx);
-                    VLOG_DBG("Availability zone: %s", ctx.runned_az ?
-                             ctx.runned_az->name : "not created yet.");
-                    if (ctx.runned_az) {
-                        (void) inc_proc_ic_run(&ctx, &eng_ctx);
-                        update_sequence_numbers(&ctx,
+                    /* The availability zone is now resolved by the en_az
+                     * engine node.  The subsystem nodes skip their work when
+                     * there is no AZ; the sequence-number bookkeeping below
+                     * runs outside the engine, so it reads the resolved AZ via
+                     * inc_proc_ic_get_runned_az(). */
+                    (void) inc_proc_ic_run(&ctx, &eng_ctx);
+                    const struct icsbrec_availability_zone *runned_az =
+                        inc_proc_ic_get_runned_az();
+                    if (runned_az) {
+                        update_sequence_numbers(&ctx, runned_az,
                                                 &ovnisb_unlocked_idl_loop);
                     }
                 } else if (!inc_proc_ic_get_force_recompute()) {

@@ -65,6 +65,29 @@
         options are described individually below.
       </column>
 
+      <column name="options" key="ic-backoff-interval-ms">
+        <p>
+          Upper bound, in milliseconds, on how long <code>ovn-ic</code>
+          postpones the next run of its incremental-processing engine.
+          After each engine run, the next run is delayed by the duration of
+          the run that just finished, capped by this value.  This coalesces
+          bursts of change-driven runs into fewer, larger runs, trading a
+          small amount of latency for reduced CPU usage when the databases
+          are changing rapidly.
+        </p>
+
+        <p>
+          This throttling only applies to the natural, change-driven
+          incremental path.  A forced full recompute is never delayed and
+          always runs immediately.
+        </p>
+
+        <p>
+          The default value is <code>0</code>, which disables the backoff so
+          each run is scheduled as soon as there is work to do.
+        </p>
+      </column>
+
       <column name="options" key="ic_probe_interval">
         <p>
           The inactivity probe interval of the connection to the OVN IC

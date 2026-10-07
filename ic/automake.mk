@@ -4,6 +4,8 @@ ic_ovn_ic_SOURCES = ic/ovn-ic.c \
 	ic/ovn-ic.h \
 	ic/en-ic.c \
 	ic/en-ic.h \
+	ic/en-az.c \
+	ic/en-az.h \
 	ic/en-dp-enum.c \
 	ic/en-dp-enum.h \
 	ic/en-gateway.c \

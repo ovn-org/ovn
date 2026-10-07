@@ -15,6 +15,7 @@
 #include <config.h>
 
 #include "en-address-set.h"
+#include "en-az.h"
 #include "lib/inc-proc-eng.h"
 #include "openvswitch/vlog.h"
 #include "ovn-ic.h"
@@ -22,12 +23,22 @@
 VLOG_DEFINE_THIS_MODULE(en_ic_address_set);
 
 enum engine_node_state
-en_address_set_run(struct engine_node *node OVS_UNUSED, void *data OVS_UNUSED)
+en_address_set_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct ic_context *ctx = eng_ctx->client_ctx;
+    const struct ed_type_az *az = engine_get_input_data("az", node);
 
-    address_set_run(ctx);
+    /* runned_az is resolved by the upstream en_az node.  Without an AZ there
+     * is nothing to sync; this also mirrors the previous main-loop gating and
+     * avoids running address_set_run() before the NB Global row exists (en_az
+     * leaves runned_az NULL until then, and address_set_run() asserts on a
+     * NULL NB Global). */
+    if (!az->runned_az) {
+        return EN_UNCHANGED;
+    }
+
+    address_set_run(ctx, az->runned_az);
 
     return EN_UPDATED;
 }

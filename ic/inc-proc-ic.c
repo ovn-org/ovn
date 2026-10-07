@@ -27,6 +27,7 @@
 #include "openvswitch/vlog.h"
 #include "inc-proc-ic.h"
 #include "en-ic.h"
+#include "en-az.h"
 #include "en-dp-enum.h"
 #include "en-gateway.h"
 #include "en-ts.h"
@@ -173,6 +174,7 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_ic);
 
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
+static ENGINE_NODE(az);
 static ENGINE_NODE(dp_enum);
 static ENGINE_NODE(gateway);
 static ENGINE_NODE(ts);
@@ -215,6 +217,7 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_dp_enum, &en_icnb_ic_nb_global, NULL);
 
     /* en_gateway: sync gateways/chassis between SB and IC-SB. */
+    engine_add_input(&en_gateway, &en_az, NULL);
     engine_add_input(&en_gateway, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_gateway, &en_icsb_gateway, NULL);
     engine_add_input(&en_gateway, &en_icsb_encap, NULL);
@@ -222,6 +225,7 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_gateway, &en_sb_encap, NULL);
 
     /* en_ts: sync transit switches to NB and IC-SB datapath bindings. */
+    engine_add_input(&en_ts, &en_az, NULL);
     engine_add_input(&en_ts, &en_dp_enum, NULL);
     engine_add_input(&en_ts, &en_icnb_ic_nb_global, NULL);
     engine_add_input(&en_ts, &en_icnb_transit_switch, NULL);
@@ -229,11 +233,13 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_ts, &en_icsb_encap, NULL);
 
     /* en_tr: sync transit routers to NB and IC-SB datapath bindings. */
+    engine_add_input(&en_tr, &en_az, NULL);
     engine_add_input(&en_tr, &en_dp_enum, NULL);
     engine_add_input(&en_tr, &en_icnb_transit_router, NULL);
     engine_add_input(&en_tr, &en_nb_logical_router, NULL);
 
     /* en_port_binding: sync cross-AZ port bindings. */
+    engine_add_input(&en_port_binding, &en_az, NULL);
     engine_add_input(&en_port_binding, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_port_binding, &en_icsb_port_binding, NULL);
     engine_add_input(&en_port_binding, &en_icnb_transit_switch, NULL);
@@ -247,6 +253,7 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_port_binding, &en_sb_chassis, NULL);
 
     /* en_route: advertise/learn cross-AZ routes. */
+    engine_add_input(&en_route, &en_az, NULL);
     engine_add_input(&en_route, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_route, &en_icsb_port_binding, NULL);
     engine_add_input(&en_route, &en_icsb_route, NULL);
@@ -262,13 +269,21 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_route, &en_sb_learned_route, NULL);
 
     /* en_service_monitor: sync load-balancer health checks across AZs. */
+    engine_add_input(&en_service_monitor, &en_az, NULL);
     engine_add_input(&en_service_monitor, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_service_monitor, &en_icsb_service_monitor, NULL);
     engine_add_input(&en_service_monitor, &en_sb_sb_global, NULL);
     engine_add_input(&en_service_monitor, &en_sb_service_monitor, NULL);
     engine_add_input(&en_service_monitor, &en_sb_port_binding, NULL);
 
-    /* en_address_set: advertise/learn address sets across AZs. */
+    /* en_address_set: advertise/learn address sets across AZs.
+     *
+     * Like the other AZ-scoped nodes, address_set_run() partitions IC-SB
+     * address sets into local/remote by comparing their availability_zone
+     * against this instance's AZ, so it depends on en_az (which reports
+     * EN_UPDATED only when the AZ identity changes) to be re-run when the
+     * resolved AZ changes. */
+    engine_add_input(&en_address_set, &en_az, NULL);
     engine_add_input(&en_address_set, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_address_set, &en_nb_nb_global, NULL);
     engine_add_input(&en_address_set, &en_nb_address_set, NULL);
@@ -331,7 +346,7 @@ inc_proc_ic_run(struct ic_context *ctx,
 
     int64_t now = time_msec();
     /* Postpone the next run by length of current run with maximum capped
-     * by "northd-backoff-interval-ms" interval. */
+     * by "ic-backoff-interval-ms" interval. */
     ic_eng_ctx->next_run_ms = now + MIN(now - start, ic_eng_ctx->backoff_ms);
 
     return engine_has_updated();
@@ -342,6 +357,13 @@ inc_proc_ic_cleanup(void)
 {
     engine_cleanup();
     engine_set_context(NULL);
+}
+
+const struct icsbrec_availability_zone *
+inc_proc_ic_get_runned_az(void)
+{
+    const struct ed_type_az *az = engine_get_data(&en_az);
+    return az ? az->runned_az : NULL;
 }
 
 bool
