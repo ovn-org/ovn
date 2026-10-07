@@ -150,6 +150,13 @@ OVN v26.09.0 - xxx xx xxxx
      coalescing bursts of change-driven runs into fewer, larger runs.  It
      defaults to 0, which keeps running as soon as there is work to do.  A
      forced full recompute is never delayed.
+   - ovn-ic now processes database changes incrementally.  Its processing
+     engine is split into one node per subsystem - availability zone,
+     gateways, transit switches and routers, datapath tunnel keys, port
+     bindings, routes, service monitors and address sets - and each node has
+     change handlers, so a change is reconciled in place instead of re-running
+     the whole ovn-ic computation.  The "inc-engine/show-stats" command
+     reports the per-node recompute counters.
 
 OVN v26.03.0 - xxx xx xxxx
 --------------------------

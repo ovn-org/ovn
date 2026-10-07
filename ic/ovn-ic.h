@@ -101,8 +101,6 @@ void port_binding_lsp_ts_map_init(struct ic_context *ctx, struct shash *map);
 void port_binding_collect_lsp_ts(const struct shash *lsp_ts_map,
                                  const struct nbrec_logical_switch_port *lsp,
                                  struct sset *ts_scope);
-void sync_service_monitor(struct ic_context *ctx,
-                          const struct icsbrec_availability_zone *runned_az);
 
 /* Shared IC helpers used by more than one engine node. */
 uint32_t

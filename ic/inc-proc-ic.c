@@ -118,12 +118,14 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_ic);
     ICNB_NODES
 #undef ICNB_NODE
 
-/* Note: the ic_sb_global table is intentionally not modeled as an engine input
- * node.  It only carries IC-SB sequence numbers, which are written by
- * update_sequence_numbers() in the main loop (outside the engine) and are not
- * read by any subsystem node. */
+/* Note: the ic_sb_global and availability_zone tables are intentionally not
+ * modeled as engine input nodes.  ic_sb_global only carries IC-SB sequence
+ * numbers, written by update_sequence_numbers() in the main loop (outside the
+ * engine).  availability_zone is consumed by the en_az node, which reads it
+ * directly every iteration; the subsystem nodes depend on en_az for the AZ
+ * identity rather than on the (sequence-number-bumped) Availability_Zone
+ * table. */
 #define ICSB_NODES \
-    ICSB_NODE(availability_zone, "availability_zone") \
     ICSB_NODE(service_monitor, "service_monitor") \
     ICSB_NODE(route, "route") \
     ICSB_NODE(datapath_binding, "datapath_binding") \
@@ -351,13 +353,23 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_route, &en_sb_learned_route,
                      route_sb_learned_route_handler);
 
-    /* en_service_monitor: sync load-balancer health checks across AZs. */
+    /* en_service_monitor: sync load-balancer health checks across AZs.
+     *
+     * Like the other AZ-scoped nodes it uses only the AZ identity
+     * (en_az's resolved AZ name and the by-source/target-AZ indexes)
+     * and does not read the Availability_Zone table, so it does not depend on
+     * en_icsb_availability_zone and is not churned by its nb_ic_cfg sequence
+     * number. */
     engine_add_input(&en_service_monitor, &en_az, NULL);
-    engine_add_input(&en_service_monitor, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_service_monitor, &en_icsb_service_monitor, NULL);
     engine_add_input(&en_service_monitor, &en_sb_sb_global, NULL);
     engine_add_input(&en_service_monitor, &en_sb_service_monitor, NULL);
-    engine_add_input(&en_service_monitor, &en_sb_port_binding, NULL);
+    /* SB port bindings are the busiest table in the AZ, but the sync reads
+     * only the 'up'/'chassis' of ports backing a service monitor targeting
+     * this AZ, so a dedicated handler scopes that churn out instead of forcing
+     * a full recompute on every port-binding change. */
+    engine_add_input(&en_service_monitor, &en_sb_port_binding,
+                     en_service_monitor_sb_port_binding_handler);
 
     /* en_address_set: advertise/learn address sets across AZs.
      *
@@ -365,9 +377,11 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
      * address sets into local/remote by comparing their availability_zone
      * against this instance's AZ, so it depends on en_az (which reports
      * EN_UPDATED only when the AZ identity changes) to be re-run when the
-     * resolved AZ changes. */
+     * resolved AZ changes.  It uses only that AZ identity and does not read
+     * the Availability_Zone table, so it does not depend on
+     * en_icsb_availability_zone and is not churned by its nb_ic_cfg sequence
+     * number. */
     engine_add_input(&en_address_set, &en_az, NULL);
-    engine_add_input(&en_address_set, &en_icsb_availability_zone, NULL);
     engine_add_input(&en_address_set, &en_nb_nb_global, NULL);
     engine_add_input(&en_address_set, &en_nb_address_set, NULL);
     engine_add_input(&en_address_set, &en_sb_address_set, NULL);

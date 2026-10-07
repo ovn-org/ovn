@@ -1064,6 +1064,84 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - port binding, route, svc monitor])
+
+# The en_port_binding, en_route and en_service_monitor nodes use only the AZ
+# identity, not the Availability_Zone table, so a change to IC-NB Global
+# options and the resulting nb_ic_cfg sequence-number bump must not recompute
+# them.
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb ts-add ts1
+OVS_WAIT_UNTIL([test "$(ovn-nbctl --bare --columns=name \
+                            find logical_switch name=ts1)" = ts1])
+
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+
+check ovn-ic-nbctl --wait=sb set IC_NB_Global . options:foo=bar
+check ovn-ic-nbctl --wait=sb sync
+
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats port_binding recompute)" = 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats route recompute)" = 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats service_monitor recompute)" = 0])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - service monitor SB port binding scoping])
+
+# SB Port_Binding is the busiest table in the AZ, but the en_service_monitor
+# sync reads only the 'up'/'chassis' of the port backing a service monitor
+# targeting this AZ.  A port binding that backs no such service monitor must be
+# handled by the en_service_monitor SB Port_Binding handler without a full
+# recompute of the node.
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb ts-add ts1
+check ovn-nbctl ls-add sw0
+check ovn-nbctl --wait=sb lsp-add sw0 sp0
+OVS_WAIT_UNTIL([test -n "$(ovn-sbctl --bare --columns=_uuid \
+                            find port_binding logical_port=sp0)"])
+
+# Quiesce the engine and reset stats so only the change under test counts.
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+
+# Flip the SB port binding 'up' of a port that backs no service monitor,
+# directly in the SB (so SB_Global is not bumped).  This is a watched column,
+# but the port is not a service-monitor target, so en_service_monitor must not
+# recompute.
+check ovn-sbctl set port_binding sp0 up=true
+OVS_WAIT_UNTIL([test "$(ovn-sbctl --bare --columns=up \
+                            find port_binding logical_port=sp0)" = true])
+check ovn-ic-nbctl --wait=sb sync
+
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats service_monitor compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats service_monitor recompute)" = 0])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- incremental processing - route handlers])
 
 # Exercises the en_route change handlers on a single AZ (so engine stats are
