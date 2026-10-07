@@ -1,0 +1,254 @@
+AT_BANNER([ovn-ic performance tests])
+
+# ===========================================================================
+# ovn-ic incremental-processing performance tests.
+#
+# These tests load a large ovn-ic scenario (N VPCs across 3 AZs) and then,
+# ON THE SAME LOADED STATE, measure the two engine paths that the same daemon
+# already exposes:
+#
+#   * incremental: cost of applying ONE more VPC via the change handlers
+#                  (inc-engine/show-stats <node> recompute == 0 proves the
+#                   full recompute was skipped);
+#   * recompute:   cost of a forced full recompute of the whole state
+#                  (ovn-appctl inc-engine/recompute).
+#
+# This gives an apples-to-apples before/after on identical state with a single
+# binary -- no need to rebuild the pre-I-P daemon.  The dominant nodes are
+# en_ts (transit switch -> NB Logical_Switch mirror) and en_route (route
+# advertise/learn), which are exactly the paths this work optimizes.
+#
+# Results land in ${at_suite_dir}/results (see `make check-perf`).  For each
+# phase we dump ALL engine stopwatches, so the incremental change-handler
+# timings and the recompute node timings are both captured; extract the rows
+# you need (e.g. "ts", "route") for the cover letter.
+# ===========================================================================
+
+# All appctl to az1's ovn-ic daemon (run after `as az1`).
+m4_define([IC_APPCTL], [ovn-appctl -t ic/ovn-ic])
+
+# PERF_IC_NODE([NODE], [LABEL])
+#
+# Append Maximum + short-term-average of the NODE stopwatch (recompute time of
+# that engine node) to the results file.  PARSE_STOPWATCH is defined in
+# perf-northd.at.
+m4_define([PERF_IC_NODE], [
+    PERF_RECORD_RESULT([$2 Maximum (msec)],
+        [`IC_APPCTL stopwatch/show $1 | PARSE_STOPWATCH(["Maximum"])`])
+    PERF_RECORD_RESULT([$2 Average (msec)],
+        [`IC_APPCTL stopwatch/show $1 | PARSE_STOPWATCH(["Short term average"])`])
+])
+
+# PERF_IC_NODE_INCR([NODE], [LABEL])
+#
+# Append the incremental cost of NODE: the maximum over all of that node's
+# change-handler stopwatches (the node's own stopwatch records recompute time,
+# not incremental time, so the per-input handler stopwatches are aggregated).
+m4_define([PERF_IC_NODE_INCR], [
+    PERF_RECORD_RESULT([$2 Maximum (msec)], [`ic_node_incr $1 "Maximum"`])
+    PERF_RECORD_RESULT([$2 Average (msec)],
+                       [`ic_node_incr $1 "Short term average"`])
+])
+
+OVS_START_SHELL_HELPERS
+# ic_build_vpc INDEX
+#
+# Create one "VPC" identified by INDEX: 4 transit switches (global, in IC-NB)
+# plus, in each of az1/az2/az3, a logical router connected to all 4 TS and a
+# tenant switch with a connected subnet (advertised via ovn-ic route adv).
+# Addresses are fixed per AZ/TS-index and only names vary by INDEX -- each VPC
+# owns its own switches, so reusing the same subnet/MAC across VPCs is fine.
+#
+# The 4 transit switches live in the global IC-NB and are mirrored into every
+# AZ's NB as Logical_Switches (the en_ts node).  Each AZ router peers ALL 4
+# transit switches (full mesh); each router also owns a tenant switch whose
+# connected subnet is advertised to / learned from the other AZs by ovn-ic
+# (the en_route node).
+#
+#                          +-----------------------------------+
+#                          |           IC-NB (global)          |
+#                          |  ts{i}-1 ts{i}-2 ts{i}-3 ts{i}-4  |  <- en_ts
+#                          +--+---------+--------+--------+----+     mirrors
+#              +--------------+         |        |        +--------------+
+#         (all 4 TS)              (all 4 TS)             (all 4 TS)
+#              |                        |                        |
+#       +------+------+          +------+------+          +------+------+
+#       |   lr{i}-1   |          |   lr{i}-2   |          |   lr{i}-3   |
+#       |    (az1)    |          |    (az2)    |          |    (az3)    |
+#       +------+------+          +------+------+          +------+------+
+#              | rp{i}-1-bar            | rp{i}-2-bar            | rp{i}-3-bar
+#       +------+------+          +------+------+          +------+------+
+#       |  bar{i}-1   |          |  bar{i}-2   |          |  bar{i}-3   |
+#       |192.168.10/24|          |192.168.20/24|          |192.168.30/24|
+#       +-------------+          +-------------+          +-------------+
+#              +-------- advertised / learned across AZs (en_route) ------+
+#
+# Port naming:
+#   LRP on router      : ts{i}-{t}-lr{i}-{a}      (169.254.1{t}.{a}/24)
+#   router LSP on TS    : ts{i}-{t}-lr{i}-{a}-rp  (type=router)
+#   tenant router port  : rp{i}-{a}-bar           (192.168.{a}0.1/24)
+#   tenant VM port      : bar{i}-{a}              (192.168.{a}0.2)
+ic_build_vpc () {
+    local i=$1 t a
+
+    # 4 transit switches in the global IC-NB.
+    for t in 1 2 3 4; do
+        ovn-ic-nbctl ts-add ts$i-$t
+    done
+
+    # Per-AZ: wait for the TS mirrors to appear locally, then wire the router.
+    for a in 1 2 3; do
+        for t in 1 2 3 4; do
+            OVS_WAIT_UNTIL([test -n "`ovn_as az$a ovn-nbctl --bare \
+                --columns=name find logical_switch name=ts$i-$t`"])
+        done
+
+        check ovn_as az$a sh -c '
+            check () { "$@" || exit 1; }
+            i='"$i"'; a='"$a"'
+            check ovn-nbctl lr-add lr${i}-${a}
+            check ovn-nbctl ls-add bar${i}-${a}
+            check ovn-nbctl lrp-add lr${i}-${a} rp${i}-${a}-bar \
+                00:01:ff:2${a}:00:01 192.168.${a}0.1/24
+            check ovn-nbctl lsp-add bar${i}-${a} bar${i}-${a} \
+                -- lsp-set-addresses bar${i}-${a} "00:00:ff:ff:ff:1${a} \
+                192.168.${a}0.2"
+            check ovn-nbctl lsp-add bar${i}-${a} bar-rp${i}-${a} \
+                -- set Logical_Switch_Port bar-rp${i}-${a} type=router \
+                   options:router-port=rp${i}-${a}-bar \
+                -- lsp-set-addresses bar-rp${i}-${a} router
+
+            for t in 1 2 3 4; do
+                check ovn-nbctl lrp-add lr${i}-${a} ts${i}-${t}-lr${i}-${a} \
+                    00:01:${t}1:00:2${a}:01 169.254.1${t}.${a}/24
+                check ovn-nbctl lsp-add ts${i}-${t} ts${i}-${t}-lr${i}-${a}-rp \
+                    -- set Logical_Switch_Port ts${i}-${t}-lr${i}-${a}-rp \
+                       type=router \
+                       options:router-port=ts${i}-${t}-lr${i}-${a} \
+                    -- lsp-set-addresses ts${i}-${t}-lr${i}-${a}-rp router
+            done
+        '
+    done
+}
+
+# ic_build_scale N : create VPCs 1..N and enable route advertise/learn so the
+# en_route node performs real work.
+ic_build_scale () {
+    local n=$1 a i
+    for a in 1 2 3; do
+        check ovn_as az$a ovn-nbctl set nb_global . \
+            options:ic-route-adv=true options:ic-route-learn=true \
+            options:ic-route-adv-default=true \
+            options:ic-route-learn-default=true
+    done
+    for i in $(seq 1 $n); do
+        ic_build_vpc $i
+    done
+}
+
+# ic_node_incr NODE METRIC
+#
+# Print the maximum value of stopwatch METRIC ("Maximum" or "Short term
+# average") across all change-handler stopwatches of engine NODE.  The node's
+# own stopwatch only records recompute time, so the per-input handler
+# stopwatches are aggregated to represent the node's incremental cost.
+ic_node_incr () {
+    local node=$1 metric=$2 max=0 h v
+    for h in $(ovn-appctl -t ic/ovn-ic inc-engine/list-stopwatches "$node" \
+               2>/dev/null | tail -n +2); do
+        v=$(ovn-appctl -t ic/ovn-ic stopwatch/show "$h" 2>/dev/null \
+            | grep "$metric" | awk '{print $(NF-1)}')
+        test -n "$v" || v=0
+        if awk "BEGIN{exit !($v > $max)}"; then
+            max=$v
+        fi
+    done
+    echo "$max"
+}
+OVS_END_SHELL_HELPERS
+
+# MEASURE_IC_SCALE(N)
+#
+# Build N VPCs, then measure incremental (+1 VPC) vs forced full recompute on
+# the resulting state.
+m4_define([MEASURE_IC_SCALE], [
+    ovn_init_ic_db
+    ovn_start az1
+    ovn_start az2
+    ovn_start az3
+    OVS_WAIT_UNTIL([test 3 = `ovn-ic-sbctl show | grep -c availability-zone`])
+
+    # ---- Build the scale (cost of building N VPCs incrementally) ----
+    ic_build_scale $1
+    check ovn-ic-nbctl --wait=sb sync
+    as az1
+    check ovn-nbctl --wait=sb sync
+
+    # The engine stopwatches are disabled by default, so turn them on before
+    # measuring anything or every timing below reads back as zero.  This is
+    # done only after the scale has been built, to keep the build itself free
+    # of the per-node stopwatch overhead.
+    check ovn-appctl -t ic/ovn-ic inc-engine/enable-stopwatch
+
+    # Quiesce: force one recompute so the engine is fully settled, then reset
+    # the counters/stopwatches so the next measurement is clean.
+    check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+    check ovn-appctl -t ic/ovn-ic stopwatch/reset
+
+    # ---- AFTER: incremental cost of adding ONE more VPC at $1-VPC scale ----
+    ic_build_vpc m4_incr($1)
+    check ovn-ic-nbctl --wait=sb sync
+    as az1
+    check ovn-nbctl --wait=sb sync
+
+    # Prove the full recompute was skipped for the hot nodes.
+    AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                          inc-engine/show-stats ts compute)" -gt 0])
+    AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                          inc-engine/show-stats ts recompute)" = 0])
+    AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                          inc-engine/show-stats route compute)" -gt 0])
+    AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                          inc-engine/show-stats route recompute)" = 0])
+
+    PERF_RECORD_START([Incremental: +1 VPC at $1-VPC scale (node handler times)])
+    PERF_IC_NODE_INCR([ts],           [en_ts incremental])
+    PERF_IC_NODE_INCR([tr],           [en_tr incremental])
+    PERF_IC_NODE_INCR([route],        [en_route incremental])
+    PERF_IC_NODE_INCR([port_binding], [en_port_binding incremental])
+    PERF_IC_NODE_INCR([tunnel_key],   [en_tunnel_key incremental])
+
+    # ---- BEFORE: forced full recompute of the whole state ----
+    check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+    check ovn-appctl -t ic/ovn-ic stopwatch/reset
+    check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+    check ovn-ic-nbctl --wait=sb sync
+    as az1
+    check ovn-nbctl --wait=sb sync
+
+    AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                          inc-engine/show-stats ts recompute)" -ge 1])
+
+    PERF_RECORD_START([Full recompute at m4_incr($1)-VPC scale (node times)])
+    PERF_IC_NODE([ts],           [en_ts recompute])
+    PERF_IC_NODE([tr],           [en_tr recompute])
+    PERF_IC_NODE([route],        [en_route recompute])
+    PERF_IC_NODE([port_binding], [en_port_binding recompute])
+    PERF_IC_NODE([tunnel_key],   [en_tunnel_key recompute])
+
+    OVN_CLEANUP_IC([az1], [az2], [az3])
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ovn-ic basic scale test -- 200 VPCs x 3 AZs x 4 TSs: incremental vs recompute])
+MEASURE_IC_SCALE(200)
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ovn-ic basic scale test -- 400 VPCs x 3 AZs x 4 TSs: incremental vs recompute])
+MEASURE_IC_SCALE(400)
+AT_CLEANUP
+])

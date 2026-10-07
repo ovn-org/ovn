@@ -69,7 +69,8 @@ SYSTEM_TESTSUITE_AT = \
 
 PERF_TESTSUITE_AT = \
 	tests/perf-testsuite.at \
-	tests/perf-northd.at
+	tests/perf-northd.at \
+	tests/perf-ovn-ic.at
 
 MULTINODE_TESTSUITE_AT = \
 	tests/multinode-bgp-macros.at \
