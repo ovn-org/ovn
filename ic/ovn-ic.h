@@ -62,6 +62,24 @@ struct ic_state {
 enum ic_datapath_type { IC_SWITCH, IC_ROUTER, IC_DATAPATH_MAX };
 enum ic_port_binding_type { IC_SWITCH_PORT, IC_ROUTER_PORT, IC_PORT_MAX };
 
+struct hmap;
+struct shash;
+
 void ovn_db_run(struct ic_context *ctx);
+
+/* Per-subsystem entry points, invoked by the incremental-processing engine
+ * nodes (see ic/en-*.c).  Each performs a full recompute of its subsystem and
+ * may be invoked independently when its engine inputs change. */
+void enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
+                         struct shash *isb_ts_dps, struct shash *isb_tr_dps);
+void gateway_run(struct ic_context *ctx);
+void address_set_run(struct ic_context *ctx);
+void ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
+            struct shash *isb_ts_dps);
+void tr_run(struct ic_context *ctx, struct hmap *dp_tnlids,
+            struct shash *isb_tr_dps);
+void port_binding_run(struct ic_context *ctx);
+void route_run(struct ic_context *ctx);
+void sync_service_monitor(struct ic_context *ctx);
 
 #endif /* OVN_IC_H */

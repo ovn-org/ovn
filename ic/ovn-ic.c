@@ -191,7 +191,7 @@ ic_pb_get_type(const struct icsbrec_port_binding *isb_pb)
     return IC_SWITCH_PORT;
 }
 
-static void
+void
 enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
                     struct shash *isb_ts_dps, struct shash *isb_tr_dps)
 {
@@ -220,7 +220,7 @@ is_az_leader(struct ovsdb_idl_txn *txn)
     return idl && ovsdb_idl_has_lock(idl);
 }
 
-static void
+void
 ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
        struct shash *isb_ts_dps)
 {
@@ -353,7 +353,7 @@ ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
     }
 }
 
-static void
+void
 tr_run(struct ic_context *ctx, struct hmap *dp_tnlids,
        struct shash *isb_tr_dps)
 {
@@ -610,7 +610,7 @@ sync_addr_set_from_icsb(struct ovsdb_idl_txn *ovnnb_txn,
     sorted_array_destroy(&sorted_addrs);
 }
 
-static void
+void
 address_set_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
@@ -710,7 +710,7 @@ address_set_run(struct ic_context *ctx)
     shash_destroy(&ic_remote_as);
 }
 
-static void
+void
 gateway_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
@@ -1414,7 +1414,7 @@ find_lsp_in_sb(struct ic_context *ctx,
     return find_sb_pb_by_name(ctx->sbrec_port_binding_by_name, lsp->name);
 }
 
-static void
+void
 port_binding_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
@@ -3176,7 +3176,7 @@ delete_orphan_ic_routes(struct ic_context *ctx,
     icsbrec_route_index_destroy_row(isb_route_key);
 }
 
-static void
+void
 route_run(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnnb_txn || !ctx->ovnsb_txn) {
@@ -3622,7 +3622,7 @@ destroy_service_monitor_data(struct sync_service_monitor_data *sync_data)
     free(sync_data->prpg_svc_monitor_mac);
 }
 
-static void
+void
 sync_service_monitor(struct ic_context *ctx)
 {
     if (!ctx->ovnisb_unlocked_txn || !ctx->ovnsb_txn) {
