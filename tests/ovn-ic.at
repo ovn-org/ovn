@@ -1063,6 +1063,153 @@ OVN_CLEANUP_IC([az1])
 AT_CLEANUP
 ])
 
+AT_SETUP([ovn-ic -- incremental processing - port binding handler scoping])
+
+# Exercises the per-transit-switch/router scoping of the en_port_binding change
+# handlers on a single AZ.  Helpers quiesce the engine, reset the stats, apply
+# one change, and assert whether the port_binding node was fully recomputed.
+
+# CHECK_PB_RECOMPUTE(CHANGE_CMD, EXPECT) - run CHANGE_CMD and assert the
+# port_binding node's recompute count is "0" (EXPECT=norecompute) or non-zero
+# (EXPECT=recompute) afterwards.
+m4_define([CHECK_PB_RECOMPUTE], [
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+    check ovn-ic-nbctl --wait=sb sync
+    check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+    $1
+    check ovn-ic-nbctl --wait=sb sync
+    rc=$(ovn-appctl -t ic/ovn-ic inc-engine/show-stats port_binding recompute)
+    echo "port_binding recompute count after '$1': $rc (expect $2)"
+    if test "$2" = norecompute; then
+        AT_CHECK([test "$rc" = 0])
+    else
+        AT_CHECK([test "$rc" -gt 0])
+    fi
+])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+ovn-ic-nbctl ts-add ts2
+ovn_start az1
+as az1
+check ovn-ic-nbctl --wait=sb sync
+
+# One logical router with a port on each transit switch.
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
+check ovn-nbctl lsp-add-router-port ts1 lsp-ts1-lr1 lrp-lr1-ts1
+check ovn-nbctl lrp-add lr1 lrp-lr1-ts2 aa:aa:aa:aa:aa:02 169.254.101.1/24
+check ovn-nbctl --wait=sb lsp-add-router-port ts2 lsp-ts2-lr1 lrp-lr1-ts2
+
+# Wait until both transit-switch ports are mirrored to IC-SB.
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=logical_port find \
+                            port_binding | grep -c lsp-ts)" = 2])
+
+# --- Changes handled incrementally (no full recompute of port_binding) ---
+
+# IC-NB Transit_Switch handler: a new transit switch is scoped to itself.
+CHECK_PB_RECOMPUTE([check ovn-ic-nbctl --wait=sb ts-add ts3], [norecompute])
+
+# NB Logical_Switch_Port handler: a column change on an existing transit-switch
+# port is scoped to its transit switch.
+CHECK_PB_RECOMPUTE(
+    [check ovn-nbctl set logical_switch_port lsp-ts1-lr1 options:foo=bar],
+    [norecompute])
+
+# NB Logical_Switch handler: a tenant switch (no other_config:interconn-ts) is
+# irrelevant.
+CHECK_PB_RECOMPUTE([check ovn-nbctl --wait=sb ls-add sw0], [norecompute])
+
+# --- Fallback: an SB chassis change still triggers a full recompute ---
+CHECK_PB_RECOMPUTE([check ovn-sbctl chassis-add ch-test geneve 192.0.2.10],
+                   [recompute])
+
+# --- Cross-transit-switch isolation ---
+
+# A change scoped to ts1 must leave ts2's port binding untouched.
+ovn-ic-sbctl --bare --columns=logical_port,tunnel_key,address find \
+    port_binding transit_switch=ts2 | sort > ts2_before
+CHECK_PB_RECOMPUTE(
+    [check ovn-nbctl set logical_switch_port lsp-ts1-lr1 options:bar=baz],
+    [norecompute])
+ovn-ic-sbctl --bare --columns=logical_port,tunnel_key,address find \
+    port_binding transit_switch=ts2 | sort > ts2_after
+AT_CHECK([diff ts2_before ts2_after])
+
+# --- Recompute equivalence: scoped syncs produced the same state a full
+# recompute would. ---
+check ovn-ic-nbctl --wait=sb sync
+m4_define([_PB_DUMP], [
+    ovn-ic-sbctl --columns=logical_port,transit_switch,type,address \
+        list port_binding | sort > $1
+])
+_PB_DUMP([pb_before])
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+_PB_DUMP([pb_after])
+AT_CHECK([diff pb_before pb_after])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+
+AT_SETUP([ovn-ic -- incremental processing - transit switch port handler])
+
+# A Transit_Switch_Port column change that does not also change the owning
+# Transit_Switch must still be reconciled by the en_port_binding
+# en_icnb_transit_switch_port change handler, without a full recompute.
+# Transit_Switch_Port carries no back-reference to its switch, so the handler
+# resolves the owner by scanning Transit_Switch.ports; a missing handler here
+# would silently drop the change (only a Transit_Switch change would apply it).
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+sim_add gw-az1
+as gw-az1
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+as az1
+
+# A router with a port on the transit switch, exposed as an explicit
+# transit-switch port carrying an address.
+check ovn-ic-nbctl --wait=sb ts-add ts1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lrp1 gw-az1
+check ovn-ic-nbctl tsp-add ts1 tsp1 type=router chassis=gw-az1 peer=lrp1
+check ovn-ic-nbctl tsp-set-addr tsp1 "00:00:00:00:00:02 10.0.1.2/24"
+check ovn-ic-nbctl --wait=sb sync
+
+# The transit-switch port's address reached its IC-SB port binding.
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=address find \
+                            port_binding logical_port=tsp1)" \
+                    = "00:00:00:00:00:02 10.0.1.2/24"])
+
+# Quiesce the engine and reset stats so only the change under test counts.
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+check ovn-ic-nbctl --wait=sb sync
+check ovn-appctl -t ic/ovn-ic inc-engine/clear-stats
+
+# Change ONLY the transit-switch port's address; the owning Transit_Switch row
+# is left untouched.
+check ovn-ic-nbctl --wait=sb tsp-set-addr tsp1 "00:00:00:00:00:03 10.0.1.3/24"
+
+# The change is applied (it propagates to the IC-SB port binding) ...
+OVS_WAIT_UNTIL([test "$(ovn-ic-sbctl --bare --columns=address find \
+                            port_binding logical_port=tsp1)" \
+                    = "00:00:00:00:00:03 10.0.1.3/24"])
+# ... and handled incrementally, without a full recompute of port_binding.
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats port_binding compute)" -gt 0])
+AT_CHECK([test "$(ovn-appctl -t ic/ovn-ic \
+                      inc-engine/show-stats port_binding recompute)" = 0])
+
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- port sync])
 
@@ -5948,6 +6095,101 @@ wait_row_count Port_Binding 0 logical_port=tr0-p0
 ovn_as az2
 wait_row_count nb:Logical_Router_Port 0 name=tr0-p0
 wait_row_count Port_Binding 0 logical_port=tr0-p0
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- incremental processing - transit router port chassis change])
+
+# A transit router port moving between "bound to a chassis" and "local to
+# every AZ" (empty chassis) is reconciled by the en_port_binding transit
+# router port handler: a single IC-SB port binding remains, owned by the AZ
+# that hosts the port, and every AZ mirrors it with the right
+# requested-chassis.
+
+ovn_init_ic_db
+net_add n1
+net_add n2
+ovn_start az1
+ovn_start az2
+
+OVS_WAIT_FOR_OUTPUT([ovn-ic-sbctl show], [0], [dnl
+availability-zone az1
+availability-zone az2
+])
+check ovn-ic-nbctl --wait=sb sync
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.0.1
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+wait_row_count Chassis 1 name=hv1
+
+sim_add hv2
+as hv2
+ovs-vsctl add-br br-phys
+ovn_az_attach az2 n2 br-phys 192.168.0.2
+ovs-vsctl set open . external-ids:ovn-is-interconn=true
+wait_row_count Chassis 1 name=hv2
+
+az1_uuid=$(fetch_column ic-sb:Availability_Zone _uuid name=az1)
+az2_uuid=$(fetch_column ic-sb:Availability_Zone _uuid name=az2)
+
+# Bound to hv1: the binding is owned by az1.
+check ovn-ic-nbctl tr-add tr0
+check ovn-ic-nbctl trp-add tr0 tr0-p0 00:00:00:11:22:00 192.168.10.10/24 \
+    chassis=hv1
+wait_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0 \
+    availability_zone=$az1_uuid
+for az in az1 az2; do
+    ovn_as $az
+    OVS_WAIT_FOR_OUTPUT([ovn-nbctl get Logical_Router_Port tr0-p0 \
+                             options:requested-chassis], [0], [hv1
+])
+done
+
+# Unbound: the port becomes local to every AZ.  The existing binding is kept
+# and shared, so both AZs keep agreeing on its tunnel key.
+check ovn-ic-nbctl --wait=sb set Transit_Router_Port tr0-p0 chassis='""'
+check ovn-ic-nbctl --wait=sb sync
+check_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0
+for az in az1 az2; do
+    ovn_as $az
+    OVS_WAIT_UNTIL([! ovn-nbctl get Logical_Router_Port tr0-p0 \
+                        options:requested-chassis])
+done
+az1_key=$(ovn_as az1 ovn-sbctl --bare --columns=tunnel_key \
+              find Port_Binding logical_port=tr0-p0)
+az2_key=$(ovn_as az2 ovn-sbctl --bare --columns=tunnel_key \
+              find Port_Binding logical_port=tr0-p0)
+check test -n "$az1_key"
+check test "$az1_key" = "$az2_key"
+
+# Bound to hv2: az1 no longer hosts the port, so its binding is replaced by
+# one owned by az2.
+check ovn-ic-nbctl --wait=sb set Transit_Router_Port tr0-p0 chassis=hv2
+check ovn-ic-nbctl --wait=sb sync
+wait_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0
+wait_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0 \
+    availability_zone=$az2_uuid
+for az in az1 az2; do
+    ovn_as $az
+    OVS_WAIT_FOR_OUTPUT([ovn-nbctl get Logical_Router_Port tr0-p0 \
+                             options:requested-chassis], [0], [hv2
+])
+done
+
+# A forced recompute in every AZ converges to the same state.
+for az in az1 az2; do
+    as $az
+    check ovn-appctl -t ic/ovn-ic inc-engine/recompute
+done
+check ovn-ic-nbctl --wait=sb sync
+check_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0 \
+    availability_zone=$az2_uuid
 
 OVN_CLEANUP_IC([az1], [az2])
 AT_CLEANUP

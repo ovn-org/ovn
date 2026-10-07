@@ -41,6 +41,7 @@ struct ic_context {
     struct ovsdb_idl_index *sbrec_service_monitor_by_ic_learned;
     struct ovsdb_idl_index *sbrec_service_monitor_by_remote_type_logical_port;
     struct ovsdb_idl_index *icnbrec_transit_switch_by_name;
+    struct ovsdb_idl_index *icnbrec_transit_router_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_az;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az;
@@ -68,12 +69,17 @@ struct icsbrec_availability_zone;
 struct icsbrec_datapath_binding;
 struct sbrec_chassis_table;
 struct icsbrec_gateway_table;
+struct nbrec_logical_switch_port;
+struct nbrec_logical_router_port;
 
 enum ic_datapath_type ic_dp_get_type(
     const struct icsbrec_datapath_binding *isb_dp);
 
 void address_set_run(struct ic_context *ctx,
                      const struct icsbrec_availability_zone *runned_az);
+struct icsbrec_port_binding;
+enum ic_port_binding_type ic_pb_get_type(
+    const struct icsbrec_port_binding *isb_pb);
 
 /* Reconciles the AZ NB Logical_Switch mirrors of the transit switches named in
  * 'ts_scope' (NULL reconciles every transit switch).  'isb_ts_dps' is the
@@ -88,8 +94,13 @@ void ts_sync_scope(struct ic_context *ctx, struct shash *isb_ts_dps,
  * requests vxlan_mode and the IC-SB actually has a VXLAN encap. */
 bool ic_ts_compute_vxlan_mode(struct ic_context *ctx);
 
-void port_binding_run(struct ic_context *ctx,
-                      const struct icsbrec_availability_zone *runned_az);
+/* Scope-resolution helpers for the en_port_binding change handlers.  Build the
+ * reverse maps once per handler invocation, then resolve each changed port
+ * with the *_collect_* helpers. */
+void port_binding_lsp_ts_map_init(struct ic_context *ctx, struct shash *map);
+void port_binding_collect_lsp_ts(const struct shash *lsp_ts_map,
+                                 const struct nbrec_logical_switch_port *lsp,
+                                 struct sset *ts_scope);
 void route_run(struct ic_context *ctx,
                const struct icsbrec_availability_zone *runned_az);
 void sync_service_monitor(struct ic_context *ctx,
@@ -100,8 +111,15 @@ uint32_t
 allocate_dp_key(struct hmap *dp_tnlids, bool vxlan_mode, const char *name);
 const struct sbrec_chassis *
 find_sb_chassis(struct ic_context *ctx, const char *name);
+const struct sbrec_port_binding *
+find_sb_pb_by_name(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                   const char *name);
 const struct nbrec_logical_switch *
 find_ts_in_nb(struct ic_context *ctx, char *ts_name);
+const struct nbrec_logical_router_port *
+get_lrp_by_lrp_name(struct ic_context *ctx, const char *lrp_name);
+const struct nbrec_logical_switch_port *
+get_lsp_by_ts_port_name(struct ic_context *ctx, const char *ts_port_name);
 bool
 is_az_leader(struct ovsdb_idl_txn *txn);
 

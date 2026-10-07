@@ -99,7 +99,8 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_ic);
     ICNB_NODE(ic_nb_global, "ic_nb_global") \
     ICNB_NODE(transit_switch, "transit_switch") \
     ICNB_NODE(transit_router, "transit_router") \
-    ICNB_NODE(transit_router_port, "transit_router_port")
+    ICNB_NODE(transit_router_port, "transit_router_port") \
+    ICNB_NODE(transit_switch_port, "transit_switch_port")
 
     enum icnb_engine_node {
 #define ICNB_NODE(NAME, NAME_STR) ICNB_##NAME,
@@ -179,7 +180,7 @@ static ENGINE_NODE(gateway);
 static ENGINE_NODE(ts);
 static ENGINE_NODE(tr);
 static ENGINE_NODE(tunnel_key);
-static ENGINE_NODE(port_binding);
+static ENGINE_NODE(port_binding, CLEAR_TRACKED_DATA);
 static ENGINE_NODE(route);
 static ENGINE_NODE(service_monitor);
 static ENGINE_NODE(address_set);
@@ -275,19 +276,42 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
                      ic_nb_global_options_handler);
     engine_add_input(&en_tunnel_key, &en_icsb_encap, NULL);
 
-    /* en_port_binding: sync cross-AZ port bindings. */
+    /* en_port_binding: sync cross-AZ port bindings.
+     *
+     * Like en_gateway, this node uses only the AZ identity (en_az's resolved
+     * AZ, plus the by-AZ port-binding index) and does not read
+     * the Availability_Zone table itself, so it does not depend on
+     * en_icsb_availability_zone and is not churned by the nb_ic_cfg sequence
+     * number bumped there on every change. */
     engine_add_input(&en_port_binding, &en_az, NULL);
-    engine_add_input(&en_port_binding, &en_icsb_availability_zone, NULL);
-    engine_add_input(&en_port_binding, &en_icsb_port_binding, NULL);
-    engine_add_input(&en_port_binding, &en_icnb_transit_switch, NULL);
-    engine_add_input(&en_port_binding, &en_icnb_transit_router, NULL);
-    engine_add_input(&en_port_binding, &en_icnb_transit_router_port, NULL);
-    engine_add_input(&en_port_binding, &en_nb_logical_switch, NULL);
-    engine_add_input(&en_port_binding, &en_nb_logical_switch_port, NULL);
-    engine_add_input(&en_port_binding, &en_nb_logical_router, NULL);
-    engine_add_input(&en_port_binding, &en_nb_logical_router_port, NULL);
-    engine_add_input(&en_port_binding, &en_sb_port_binding, NULL);
-    engine_add_input(&en_port_binding, &en_sb_chassis, NULL);
+    engine_add_input(&en_port_binding, &en_icsb_port_binding,
+                     port_binding_icsb_port_binding_handler);
+    engine_add_input(&en_port_binding, &en_icnb_transit_switch,
+                     port_binding_icnb_transit_switch_handler);
+    engine_add_input(&en_port_binding, &en_icnb_transit_router,
+                     port_binding_icnb_transit_router_handler);
+    engine_add_input(&en_port_binding, &en_icnb_transit_router_port,
+                     port_binding_icnb_transit_router_port_handler);
+    engine_add_input(&en_port_binding, &en_icnb_transit_switch_port,
+                     port_binding_icnb_transit_switch_port_handler);
+    engine_add_input(&en_port_binding, &en_nb_logical_switch,
+                     port_binding_nb_logical_switch_handler);
+    engine_add_input(&en_port_binding, &en_nb_logical_switch_port,
+                     port_binding_nb_logical_switch_port_handler);
+    engine_add_input(&en_port_binding, &en_nb_logical_router,
+                     port_binding_nb_logical_router_handler);
+    engine_add_input(&en_port_binding, &en_nb_logical_router_port,
+                     port_binding_nb_logical_router_port_handler);
+    engine_add_input(&en_port_binding, &en_sb_port_binding,
+                     port_binding_sb_port_binding_handler);
+    /* SB chassis affects gateways and chassis_is_remote() across many ports.
+     * The reverse mapping chassis -> affected ports is impractical, but the
+     * sync only reads a chassis' existence and its other_config (is-remote);
+     * so the handler recomputes only on chassis insert/delete or an
+     * other_config change and ignores the frequent heartbeat-style
+     * updates. */
+    engine_add_input(&en_port_binding, &en_sb_chassis,
+                     port_binding_sb_chassis_handler);
 
     /* en_route: advertise/learn cross-AZ routes. */
     engine_add_input(&en_route, &en_az, NULL);
