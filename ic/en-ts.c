@@ -14,21 +14,44 @@
 
 #include <config.h>
 
-#include "en-dp-enum.h"
-#include "en-ts.h"
 #include "en-az.h"
+#include "en-ts.h"
 #include "lib/inc-proc-eng.h"
+#include "lib/ovn-ic-nb-idl.h"
+#include "lib/ovn-ic-sb-idl.h"
+#include "lib/ovn-nb-idl.h"
+#include "openvswitch/shash.h"
 #include "openvswitch/vlog.h"
+#include "ovsdb-idl.h"
+#include "smap.h"
+#include "sset.h"
 #include "ovn-ic.h"
 
 VLOG_DEFINE_THIS_MODULE(en_ic_ts);
+
+/* Builds 'isb_ts_dps': the committed IC-SB transit-switch Datapath_Bindings
+ * keyed by transit-switch name.  Read-only; ts_sync_scope() copies each
+ * committed tunnel key into its NB mirror's requested-tnl-key.  This is
+ * en_ts's own local data, rebuilt each run and never mutated by another
+ * node. */
+static void
+collect_ts_datapaths(struct ic_context *ctx, struct shash *isb_ts_dps)
+{
+    shash_init(isb_ts_dps);
+
+    const struct icsbrec_datapath_binding *isb_dp;
+    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
+        if (ic_dp_get_type(isb_dp) == IC_SWITCH) {
+            shash_add(isb_ts_dps, isb_dp->transit_switch, isb_dp);
+        }
+    }
+}
 
 enum engine_node_state
 en_ts_run(struct engine_node *node, void *data OVS_UNUSED)
 {
     const struct engine_context *eng_ctx = engine_get_context();
     struct ic_context *ctx = eng_ctx->client_ctx;
-    struct ed_type_dp_enum *dp = engine_get_input_data("dp_enum", node);
     const struct ed_type_az *az = engine_get_input_data("az", node);
 
     /* runned_az is resolved by the upstream en_az node.  Without an AZ there
@@ -37,7 +60,10 @@ en_ts_run(struct engine_node *node, void *data OVS_UNUSED)
         return EN_UNCHANGED;
     }
 
-    ts_run(ctx, &dp->dp_tnlids, &dp->isb_ts_dps);
+    struct shash isb_ts_dps;
+    collect_ts_datapaths(ctx, &isb_ts_dps);
+    ts_sync_scope(ctx, &isb_ts_dps, NULL);
+    shash_destroy(&isb_ts_dps);
 
     return EN_UPDATED;
 }

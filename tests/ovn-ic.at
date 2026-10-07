@@ -95,6 +95,57 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- transit switch and router rename])
+
+# Renaming a transit switch must garbage-collect everything keyed by its old
+# name: the IC-SB Datapath_Binding, the AZ NB Logical_Switch mirror and the
+# IC-SB Port_Binding of its ports.  Renaming a transit router must move its
+# port binding to the new name.
+
+ovn_init_ic_db
+net_add n1
+ovn_start az1
+sim_add gw-az1
+as gw-az1
+check ovs-vsctl add-br br-phys
+ovn_az_attach az1 n1 br-phys 192.168.1.1
+check ovs-vsctl set open . external-ids:ovn-is-interconn=true
+
+ovn_as az1
+check ovn-ic-nbctl --wait=sb ts-add ts1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lrp1 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lrp1 gw-az1
+check ovn-nbctl lsp-add-router-port ts1 lsp1 lrp1
+wait_row_count Datapath_Binding 1 external_ids:interconn-ts=ts1
+
+check ovn-ic-nbctl --wait=sb tr-add tr0
+check ovn-ic-nbctl --wait=sb trp-add tr0 tr0-p0 00:00:00:11:22:00 \
+    192.168.10.10/24 chassis=gw-az1
+check ovn-ic-nbctl --wait=sb sync
+check_row_count ic-sb:Port_Binding 1 logical_port=lsp1 transit_switch=ts1
+check_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0 transit_switch=tr0
+
+check ovn-ic-nbctl --wait=sb set Transit_Switch ts1 name=ts2
+check ovn-ic-nbctl --wait=sb sync
+check_row_count ic-sb:Datapath_Binding 1 type=transit-switch
+check_column ts2 ic-sb:Datapath_Binding transit_switch type=transit-switch
+check_column ts2 nb:Logical_Switch name
+check_row_count ic-sb:Port_Binding 0 logical_port=lsp1
+
+check ovn-ic-nbctl --wait=sb set Transit_Router tr0 name=tr1
+check ovn-ic-nbctl --wait=sb sync
+check_row_count ic-sb:Datapath_Binding 1 type=transit-router
+check_column "lr1 tr1" nb:Logical_Router name
+check_row_count ic-sb:Port_Binding 0 transit_switch=tr0
+check_row_count ic-sb:Port_Binding 1 logical_port=tr0-p0 transit_switch=tr1
+
+OVN_CLEANUP_SBOX(gw-az1)
+OVN_CLEANUP_IC([az1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- VXLAN tunnel key])
 ovn_init_ic_db
 net_add n1

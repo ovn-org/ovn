@@ -28,10 +28,10 @@
 #include "inc-proc-ic.h"
 #include "en-ic.h"
 #include "en-az.h"
-#include "en-dp-enum.h"
 #include "en-gateway.h"
 #include "en-ts.h"
 #include "en-tr.h"
+#include "en-tunnel-key.h"
 #include "en-port-binding.h"
 #include "en-route.h"
 #include "en-service-monitor.h"
@@ -175,10 +175,10 @@ VLOG_DEFINE_THIS_MODULE(inc_proc_ic);
 /* Define engine nodes for other nodes. They should be defined as static to
  * avoid sparse errors. */
 static ENGINE_NODE(az);
-static ENGINE_NODE(dp_enum);
 static ENGINE_NODE(gateway);
 static ENGINE_NODE(ts);
 static ENGINE_NODE(tr);
+static ENGINE_NODE(tunnel_key);
 static ENGINE_NODE(port_binding);
 static ENGINE_NODE(route);
 static ENGINE_NODE(service_monitor);
@@ -201,21 +201,6 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
      * splitting the monolithic ovn_db_run() into independently-gated nodes.
      * Change handlers are added incrementally in a later step. */
 
-    /* en_dp_enum: enumerate IC-SB datapath bindings (tunnel-key allocator and
-     * transit switch/router datapath maps shared by en_ts and en_tr).
-     *
-     * en_ts and en_tr allocate datapath tunnel keys from the shared
-     * 'dp_tnlids' set owned by this node, mutating it during their run.  To
-     * keep that allocator correct, en_dp_enum must rebuild it from scratch in
-     * the same iteration as any allocation.  It therefore depends not only on
-     * the IC-SB datapath bindings themselves, but also on every input that can
-     * cause en_ts/en_tr to allocate a key: a new transit switch or router, or
-     * a change of vxlan_mode (which forces a tunnel-key refresh). */
-    engine_add_input(&en_dp_enum, &en_icsb_datapath_binding, NULL);
-    engine_add_input(&en_dp_enum, &en_icnb_transit_switch, NULL);
-    engine_add_input(&en_dp_enum, &en_icnb_transit_router, NULL);
-    engine_add_input(&en_dp_enum, &en_icnb_ic_nb_global, NULL);
-
     /* en_gateway: sync gateways/chassis between SB and IC-SB. */
     engine_add_input(&en_gateway, &en_az, NULL);
     engine_add_input(&en_gateway, &en_icsb_availability_zone, NULL);
@@ -224,19 +209,48 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_gateway, &en_sb_chassis, NULL);
     engine_add_input(&en_gateway, &en_sb_encap, NULL);
 
-    /* en_ts: sync transit switches to NB and IC-SB datapath bindings. */
+    /* en_ts: sync transit switches to their AZ NB Logical_Switch mirrors.
+     * en_ts builds its own transit-switch IC-SB Datapath_Binding map each run
+     * and only maintains the NB mirror; IC-SB Datapath_Binding creation/keying
+     * is owned by en_tunnel_key (downstream). */
     engine_add_input(&en_ts, &en_az, NULL);
-    engine_add_input(&en_ts, &en_dp_enum, NULL);
+    engine_add_input(&en_ts, &en_icsb_datapath_binding, NULL);
     engine_add_input(&en_ts, &en_icnb_ic_nb_global, NULL);
     engine_add_input(&en_ts, &en_icnb_transit_switch, NULL);
     engine_add_input(&en_ts, &en_nb_logical_switch, NULL);
     engine_add_input(&en_ts, &en_icsb_encap, NULL);
 
-    /* en_tr: sync transit routers to NB and IC-SB datapath bindings. */
+    /* en_tr: sync transit routers to their AZ NB Logical_Router mirrors.
+     * Like en_ts, IC-SB Datapath_Binding creation/keying is owned by
+     * en_tunnel_key. */
     engine_add_input(&en_tr, &en_az, NULL);
-    engine_add_input(&en_tr, &en_dp_enum, NULL);
+    engine_add_input(&en_tr, &en_icsb_datapath_binding, NULL);
     engine_add_input(&en_tr, &en_icnb_transit_router, NULL);
     engine_add_input(&en_tr, &en_nb_logical_router, NULL);
+
+    /* en_tunnel_key: the single owner of IC-SB Datapath_Binding creation,
+     * tunnel-key allocation, VXLAN-range refresh and GC, for both transit
+     * switches and transit routers.  Concentrating allocation in one node
+     * keeps the keys globally unique across both datapath types without any
+     * node mutating another's data.
+     *
+     * It is ordered after en_ts and en_tr (no-op edges) so the AZ NB mirrors
+     * exist before it publishes a brand-new binding's key to them (the
+     * anti-flap early publish in en_tunnel_key_run()).  The IC-NB transit
+     * switch/router and IC-SB Datapath_Binding inputs drive create/GC; the
+     * IC-NB Global (vxlan_mode) and IC-SB Encap inputs drive the VXLAN-range
+     * refresh. */
+    engine_add_input(&en_tunnel_key, &en_ts, engine_noop_handler);
+    engine_add_input(&en_tunnel_key, &en_tr, engine_noop_handler);
+    engine_add_input(&en_tunnel_key, &en_icsb_datapath_binding,
+                     en_tunnel_key_icsb_datapath_binding_handler);
+    engine_add_input(&en_tunnel_key, &en_icnb_transit_switch,
+                     en_tunnel_key_icnb_transit_switch_handler);
+    engine_add_input(&en_tunnel_key, &en_icnb_transit_router,
+                     en_tunnel_key_icnb_transit_router_handler);
+    engine_add_input(&en_tunnel_key, &en_icnb_ic_nb_global,
+                     ic_nb_global_options_handler);
+    engine_add_input(&en_tunnel_key, &en_icsb_encap, NULL);
 
     /* en_port_binding: sync cross-AZ port bindings. */
     engine_add_input(&en_port_binding, &en_az, NULL);
@@ -290,13 +304,13 @@ void inc_proc_ic_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_address_set, &en_sb_address_set, NULL);
     engine_add_input(&en_address_set, &en_icsb_address_set, NULL);
 
-    /* en_ic: output node aggregating all subsystems.  Order matches the
-     * previous ovn_db_run() call order; in particular en_ts is added before
-     * en_tr so they allocate datapath tunnel keys from the shared en_dp_enum
-     * allocator in the same order as before. */
+    /* en_ic: output node aggregating all subsystems.  en_tunnel_key is added
+     * after en_ts and en_tr, matching its ordering dependency on them (it
+     * publishes a new binding's key to the NB mirror they create). */
     engine_add_input(&en_ic, &en_gateway, NULL);
     engine_add_input(&en_ic, &en_ts, NULL);
     engine_add_input(&en_ic, &en_tr, NULL);
+    engine_add_input(&en_ic, &en_tunnel_key, NULL);
     engine_add_input(&en_ic, &en_port_binding, NULL);
     engine_add_input(&en_ic, &en_route, NULL);
     engine_add_input(&en_ic, &en_service_monitor, NULL);

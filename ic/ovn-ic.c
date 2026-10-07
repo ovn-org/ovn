@@ -99,7 +99,7 @@ Options:\n\
     stream_usage("database", true, true, false);
 }
 
-static uint32_t
+uint32_t
 allocate_dp_key(struct hmap *dp_tnlids, bool vxlan_mode, const char *name)
 {
     uint32_t hint = vxlan_mode ? OVN_MIN_DP_VXLAN_KEY_GLOBAL
@@ -109,7 +109,7 @@ allocate_dp_key(struct hmap *dp_tnlids, bool vxlan_mode, const char *name)
             &hint);
 }
 
-static enum ic_datapath_type
+enum ic_datapath_type
 ic_dp_get_type(const struct icsbrec_datapath_binding *isb_dp)
 {
     if (isb_dp->type && !strcmp(isb_dp->type, "transit-router")) {
@@ -129,250 +129,177 @@ ic_pb_get_type(const struct icsbrec_port_binding *isb_pb)
     return IC_SWITCH_PORT;
 }
 
-void
-enumerate_datapaths(struct ic_context *ctx, struct hmap *dp_tnlids,
-                    struct shash *isb_ts_dps, struct shash *isb_tr_dps)
-{
-    const struct icsbrec_datapath_binding *isb_dp;
-    ICSBREC_DATAPATH_BINDING_FOR_EACH (isb_dp, ctx->ovnisb_idl) {
-        ovn_add_tnlid(dp_tnlids, isb_dp->tunnel_key);
-
-        enum ic_datapath_type dp_type = ic_dp_get_type(isb_dp);
-        if (dp_type == IC_ROUTER) {
-            char *uuid_str = uuid_to_string(isb_dp->nb_ic_uuid);
-            shash_add(isb_tr_dps, uuid_str, isb_dp);
-            free(uuid_str);
-        } else {
-            shash_add(isb_ts_dps, isb_dp->transit_switch, isb_dp);
-        }
-    }
-}
-
 /*
  * Check if the AZ is the leader by checking the lock.
  */
-static bool
+bool
 is_az_leader(struct ovsdb_idl_txn *txn)
 {
     struct ovsdb_idl *idl = ovsdb_idl_txn_get_idl(txn);
     return idl && ovsdb_idl_has_lock(idl);
 }
 
-void
-ts_run(struct ic_context *ctx, struct hmap *dp_tnlids,
-       struct shash *isb_ts_dps)
+/* Returns true if transit-switch datapaths must use the VXLAN tunnel-key
+ * range: IC-NB requests vxlan_mode and the IC-SB actually has a VXLAN encap.
+ *
+ * Warning: ovnisb_unlocked should not be used to insert data on IC_SB which
+ * can cause a constraint violation, as an example, inserting data to IC-SB
+ * datapath_binding. */
+bool
+ic_ts_compute_vxlan_mode(struct ic_context *ctx)
 {
-    const struct icnbrec_transit_switch *ts;
-    bool dp_key_refresh = false;
-    bool vxlan_mode = false;
     const struct icnbrec_ic_nb_global *ic_nb =
         icnbrec_ic_nb_global_first(ctx->ovninb_idl);
 
-    /*
-     * Warning: ovnisb_unlocked should not be used to insert data on IC_SB
-     * which can cause a constraint violation, as an example, inserting data to
-     * IC-SB datapath_binding.
-     */
     if (ic_nb && smap_get_bool(&ic_nb->options, "vxlan_mode", false)) {
         const struct icsbrec_encap *encap;
         ICSBREC_ENCAP_FOR_EACH (encap, ctx->ovnisb_unlocked_idl) {
             if (!strcmp(encap->type, "vxlan")) {
-                vxlan_mode = true;
-                break;
+                return true;
             }
         }
     }
+    return false;
+}
 
-    /* Sync INB TS to AZ NB */
-    if (ctx->ovnnb_txn) {
-        struct shash nb_tses = SHASH_INITIALIZER(&nb_tses);
-        const struct nbrec_logical_switch *ls;
+/* Keep other_config:ic-vxlan_mode on the transit switch's NB Logical_Switch
+ * mirror in sync with the IC VXLAN mode.  northd reads the boolean value with
+ * smap_get_bool() (northd/en-global-config.c), so writing "false" is correct
+ * and does not affect the datapath tunnel-id range.  Only write when the value
+ * actually differs to avoid needless transaction churn. */
+static void
+ts_set_ic_vxlan_mode(const struct nbrec_logical_switch *ls, bool vxlan_mode)
+{
+    const char *want = vxlan_mode ? "true" : "false";
+    const char *cur = smap_get(&ls->other_config, "ic-vxlan_mode");
+    if (!cur || strcmp(cur, want)) {
+        nbrec_logical_switch_update_other_config_setkey(ls, "ic-vxlan_mode",
+                                                        want);
+    }
+}
 
-        /* Get current NB Logical_Switch with other_config:interconn-ts */
-        NBREC_LOGICAL_SWITCH_FOR_EACH (ls, ctx->ovnnb_idl) {
-            const char *ts_name = smap_get(&ls->other_config, "interconn-ts");
-            if (ts_name) {
-                shash_add(&nb_tses, ts_name, ls);
-            }
-        }
-
-        /* Create/update NB Logical_Switch for each TS */
-        ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
-            ls = shash_find_and_delete(&nb_tses, ts->name);
-            if (!ls) {
-                ls = nbrec_logical_switch_insert(ctx->ovnnb_txn);
-                nbrec_logical_switch_set_name(ls, ts->name);
-                nbrec_logical_switch_update_other_config_setkey(ls,
-                                                                "interconn-ts",
-                                                                ts->name);
-                nbrec_logical_switch_update_other_config_setkey(
-                        ls, "ic-vxlan_mode", vxlan_mode ? "true" : "false");
-            } else {
-                bool _vxlan_mode = smap_get_bool(&ls->other_config,
-                                                 "ic-vxlan_mode", false);
-                if (_vxlan_mode != vxlan_mode) {
-                    dp_key_refresh = true;
-                    nbrec_logical_switch_update_other_config_setkey(
-                            ls, "ic-vxlan_mode",
-                            vxlan_mode ? "true" : "false");
-                }
-            }
-
-            const struct icsbrec_datapath_binding *isb_dp;
-            isb_dp = shash_find_data(isb_ts_dps, ts->name);
-            if (isb_dp) {
-                int64_t nb_tnl_key = smap_get_int(&ls->other_config,
-                                                  "requested-tnl-key",
-                                                  0);
-                if (nb_tnl_key != isb_dp->tunnel_key) {
-                    VLOG_DBG("Set other_config:requested-tnl-key %"PRId64
-                             " for transit switch %s in NB.",
-                             isb_dp->tunnel_key, ts->name);
-                    char *tnl_key_str = xasprintf("%"PRId64,
-                                                  isb_dp->tunnel_key);
-                    nbrec_logical_switch_update_other_config_setkey(
-                        ls, "requested-tnl-key", tnl_key_str);
-                    free(tnl_key_str);
-                }
-            }
-        }
-
-        /* Delete extra NB Logical_Switch with other_config:interconn-ts */
-        struct shash_node *node;
-        SHASH_FOR_EACH (node, &nb_tses) {
-            nbrec_logical_switch_delete(node->data);
-        }
-        shash_destroy(&nb_tses);
+/* Reconciles a single transit switch 'ts's AZ NB Logical_Switch mirror:
+ * creates it if missing, keeps other_config:ic-vxlan_mode in sync, and copies
+ * the committed IC-SB Datapath_Binding tunnel key into
+ * other_config:requested-tnl-key.  IC-SB Datapath_Binding creation/keying is
+ * owned by en_tunnel_key.
+ *
+ * 'nb_gc' (keyed by transit-switch name) doubles as a garbage-collection set:
+ * this function removes the mirror it claims, so whatever remains after every
+ * in-scope switch has been reconciled is stale and deleted by the caller.
+ * 'isb_gc' (the IC-SB Datapath_Binding map keyed by transit-switch name) is
+ * read-only here. */
+static void
+ts_sync_one(struct ic_context *ctx, const struct icnbrec_transit_switch *ts,
+            struct shash *isb_gc, struct shash *nb_gc, bool vxlan_mode)
+{
+    if (!nb_gc) {
+        return;
     }
 
-    /* Sync TS between INB and ISB.  This is performed after syncing with AZ
-     * SB, to avoid uncommitted ISB datapath tunnel key to be synced back to
-     * AZ. */
-    if (ctx->ovnisb_txn &&
-        is_az_leader(ctx->ovnisb_txn)) {
-        /* Create ISB Datapath_Binding */
-        ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
-            const struct icsbrec_datapath_binding *isb_dp =
-                shash_find_and_delete(isb_ts_dps, ts->name);
-            if (!isb_dp) {
-                /* Allocate tunnel key */
-                int64_t dp_key = allocate_dp_key(dp_tnlids, vxlan_mode,
-                                                 "transit switch datapath");
-                if (!dp_key) {
-                    continue;
-                }
+    const struct nbrec_logical_switch *ls =
+        shash_find_and_delete(nb_gc, ts->name);
+    if (!ls) {
+        ls = nbrec_logical_switch_insert(ctx->ovnnb_txn);
+        nbrec_logical_switch_set_name(ls, ts->name);
 
-                isb_dp = icsbrec_datapath_binding_insert(ctx->ovnisb_txn);
-                icsbrec_datapath_binding_set_transit_switch(isb_dp, ts->name);
-                icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
-            } else if (dp_key_refresh) {
-                /* Refresh tunnel key since encap mode has changed. */
-                int64_t dp_key = allocate_dp_key(dp_tnlids, vxlan_mode,
-                                                 "transit switch datapath");
-                if (dp_key) {
-                    icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
-                }
-            }
+        /* Write other_config as a whole column rather than with per-key
+         * partial map updates.  A partial update is only queued as a map
+         * operation and is not reflected in 'ls->other_config' until the
+         * transaction commits, so en_tunnel_key would not recognize this
+         * brand-new row as a transit switch mirror and could not publish the
+         * freshly allocated tunnel key to it in this same iteration.  northd
+         * would then pick its own datapath tunnel key and flap it once
+         * requested-tnl-key finally showed up. */
+        struct smap other_config = SMAP_INITIALIZER(&other_config);
+        smap_add(&other_config, "interconn-ts", ts->name);
+        smap_add(&other_config, "ic-vxlan_mode",
+                 vxlan_mode ? "true" : "false");
+        nbrec_logical_switch_set_other_config(ls, &other_config);
+        smap_destroy(&other_config);
+    } else {
+        ts_set_ic_vxlan_mode(ls, vxlan_mode);
+    }
 
-            if (!isb_dp->type) {
-                icsbrec_datapath_binding_set_type(isb_dp, "transit-switch");
-            }
-
-            if (!isb_dp->nb_ic_uuid) {
-                icsbrec_datapath_binding_set_nb_ic_uuid(isb_dp,
-                                                        &ts->header_.uuid, 1);
-            }
-        }
-
-        struct shash_node *node;
-        SHASH_FOR_EACH (node, isb_ts_dps) {
-            icsbrec_datapath_binding_delete(node->data);
+    const struct icsbrec_datapath_binding *isb_dp =
+        shash_find_data(isb_gc, ts->name);
+    if (isb_dp) {
+        int64_t nb_tnl_key = smap_get_int(&ls->other_config,
+                                          "requested-tnl-key", 0);
+        if (nb_tnl_key != isb_dp->tunnel_key) {
+            VLOG_DBG("Set other_config:requested-tnl-key %"PRId64
+                     " for transit switch %s in NB.",
+                     isb_dp->tunnel_key, ts->name);
+            char *tnl_key_str = xasprintf("%"PRId64, isb_dp->tunnel_key);
+            nbrec_logical_switch_update_other_config_setkey(
+                ls, "requested-tnl-key", tnl_key_str);
+            free(tnl_key_str);
         }
     }
 }
 
+/* Synchronizes transit switches to their AZ NB Logical_Switch mirrors.  When
+ * 'ts_scope' is NULL every transit switch is reconciled (full recompute);
+ * otherwise only the switches named in 'ts_scope' are.  A name still in scope
+ * but no longer present in IC-NB (a deleted switch) is honoured: its mirror
+ * ends up as a garbage-collection leftover and is deleted, matching
+ * full-recompute behaviour.
+ *
+ * 'isb_ts_dps' (the IC-SB Datapath_Binding map keyed by transit-switch name)
+ * is read only, to copy each committed tunnel key into the mirror's
+ * requested-tnl-key.  IC-SB Datapath_Binding creation/keying/GC is owned by
+ * en_tunnel_key, so this function neither allocates keys nor mutates
+ * 'isb_ts_dps'. */
 void
-tr_run(struct ic_context *ctx, struct hmap *dp_tnlids,
-       struct shash *isb_tr_dps)
+ts_sync_scope(struct ic_context *ctx, struct shash *isb_ts_dps,
+              const struct sset *ts_scope)
 {
-    /*
-     * Warning: ovnisb_unlocked should not be used to insert data on IC_SB
-     * which can cause a constraint violation, as an example, inserting data to
-     * IC-SB datapath_binding.
-     */
-    const struct nbrec_logical_router *lr;
+    bool full = !ts_scope;
+    bool vxlan_mode = ic_ts_compute_vxlan_mode(ctx);
 
+    /* Build the NB Logical_Switch mirror GC set, keyed by transit-switch
+     * name.  Only needed when an NB transaction is available. */
+    struct shash nb_ts_mirrors = SHASH_INITIALIZER(&nb_ts_mirrors);
+    struct shash *nb_gc = NULL;
     if (ctx->ovnnb_txn) {
-        struct shash nb_tres = SHASH_INITIALIZER(&nb_tres);
-        NBREC_LOGICAL_ROUTER_FOR_EACH (lr, ctx->ovnnb_idl) {
-            const char *tr_name = smap_get(&lr->options, "interconn-tr");
-            if (tr_name) {
-                shash_add(&nb_tres, tr_name, lr);
-            }
-        }
-
-        const struct icnbrec_transit_router *tr;
-        ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->ovninb_idl) {
-            lr = shash_find_and_delete(&nb_tres, tr->name);
-            if (!lr) {
-                lr = nbrec_logical_router_insert(ctx->ovnnb_txn);
-                nbrec_logical_router_set_name(lr, tr->name);
-                nbrec_logical_router_update_options_setkey(
-                    lr, "interconn-tr", tr->name);
-            }
-            char *uuid_str = uuid_to_string(&tr->header_.uuid);
-            struct icsbrec_datapath_binding *isb_dp = shash_find_data(
-                isb_tr_dps, uuid_str);
-            free(uuid_str);
-
-            if (isb_dp) {
-                char *tnl_key_str = xasprintf("%"PRId64, isb_dp->tunnel_key);
-                nbrec_logical_router_update_options_setkey(
-                    lr, "requested-tnl-key", tnl_key_str);
-                free(tnl_key_str);
-            }
-        }
-
-        struct shash_node *node;
-        SHASH_FOR_EACH (node, &nb_tres) {
-            nbrec_logical_router_delete(node->data);
-        }
-        shash_destroy(&nb_tres);
-    }
-
-    /* Sync TR between INB and ISB.  This is performed after syncing with AZ
-     * SB, to avoid uncommitted ISB datapath tunnel key to be synced back to
-     * AZ. */
-    if (ctx->ovnisb_txn &&
-        is_az_leader(ctx->ovnisb_txn)) {
-        /* Create ISB Datapath_Binding */
-        const struct icnbrec_transit_router *tr;
-        ICNBREC_TRANSIT_ROUTER_FOR_EACH (tr, ctx->ovninb_idl) {
-            char *uuid_str = uuid_to_string(&tr->header_.uuid);
-            struct icsbrec_datapath_binding *isb_dp =
-                shash_find_and_delete(isb_tr_dps, uuid_str);
-            free(uuid_str);
-
-            if (!isb_dp) {
-                int dp_key = allocate_dp_key(dp_tnlids, false,
-                                             "transit router datapath");
-                if (!dp_key) {
-                    continue;
+        nb_gc = &nb_ts_mirrors;
+        if (full) {
+            const struct nbrec_logical_switch *ls;
+            NBREC_LOGICAL_SWITCH_FOR_EACH (ls, ctx->ovnnb_idl) {
+                const char *ts_name = smap_get(&ls->other_config,
+                                               "interconn-ts");
+                if (ts_name) {
+                    shash_add(nb_gc, ts_name, ls);
                 }
-
-                isb_dp = icsbrec_datapath_binding_insert(ctx->ovnisb_txn);
-                icsbrec_datapath_binding_set_tunnel_key(isb_dp, dp_key);
-                icsbrec_datapath_binding_set_nb_ic_uuid(isb_dp,
-                                                        &tr->header_.uuid, 1);
-                icsbrec_datapath_binding_set_type(isb_dp, "transit-router");
+            }
+        } else {
+            const char *name;
+            SSET_FOR_EACH (name, ts_scope) {
+                const struct nbrec_logical_switch *ls =
+                    find_ts_in_nb(ctx, CONST_CAST(char *, name));
+                if (ls && !shash_find(nb_gc, name)) {
+                    shash_add(nb_gc, name, ls);
+                }
             }
         }
+    }
 
-        struct shash_node *node;
-        SHASH_FOR_EACH (node, isb_tr_dps) {
-            icsbrec_datapath_binding_delete(node->data);
+    const struct icnbrec_transit_switch *ts;
+    ICNBREC_TRANSIT_SWITCH_FOR_EACH (ts, ctx->ovninb_idl) {
+        if (full || sset_contains(ts_scope, ts->name)) {
+            ts_sync_one(ctx, ts, isb_ts_dps, nb_gc, vxlan_mode);
         }
     }
+
+    /* Delete extra NB Logical_Switch with other_config:interconn-ts. */
+    if (nb_gc) {
+        struct shash_node *node;
+        SHASH_FOR_EACH (node, nb_gc) {
+            nbrec_logical_switch_delete(node->data);
+        }
+    }
+
+    shash_destroy(&nb_ts_mirrors);
 }
 
 /* Returns true if any information in gw and chassis is different. */
@@ -708,7 +635,7 @@ gateway_run(struct ic_context *ctx,
     shash_destroy(&remote_gws);
 }
 
-static const struct nbrec_logical_switch *
+const struct nbrec_logical_switch *
 find_ts_in_nb(struct ic_context *ctx, char *ts_name)
 {
     const struct nbrec_logical_switch *key =
