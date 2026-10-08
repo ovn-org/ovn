@@ -14,7 +14,7 @@ jobs:
   upgrade-tests:
     name: upgrade-test ${{ matrix.cfg.base_version }} ${{ matrix.cfg.test_range }}
     if: (github.repository_owner == 'ovn-org' && github.event_name == 'schedule' && github.ref_name == 'main') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
 
     strategy:
@@ -44,7 +44,7 @@ jobs:
     - name: system-level-dependencies
       run: |
         sudo apt update
-        sudo apt -y install linux-modules-extra-$(uname -r)
+        sudo apt -y install linux-modules-$(uname -r)
 
     - name: checkout
       uses: actions/checkout@v6
@@ -66,6 +66,11 @@ jobs:
         . .ci/linux-util.sh
         fixup_crun
 
+    - name: Preserve env
+      run: |
+        . .ci/linux-util.sh
+        sudo_preserve_env
+
     - name: Download container
       run: sudo podman pull ghcr.io/ovn-org/ovn-tests:ubuntu
 
@@ -81,7 +86,7 @@ jobs:
         echo "name=logs-upgrade-test-${BRANCH_NAME}-${{ matrix.cfg.test_range }}" >> $GITHUB_OUTPUT
 
     - name: build
-      run: sudo -E ./.ci/ci.sh --archive-logs --timeout=2h
+      run: sudo ./.ci/ci.sh --archive-logs --timeout=2h
 
     - name: upload logs on failure
       if: failure() || cancelled()

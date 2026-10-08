@@ -48,6 +48,7 @@ function disable_apparmor()
     # https://bugs.launchpad.net/ubuntu/+source/apparmor/+bug/2093797
     sudo aa-teardown || true
     sudo systemctl disable --now apparmor.service
+    sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 }
 
 # XXX This should be removed when the following issue is fixed and the
@@ -61,4 +62,16 @@ function fixup_crun()
         -o /usr/bin/crun
     sudo chmod +x /usr/bin/crun
     echo "New crun version: "$(crun --version)
+}
+
+function sudo_preserve_env()
+{
+    sudo sh -c 'cat > /etc/sudoers.d/ovn-ci-env' << EOF
+# ovn-fake-multinode
+Defaults env_keep += "RUNC_CMD OS_IMAGE CENTRAL_IMAGE CHASSIS_IMAGE RELAY_IMAGE GW_IMAGE ENABLE_SSL"
+# ovn-ci
+Defaults env_keep += "ARCH CC DPDK LIBS OPTS TESTSUITE TEST_RANGE SANITIZERS UNSTABLE BASE_VERSION"
+EOF
+    sudo chmod 0440 /etc/sudoers.d/ovn-ci-env
+    sudo visudo -cf /etc/sudoers.d/ovn-ci-env
 }

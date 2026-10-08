@@ -17,7 +17,7 @@ env:
 jobs:
   container:
     if: github.repository_owner == 'ovn-org'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         distro: [ fedora, ubuntu ]

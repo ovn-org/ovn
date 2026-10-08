@@ -27,7 +27,7 @@ jobs:
 
     name: linux ${{ join(matrix.cfg.*, ' ') }}
     if: (github.repository_owner == 'ovn-org' && github.event_name == 'schedule' && github.ref_name == 'main') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
 
     strategy:
       fail-fast: false
@@ -74,7 +74,7 @@ jobs:
       - name: system-level-dependencies
         if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}
         run: |
-          sudo apt -y install linux-modules-extra-$(uname -r)
+          sudo apt -y install linux-modules-$(uname -r)
 
       - name: checkout
         uses: actions/checkout@v6
@@ -96,6 +96,11 @@ jobs:
           . .ci/linux-util.sh
           fixup_crun
 
+      - name: Preserve env
+        run: |
+          . .ci/linux-util.sh
+          sudo_preserve_env
+
       - name: Download container
         run: |
           podman pull ghcr.io/ovn-org/ovn-tests:ubuntu
@@ -108,7 +113,7 @@ jobs:
 
       - name: build
         if: ${{ startsWith(matrix.cfg.testsuite, 'system-test') }}
-        run: sudo -E ./.ci/ci.sh --archive-logs --timeout=2h
+        run: sudo ./.ci/ci.sh --archive-logs --timeout=2h
 
       - name: build
         if: ${{ !startsWith(matrix.cfg.testsuite, 'system-test') }}

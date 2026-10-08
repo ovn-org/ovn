@@ -67,7 +67,7 @@ Scheduling`_ for the timing of each stage:
 
    In order to keep the CI stable on the new release branch, the Ubuntu
    container should be pinned to the LTS version used by the project's
-   container Dockerfile, e.g. registry.hub.docker.com/library/ubuntu:24.04.
+   container Dockerfile, e.g. registry.hub.docker.com/library/ubuntu:26.04.
 
 3. When committers come to rough consensus that the release is ready, they
    release the .0 release on its branch, e.g. 25.09.0 for branch-25.09.  To
