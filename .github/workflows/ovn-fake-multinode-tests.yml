@@ -24,7 +24,7 @@ jobs:
       DEPENDENCIES:
       PREINSTALLED_DEPENDENCIES: podman
       RUNC_CMD: podman
-      OS_IMAGE: "fedora:42"
+      OS_IMAGE: "quay.io/fedora/fedora:44"
     steps:
     - name: Check out ovn-fake-multi-node
       uses: actions/checkout@v6
@@ -120,7 +120,7 @@ jobs:
     name: multinode tests ${{ join(matrix.cfg.*, ' ') }} INLINE_BR_EX=${{ matrix.inline_br_ex }}
     env:
       RUNC_CMD: podman
-      OS_IMAGE: "fedora:42"
+      OS_IMAGE: "quay.io/fedora/fedora:44"
       CENTRAL_IMAGE: "ovn/ovn-multi-node:${{ matrix.cfg.branch }}"
       CHASSIS_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
       RELAY_IMAGE: "ovn/ovn-multi-node:${{ github.ref_name }}"
