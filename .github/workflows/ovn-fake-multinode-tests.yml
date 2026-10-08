@@ -14,7 +14,7 @@ jobs:
   build:
     name: Build ovn-fake-multinode image
     if: github.repository_owner == 'ovn-org' || github.event_name != 'schedule'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         cfg:
@@ -25,8 +25,6 @@ jobs:
       PREINSTALLED_DEPENDENCIES: podman
       RUNC_CMD: podman
       OS_IMAGE: "fedora:42"
-      # https://github.com/actions/runner-images/issues/6282
-      XDG_RUNTIME_DIR: ''
     steps:
     - name: Check out ovn-fake-multi-node
       uses: actions/checkout@v6
@@ -83,10 +81,16 @@ jobs:
         fixup_crun
       working-directory: ovn-fake-multinode/ovn
 
+    - name: Preserve env
+      run: |
+        . .ci/linux-util.sh
+        sudo_preserve_env
+      working-directory: ovn-fake-multinode/ovn
+
     - name: Build ovn-fake-multi-node ${{ matrix.cfg.branch }} image
       run: |
         set -x
-        sudo -E ./ovn_cluster.sh build
+        sudo ./ovn_cluster.sh build
         mkdir -p /tmp/_output
         sudo podman tag ovn/ovn-multi-node:latest ovn/ovn-multi-node:${{ matrix.cfg.branch }}
         sudo podman save --format oci-archive ovn/ovn-multi-node:${{ matrix.cfg.branch }} > /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
@@ -98,7 +102,7 @@ jobs:
         path: /tmp/_output/ovn_${{ matrix.cfg.branch }}_image.tar
 
   multinode-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     needs: [build]
     strategy:
@@ -126,7 +130,6 @@ jobs:
         openvswitch-switch libunbound-dev libunwind-dev
       # https://github.com/actions/runner-images/issues/6282
       PREINSTALLED_DEPENDENCIES: podman
-      XDG_RUNTIME_DIR: ''
 
     steps:
     - name: Check out ovn
@@ -143,7 +146,7 @@ jobs:
         if [ -n "${{ env.DEPENDENCIES }}" ]; then
           sudo apt install -y ${{ env.DEPENDENCIES }}
         fi
-        sudo apt install -y linux-modules-extra-$(uname -r)
+        sudo apt install -y linux-modules-$(uname -r)
 
     - name: Fix /etc/hosts file
       run: |
@@ -159,6 +162,11 @@ jobs:
       run: |
         . .ci/linux-util.sh
         fixup_crun
+
+    - name: Preserve env
+      run: |
+        . .ci/linux-util.sh
+        sudo_preserve_env
 
     - name: Free up disk space
       run: |
@@ -197,7 +205,7 @@ jobs:
 
     - name: Start basic cluster
       run: |
-        sudo -E CHASSIS_COUNT=4 GW_COUNT=4 ./ovn_cluster.sh start
+        sudo CHASSIS_COUNT=4 GW_COUNT=4 ./ovn_cluster.sh start
         sudo podman exec -it ovn-central-az1 ovn-nbctl show
         sudo podman exec -it ovn-central-az1 ovn-appctl -t ovn-northd version
         sudo podman exec -it ovn-chassis-1 ovn-appctl -t ovn-controller version
@@ -234,7 +242,7 @@ jobs:
 
     - name: Run fake-multinode system tests
       run: |
-        if ! sudo -E make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
+        if ! sudo make check-multinode TESTSUITEFLAGS="${{ matrix.cfg.testsuiteflags }}"; then
           sudo podman exec -it ovn-central-az1 ovn-nbctl show || :
           sudo podman exec -it ovn-central-az1 ovn-sbctl show || :
           sudo podman exec -it ovn-chassis-1 ovs-vsctl show || :
@@ -268,5 +276,5 @@ jobs:
 
     - name: Stop cluster
       run: |
-        sudo -E ./ovn_cluster.sh stop
+        sudo ./ovn_cluster.sh stop
       working-directory: ovn-fake-multinode

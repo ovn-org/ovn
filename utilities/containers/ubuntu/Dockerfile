@@ -1,4 +1,4 @@
-FROM registry.hub.docker.com/library/ubuntu:24.04
+FROM registry.hub.docker.com/library/ubuntu:26.04
 
 ARG CONTAINERS_PATH
 
@@ -10,6 +10,7 @@ RUN apt update -y \
     apt install -y \
         automake \
         bc \
+        bsdextrautils \
         clang \
         curl \
         ethtool \
