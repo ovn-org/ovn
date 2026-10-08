@@ -1163,6 +1163,7 @@ ovn_port_cleanup(struct ovn_port *port)
     if (port->tunnel_key) {
         ovs_assert(port->od);
         ovn_free_tnlid(&port->od->port_tnlids, port->tunnel_key);
+        port->tunnel_key = 0;
     }
     for (int i = 0; i < port->n_lsp_addrs; i++) {
         destroy_lport_addresses(&port->lsp_addrs[i]);
@@ -1170,6 +1171,7 @@ ovn_port_cleanup(struct ovn_port *port)
     free(port->lsp_addrs);
     port->n_lsp_addrs = 0;
     port->lsp_addrs = NULL;
+    port->has_unknown = false;
 
     if (port->peer) {
         port->peer->peer = NULL;
