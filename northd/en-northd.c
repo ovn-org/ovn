@@ -694,31 +694,30 @@ northd_sb_fdb_change_handler(struct engine_node *node, void *data)
     const struct sbrec_fdb_table *sbrec_fdb_table =
         EN_OVSDB_GET(engine_get_input("SB_fdb", node));
 
+    struct vector to_remove =
+        VECTOR_EMPTY_INITIALIZER(const struct sbrec_fdb *);
+
     /* check if changed rows are stale and delete them */
-    const struct sbrec_fdb *fdb_e, *fdb_prev_del = NULL;
+    const struct sbrec_fdb *fdb_e;
     SBREC_FDB_TABLE_FOR_EACH_TRACKED (fdb_e, sbrec_fdb_table) {
         if (sbrec_fdb_is_deleted(fdb_e)) {
             continue;
         }
 
-        if (fdb_prev_del) {
-            sbrec_fdb_delete(fdb_prev_del);
-        }
-
-        fdb_prev_del = fdb_e;
-        struct ovn_datapath *od
-            = ovn_datapath_find_by_key(&nd->ls_datapaths.datapaths,
-                                       fdb_e->dp_key);
-        if (od) {
-            if (ovn_tnlid_present(&od->port_tnlids, fdb_e->port_key)) {
-                fdb_prev_del = NULL;
-            }
+        struct ovn_datapath *od =
+            ovn_datapath_find_by_key(&nd->ls_datapaths.datapaths,
+                                     fdb_e->dp_key);
+        if (!od || ovn_datapath_is_stale(od) ||
+            !ovn_tnlid_present(&od->fdb_ports_tnlids, fdb_e->port_key)) {
+            vector_push(&to_remove, &fdb_e);
         }
     }
 
-    if (fdb_prev_del) {
-        sbrec_fdb_delete(fdb_prev_del);
+    VECTOR_FOR_EACH (&to_remove, fdb_e) {
+        sbrec_fdb_delete(fdb_e);
     }
+
+    vector_destroy(&to_remove);
 
     return EN_HANDLED_UNCHANGED;
 }
