@@ -399,6 +399,18 @@
       table. See <code>ovn-controller</code>(8) for more information.
     </column>
 
+    <column name="other_config" key="ovn-bfd-status-reconcile">
+      <code>ovn-controller</code> sets this key to <code>true</code> if it
+      corrects the <ref table="BFD" column="status"/> of the BFD sessions
+      that it runs when that differs from the state of the session.  A CMS
+      that sets a BFD status to <code>down</code> itself can then expect
+      this chassis to set it back if the session is in fact up, as long as
+      the chassis is connected to the Southbound database and allowed to
+      update the row: with role-based access control, the row's <ref
+      table="BFD" column="chassis_name"/> must be the chassis's name.  Other
+      applications should treat this key as read-only.
+    </column>
+
     <group title="Common Columns">
       The overall purpose of these columns is described under <code>Common
       Columns</code> at the beginning of this document.
@@ -5589,6 +5601,37 @@ tcp.flags = RST;
               <code>up</code>
             </li>
           </ul>
+        </p>
+
+        <p>
+          The <code>ovn-controller</code> that runs the session updates this
+          column when the state of the session changes.  It also corrects
+          the column when it differs from the state of the session, for
+          example after another client wrote it, unless one of them is
+          <code>admin_down</code>.  A session is <code>up</code> or
+          <code>init</code> only while packets from the peer arrive within
+          the detection time, including while <code>ovs-vswitchd</code> is
+          down.  When a session starts, for example after
+          <code>ovn-controller</code> restarted or the gateway port moved, it
+          is <code>down</code> until the peer answers, so
+          <code>ovn-controller</code> waits until the session has been
+          sending for the longer of 5 seconds and the detection time
+          (<ref column="detect_mult"/> times the larger of <ref
+          column="min_rx"/> and <ref column="min_tx"/>), and while the peer
+          keeps answering without the session coming up, up to 30 seconds,
+          before it corrects an <code>up</code> or <code>init</code> to
+          <code>down</code>.  Corrections that do not take effect, for
+          example because the SB database rejects them, are retried 5, 10,
+          20 and 40 seconds apart, and then stop with a warning in the log
+          until the row's status or <ref column="chassis_name"/> changes or
+          for 10 minutes.  If <code>ovn-controller</code> made the
+          corrections while <ref column="chassis_name"/> was empty or named
+          another chassis, and <ref column="chassis_name"/> then changes to
+          its own chassis, it makes the next correction at once.  The
+          coverage counter
+          <code>pinctrl_bfd_status_reconcile</code> counts the corrections,
+          and <code>pinctrl_bfd_status_reconcile_stuck</code> counts how
+          many times they stopped for a row.
         </p>
       </column>
     </group>

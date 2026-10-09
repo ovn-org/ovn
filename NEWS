@@ -31,6 +31,17 @@ Post v26.09.0
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
    - Removed ovn-docker utility scripts.
+   - ovn-controller now corrects the Southbound status of the BFD sessions
+     that it runs when the status differs from the state of the session,
+     for example a stale "up" left by an earlier session that cannot reach
+     its peer, or a status written by another client.  A starting session
+     gets a few seconds to come up before "down" is written over "up" or
+     "init", so a restart does not remove its routes.  ovn-controller also
+     times out BFD sessions while ovs-vswitchd is down.  Chassis that do
+     this have other_config:ovn-bfd-status-reconcile=true.  With SB RBAC,
+     the Southbound database rejects these corrections for rows whose
+     chassis_name is not the chassis, as it already rejects the status
+     updates on state changes; they stop after five tries with a warning.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

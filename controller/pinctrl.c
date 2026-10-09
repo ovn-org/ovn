@@ -58,6 +58,7 @@
 #include "openvswitch/poll-loop.h"
 #include "openvswitch/rconn.h"
 #include "socket-util.h"
+#include "sat-math.h"
 #include "seq.h"
 #include "timeval.h"
 #include "vswitch-idl.h"
@@ -357,6 +358,10 @@ static void notify_pinctrl_handler(void);
 
 static bool bfd_monitor_should_inject(void);
 static void bfd_monitor_wait(long long int timeout);
+static void bfd_monitor_main_wait(void) OVS_REQUIRES(pinctrl_mutex);
+/* Whether the pinctrl thread is connected to ovs-vswitchd, so that it
+ * checks the detection times of the BFD sessions. */
+static atomic_bool bfd_thread_connected = false;
 static void bfd_monitor_init(void);
 static void bfd_monitor_destroy(void);
 static void bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
@@ -368,7 +373,8 @@ pinctrl_handle_bfd_msg(struct rconn *swconn, const struct flow *ip_flow,
 static void bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                             const struct sbrec_bfd_table *bfd_table,
                             struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                            const struct sbrec_chassis *chassis)
+                            const struct sbrec_chassis *chassis,
+                            bool can_send)
                             OVS_REQUIRES(pinctrl_mutex);
 static void init_fdb_entries(void);
 static void destroy_fdb_entries(void);
@@ -401,6 +407,8 @@ COVERAGE_DEFINE(pinctrl_drop_put_vport_binding);
 COVERAGE_DEFINE(pinctrl_notify_main_thread);
 COVERAGE_DEFINE(pinctrl_notify_handler_thread);
 COVERAGE_DEFINE(pinctrl_total_pin_pkts);
+COVERAGE_DEFINE(pinctrl_bfd_status_reconcile);
+COVERAGE_DEFINE(pinctrl_bfd_status_reconcile_stuck);
 
 /* DNS query statistics - thread-safe coverage counters */
 COVERAGE_DEFINE(dns_query_total);
@@ -4072,6 +4080,8 @@ pinctrl_handler(void *arg_)
 
         rconn_run(swconn);
         new_seq = seq_read(pinctrl_handler_seq);
+        atomic_store_relaxed(&bfd_thread_connected,
+                             rconn_is_connected(swconn));
         if (rconn_is_connected(swconn)) {
             if (conn_seq_no != rconn_get_connection_seqno(swconn)) {
                 pinctrl_setup(swconn);
@@ -4243,7 +4253,7 @@ pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     sync_svc_monitors(ovnsb_idl_txn, svc_mon_table, sbrec_port_binding_by_name,
                       chassis);
     bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
-                    chassis);
+                    chassis, true);
     run_activated_ports(ovnsb_idl_txn, sbrec_datapath_binding_by_key,
                         sbrec_port_binding_by_key, chassis);
     ovs_mutex_unlock(&pinctrl_mutex);
@@ -4768,6 +4778,7 @@ pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn)
         seq_wait(pinctrl_main_seq, main_seq);
     }
     wait_activated_ports();
+    bfd_monitor_main_wait();
     ovs_mutex_unlock(&pinctrl_mutex);
 
     if (ovnsb_idl_txn) {
@@ -7674,7 +7685,42 @@ struct bfd_entry {
     uint32_t detection_timeout;
     long long int last_rx;
     long long int next_tx;
+
+    /* Correction of the SB status, see bfd_reconcile_due(). */
+    long long int active_since;    /* When the session started sending. */
+    long long int next_reconcile;  /* Next correction or end of a hold,
+                                    * 0 if none is pending. */
+    unsigned int reconcile_attempts; /* Corrections since the SB status last
+                                      * matched the session. */
+    bool corrected_other_name;     /* The last correction was made while the
+                                    * SB chassis_name was not this chassis. */
+    bool start_pending;            /* Started while pinctrl could not
+                                    * send, see pinctrl_bfd_run(). */
+    bool parked;                   /* Corrections stopped, see
+                                    * bfd_reconcile_park(). */
+    char *parked_status;           /* SB status when parked. */
+    char *parked_chassis_name;     /* SB chassis_name when parked. */
+    long long int parked_until;    /* Corrections resume at this time. */
 };
+
+/* Corrections without the SB status matching the session after which
+ * corrections stop ("park") for the row. */
+#define BFD_RECONCILE_PARK_THRESHOLD 5
+/* Longest wait between two corrections of the same row.  Parking comes
+ * first with the current threshold; this bounds the wait if it is raised. */
+#define BFD_RECONCILE_MAX_BACKOFF    60000LL
+/* How long a parked row stays parked unless its SB row changes. */
+#define BFD_RECONCILE_PARK_TIME      (10 * 60 * 1000LL)
+/* Longest a handshake in progress may hold a downward correction, counted
+ * from when the session started sending. */
+#define BFD_RECONCILE_HANDSHAKE_MAX  30000LL
+
+/* Time of the last bfd_monitor_run() pass, and whether one ran since the
+ * last bfd_monitor_main_wait(). */
+static long long int bfd_monitor_last_run;
+static bool bfd_monitor_ran;
+/* Number of entries whose corrections are parked. */
+static unsigned int bfd_monitor_n_parked;
 
 static void
 bfd_monitor_init(void)
@@ -7684,11 +7730,22 @@ bfd_monitor_init(void)
 }
 
 static void
+bfd_entry_destroy(struct bfd_entry *entry)
+{
+    if (entry->parked) {
+        bfd_monitor_n_parked--;
+    }
+    free(entry->parked_status);
+    free(entry->parked_chassis_name);
+    free(entry);
+}
+
+static void
 bfd_monitor_destroy(void)
 {
     struct bfd_entry *entry;
     HMAP_FOR_EACH_POP (entry, node, &bfd_monitor_map) {
-        free(entry);
+        bfd_entry_destroy(entry);
     }
     hmap_destroy(&bfd_monitor_map);
 }
@@ -7742,6 +7799,38 @@ bfd_monitor_wait(long long int timeout)
     if (!hmap_is_empty(&bfd_monitor_map)) {
         poll_timer_wait_until(timeout);
     }
+}
+
+/* Called in the main thread.  Wakes it up when a correction or the end of a
+ * hold is due, so that neither waits for an unrelated wake-up.  A deadline
+ * that the last bfd_monitor_run() already saw expire, but could not act on
+ * (no SB transaction, or a write postponed), is left to the completion of
+ * the SB transaction, so that nothing spins.  While the pinctrl thread is
+ * not connected to ovs-vswitchd and so does not check the detection times
+ * of the sessions, also wakes the main thread up when one of them expires:
+ * bfd_monitor_run() checks them too. */
+static void
+bfd_monitor_main_wait(void)
+    OVS_REQUIRES(pinctrl_mutex)
+{
+    if (!bfd_monitor_ran) {
+        return;
+    }
+
+    bool thread_connected;
+    atomic_read_relaxed(&bfd_thread_connected, &thread_connected);
+
+    struct bfd_entry *entry;
+    HMAP_FOR_EACH (entry, node, &bfd_monitor_map) {
+        if (entry->next_reconcile > bfd_monitor_last_run) {
+            poll_timer_wait_until(entry->next_reconcile);
+        }
+        if (!thread_connected && entry->detection_timeout &&
+            (entry->state == BFD_STATE_UP || entry->state == BFD_STATE_INIT)) {
+            poll_timer_wait_until(entry->last_rx + entry->detection_timeout);
+        }
+    }
+    bfd_monitor_ran = false;
 }
 
 static void
@@ -7851,28 +7940,30 @@ update:
     return true;
 }
 
-static void
+/* Moves 'entry' from UP or INIT to DOWN if no packet came from the peer
+ * within the detection time.  Returns true if it did. */
+static bool
 bfd_check_detection_timeout(struct bfd_entry *entry)
 {
     if (entry->state == BFD_STATE_ADMIN_DOWN ||
         entry->state == BFD_STATE_DOWN) {
-        return;
+        return false;
     }
 
     if (!entry->detection_timeout) {
-        return;
+        return false;
     }
 
     long long int cur_time = time_msec();
     if (cur_time < entry->last_rx + entry->detection_timeout) {
-        return;
+        return false;
     }
 
     entry->state = BFD_STATE_DOWN;
     entry->change_state = true;
     bfd_last_update = cur_time;
     bfd_pending_update = 0;
-    notify_pinctrl_main();
+    return true;
 }
 
 static void
@@ -7889,7 +7980,9 @@ bfd_monitor_send_msg(struct rconn *swconn, long long int *bfd_time)
     HMAP_FOR_EACH (entry, node, &bfd_monitor_map) {
         unsigned long tx_timeout;
 
-        bfd_check_detection_timeout(entry);
+        if (bfd_check_detection_timeout(entry)) {
+            notify_pinctrl_main();
+        }
 
         if (cur_time < entry->next_tx) {
             goto next;
@@ -8143,13 +8236,278 @@ bfd_monitor_check_sb_conf(const struct sbrec_bfd *sb_bt,
     }
 }
 
+/* Forgets the corrections of 'entry' and lifts its parking.  'why' says why
+ * corrections may resume, for the log if the row was parked. */
+static void
+bfd_reconcile_reset(struct bfd_entry *entry, const struct sbrec_bfd *bt,
+                    const char *why)
+{
+    if (entry->parked) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 100);
+        VLOG_INFO_RL(&rl, "BFD %s dst %s: %s, SB status corrections resume",
+                     bt->logical_port, bt->dst_ip, why);
+        bfd_monitor_n_parked--;
+        free(entry->parked_status);
+        free(entry->parked_chassis_name);
+        entry->parked_status = NULL;
+        entry->parked_chassis_name = NULL;
+        entry->parked = false;
+        entry->parked_until = 0;
+    }
+    entry->reconcile_attempts = 0;
+    entry->corrected_other_name = false;
+    entry->next_reconcile = 0;
+}
+
+/* Returns the time to wait after the last correction before the next one:
+ * BFD_UPDATE_TIMEOUT, doubling with each correction, at most
+ * BFD_RECONCILE_MAX_BACKOFF. */
+static long long int
+bfd_reconcile_backoff(const struct bfd_entry *entry)
+{
+    unsigned int shift = MIN(entry->reconcile_attempts - 1, 4);
+    return MIN(BFD_UPDATE_TIMEOUT << shift, BFD_RECONCILE_MAX_BACKOFF);
+}
+
+/* Returns the time until which the correction of SB status 'bt->status' to
+ * the state of 'entry' must wait, or 0 if it need not wait.
+ *
+ * Only a correction to "down" over "up" or "init" waits.  A session that was
+ * just created, for example after ovn-controller restarted or the gateway
+ * moved here, is DOWN until the handshake with the peer completes, while SB
+ * still has the status of the previous session, which is usually right.
+ * Writing "down" right away would remove the route for no reason.  So wait
+ * until the session has been sending for the longer of BFD_UPDATE_TIMEOUT and
+ * the detection time configured in the row, and while a handshake is in
+ * progress (a packet came from the peer since the session started sending,
+ * within the detection time), until the detection time after that packet,
+ * but at most BFD_RECONCILE_HANDSHAKE_MAX after the session started sending.
+ * The wait counts from when the session started sending, not from when it
+ * was created, because the two can be far apart. */
+static long long int
+bfd_reconcile_hold_until(const struct bfd_entry *entry,
+                         const struct sbrec_bfd *bt, long long int now)
+{
+    if (entry->state != BFD_STATE_DOWN ||
+        (strcmp(bt->status, "up") && strcmp(bt->status, "init"))) {
+        return 0;
+    }
+
+    long long int detect_time = llsat_mul(bt->detect_mult,
+                                          MAX(bt->min_rx, bt->min_tx));
+    long long int hold_until = llsat_add(entry->active_since,
+                                         MAX(BFD_UPDATE_TIMEOUT, detect_time));
+
+    if (entry->last_rx > entry->active_since &&
+        now < entry->last_rx + entry->detection_timeout) {
+        long long int handshake_until =
+            MIN(entry->last_rx + entry->detection_timeout,
+                entry->active_since + BFD_RECONCILE_HANDSHAKE_MAX);
+        hold_until = MAX(hold_until, handshake_until);
+    }
+    return hold_until;
+}
+
+/* Called before the last of BFD_RECONCILE_PARK_THRESHOLD corrections of
+ * 'entry' is written, while 'bt' still has the status that the earlier
+ * ones did not change.  Stops the corrections after that one ("parks" the
+ * row).  A rejected update leaves the SB row as it was, while another client
+ * that keeps writing a different status changes it, so corrections resume
+ * when the row's status or chassis_name changes, when the entry is recreated
+ * (for example because the gateway moved), or after
+ * BFD_RECONCILE_PARK_TIME. */
+static void
+bfd_reconcile_park(struct bfd_entry *entry, const struct sbrec_bfd *bt,
+                   const struct sbrec_chassis *chassis, long long int now)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(20, 100);
+
+    entry->parked = true;
+    entry->parked_status = xstrdup(bt->status);
+    entry->parked_chassis_name = xstrdup(bt->chassis_name);
+    entry->parked_until = now + BFD_RECONCILE_PARK_TIME;
+    entry->next_reconcile = entry->parked_until;
+    bfd_monitor_n_parked++;
+    COVERAGE_INC(pinctrl_bfd_status_reconcile_stuck);
+
+    if (!VLOG_DROP_WARN(&rl)) {
+        struct ds why = DS_EMPTY_INITIALIZER;
+        if (strcmp(bt->chassis_name, chassis->name)) {
+            ds_put_format(&why, "The SB server may be rejecting them: with "
+                          "SB RBAC, the row's chassis_name (\"%s\") must be "
+                          "this chassis (\"%s\")", bt->chassis_name,
+                          chassis->name);
+        } else {
+            ds_put_cstr(&why, "The SB transactions that carried them may "
+                        "have failed; see the earlier log messages");
+        }
+        VLOG_WARN("BFD %s dst %s: SB status \"%s\" did not follow %u "
+                  "corrections to the session state \"%s\"; making one last "
+                  "correction, then none until the row changes or for %lld "
+                  "minutes (%u row(s) of this chassis stopped).  %s",
+                  bt->logical_port, bt->dst_ip, bt->status,
+                  entry->reconcile_attempts - 1, bfd_get_status(entry->state),
+                  BFD_RECONCILE_PARK_TIME / (60 * 1000), bfd_monitor_n_parked,
+                  ds_cstr(&why));
+        ds_destroy(&why);
+    }
+}
+
+/* Returns true if corrections of 'entry' are parked.  Lifts the parking if
+ * the row changed or the parking time is over. */
+static bool
+bfd_reconcile_parked(struct bfd_entry *entry, const struct sbrec_bfd *bt,
+                     long long int now)
+{
+    if (!entry->parked) {
+        return false;
+    }
+    if (strcmp(bt->status, entry->parked_status)) {
+        bfd_reconcile_reset(entry, bt, "SB status changed");
+    } else if (strcmp(bt->chassis_name, entry->parked_chassis_name)) {
+        bfd_reconcile_reset(entry, bt, "SB chassis_name changed");
+    } else if (now >= entry->parked_until) {
+        bfd_reconcile_reset(entry, bt, "parking time is over");
+    }
+    return entry->parked;
+}
+
+/* Correcting the SB status of the sessions that this chassis runs.
+ *
+ * The session's state machine writes the status only when the state
+ * changes.  So without this, a wrong status would stay until the next
+ * change: a status left over from an earlier session (after ovn-controller
+ * restarted, or after the gateway moved here) when the new session cannot
+ * reach its peer, a status that another client wrote while the session
+ * stays in the same state, or a state change whose write failed.
+ *
+ * An "admin_down" in SB or in the session is never corrected: ovn-northd
+ * sets it for rows that no route uses, and the session follows it.  The
+ * update has no "verify", because a failed one would abort the whole SB
+ * transaction of this pass; ovn-northd changes the status only to and from
+ * "admin_down", and sets "admin_down" again by itself if needed.
+ * Corrections are spaced out (see bfd_reconcile_backoff()) because a
+ * rejected update, for example by SB RBAC, fails the whole SB transaction
+ * of its pass, and they stop after a few failures (see
+ * bfd_reconcile_park()).  Only a matching status, an "admin_down", a new
+ * entry, a lifted parking, or a chassis_name that became this chassis after
+ * corrections made under another one resets them; a pass without an SB
+ * transaction or with a state change still to be written does not. */
+
+/* A correction that is due in this pass of bfd_monitor_run(). */
+struct bfd_correction {
+    struct bfd_entry *entry;
+    const struct sbrec_bfd *bt;
+};
+
+/* Returns true if the SB status of 'bt' must be corrected to the state of
+ * 'entry' now.  Otherwise updates the corrections of 'entry' as needed. */
+static bool
+bfd_reconcile_due(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                  const struct sbrec_bfd *bt, struct bfd_entry *entry,
+                  const struct sbrec_chassis *chassis, long long int now)
+{
+    if (entry->state == BFD_STATE_ADMIN_DOWN ||
+        !strcmp(bt->status, "admin_down")) {
+        bfd_reconcile_reset(entry, bt, "SB status is admin_down");
+        return false;
+    }
+    if (!strcmp(bt->status, bfd_get_status(entry->state))) {
+        bfd_reconcile_reset(entry, bt, "SB status matches the session");
+        return false;
+    }
+
+    if (!ovnsb_idl_txn || entry->change_state ||
+        bfd_reconcile_parked(entry, bt, now)) {
+        return false;
+    }
+    if (entry->corrected_other_name &&
+        !strcmp(bt->chassis_name, chassis->name)) {
+        /* The earlier corrections went to a row whose chassis_name was
+         * empty or named another chassis, which SB RBAC rejects.  Now the
+         * row names this chassis, so start over instead of waiting out the
+         * back-off.  This happens at most once for each change of
+         * chassis_name to this chassis. */
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(10, 20);
+        VLOG_INFO_RL(&rl, "BFD %s dst %s: SB chassis_name is now this "
+                     "chassis, SB status corrections start over",
+                     bt->logical_port, bt->dst_ip);
+        bfd_reconcile_reset(entry, bt, "SB chassis_name is this chassis");
+    }
+    if (now < entry->next_reconcile) {
+        return false;
+    }
+
+    long long int hold_until = bfd_reconcile_hold_until(entry, bt, now);
+    if (hold_until > now) {
+        entry->next_reconcile = hold_until;
+        return false;
+    }
+    return true;
+}
+
+static void
+bfd_reconcile_write(const struct sbrec_bfd *bt, struct bfd_entry *entry,
+                    const struct sbrec_chassis *chassis, long long int now)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(10, 20);
+    const char *state = bfd_get_status(entry->state);
+
+    entry->reconcile_attempts++;
+    entry->corrected_other_name = strcmp(bt->chassis_name, chassis->name) != 0;
+    VLOG_INFO_RL(&rl, "BFD %s dst %s: correcting SB status \"%s\" to the "
+                 "session state \"%s\" (correction %u)", bt->logical_port,
+                 bt->dst_ip, bt->status, state, entry->reconcile_attempts);
+    entry->next_reconcile = now + bfd_reconcile_backoff(entry);
+    if (entry->reconcile_attempts >= BFD_RECONCILE_PARK_THRESHOLD) {
+        bfd_reconcile_park(entry, bt, chassis, now);
+    }
+    sbrec_bfd_set_status(bt, state);
+    COVERAGE_INC(pinctrl_bfd_status_reconcile);
+}
+
+/* Writes the 'n' corrections due in this pass.  'own_written' says whether
+ * the pass already wrote the status of a row whose chassis_name is this
+ * chassis.
+ *
+ * With SB RBAC, the SB server rejects the update of a row whose chassis_name
+ * is not this chassis, and one rejected update fails the whole transaction.
+ * So such corrections are not written in a pass that writes a row whose
+ * chassis_name is this chassis: they wait for the next pass, which the
+ * completion of this pass's transaction brings.  Otherwise a row that the
+ * server always rejects would keep the corrections of the other rows from
+ * ever taking effect. */
+static void
+bfd_reconcile_write_all(const struct bfd_correction *corrections, size_t n,
+                        bool own_written, const struct sbrec_chassis *chassis,
+                        long long int now)
+{
+    for (size_t i = 0; i < n; i++) {
+        if (!strcmp(corrections[i].bt->chassis_name, chassis->name)) {
+            own_written = true;
+        }
+    }
+    for (size_t i = 0; i < n; i++) {
+        const struct bfd_correction *c = &corrections[i];
+        if (!own_written || !strcmp(c->bt->chassis_name, chassis->name)) {
+            bfd_reconcile_write(c->bt, c->entry, chassis, now);
+        }
+    }
+}
+
+/* Runs the BFD sessions of the rows in 'bfd_table' that this chassis owns.
+ * 'can_send' is false if the pinctrl thread cannot send their packets yet
+ * (see pinctrl_bfd_run()). */
 static void
 bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct sbrec_bfd_table *bfd_table,
                 struct ovsdb_idl_index *sbrec_port_binding_by_name,
-                const struct sbrec_chassis *chassis)
+                const struct sbrec_chassis *chassis, bool can_send)
     OVS_REQUIRES(pinctrl_mutex)
 {
+    struct bfd_correction *corrections = NULL;
+    size_t n_corrections = 0, allocated_corrections = 0;
+    bool own_written = false;
     struct bfd_entry *entry;
     long long int cur_time = time_msec();
     bool changed = false;
@@ -8189,6 +8547,26 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
         entry = pinctrl_find_bfd_monitor_entry_by_port(
                 bt->dst_ip, bt->src_port);
+        if (entry) {
+            /* The pinctrl thread checks the detection time only while it
+             * is connected to ovs-vswitchd.  Check it here too, so that an
+             * UP or INIT session always heard from its peer within the
+             * detection time.  A timeout found here is written below. */
+            bfd_check_detection_timeout(entry);
+
+            if (can_send && entry->start_pending) {
+                /* The session started while it could not send: its hold
+                 * starts now. */
+                entry->start_pending = false;
+                if (entry->state == BFD_STATE_DOWN) {
+                    entry->active_since = cur_time;
+                    VLOG_DBG("BFD %s dst %s: session can send now",
+                             bt->logical_port, bt->dst_ip);
+                }
+            }
+        }
+
+        bool status_written = false;
         if (!entry) {
             struct eth_addr ea = eth_addr_zero;
             struct lport_addresses dst_addr;
@@ -8245,6 +8623,8 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             entry->local_min_rx = bt->min_rx;
             entry->remote_min_rx = 1; /* RFC5880 page 29 */
             entry->local_mult = bt->detect_mult;
+            entry->active_since = cur_time;
+            entry->start_pending = !can_send;
 
             uint32_t hash = hash_string(bt->dst_ip, 0);
             hmap_insert(&bfd_monitor_map, &entry->node, hash);
@@ -8258,6 +8638,11 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             entry->state = BFD_STATE_DOWN;
             entry->change_state = false;
             entry->remote_disc = 0;
+            /* The session starts sending now. */
+            entry->active_since = cur_time;
+            entry->start_pending = !can_send;
+            VLOG_DBG("BFD %s dst %s: session starts%s", bt->logical_port,
+                     bt->dst_ip, can_send ? "" : " (cannot send yet)");
             changed = true;
         } else if (entry->change_state && ovnsb_idl_txn) {
             if (entry->state == BFD_STATE_DOWN) {
@@ -8265,21 +8650,66 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
             }
             sbrec_bfd_set_status(bt, bfd_get_status(entry->state));
             entry->change_state = false;
+            status_written = true;
+            if (!strcmp(bt->chassis_name, chassis->name)) {
+                own_written = true;
+            }
+        }
+        if (!status_written &&
+            bfd_reconcile_due(ovnsb_idl_txn, bt, entry, chassis,
+                              cur_time)) {
+            if (n_corrections >= allocated_corrections) {
+                corrections = x2nrealloc(corrections, &allocated_corrections,
+                                         sizeof *corrections);
+            }
+            corrections[n_corrections++] = (struct bfd_correction) {
+                .entry = entry,
+                .bt = bt,
+            };
         }
         bfd_monitor_check_sb_conf(bt, entry);
         entry->erase = false;
     }
 
+    bfd_reconcile_write_all(corrections, n_corrections, own_written, chassis,
+                            cur_time);
+    free(corrections);
+
     HMAP_FOR_EACH_SAFE (entry, node, &bfd_monitor_map) {
         if (entry->erase) {
             hmap_remove(&bfd_monitor_map, &entry->node);
-            free(entry);
+            bfd_entry_destroy(entry);
         }
     }
+
+    bfd_monitor_last_run = cur_time;
+    bfd_monitor_ran = true;
 
     if (changed) {
         notify_pinctrl_handler();
     }
+}
+
+/* Called by ovn-controller instead of pinctrl_run() in the iterations in
+ * which it cannot call that, for example because ovs-vswitchd is down.  The
+ * BFD sessions get no packets then, and the pinctrl thread, which needs the
+ * OpenFlow connection, does not check their detection times.  Check them
+ * here, and keep the SB status of the sessions in line with them, so that
+ * a status stays "up" only while packets arrive.  A session started here
+ * cannot send yet, so its start-up hold starts again when pinctrl_run()
+ * first runs it.  Also registers the wake-ups, because ovn-controller may
+ * not call pinctrl_wait() in such an iteration. */
+void
+pinctrl_bfd_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                const struct sbrec_bfd_table *bfd_table,
+                struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                const struct sbrec_chassis *chassis)
+{
+    ovs_mutex_lock(&pinctrl_mutex);
+    bfd_monitor_run(ovnsb_idl_txn, bfd_table, sbrec_port_binding_by_name,
+                    chassis, false);
+    bfd_monitor_main_wait();
+    ovs_mutex_unlock(&pinctrl_mutex);
 }
 
 static uint16_t
