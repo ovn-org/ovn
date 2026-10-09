@@ -8143,6 +8143,52 @@ bfd_monitor_check_sb_conf(const struct sbrec_bfd *sb_bt,
     }
 }
 
+/* Returns the Port_Binding that makes 'chassis' run the BFD session for
+ * 'bt': the chassisredirect binding of 'bt''s logical port, or the
+ * l3gateway binding itself.  Returns NULL if 'chassis' does not run it.
+ *
+ * If 'lrp_pbp' is nonnull, also stores the binding of 'bt''s logical port,
+ * or NULL if there is none, in '*lrp_pbp'. */
+static const struct sbrec_port_binding *
+bfd_session_owner_pb(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct sbrec_bfd *bt,
+                     const struct sbrec_chassis *chassis,
+                     const struct sbrec_port_binding **lrp_pbp)
+{
+    const struct sbrec_port_binding *pb
+        = lport_lookup_by_name(sbrec_port_binding_by_name, bt->logical_port);
+    if (lrp_pbp) {
+        *lrp_pbp = pb;
+    }
+    if (!pb) {
+        return NULL;
+    }
+
+    const char *peer_s = smap_get(&pb->options, "peer");
+    if (!peer_s) {
+        return NULL;
+    }
+
+    const struct sbrec_port_binding *peer
+        = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
+    if (!peer) {
+        return NULL;
+    }
+
+    char *redirect_name = xasprintf("cr-%s", pb->logical_port);
+    const struct sbrec_port_binding *cr_pb
+        = lport_lookup_by_name(sbrec_port_binding_by_name, redirect_name);
+    free(redirect_name);
+
+    if (lport_pb_is_chassis_resident(chassis, cr_pb)) {
+        return cr_pb;
+    }
+    if (!strcmp(pb->type, "l3gateway") && pb->chassis == chassis) {
+        return pb;
+    }
+    return NULL;
+}
+
 static void
 bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 const struct sbrec_bfd_table *bfd_table,
@@ -8160,30 +8206,9 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     const struct sbrec_bfd *bt;
     SBREC_BFD_TABLE_FOR_EACH (bt, bfd_table) {
-        const struct sbrec_port_binding *pb
-            = lport_lookup_by_name(sbrec_port_binding_by_name,
-                                   bt->logical_port);
-        if (!pb) {
-            continue;
-        }
-
-        const char *peer_s = smap_get(&pb->options, "peer");
-        if (!peer_s) {
-            continue;
-        }
-
-        const struct sbrec_port_binding *peer
-            = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
-        if (!peer) {
-            continue;
-        }
-
-        char *redirect_name = xasprintf("cr-%s", pb->logical_port);
-        bool resident = lport_is_chassis_resident(sbrec_port_binding_by_name,
-                                                  chassis, redirect_name);
-        free(redirect_name);
-        if ((strcmp(pb->type, "l3gateway") || pb->chassis != chassis) &&
-            !resident) {
+        const struct sbrec_port_binding *pb;
+        if (!bfd_session_owner_pb(sbrec_port_binding_by_name, bt, chassis,
+                                  &pb)) {
             continue;
         }
 
@@ -8280,6 +8305,96 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     if (changed) {
         notify_pinctrl_handler();
     }
+}
+
+/* Returns true if a cleanup exit of 'chassis' should mark the BFD session
+ * of 'bt' down: 'chassis' runs the session, its status is "up" or "init",
+ * and no other chassis that could take the gateway over is registered.
+ * With 'subset', also requires 'bt''s chassis_name to be 'chassis'. */
+static bool
+bfd_exit_should_mark_down(struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                          const struct sbrec_bfd *bt,
+                          const struct sbrec_chassis *chassis, bool subset)
+{
+    if (strcmp(bt->status, "up") && strcmp(bt->status, "init")) {
+        return false;
+    }
+    if (subset && strcmp(bt->chassis_name, chassis->name)) {
+        return false;
+    }
+
+    const struct sbrec_port_binding *owner_pb
+        = bfd_session_owner_pb(sbrec_port_binding_by_name, bt, chassis, NULL);
+    if (!owner_pb) {
+        return false;
+    }
+
+    /* An l3gateway binding has no HA chassis group, and a chassisredirect
+     * binding may have none either.  Then 'chassis' is the only candidate. */
+    return !ha_chassis_group_has_other_registered(owner_pb->ha_chassis_group,
+                                                  chassis);
+}
+
+/* Called by ovn-controller during a cleanup exit, after its main loop has
+ * ended and before it releases its port bindings.  Sets to "down" the status
+ * of every BFD session that 'chassis' runs, if the status is "up" or "init"
+ * and no other chassis of the gateway's HA chassis group is registered.
+ * Nobody could take such a session over, so without this its status would
+ * stay stale after the exit.
+ *
+ * With 'subset', considers only the rows whose chassis_name is 'chassis':
+ * with SB RBAC, those are the only rows 'chassis' may update.
+ *
+ * Returns the number of rows set.  This reads only Southbound data, so it
+ * does not need 'pinctrl_mutex'. */
+size_t
+pinctrl_bfd_exit_mark_down(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                           const struct sbrec_bfd_table *bfd_table,
+                           struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                           const struct sbrec_chassis *chassis, bool subset)
+{
+    if (!ovnsb_idl_txn) {
+        return 0;
+    }
+
+    size_t n = 0;
+
+    const struct sbrec_bfd *bt;
+    SBREC_BFD_TABLE_FOR_EACH (bt, bfd_table) {
+        if (bfd_exit_should_mark_down(sbrec_port_binding_by_name, bt, chassis,
+                                      subset)) {
+            VLOG_DBG("Marking BFD session down before exit cleanup: "
+                     "logical_port %s, dst_ip %s, status %s",
+                     bt->logical_port, bt->dst_ip, bt->status);
+            sbrec_bfd_set_status(bt, "down");
+            n++;
+        }
+    }
+    return n;
+}
+
+/* Returns the number of BFD rows that pinctrl_bfd_exit_mark_down() would
+ * still set to "down" for 'chassis' without 'subset', and appends a short
+ * description of each of them to 'rows'. */
+size_t
+pinctrl_bfd_exit_pending(const struct sbrec_bfd_table *bfd_table,
+                         struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                         const struct sbrec_chassis *chassis, struct ds *rows)
+{
+    size_t n = 0;
+
+    const struct sbrec_bfd *bt;
+    SBREC_BFD_TABLE_FOR_EACH (bt, bfd_table) {
+        if (bfd_exit_should_mark_down(sbrec_port_binding_by_name, bt, chassis,
+                                      false)) {
+            ds_put_format(rows, "%slogical_port %s dst_ip %s (status %s, "
+                          "chassis_name \"%s\")", n ? "; " : "",
+                          bt->logical_port, bt->dst_ip, bt->status,
+                          bt->chassis_name);
+            n++;
+        }
+    }
+    return n;
 }
 
 static uint16_t
