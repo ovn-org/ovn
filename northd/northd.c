@@ -617,6 +617,7 @@ ovn_datapath_create(struct hmap *datapaths, const struct uuid *key,
     od->sdp = sdp;
     od->nbs = nbs;
     od->nbr = nbr;
+    hmap_init(&od->fdb_ports_tnlids);
     hmap_init(&od->port_tnlids);
     od->port_key_hint = 0;
     hmap_insert(datapaths, &od->key_node, uuid_hash(&od->key));
@@ -653,6 +654,7 @@ ovn_datapath_destroy(struct ovn_datapath *od)
         /* Don't remove od->list.  It is used within build_datapaths() as a
          * private list and once we've exited that function it is not safe to
          * use it. */
+        ovn_destroy_tnlids(&od->fdb_ports_tnlids);
         ovn_destroy_tnlids(&od->port_tnlids);
         destroy_ipam_info(&od->ipam_info);
         vector_destroy(&od->router_ports);
@@ -1163,6 +1165,7 @@ ovn_port_cleanup(struct ovn_port *port)
     if (port->tunnel_key) {
         ovs_assert(port->od);
         ovn_free_tnlid(&port->od->port_tnlids, port->tunnel_key);
+        ovn_free_tnlid(&port->od->fdb_ports_tnlids, port->tunnel_key);
         port->tunnel_key = 0;
     }
     for (int i = 0; i < port->n_lsp_addrs; i++) {
@@ -3135,16 +3138,10 @@ cleanup_stale_fdb_entries(const struct sbrec_fdb_table *sbrec_fdb_table,
 {
     const struct sbrec_fdb *fdb_e;
     SBREC_FDB_TABLE_FOR_EACH_SAFE (fdb_e, sbrec_fdb_table) {
-        bool delete = true;
-        struct ovn_datapath *od
-            = ovn_datapath_find_by_key(ls_datapaths, fdb_e->dp_key);
-        if (od) {
-            if (ovn_tnlid_present(&od->port_tnlids, fdb_e->port_key)) {
-                delete = false;
-            }
-        }
-
-        if (delete) {
+        struct ovn_datapath *od =
+            ovn_datapath_find_by_key(ls_datapaths, fdb_e->dp_key);
+        if (!od || ovn_datapath_is_stale(od) ||
+            !ovn_tnlid_present(&od->fdb_ports_tnlids, fdb_e->port_key)) {
             sbrec_fdb_delete(fdb_e);
         }
     }
@@ -4369,6 +4366,12 @@ ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
         if (tunnel_key > op->od->port_key_hint) {
             op->od->port_key_hint = tunnel_key;
         }
+
+        /* Track the assigned tunnel_key for enabled LSP
+         * with unknown address. */
+        if (op->nbsp && lsp_is_enabled(op->nbsp) && op->has_unknown) {
+            ovs_assert(ovn_add_tnlid(&op->od->fdb_ports_tnlids, tunnel_key));
+        }
     }
     return added;
 }
@@ -4420,6 +4423,11 @@ ovn_port_allocate_key(struct ovn_port *op)
                                             &op->od->port_key_hint);
         if (!op->tunnel_key) {
             return false;
+        }
+
+        if (op->nbsp && lsp_is_enabled(op->nbsp) && op->has_unknown) {
+            ovs_assert(ovn_add_tnlid(&op->od->fdb_ports_tnlids,
+                                     op->tunnel_key));
         }
     }
     return true;
@@ -5091,7 +5099,9 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 }
                 add_op_to_northd_tracked_ports(&trk_lsps->updated, op);
 
-                if (old_tunnel_key != op->tunnel_key) {
+                if (old_tunnel_key != op->tunnel_key ||
+                    !lsp_is_enabled(op->nbsp) ||
+                    !op->has_unknown) {
                     delete_fdb_entries(ni->sbrec_fdb_by_dp_and_port,
                                        od->tunnel_key, old_tunnel_key);
                 }

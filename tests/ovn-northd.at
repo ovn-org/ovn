@@ -5326,27 +5326,37 @@ AT_SETUP([FDB cleanup])
 ovn_start
 
 check ovn-nbctl ls-add sw0
-check ovn-nbctl lsp-add sw0 sw0-p1
-check ovn-nbctl lsp-add sw0 sw0-p2
-check ovn-nbctl lsp-add sw0 sw0-p3
+check ovn-nbctl lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 unknown
+check ovn-nbctl lsp-add sw0 sw0-p2 -- lsp-set-addresses sw0-p2 unknown
+check ovn-nbctl lsp-add sw0 sw0-p3 -- lsp-set-addresses sw0-p3 unknown \
+    -- set Logical_Switch_Port sw0-p3 enabled=false
+check ovn-nbctl lsp-add sw0 sw0-p4
 
 check ovn-nbctl ls-add sw1
-check ovn-nbctl lsp-add sw1 sw1-p1
-check ovn-nbctl lsp-add sw1 sw1-p2
-check ovn-nbctl --wait=sb lsp-add sw1 sw1-p3
+check ovn-nbctl lsp-add sw1 sw1-p1 -- lsp-set-addresses sw1-p1 unknown
+check ovn-nbctl --wait=sb sync
 
 sw0_key=$(fetch_column datapath_binding tunnel_key external_ids:name=sw0)
 sw1_key=$(fetch_column datapath_binding tunnel_key external_ids:name=sw1)
 sw0p1_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p1)
 sw0p2_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p2)
+sw0p3_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p3)
+sw0p4_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p4)
 sw1p1_key=$(fetch_column port_binding tunnel_key logical_port=sw1-p1)
 
 check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
 check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
 check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:03" dp_key=$sw0_key port_key=$sw0p2_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:04" dp_key=$sw0_key port_key=$sw0p3_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:05" dp_key=$sw0_key port_key=$sw0p4_key
 check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:01" dp_key=$sw1_key port_key=$sw1p1_key
 check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:02" dp_key=$sw1_key port_key=$sw1p1_key
 check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:01\:03" dp_key=$sw1_key port_key=$sw1p1_key
+
+# Disabled port should clear FDB.
+wait_row_count FDB 0 dp_key=$sw0_key port_key=$sw0p3_key
+# Port without "unknown address" should clear FDB.
+wait_row_count FDB 0 dp_key=$sw0_key port_key=$sw0p4_key
 
 wait_row_count FDB 6
 
@@ -5365,12 +5375,32 @@ check ovn-nbctl lsp-del sw0-p1
 wait_row_count FDB 1
 
 check_column '00:00:00:00:00:03' FDB mac
-ovn-sbctl list fdb
+ovn-sbctl list FDB
 
 check_column $sw0_key FDB dp_key
 check_column $sw0p2_key FDB port_key
 
-check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1
+check ovn-nbctl --wait=sb lsp-add sw0 sw0-p1 -- lsp-set-addresses sw0-p1 unknown
+sw0p1_key=$(fetch_column port_binding tunnel_key logical_port=sw0-p1)
+wait_row_count FDB 1
+
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
+wait_row_count FDB 3
+
+# Disabling clears FDB entries.
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-p1 enabled=false
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
+wait_row_count FDB 1
+
+check ovn-nbctl --wait=sb set Logical_Switch_Port sw0-p1 enabled=true
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:01" dp_key=$sw0_key port_key=$sw0p1_key
+check_uuid ovn-sbctl create FDB mac="00\:00\:00\:00\:00\:02" dp_key=$sw0_key port_key=$sw0p1_key
+wait_row_count FDB 3
+
+# Removing unknown clears FDB entries.
+check ovn-nbctl --wait=sb lsp-set-addresses sw0-p1 "00:00:00:00:00:10 192.168.100.10"
 wait_row_count FDB 1
 
 check ovn-nbctl lsp-del sw0-p2
