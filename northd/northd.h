@@ -1022,6 +1022,9 @@ void bfd_table_sync(struct ovsdb_idl_txn *, const struct nbrec_bfd_table *,
                     const struct hmap *, const struct hmap *,
                     const struct hmap *, const struct hmap *,
                     struct sset *);
+bool bfd_sync_handle_sb_port_binding_changes(
+    const struct sbrec_port_binding_table *, const struct hmap *lr_ports,
+    const struct sset *bfd_ports);
 void build_bfd_map(const struct nbrec_bfd_table *,
                    const struct sbrec_bfd_table *, struct hmap *);
 

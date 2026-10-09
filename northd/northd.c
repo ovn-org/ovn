@@ -12166,6 +12166,59 @@ bfd_get_connection_status(const struct nbrec_bfd *nb_bt,
     return bfd_rp ? bfd_rp->status : bfd_sr->status;
 }
 
+/* Returns the chassis that runs the BFD sessions of logical router port
+ * 'op': the chassis in the binding of its chassisredirect port if it has
+ * one, and otherwise in its own binding.  Returns NULL if that binding has
+ * no chassis. */
+static const struct sbrec_chassis *
+bfd_port_chassis(const struct ovn_port *op)
+{
+    if (op->cr_port) {
+        return op->cr_port->sb ? op->cr_port->sb->chassis : NULL;
+    }
+    return op->sb->chassis;
+}
+
+/* Returns false if the chassis changed in the Port_Binding of a logical
+ * router port in 'bfd_ports' or of its chassisredirect port, because the SB
+ * BFD "chassis_name" of the port's sessions then needs an update (see
+ * bfd_port_chassis()).  A new binding counts as a change if it already has
+ * a chassis, because a chassis can claim a binding before ovn-northd sees
+ * that it was inserted.  If a binding that ovn-northd still uses is
+ * deleted, the en_northd node recomputes, and so does this node. */
+bool
+bfd_sync_handle_sb_port_binding_changes(
+    const struct sbrec_port_binding_table *sbrec_port_binding_table,
+    const struct hmap *lr_ports, const struct sset *bfd_ports)
+{
+    const struct sbrec_port_binding *pb;
+    SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, sbrec_port_binding_table) {
+        if (sbrec_port_binding_is_deleted(pb)) {
+            continue;
+        }
+
+        bool chassis_changed = sbrec_port_binding_is_new(pb)
+                               ? pb->chassis != NULL
+                               : sbrec_port_binding_is_updated(
+                                     pb, SBREC_PORT_BINDING_COL_CHASSIS);
+        if (!chassis_changed) {
+            continue;
+        }
+
+        const struct ovn_port *op = ovn_port_find(lr_ports, pb->logical_port);
+        if (!op) {
+            continue;
+        }
+        if (bfd_is_port_running(bfd_ports, op->key) ||
+            (op->primary_port &&
+             bfd_is_port_running(bfd_ports, op->primary_port->key))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void
 bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
                const struct nbrec_bfd_table *nbrec_bfd_table,
@@ -12224,8 +12277,9 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             sbrec_bfd_set_disc(sb_bt, 1 + random_uint32());
             sbrec_bfd_set_src_port(sb_bt, udp_src);
             sbrec_bfd_set_status(sb_bt, nb_bt->status);
-            if (op->sb->chassis) {
-                sbrec_bfd_set_chassis_name(sb_bt, op->sb->chassis->name);
+            const struct sbrec_chassis *chassis = bfd_port_chassis(op);
+            if (chassis) {
+                sbrec_bfd_set_chassis_name(sb_bt, chassis->name);
             }
 
             int min_tx = nb_bt->n_min_tx ? nb_bt->min_tx[0] : BFD_DEF_MINTX;
@@ -12246,10 +12300,10 @@ bfd_table_sync(struct ovsdb_idl_txn *ovnsb_txn,
             }
 
             build_bfd_update_sb_conf(nb_bt, bfd_e->sb_bt);
-            if (op->sb->chassis && !strcmp(op->sb->chassis->name,
-                                           bfd_e->sb_bt->chassis_name)) {
-                sbrec_bfd_set_chassis_name(bfd_e->sb_bt,
-                                           op->sb->chassis->name);
+            const struct sbrec_chassis *chassis = bfd_port_chassis(op);
+            const char *chassis_name = chassis ? chassis->name : "";
+            if (strcmp(bfd_e->sb_bt->chassis_name, chassis_name)) {
+                sbrec_bfd_set_chassis_name(bfd_e->sb_bt, chassis_name);
             }
         }
 
