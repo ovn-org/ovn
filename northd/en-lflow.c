@@ -221,14 +221,16 @@ lflow_multicast_igmp_handler(struct engine_node *node, void *data)
     lflow_get_input_data(node, &lflow_input);
 
     lflow_ref_unlink_and_prune(mcast_igmp_data->lflow_ref,
-                              lflow_data->lflow_table);
+                               lflow_data->lflow_table,
+                               &lflow_data->trk_data.orphaned_sb_uuids);
 
     build_igmp_lflows(&mcast_igmp_data->igmp_groups,
                       &lflow_input.ls_datapaths->datapaths,
                       lflow_data->lflow_table,
                       mcast_igmp_data->lflow_ref);
 
-    lflow_data->trk_data.needs_full_sync = true;
+    hmapx_add(&lflow_data->trk_data.dirty_lflow_refs,
+              mcast_igmp_data->lflow_ref);
 
     return EN_HANDLED_UPDATED;
 }
@@ -297,7 +299,8 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
             ic_learned_svc_monitors_data->lflow_ref);
 
     lflow_ref_unlink_and_prune(ic_learned_svc_monitors_data->lflow_ref,
-                               lflow_data->lflow_table);
+                               lflow_data->lflow_table,
+                               &lflow_data->trk_data.orphaned_sb_uuids);
 
     build_lswitch_arp_nd_ic_learned_svc_mon(
         &svc_mons_data,
@@ -305,7 +308,8 @@ lflow_ic_learned_svc_mons_handler(struct engine_node *node,
         lflow_input.svc_monitor_mac,
         lflow_data->lflow_table);
 
-    lflow_data->trk_data.needs_full_sync = true;
+    hmapx_add(&lflow_data->trk_data.dirty_lflow_refs,
+              ic_learned_svc_monitors_data->lflow_ref);
 
     return EN_HANDLED_UPDATED;
 }
@@ -317,7 +321,7 @@ void *en_lflow_init(struct engine_node *node OVS_UNUSED,
     data->lflow_table = lflow_table_alloc();
     lflow_table_init(data->lflow_table);
     hmapx_init(&data->trk_data.dirty_lflow_refs);
-    data->trk_data.needs_full_sync = false;
+    uuidset_init(&data->trk_data.orphaned_sb_uuids);
 
     return data;
 }
@@ -327,11 +331,12 @@ void en_lflow_cleanup(void *data_)
     struct lflow_data *data = data_;
     lflow_table_destroy(data->lflow_table);
     hmapx_destroy(&data->trk_data.dirty_lflow_refs);
+    uuidset_destroy(&data->trk_data.orphaned_sb_uuids);
 }
 
 void en_lflow_clear_tracked_data(void *data_)
 {
     struct lflow_data *data = data_;
     hmapx_clear(&data->trk_data.dirty_lflow_refs);
-    data->trk_data.needs_full_sync = false;
+    uuidset_clear(&data->trk_data.orphaned_sb_uuids);
 }

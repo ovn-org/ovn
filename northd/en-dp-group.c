@@ -89,9 +89,7 @@ dp_group_lflow_handler(struct engine_node *node,
     struct ed_type_global_config *global_config =
         engine_get_input_data("global_config", node);
 
-    if (hmapx_is_empty(&lflow_data->trk_data.dirty_lflow_refs) ||
-        lflow_data->trk_data.needs_full_sync) {
-
+    if (hmapx_is_empty(&lflow_data->trk_data.dirty_lflow_refs)) {
         dp_group_sync_to_sb(node, lflow_data);
         return EN_HANDLED_UPDATED;
     }
@@ -107,6 +105,15 @@ dp_group_lflow_handler(struct engine_node *node,
             return EN_UNHANDLED;
         }
     }
+
+    /* Delete the SB rows for lflows orphaned in-memory this run (see
+     * lflow_table_delete_orphaned_sb_flows()).  This only happens on the
+     * incremental path: the handlers that record orphaned_sb_uuids also
+     * mark a lflow_ref dirty, so the full-sync branch above never sees
+     * non-empty orphaned_sb_uuids. */
+    lflow_table_delete_orphaned_sb_flows(
+        sb_flow_table,
+        &lflow_data->trk_data.orphaned_sb_uuids);
     return EN_HANDLED_UPDATED;
 }
 

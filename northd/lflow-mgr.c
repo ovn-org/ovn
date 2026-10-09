@@ -743,10 +743,16 @@ lflow_ref_unlink_lflows(struct lflow_ref *lflow_ref,
  * whose referenced_by list is empty (no other lflow_ref references it).
  * Unlike lflow_ref_unlink_lflows (which only clears dp bits and sets
  * linked=false), this function removes the lrns and orphaned lflows
- * from the in-memory table entirely, without writing to SB. */
+ * from the in-memory table entirely, without writing to SB.
+ *
+ * Because the orphaned lflows are destroyed here (and so are not visible to a
+ * later lflow_ref_sync_lflows() pass), the SB uuid of every orphaned lflow
+ * that already has an SB row is recorded in 'orphaned_sb_uuids' so the caller
+ * can delete those rows from SB after the incremental sync. */
 void
 lflow_ref_unlink_and_prune(struct lflow_ref *lflow_ref,
-                           struct lflow_table *lflow_table)
+                           struct lflow_table *lflow_table,
+                           struct uuidset *orphaned_sb_uuids)
 {
     lflow_ref_unlink_lflows(lflow_ref, lflow_table);
 
@@ -756,6 +762,9 @@ lflow_ref_unlink_and_prune(struct lflow_ref *lflow_ref,
         lflow_ref_node_destroy(lrn);
 
         if (ovs_list_is_empty(&lflow->referenced_by)) {
+            if (!uuid_is_zero(&lflow->sb_uuid)) {
+                uuidset_insert(orphaned_sb_uuids, &lflow->sb_uuid);
+            }
             enum ovn_datapath_type dp_type =
                 ovn_stage_to_datapath_type(lflow->stage);
             ovs_assert(dp_type < DP_MAX);
@@ -763,6 +772,34 @@ lflow_ref_unlink_and_prune(struct lflow_ref *lflow_ref,
                                  lflow->dpg);
             lflow->dpg = NULL;
             ovn_lflow_destroy(lflow_table, lflow);
+        }
+    }
+}
+
+/* Deletes the SB Logical_Flow rows for lflows that were orphaned in memory
+ * by lflow_ref_unlink_and_prune() this run.  lflow_ref_sync_lflows() cannot
+ * see them because the lflow (and its lflow_ref_node) has already been
+ * destroyed, so their sb_uuids were recorded in 'orphaned_sb_uuids' and are
+ * deleted here.
+ *
+ * This is safe even when an orphaned lflow is re-added by a later build
+ * (e.g. the per-datapath multicast flood flow): the re-added lflow is a
+ * fresh in-memory object with a new random sb_uuid (the old one was
+ * destroyed), so its freshly inserted SB row is never in
+ * 'orphaned_sb_uuids'. */
+void
+lflow_table_delete_orphaned_sb_flows(
+        const struct sbrec_logical_flow_table *sb_flow_table,
+        struct uuidset *orphaned_sb_uuids)
+{
+    struct uuidset_node *node;
+
+    UUIDSET_FOR_EACH (node, orphaned_sb_uuids) {
+        const struct sbrec_logical_flow *sbflow =
+            sbrec_logical_flow_table_get_for_uuid(sb_flow_table,
+                                                  &node->uuid);
+        if (sbflow) {
+            sbrec_logical_flow_delete(sbflow);
         }
     }
 }

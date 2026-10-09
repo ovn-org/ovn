@@ -24858,4 +24858,65 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([check shared LB VIP flow survives datapath group full sync])
+AT_KEYWORDS([loadbalancer])
+ovn_start
+
+# Two load balancers on the same switch share the VIP 1.1.1.1:80 with the
+# same backend, so they both reference one logical flow L in ls_in_lb.
+# L's datapath refcnt for sw1 is therefore 2.  The bug this test guards
+# against: a full sync of the datapath group retains the lflow_ref_node of
+# an LB that has already dropped the shared VIP, and a later change to that
+# LB unlinks the retained node again, releasing sw1's datapath refcnt a
+# second time.  That empties L's datapath bitmap and a later full sync
+# prunes L and deletes its SB row even though lb2 still requires it.
+check ovn-nbctl --wait=hv ls-add sw1
+check ovn-nbctl --wait=hv lsp-add sw1 p1 -- \
+    lsp-set-addresses p1 "aa:aa:aa:aa:aa:01 192.168.10.2"
+
+check ovn-nbctl --wait=hv lb-add lb1 1.1.1.1:80 192.168.10.2:80
+check ovn-nbctl --wait=hv lb-add lb1 2.2.2.2:80 192.168.10.2:80
+check ovn-nbctl --wait=hv lb-add lb2 1.1.1.1:80 192.168.10.2:80
+check ovn-nbctl --wait=hv ls-lb-add sw1 lb1
+check ovn-nbctl --wait=hv ls-lb-add sw1 lb2
+
+# Baseline: the shared VIP flow exists.
+OVS_WAIT_UNTIL([test 1 -le `ovn-sbctl dump-flows sw1 | grep "ip4.dst == 1.1.1.1" | grep -c .`])
+
+# RUN 1: remove 1.1.1.1 from lb1 (lb1 keeps 2.2.2.2) and change p1's
+# address in the SAME engine run.  The port update makes the multicast node
+# recompute, which forces the datapath group to take the FULL sync path.
+# Unlike the incremental sync, the full sync does not destroy the lflow_ref
+# nodes that were already unlinked, so lb1's now-unlinked 1.1.1.1 node is
+# retained.  The two changes must land in a single run, so they are batched
+# into one transaction.
+check ovn-nbctl --wait=hv lb-del lb1 1.1.1.1:80 -- \
+    lsp-set-addresses p1 "aa:aa:aa:aa:aa:01 192.168.20.2"
+# The shared VIP flow is still present (lb2 keeps it).
+OVS_WAIT_UNTIL([test 1 -le `ovn-sbctl dump-flows sw1 | grep "ip4.dst == 1.1.1.1" | grep -c .`])
+
+# RUN 2: change lb1 (append VIP 3.3.3.3).  This re-unlinks lb1's lflow_ref.
+# Without the fix this hits the retained 1.1.1.1 node and double-releases
+# sw1's datapath count, emptying the shared flow's datapath bitmap.
+check ovn-nbctl --wait=hv lb-add lb1 3.3.3.3:80 192.168.10.2:80
+
+# RUN 3: another port address change -> needs_full_sync -> full sync.
+# Without the fix this prunes the shared 1.1.1.1 flow (now empty bitmap)
+# and deletes its SB row.
+check ovn-nbctl --wait=hv lsp-set-addresses p1 "aa:aa:aa:aa:aa:01 192.168.30.2"
+
+# REGRESSION ASSERTION: the shared VIP flow must still be present, since lb2
+# still requires 1.1.1.1.  Without the fix it was deleted.
+OVS_WAIT_UNTIL([test 1 -le `ovn-sbctl dump-flows sw1 | grep "ip4.dst == 1.1.1.1" | grep -c .`])
+
+# Sanity: p1's port flows now use the final address 192.168.30.2 (confirms
+# the port changes in runs 1 and 3 were actually applied).
+OVS_WAIT_UNTIL([test 1 -le `ovn-sbctl dump-flows sw1 | grep "192.168.30.2" | grep -c .`])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
 

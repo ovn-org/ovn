@@ -9,12 +9,17 @@
 
 #include "lib/hmapx.h"
 #include "lib/inc-proc-eng.h"
+#include "lib/uuidset.h"
 
 struct lflow_table;
 
 struct lflow_tracked_data {
     struct hmapx dirty_lflow_refs; /* lflow_refs changed by handlers. */
-    bool needs_full_sync;          /* Full lflow_table_sync_to_sb needed. */
+
+    /* SB Logical_Flow row uuids that were orphaned in-memory by
+     * lflow_ref_unlink_and_prune() and must be deleted from SB after the
+     * incremental lflow_ref_sync_lflows() pass. */
+    struct uuidset orphaned_sb_uuids;
 };
 
 struct lflow_data {

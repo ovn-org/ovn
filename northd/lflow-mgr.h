@@ -25,6 +25,7 @@ struct ovsdb_idl_txn;
 struct ovn_datapath;
 struct ovsdb_idl_row;
 struct ovn_lflow;
+struct uuidset;
 
 /* lflow map which stores the logical flows. */
 struct lflow_table {
@@ -58,7 +59,10 @@ struct lflow_ref *lflow_ref_create(void);
 void lflow_ref_destroy(struct lflow_ref *);
 void lflow_ref_clear(struct lflow_ref *lflow_ref);
 void lflow_ref_unlink_lflows(struct lflow_ref *, struct lflow_table *);
-void lflow_ref_unlink_and_prune(struct lflow_ref *, struct lflow_table *);
+void lflow_ref_unlink_and_prune(struct lflow_ref *, struct lflow_table *,
+                                struct uuidset *);
+void lflow_table_delete_orphaned_sb_flows(
+        const struct sbrec_logical_flow_table *, struct uuidset *);
 bool lflow_ref_sync_lflows(struct lflow_ref *,
                            struct lflow_table *lflow_table,
                            struct ovsdb_idl_txn *ovnsb_txn,
