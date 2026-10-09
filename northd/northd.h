@@ -414,6 +414,8 @@ struct ovn_datapath {
     struct vector router_ports; /* Vector of struct ovn_port *. */
     struct vector switch_ports; /* Vector of struct ovn_port * of
                                  * type 'switch'. */
+    struct hmap fdb_ports_tnlids; /* Tunnel keys for enabled LSP with
+                                   * unknown address. */
     struct hmap port_tnlids;
     uint32_t port_key_hint;
 
