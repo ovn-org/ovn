@@ -312,7 +312,10 @@ $cluster_remote_port
     fi
 
     if test X"$detach" != Xno; then
-        set "$@" --detach --monitor
+        set "$@" --detach
+        if test X"$MONITOR" != Xno; then
+            set "$@" --monitor
+        fi
     else
         set exec "$@"
     fi
