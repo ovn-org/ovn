@@ -339,6 +339,33 @@ Building
 
        $ sudo make install
 
+Log Directory Ownership
+-----------------------
+
+Source builds retain the startup scripts' recursive log-directory ownership
+handling by default.  Configure with ``--enable-tmpfiles-log-ownership
+--with-log-user=USER --with-log-group=GROUP`` to manage the directory with
+systemd-tmpfiles instead.  The directory-only rule uses mode 2750 so new files
+inherit its group; it does not migrate existing log files or their modes.
+
+Account creation defaults to following the tmpfiles option and can be
+controlled separately with ``--enable-sysusers-log-ownership`` or
+``--disable-sysusers-log-ownership``.  Disable it if another package provides
+the accounts.  For source installations, apply the installed rules before
+starting OVN (adjust paths for a different prefix)::
+
+    $ sudo systemd-sysusers /usr/local/lib/sysusers.d/ovn-sysusers.conf
+    $ sudo systemd-tmpfiles --create \
+        /usr/local/lib/tmpfiles.d/ovn-tmpfiles.conf
+
+Skip sysusers if disabled; ``make install`` alone does not apply these rules.
+
+Provision directories to match the runtime identity and any overridden log
+paths: startup scripts no longer reconcile log ownership in tmpfiles mode.
+With ``--ovn-user``, OVS changes the active log's owner and group before
+dropping privileges; setgid alone cannot preserve a different reader group.
+Default root execution without ``--ovn-user`` supports ``root:adm``.
+
 .. _general-starting:
 
 Starting

@@ -17,3 +17,5 @@
 /ovn-debug
 /ovn-debug.8
 /ovn-lib
+/ovn-tmpfiles.conf
+/ovn-sysusers.conf

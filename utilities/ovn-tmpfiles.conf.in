@@ -1,0 +1,2 @@
+# The setgid bit makes log files created in this directory inherit @LOGGROUP@.
+d @LOGDIR@ 2750 @LOGUSER@ @LOGGROUP@ -
