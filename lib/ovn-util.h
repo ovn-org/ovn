@@ -739,6 +739,8 @@ void ovn_ecmp_selection_fields_add(struct sset *selection_fields,
                                    const char *field);
 bool ovn_ecmp_selection_fields_parse(const char *fields_s,
                                      struct sset *selection_fields);
+char *ovn_ecmp_selection_fields_to_hash_fields(
+    const struct sset *selection_fields);
 
 const struct sbrec_port_binding *lport_lookup_by_name(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,

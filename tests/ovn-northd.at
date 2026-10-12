@@ -22307,6 +22307,48 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([dynamic-routing - EVPN FDB ecmp selection fields])
+AT_KEYWORDS([dynamic-routing])
+ovn_start
+
+check ovn-nbctl --wait=sb ls-add ls-evpn \
+    -- set logical_switch ls-evpn \
+       other_config:dynamic-routing-fdb-ecmp-selection-fields="ip_src,ip_dst"
+dp=$(fetch_column datapath_binding _uuid external_ids:name=ls-evpn)
+
+# The option is only synced for an EVPN switch.
+AT_CHECK([ovn-sbctl get datapath_binding $dp \
+    external_ids:dynamic-routing-fdb-ecmp-selection-fields], [1], [ignore],
+    [ignore])
+
+check ovn-nbctl --wait=sb set logical_switch ls-evpn \
+    other_config:dynamic-routing-vni=10
+AT_CHECK([ovn-sbctl get datapath_binding $dp \
+    external_ids:dynamic-routing-fdb-ecmp-selection-fields], [0], [dnl
+"ip_src,ip_dst"
+])
+
+check ovn-nbctl --wait=sb set logical_switch ls-evpn \
+    other_config:dynamic-routing-fdb-ecmp-selection-fields="ip_src,tp_src"
+AT_CHECK([ovn-sbctl get datapath_binding $dp \
+    external_ids:dynamic-routing-fdb-ecmp-selection-fields], [0], [dnl
+"ip_src,tp_src"
+])
+
+# A field that is not supported is not synced.
+check ovn-nbctl --wait=sb set logical_switch ls-evpn \
+    other_config:dynamic-routing-fdb-ecmp-selection-fields="ip_src,foo"
+AT_CHECK([ovn-sbctl get datapath_binding $dp \
+    external_ids:dynamic-routing-fdb-ecmp-selection-fields], [1], [ignore],
+    [ignore])
+check grep -q "bad 'dynamic-routing-fdb-ecmp-selection-fields' ip_src,foo" \
+    northd/ovn-northd.log
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([LS incremental processing - other_config fields])
 AT_KEYWORDS([ovn, incremental])
 ovn_start

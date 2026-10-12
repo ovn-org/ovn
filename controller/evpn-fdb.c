@@ -24,6 +24,7 @@
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/vlog.h"
 #include "ovn-sb-idl.h"
+#include "ovn-util.h"
 #include "packets.h"
 #include "unixctl.h"
 
@@ -125,6 +126,27 @@ evpn_fdb_resolve_paths(const struct evpn_fdb_ctx_in *f_ctx_in,
     vector_qsort(paths, evpn_fdb_path_cmp);
 }
 
+/* Returns the fields of the ECMP select group of the FDB entries of 'edp'
+ * for selection_method=hash, or NULL for selection_method=dp_hash. */
+static char *
+evpn_fdb_hash_fields(const struct evpn_datapath *edp)
+{
+    const char *fields_s =
+        smap_get(&edp->ldp->datapath->external_ids,
+                 "dynamic-routing-fdb-ecmp-selection-fields");
+    if (!fields_s) {
+        return NULL;
+    }
+
+    struct sset fields = SSET_INITIALIZER(&fields);
+    char *hash_fields = NULL;
+    if (ovn_ecmp_selection_fields_parse(fields_s, &fields)) {
+        hash_fields = ovn_ecmp_selection_fields_to_hash_fields(&fields);
+    }
+    sset_destroy(&fields);
+    return hash_fields;
+}
+
 /* Returns true if the paths in 'fdb' match the contents of 'paths'.
  * Caller must ensure 'paths' is non-empty (memcmp with NULL is UB). */
 static bool
@@ -192,6 +214,15 @@ evpn_fdb_run(const struct evpn_fdb_ctx_in *f_ctx_in,
             updated = true;
         }
 
+        char *hash_fields = evpn_fdb_hash_fields(edp);
+        if (!nullable_string_is_equal(fdb->hash_fields, hash_fields)) {
+            free(fdb->hash_fields);
+            fdb->hash_fields = hash_fields;
+            updated = true;
+        } else {
+            free(hash_fields);
+        }
+
         if (updated) {
             hmapx_add(f_ctx_out->updated_fdbs, fdb);
         }
@@ -208,6 +239,7 @@ evpn_fdb_run(const struct evpn_fdb_ctx_in *f_ctx_in,
         uuidset_insert(f_ctx_out->removed_fdbs, &fdb->flow_uuid);
         hmap_remove(f_ctx_out->fdbs, &fdb->hmap_node);
         vector_destroy(&fdb->paths);
+        free(fdb->hash_fields);
         free(fdb);
     }
 
@@ -220,6 +252,7 @@ evpn_fdbs_destroy(struct hmap *fdbs)
     struct evpn_fdb *fdb;
     HMAP_FOR_EACH_POP (fdb, hmap_node, fdbs) {
         vector_destroy(&fdb->paths);
+        free(fdb->hash_fields);
         free(fdb);
     }
     hmap_destroy(fdbs);

@@ -1685,6 +1685,37 @@ ovn_ecmp_selection_fields_parse(const char *fields_s,
     return ok;
 }
 
+/* Returns the fields of an OpenFlow select group with selection_method=hash
+ * for the ECMP 'selection_fields', as a malloc'ed string that the caller
+ * must free, or NULL if 'selection_fields' is empty.  One group serves
+ * every protocol, so tp_src and tp_dst become the ports of TCP, UDP and
+ * SCTP; ovs-vswitchd hashes only the fields that are present in a
+ * packet. */
+char *
+ovn_ecmp_selection_fields_to_hash_fields(const struct sset *selection_fields)
+{
+    if (sset_is_empty(selection_fields)) {
+        return NULL;
+    }
+
+    struct sset of_fields = SSET_INITIALIZER(&of_fields);
+    const char *field;
+    SSET_FOR_EACH (field, selection_fields) {
+        if (!strcmp(field, "tp_src") || !strcmp(field, "tp_dst")) {
+            const char *dir = field + strlen("tp_");
+            sset_add_and_free(&of_fields, xasprintf("tcp_%s", dir));
+            sset_add_and_free(&of_fields, xasprintf("udp_%s", dir));
+            sset_add_and_free(&of_fields, xasprintf("sctp_%s", dir));
+        } else {
+            sset_add(&of_fields, field);
+        }
+    }
+
+    char *hash_fields = sset_join(&of_fields, ",", "");
+    sset_destroy(&of_fields);
+    return hash_fields;
+}
+
 struct sset *
 lrp_network_sset(const char **networks, int n_networks)
 {

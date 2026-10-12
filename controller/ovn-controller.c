@@ -6967,6 +6967,47 @@ evpn_fdb_vtep_binding_handler(struct engine_node *node, void *data OVS_UNUSED)
     return EN_UNHANDLED;
 }
 
+static enum engine_input_handler_result
+evpn_fdb_datapath_binding_handler(struct engine_node *node,
+                                  void *data OVS_UNUSED)
+{
+    const struct sbrec_datapath_binding_table *dp_table =
+        EN_OVSDB_GET(engine_get_input("SB_datapath_binding", node));
+    const struct ed_type_runtime_data *rt_data =
+        engine_get_input_data("runtime_data", node);
+
+    const struct sbrec_datapath_binding *dp;
+    SBREC_DATAPATH_BINDING_TABLE_FOR_EACH_TRACKED (dp, dp_table) {
+        if (sbrec_datapath_binding_is_new(dp) ||
+            sbrec_datapath_binding_is_deleted(dp)) {
+            /* The removal and addition is handled via the
+             * en_neighbor_exchange I-P node. */
+            continue;
+        }
+
+        struct local_datapath *ld =
+            get_local_datapath(&rt_data->local_datapaths, dp->tunnel_key);
+        if (!ld || !ld->is_switch) {
+            continue;
+        }
+
+        int64_t vni = ovn_smap_get_llong(&dp->external_ids,
+                                         "dynamic-routing-vni", -1);
+        if (!ovn_is_valid_vni(vni)) {
+            continue;
+        }
+
+        /* The ECMP selection fields of the FDB groups are stored in
+         * external_ids. */
+        if (sbrec_datapath_binding_is_updated(
+                dp, SBREC_DATAPATH_BINDING_COL_EXTERNAL_IDS)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
+}
+
 static void *
 en_evpn_arp_init(struct engine_node *node OVS_UNUSED,
                  struct engine_arg *arg OVS_UNUSED)
@@ -7621,6 +7662,11 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_evpn_fdb, &en_evpn_vtep_binding,
                      evpn_fdb_vtep_binding_handler);
     engine_add_input(&en_evpn_fdb, &en_nexthop_exchange, NULL);
+    /* The runtime_data are needed only for local datapaths, any update of
+     * local datapath will be reflected via en_neighbor_exchange. */
+    engine_add_input(&en_evpn_fdb, &en_runtime_data, engine_noop_handler);
+    engine_add_input(&en_evpn_fdb, &en_sb_datapath_binding,
+                     evpn_fdb_datapath_binding_handler);
 
     engine_add_input(&en_evpn_arp, &en_neighbor_exchange, NULL);
     engine_add_input(&en_evpn_arp, &en_evpn_vtep_binding,
