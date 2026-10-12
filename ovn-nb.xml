@@ -3716,6 +3716,28 @@ or
         </p>
       </column>
 
+      <column name="options" key="dynamic-routing-ecmp-selection-fields"
+              type='{"type": "string"}'>
+        <p>
+          Only relevant if <ref column="options" key="dynamic-routing"/>
+          is set to <code>true</code>.
+        </p>
+
+        <p>
+          A comma separated list of the fields that select the nexthop of an
+          ECMP group of learned routes, for example
+          <code>ip_proto,ip_src,ip_dst,tp_src,tp_dst</code>.  The supported
+          fields and their meaning are the same as for the
+          <ref column="selection_fields" table="Logical_Router_Static_Route"/>
+          column of a static route.  When set, the ECMP groups of learned
+          routes use the <code>hash</code> selection method on these fields
+          instead of <code>dp_hash</code>.  This lets a NIC offload the
+          group, because <code>hash</code> does not need a recirculation.
+          If the list contains a field that is not supported, OVN uses
+          <code>dp_hash</code>.
+        </p>
+      </column>
+
       <column name="options" key="dynamic-routing-v4-prefix-nexthop"
               type='{"type": "string"}'>
         <p>

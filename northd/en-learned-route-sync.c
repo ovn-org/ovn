@@ -199,10 +199,25 @@ parse_route_from_sbrec_route(struct hmap *parsed_routes_out,
         return NULL;
     }
 
-    return parsed_route_add(od, nexthop, &prefix, plen, false, lrp_addr_s,
-                            out_port, 0, false, false, false, NULL,
-                            ROUTE_SOURCE_LEARNED, true, &route->header_, NULL,
-                            parsed_routes_out);
+    struct sset ecmp_selection_fields =
+        SSET_INITIALIZER(&ecmp_selection_fields);
+    const char *fields_s = smap_get(&od->nbr->options,
+                                    "dynamic-routing-ecmp-selection-fields");
+    if (fields_s && !ovn_ecmp_selection_fields_parse(fields_s,
+                                                     &ecmp_selection_fields)) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 1);
+        VLOG_WARN_RL(&rl, "bad 'dynamic-routing-ecmp-selection-fields' %s "
+                     "on router %s, using the default selection method",
+                     fields_s, od->nbr->name);
+    }
+
+    struct parsed_route *pr =
+        parsed_route_add(od, nexthop, &prefix, plen, false, lrp_addr_s,
+                         out_port, 0, false, false, false,
+                         &ecmp_selection_fields, ROUTE_SOURCE_LEARNED, true,
+                         &route->header_, NULL, parsed_routes_out);
+    sset_destroy(&ecmp_selection_fields);
+    return pr;
 }
 
 static void
