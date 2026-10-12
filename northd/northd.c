@@ -13036,20 +13036,9 @@ parsed_routes_add_static(const struct ovn_datapath *od,
 
     struct sset ecmp_selection_fields =
         SSET_INITIALIZER(&ecmp_selection_fields);
-
-    /* If tp_src or tp_dst is included in the selection_fields, implicitly
-     * include match on ip_proto. */
-    if (route->n_selection_fields) {
-        struct sset field_set = SSET_INITIALIZER(&field_set);
-        for (size_t i = 0; i < route->n_selection_fields; i++) {
-            char *field = route->selection_fields[i];
-            if (!strcmp(field, "tp_src") || !strcmp(field, "tp_dst")) {
-                sset_add(&field_set, "ip_proto");
-            }
-            sset_add(&field_set, field);
-        }
-        sset_clone(&ecmp_selection_fields, &field_set);
-        sset_destroy(&field_set);
+    for (size_t i = 0; i < route->n_selection_fields; i++) {
+        ovn_ecmp_selection_fields_add(&ecmp_selection_fields,
+                                      route->selection_fields[i]);
     }
 
     uint32_t route_table_id = get_route_table_id(route_tables,

@@ -1634,6 +1634,57 @@ ovn_is_valid_vni(int64_t vni)
     return vni >= 0 && (vni <= (1 << 24) - 1);
 }
 
+/* Adds 'field' to the ECMP 'selection_fields'.  If 'field' is tp_src or
+ * tp_dst, also adds ip_proto: the protocol specific port fields are only
+ * valid with a match on the protocol. */
+void
+ovn_ecmp_selection_fields_add(struct sset *selection_fields,
+                              const char *field)
+{
+    if (!strcmp(field, "tp_src") || !strcmp(field, "tp_dst")) {
+        sset_add(selection_fields, "ip_proto");
+    }
+    sset_add(selection_fields, field);
+}
+
+/* Parses 'fields_s', a comma separated list of the fields that the
+ * Logical_Router_Static_Route selection_fields column accepts, into
+ * 'selection_fields'.  Returns false, and leaves 'selection_fields'
+ * empty, if 'fields_s' contains a field that is not supported. */
+bool
+ovn_ecmp_selection_fields_parse(const char *fields_s,
+                                struct sset *selection_fields)
+{
+    static const char *const supported[] = {
+        "eth_src", "eth_dst", "ip_proto", "ip_src", "ip_dst",
+        "ipv6_src", "ipv6_dst", "tp_src", "tp_dst",
+    };
+
+    char *tokstr = xstrdup(fields_s);
+    char *save_ptr = NULL;
+    bool ok = true;
+    for (char *field = strtok_r(tokstr, ",", &save_ptr); field;
+         field = strtok_r(NULL, ",", &save_ptr)) {
+        size_t i;
+        for (i = 0; i < ARRAY_SIZE(supported); i++) {
+            if (!strcmp(field, supported[i])) {
+                break;
+            }
+        }
+        if (i == ARRAY_SIZE(supported)) {
+            ok = false;
+            break;
+        }
+        ovn_ecmp_selection_fields_add(selection_fields, field);
+    }
+    free(tokstr);
+
+    if (!ok) {
+        sset_clear(selection_fields);
+    }
+    return ok;
+}
+
 struct sset *
 lrp_network_sset(const char **networks, int n_networks)
 {
