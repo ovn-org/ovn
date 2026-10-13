@@ -160,6 +160,7 @@ struct northd_data {
     struct northd_tracked_data trk_data;
 };
 
+struct lflow_ref;
 struct lr_nat_table;
 
 struct lflow_input {
@@ -169,8 +170,6 @@ struct lflow_input {
     /* Southbound table references */
     const struct sbrec_bfd_table *sbrec_bfd_table;
     const struct sbrec_logical_flow_table *sbrec_logical_flow_table;
-    const struct sbrec_multicast_group_table *sbrec_multicast_group_table;
-    const struct sbrec_igmp_group_table *sbrec_igmp_group_table;
     const struct sbrec_logical_dp_group_table *sbrec_logical_dp_group_table;
 
     /* Indexes */
@@ -190,6 +189,8 @@ struct lflow_input {
     const struct hmap *svc_monitor_map;
     bool ovn_internal_version_changed;
     const char *svc_monitor_mac;
+    struct hmap *igmp_groups;
+    struct lflow_ref *igmp_lflow_ref;
 };
 
 extern int parallelization_state;
@@ -254,7 +255,6 @@ struct mcast_info {
 
     struct hmap group_tnlids;  /* Group tunnel IDs in use on this DP. */
     uint32_t group_tnlid_hint; /* Hint for allocating next group tunnel ID. */
-    struct ovs_list groups;    /* List of groups learnt on this DP. */
 
     union {
         struct mcast_switch_info sw;  /* Switch specific multicast info. */
@@ -785,4 +785,31 @@ lr_has_multiple_gw_ports(const struct ovn_datapath *od)
 
 uint32_t get_ovn_max_dp_key_local(const struct sbrec_chassis_table *);
 
+/* Returns true if the logical router port 'enabled' column is empty or
+ * set to true.  Otherwise, returns false. */
+static inline bool
+lrport_is_enabled(const struct nbrec_logical_router_port *lrport)
+{
+    return !lrport->enabled || *lrport->enabled;
+}
+
+/* Returns true if the logical switch port 'enabled' column is empty or
+ * set to true.  Otherwise, returns false. */
+static inline bool
+lsp_is_enabled(const struct nbrec_logical_switch_port *lsp)
+{
+    return !lsp->n_enabled || *lsp->enabled;
+}
+
+static inline bool
+lsp_is_router(const struct nbrec_logical_switch_port *nbsp)
+{
+    return !strcmp(nbsp->type, "router");
+}
+
+struct ovn_port *ovn_port_find(const struct hmap *ports, const char *name);
+void build_igmp_lflows(struct hmap *igmp_groups,
+                       const struct hmap *ls_datapaths,
+                       struct lflow_table *lflows,
+                       struct lflow_ref *lflow_ref);
 #endif /* NORTHD_H */

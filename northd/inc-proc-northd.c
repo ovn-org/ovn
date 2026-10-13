@@ -35,6 +35,7 @@
 #include "en-lr-stateful.h"
 #include "en-lr-nat.h"
 #include "en-ls-stateful.h"
+#include "en-multicast.h"
 #include "en-northd.h"
 #include "en-lflow.h"
 #include "en-northd-output.h"
@@ -155,6 +156,7 @@ static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lb_data, "lb_data");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_nat, "lr_nat");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(lr_stateful, "lr_stateful");
 static ENGINE_NODE_WITH_CLEAR_TRACK_DATA(ls_stateful, "ls_stateful");
+static ENGINE_NODE(multicast_igmp, "multicast_igmp");
 
 void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
                           struct ovsdb_idl_loop *sb)
@@ -242,12 +244,16 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_sync_meters, &en_sb_meter, NULL);
 
     engine_add_input(&en_lflow, &en_nb_bfd, NULL);
+    engine_add_input(&en_multicast_igmp, &en_northd,
+                     multicast_igmp_northd_handler);
+    engine_add_input(&en_multicast_igmp, &en_sb_multicast_group, NULL);
+    engine_add_input(&en_multicast_igmp, &en_sb_igmp_group, NULL);
+
     engine_add_input(&en_lflow, &en_nb_acl, NULL);
     engine_add_input(&en_lflow, &en_sync_meters, NULL);
     engine_add_input(&en_lflow, &en_sb_bfd, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_flow, NULL);
     engine_add_input(&en_lflow, &en_sb_multicast_group, NULL);
-    engine_add_input(&en_lflow, &en_sb_igmp_group, NULL);
     engine_add_input(&en_lflow, &en_sb_logical_dp_group, NULL);
     engine_add_input(&en_lflow, &en_global_config,
                      node_global_config_handler);
@@ -255,6 +261,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_lflow, &en_port_group, lflow_port_group_handler);
     engine_add_input(&en_lflow, &en_lr_stateful, lflow_lr_stateful_handler);
     engine_add_input(&en_lflow, &en_ls_stateful, lflow_ls_stateful_handler);
+    engine_add_input(&en_lflow, &en_multicast_igmp,
+                     lflow_multicast_igmp_handler);
 
     engine_add_input(&en_sync_to_sb_addr_set, &en_northd, NULL);
     engine_add_input(&en_sync_to_sb_addr_set, &en_lr_stateful, NULL);

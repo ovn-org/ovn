@@ -16,6 +16,8 @@ northd_ovn_northd_SOURCES = \
 	northd/en-lflow.h \
 	northd/en-meters.c \
 	northd/en-meters.h \
+	northd/en-multicast.c \
+	northd/en-multicast.h \
 	northd/en-northd-output.c \
 	northd/en-northd-output.h \
 	northd/en-port-group.c \
