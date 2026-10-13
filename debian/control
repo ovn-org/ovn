@@ -25,7 +25,8 @@ Homepage: http://www.ovn.org/
 
 Package: ovn-common
 Architecture: linux-any
-Depends: ${misc:Depends},
+Depends: systemd | systemd-tmpfiles,
+         ${misc:Depends},
          ${shlibs:Depends}
 Description: OVN common components
  OVN, the Open Virtual Network, is a system to support virtual network

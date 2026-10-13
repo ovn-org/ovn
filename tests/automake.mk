@@ -47,7 +47,8 @@ TESTSUITE_AT = \
 	tests/ovn-vif-plug.at \
 	tests/ovn-util.at \
 	tests/ovn-br-controller.at \
-	tests/ovn-inc-proc-graph-dump.at
+	tests/ovn-inc-proc-graph-dump.at \
+	tests/ovn-ctl.at
 
 SYSTEM_DPDK_TESTSUITE_AT = \
 	tests/system-dpdk-testsuite.at \
@@ -97,7 +98,8 @@ AUTOTEST_PATH = $(ovs_builddir)/utilities:$(ovs_builddir)/vswitchd:$(ovs_builddi
 export ovs_srcdir
 export ovs_builddir
 
-check-local:
+check-local: $(TESTSUITE) utilities/ovn-lib utilities/ovn-tmpfiles.conf \
+			 utilities/ovn-sysusers.conf
 	set $(SHELL) '$(TESTSUITE)' -C tests AUTOTEST_PATH=$(AUTOTEST_PATH); \
 	"$$@" $(TESTSUITEFLAGS) || \
 	(test -z "$$(find $(TESTSUITE_DIR) -name 'sanitizers.*')" && \

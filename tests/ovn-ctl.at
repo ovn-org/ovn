@@ -1,0 +1,81 @@
+AT_BANNER([ovn-ctl])
+
+dnl The log-ownership reconciliation in start_ovn_daemon is gated on
+dnl @OVN_CHOWN_LOGDIR@, substituted from the --enable-tmpfiles-log-ownership
+dnl configure option.  Exercise both branches with a chown stub so that a
+dnl dropped substitution or an inverted test is caught in CI.
+AT_SETUP([ovn-ctl - log directory ownership reconciliation])
+AT_CHECK([test -f "$abs_top_builddir/utilities/ovn-lib"])
+
+dnl Record chown invocations instead of touching the system.
+mkdir stub
+cat > stub/chown <<'EOF'
+#!/bin/sh
+echo "chown $*" >> "$OVN_CHOWN_LOG"
+EOF
+chmod +x stub/chown
+PATH=$PWD/stub:$PATH
+OVN_CHOWN_LOG=$PWD/chown.log
+export OVN_CHOWN_LOG
+
+. "$abs_top_builddir/utilities/ovn-lib"
+
+dnl The build must substitute @OVN_CHOWN_LOGDIR@ to a concrete value.
+AT_CHECK([case $ovn_chown_logdir in yes|no) ;; *) exit 1 ;; esac])
+
+dnl Neutralize the side effects unrelated to ownership.
+ovn_logdir=$PWD/log
+ovn_rundir=$PWD/run
+ovn_install_dir () { INSTALL_USER=$(id -un); INSTALL_GROUP=$(id -gn); }
+start_wrapped_daemon () { :; }
+cd () { :; }
+
+dnl Default build: both the log and run directories are reconciled.
+: > "$OVN_CHOWN_LOG"
+ovn_chown_logdir=yes
+start_ovn_daemon "" "" ovn-northd
+AT_CHECK([grep -q " $ovn_logdir\$" "$OVN_CHOWN_LOG"], [0])
+AT_CHECK([grep -q " $ovn_rundir\$" "$OVN_CHOWN_LOG"], [0])
+
+dnl tmpfiles build: the log directory is left to tmpfiles, the run
+dnl directory is still reconciled.
+: > "$OVN_CHOWN_LOG"
+ovn_chown_logdir=no
+start_ovn_daemon "" "" ovn-northd
+AT_CHECK([grep -q " $ovn_logdir\$" "$OVN_CHOWN_LOG"], [1])
+AT_CHECK([grep -q " $ovn_rundir\$" "$OVN_CHOWN_LOG"], [0])
+
+AT_CLEANUP
+
+AT_SETUP([ovn-ctl - configured ownership templates])
+AT_KEYWORDS([ovn-ctl])
+AT_CHECK([test -f "$abs_top_builddir/utilities/ovn-lib"])
+AT_CHECK([. "$abs_top_builddir/utilities/ovn-lib"
+test "$ovn_chown_logdir" = "$OVN_TEST_CHOWN_LOGDIR"
+case "$OVN_TEST_TMPFILES_DISABLED" in
+  '') test "$ovn_chown_logdir" = no ;;
+  '#') test "$ovn_chown_logdir" = yes ;;
+  *) exit 1 ;;
+esac])
+AT_CHECK([prefix=$OVN_TEST_PREFIX
+eval localstatedir=\"$OVN_TEST_LOCALSTATEDIR\"
+PACKAGE=ovn
+eval logdir=\"$OVN_TEST_LOGDIR\"
+printf 'd %s 2750 %s %s -\n' "$logdir" "$OVN_TEST_LOGUSER" \
+    "$OVN_TEST_LOGGROUP" > expected-tmpfiles
+sed '/^#/d' "$abs_top_builddir/utilities/ovn-tmpfiles.conf" > actual-tmpfiles
+diff -u expected-tmpfiles actual-tmpfiles])
+AT_CHECK([group_line= user_line=
+if test "$OVN_TEST_LOGGROUP" != root; then
+    group_line="g $OVN_TEST_LOGGROUP -"
+fi
+if test "$OVN_TEST_LOGUSER" != root; then
+    user_id=-
+    if test "$OVN_TEST_LOGGROUP" != root; then
+        user_id="-:$OVN_TEST_LOGGROUP"
+    fi
+    user_line="u $OVN_TEST_LOGUSER $user_id \"OVN log user\" -"
+fi
+printf '%s\n%s\n' "$group_line" "$user_line" > expected-sysusers
+diff -u expected-sysusers "$abs_top_builddir/utilities/ovn-sysusers.conf"])
+AT_CLEANUP
