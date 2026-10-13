@@ -24007,3 +24007,106 @@ OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
 
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([CT extraction limited to LB VIPs])
+AT_KEYWORDS([ovnlb ct_extract])
+AT_SKIP_IF([test $HAVE_NCAT = no])
+AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+
+dnl Test that the CT_EXTRACT pipeline stage currently matches doesn't
+dnl generate ct_tuple4 megaflow matches for non fragments.
+
+ovn_start
+
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+
+check ovs-vsctl                                                                         \
+        -- set Open_vSwitch . external-ids:system-id=hv1                                \
+        -- set Open_vSwitch . external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+        -- set Open_vSwitch . external-ids:ovn-encap-type=geneve                        \
+        -- set Open_vSwitch . external-ids:ovn-encap-ip=169.0.0.1                       \
+        -- set bridge br-int fail-mode=secure other-config:disable-in-band=true
+
+start_daemon ovn-controller
+
+check ovn-nbctl                                                \
+    -- lr-add lr0                                              \
+      -- lrp-add lr0 lrp aa:bb:cc:dd:ee:03 10.0.0.3/24         \
+      -- set logical_router lr0 options:chassis=hv1            \
+    -- ls-add ls0                                              \
+      -- lsp-add ls0 lsp0                                      \
+        -- lsp-set-addresses lsp0 "aa:bb:cc:dd:ee:01 10.0.0.1" \
+      -- lsp-add ls0 lsp1                                      \
+        -- lsp-set-addresses lsp1 "aa:bb:cc:dd:ee:02 10.0.0.2" \
+      -- lsp-add-router-port ls0 ls0-lr0 lrp                   \
+    -- lb-add lb0 10.0.1.100:5000 10.0.0.2:6000 udp            \
+      -- ls-lb-add ls0 lb0                                     \
+    -- lb-add lb1 10.0.1.101:5001 10.0.0.2:6001 udp            \
+      -- lr-lb-add lr0 lb1
+
+ADD_NAMESPACES(lsp0, lsp1)
+ADD_VETH(lsp0, lsp0, br-int, "10.0.0.1/24", "aa:bb:cc:dd:ee:01", "10.0.0.3")
+ADD_VETH(lsp1, lsp1, br-int, "10.0.0.2/24", "aa:bb:cc:dd:ee:02", "10.0.0.3")
+
+wait_for_ports_up lsp0 lsp1
+check ovn-nbctl --wait=hv sync
+
+dnl Verify basic connectivity before testing megaflows.
+NS_CHECK_EXEC([lsp0], [ping -q -c 3 -i 0.3 -w 2 10.0.0.2 | FORMAT_PING], \
+[0], [dnl
+3 packets transmitted, 3 received, 0% packet loss, time 0ms
+])
+
+check ovs-appctl revalidator/pause
+on_exit 'ovs-appctl revalidator/resume'
+
+dnl --- Unfragmented unidirectional UDP to non-VIP must not have ct_tuple4 ---
+dnl
+dnl Start a UDP listener on lsp1 to absorb traffic.  Start a continuous
+dnl unidirectional UDP sender on lsp0 to port 4791 (a non-VIP port).
+dnl The listener does not send replies, so every packet stays ct.new.
+dnl There should be no ct_tuple4 matches in the megaflows for this traffic.
+NETNS_DAEMONIZE([lsp1], [ncat -u -l 4791 > /dev/null], [udp-listener.pid])
+NETNS_DAEMONIZE([lsp0], [bash -c 'while true; do echo test; sleep 0.2; done | ncat -u 10.0.0.2 4791'], [udp-sender.pid])
+
+dnl Wait until the datapath has a cached flow for the UDP traffic we sent.
+OVS_WAIT_UNTIL([ovs-appctl dpctl/dump-flows | grep -q 'dst=4791'])
+
+ovs-appctl dpctl/dump-flows > dpflows
+AT_CAPTURE_FILE([dpflows])
+
+AT_CHECK([grep 'dst=4791' dpflows | grep -q 'ct_tuple4'], [1])
+
+dnl --- UDP to VIP is DNAT'd correctly ---
+dnl
+NETNS_DAEMONIZE([lsp1], [ncat -u -l 10.0.0.2 6000], [lsp1_udp1.pid])
+NETNS_START_TCPDUMP([lsp1], [-nn -c 1 -i lsp1 'udp and dst port 6000 and dst host 10.0.0.2'], [lb-dnat1])
+NETNS_DAEMONIZE([lsp1], [ncat -u -l 10.0.0.2 6001], [lsp1_udp2.pid])
+NETNS_START_TCPDUMP([lsp1], [-nn -c 1 -i lsp1 'udp and dst port 6001 and dst host 10.0.0.2'], [lb-dnat2])
+
+NS_CHECK_EXEC([lsp0], [echo test | ncat -u 10.0.1.100 5000], [ignore], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat lb-dnat1.tcpdump | wc -l)
+    test "${total_pkts}" -ge 1
+])
+
+NS_CHECK_EXEC([lsp0], [echo test | ncat -u 10.0.1.101 5001], [ignore], [ignore], [ignore])
+
+OVS_WAIT_UNTIL([
+    total_pkts=$(cat lb-dnat2.tcpdump | wc -l)
+    test "${total_pkts}" -ge 1
+])
+
+check ovs-appctl revalidator/resume
+
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])

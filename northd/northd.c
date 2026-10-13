@@ -18418,9 +18418,24 @@ build_lrouter_in_ct_extract_flows(struct lflow_table *lflows,
     /* Ingress CT_EXTRACT table: Extract connection tracking fields for new
      * connections. */
     ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 100,
-                  "ct.new && ip",
+                  "ct.new && ip && ip.is_frag",
                   REG_CT_PROTO " = ct_proto(); "
                   REG_CT_TP_DST " = ct_tp_dst(); next;",
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 100,
+                  "ct.new && ip && tcp && !ip.is_frag",
+                  REG_CT_PROTO " = ip.proto; "
+                  REG_CT_TP_DST " = tcp.dst; next;",
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 100,
+                  "ct.new && ip && udp && !ip.is_frag",
+                  REG_CT_PROTO " = ip.proto; "
+                  REG_CT_TP_DST " = udp.dst; next;",
+                  lflow_ref);
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_CT_EXTRACT, 100,
+                  "ct.new && ip && sctp && !ip.is_frag",
+                  REG_CT_PROTO " = ip.proto; "
+                  REG_CT_TP_DST " = sctp.dst; next;",
                   lflow_ref);
 }
 
@@ -19704,9 +19719,24 @@ build_ls_stateful_flows(const struct ls_stateful_record *ls_stateful_rec,
      * balancers. */
     if (ls_stateful_rec->has_lb_vip) {
         ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
-                      "ct.new && ip",
+                      "ct.new && ip && ip.is_frag",
                       REG_CT_PROTO " = ct_proto(); "
                       REG_CT_TP_DST " = ct_tp_dst(); next;",
+                      ls_stateful_rec->lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
+                      "ct.new && ip && tcp && !ip.is_frag",
+                      REG_CT_PROTO " = ip.proto; "
+                      REG_CT_TP_DST " = tcp.dst; next;",
+                      ls_stateful_rec->lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
+                      "ct.new && ip && udp && !ip.is_frag",
+                      REG_CT_PROTO " = ip.proto; "
+                      REG_CT_TP_DST " = udp.dst; next;",
+                      ls_stateful_rec->lflow_ref);
+        ovn_lflow_add(lflows, od, S_SWITCH_IN_CT_EXTRACT, 100,
+                      "ct.new && ip && sctp && !ip.is_frag",
+                      REG_CT_PROTO " = ip.proto; "
+                      REG_CT_TP_DST " = sctp.dst; next;",
                       ls_stateful_rec->lflow_ref);
     }
 
