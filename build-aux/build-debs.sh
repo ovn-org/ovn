@@ -92,11 +92,12 @@ DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -b -us -uc
 # *.ddeb, which the *.deb globs below never match, and pf9_build_reset would wipe the OVS
 # ones. When enabled, collect them before anything is deleted.
 if pf9_debug_symbols_enabled; then
-    DBGSYM_DIR="$TEAMCITY_ROOT/pkgs/${UBUNTU_VERSION}-dbgsym"
+    DBGSYM_DIR="$PF9_DEBUG_DIR/${UBUNTU_VERSION}-dbgsym"
     mkdir -p "$DBGSYM_DIR"
     find "$ROOT" "$TEAMCITY_ROOT" -maxdepth 1 \( -name "*-dbgsym_*.ddeb" -o -name "*-dbgsym_*.deb" \) \
         -exec mv -v {} "$DBGSYM_DIR" \;
     ls -la "$DBGSYM_DIR"
+    pf9_pack_debug_symbols
 fi
 
 # Remove bloat packages before artifact collection
