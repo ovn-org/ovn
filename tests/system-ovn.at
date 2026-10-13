@@ -15036,11 +15036,9 @@ AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
 ovnvrf1337 1337
 ])
 
-# "ip route list" output has a trailing space on each line.
-# The awk magic removes all trailing spaces.
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.0/24 proto 84 metric 1000
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.0/24 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # We now switch to announcing host routes and expect 192.0.2.0/24 to be gone
 # and the following to be added:
@@ -15055,57 +15053,57 @@ blackhole 198.51.100.0/24 proto 84 metric 1000])
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
     options:dynamic-routing-redistribute="connected-as-host,static,nat"
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # If the pr1-public lrp is now removed from this hypervisor the route metric
 # will go back to the default.
 # For this we just schedule it on a non existing chassis.
 check ovn-nbctl lrp-del-gateway-chassis pr1-public hv1
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv123
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 1000
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 1000
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 1000
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 1000
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Moving pr1-public back will also change the route metrics again.
 check ovn-nbctl lrp-del-gateway-chassis pr1-public hv123
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv1
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Moving vif3 away from hv1 will change the route metric to default.
 check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=thisdoesnotexist
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 1000
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Bringing vif3 back will change the route metric to local again.
 check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=hv1
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Disable maintaining the vrf as some tests below would cause the vrfs to be
 # removed.
@@ -15163,22 +15161,21 @@ check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
                              options:dynamic-routing-maintain-vrf=false
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
-AT_CHECK([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [0], [dnl
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink
-])
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Starting it again will add the routes again.
 start_daemon ovn-controller
 OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
@@ -15190,26 +15187,26 @@ check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
 check ovn-nbctl --wait=hv set Logical_Router internet \
     options:dynamic-routing-vrf-name=ovnvrf1338
 AT_CHECK([ip vrf | grep -q ovnvrf1337], [1], [])
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1338 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Stopping with --restart will not touch the routes.
 OVN_CONTROLLER_EXIT([],[--restart])
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1338 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000
+OVN_ROUTE_EQUAL([ovnvrf1338], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
@@ -15526,11 +15523,9 @@ AT_CHECK([ip vrf show ovnvrf1337], [0], [dnl
 ovnvrf1337 1337
 ])
 
-# "ip route list" output has a trailing space on each line.
-# The awk magic removes all trailing spaces.
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.0/24 proto 84 metric 1000
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.0/24 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # We now switch to announcing host routes and expect 192.0.2.0/24 to be gone
 # and the following to be added:
@@ -15544,57 +15539,57 @@ blackhole 198.51.100.0/24 proto 84 metric 1000])
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-public \
     options:dynamic-routing-redistribute="connected-as-host,static,nat"
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # If the pr1-public lrp is now removed from this hypervisor the route metric
 # will go back to the default.
 # For this we just schedule it on a non existing chassis.
 check ovn-nbctl lrp-del-gateway-chassis pr1-public hv1
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv123
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 1000
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 1000
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 1000
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 1000
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Moving pr1-public back will also change the route metrics again.
 check ovn-nbctl lrp-del-gateway-chassis pr1-public hv123
 check ovn-nbctl --wait=hv lrp-set-gateway-chassis pr1-public hv1
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Moving vif3 away from hv1 will change the route metric to default.
 check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=thisdoesnotexist
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 1000
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 1000
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Bringing vif3 back will change the route metric to local again.
 check ovn-nbctl --wait=hv set Logical_Switch_Port vif3 options:requested-chassis=hv1
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000])
 
 # Disable maintaining the vrf as some tests below would cause the vrfs to be
 # removed.
@@ -15654,35 +15649,34 @@ check_row_count Learned_Route 1 ip_prefix=233.253.0.0/24 nexthop=192.168.20.20
 check ovn-nbctl --wait=hv set Logical_Router_Port internet-phys \
                              options:dynamic-routing-maintain-vrf=false
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
-AT_CHECK([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [0], [dnl
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
-233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink
-])
+233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Starting it again will add the routes again.
 start_daemon ovn-controller
 OVS_WAIT_UNTIL([test "$(ovn-appctl -t ovn-controller debug/status)" == "running"])
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
 
 # Stopping with --restart will not touch the routes.
 OVN_CONTROLLER_EXIT([],[--restart])
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf1337 | awk '{$1=$1};1'], [dnl
-blackhole 192.0.2.1 proto 84 metric 100
-blackhole 192.0.2.2 proto 84 metric 100
-blackhole 192.0.2.3 proto 84 metric 100
-blackhole 192.0.2.10 proto 84 metric 100
-blackhole 192.0.2.20 proto 84 metric 100
-blackhole 198.51.100.0/24 proto 84 metric 1000
+OVN_ROUTE_EQUAL([ovnvrf1337], [dnl
+blackhole 192.0.2.1 proto ovn metric 100
+blackhole 192.0.2.2 proto ovn metric 100
+blackhole 192.0.2.3 proto ovn metric 100
+blackhole 192.0.2.10 proto ovn metric 100
+blackhole 192.0.2.20 proto ovn metric 100
+blackhole 198.51.100.0/24 proto ovn metric 1000
 233.252.0.0/24 via 192.168.10.10 dev lo proto zebra onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 30 onlink
 233.253.0.0/24 via 192.168.20.20 dev hv1-mll proto zebra metric 40 onlink])
@@ -15770,8 +15764,8 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 172.16.1.150 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.150 proto ovn metric 1000])
 
 # Add distributed router connected through "join" LS and ensure
 # that its LB VIPs are redistributed by R1. LS join has no
@@ -15796,9 +15790,9 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 10.42.10.10 proto 84 metric 100
-blackhole 172.16.1.150 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 100
+blackhole 172.16.1.150 proto ovn metric 1000])
 
 # Move DGW of R2 to another chassis to verify that route priority decreases.
 check ovn-nbctl                              \
@@ -15806,9 +15800,9 @@ check ovn-nbctl                              \
     -- lrp-set-gateway-chassis r2-join hv123
 check ovn-nbctl --wait=hv sync
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 10.42.10.10 proto 84 metric 1000
-blackhole 172.16.1.150 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 1000
+blackhole 172.16.1.150 proto ovn metric 1000])
 
 # Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
 # and verify that lower priority routes are not advertised anymore.
@@ -15916,8 +15910,8 @@ check ovn-nbctl --wait=hv sync
 AT_CHECK([ip link | grep -q ovnvrf1001:.*UP])
 AT_CHECK([test `ip -6 route show table 1001 | wc -l` -eq 1])
 
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium])
 
 # Add distributed router connected through "join" LS and ensure
 # that its LB VIPs are redistributed by R1. LS join has no
@@ -15942,9 +15936,9 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
 
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:3001::150 dev lo proto 84 metric 100 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:3001::150 dev lo proto ovn metric 100 pref medium])
 
 # Move DGW of R2 to another chassis to verify that route priority decreases.
 check ovn-nbctl                              \
@@ -15952,9 +15946,9 @@ check ovn-nbctl                              \
     -- lrp-set-gateway-chassis r2-join hv123
 check ovn-nbctl --wait=hv sync
 
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1001::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:3001::150 dev lo proto 84 metric 1000 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1001::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:3001::150 dev lo proto ovn metric 1000 pref medium])
 
 # Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
 # and verify that lower priority routes are not advertised anymore.
@@ -16060,9 +16054,9 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 172.16.1.10 proto 84 metric 1000
-blackhole 172.16.1.11 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
 
 # Add distributed router connected through "join" LS and ensure
 # that its external NAT IPs are redistributed by R1. LS join has no
@@ -16100,13 +16094,13 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 10.42.10.10 proto 84 metric 100
-blackhole 10.42.10.11 proto 84 metric 100
-blackhole 10.42.10.12 proto 84 metric 100
-blackhole 10.42.10.13 proto 84 metric 100
-blackhole 172.16.1.10 proto 84 metric 1000
-blackhole 172.16.1.11 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 100
+blackhole 10.42.10.11 proto ovn metric 100
+blackhole 10.42.10.12 proto ovn metric 100
+blackhole 10.42.10.13 proto ovn metric 100
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
 
 # Move DGW of R2 to another chassis to verify that route priority decreases.
 check ovn-nbctl                             \
@@ -16114,13 +16108,13 @@ check ovn-nbctl                             \
   -- ha-chassis-group-remove-chassis g1 hv1
 check ovn-nbctl --wait=hv sync
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 10.42.10.10 proto 84 metric 1000
-blackhole 10.42.10.11 proto 84 metric 1000
-blackhole 10.42.10.12 proto 84 metric 1000
-blackhole 10.42.10.13 proto 84 metric 1000
-blackhole 172.16.1.10 proto 84 metric 1000
-blackhole 172.16.1.11 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 1000
+blackhole 10.42.10.11 proto ovn metric 1000
+blackhole 10.42.10.12 proto ovn metric 1000
+blackhole 10.42.10.13 proto ovn metric 1000
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
 
 # Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
 # and verify that lower priority routes are not advertised anymore.
@@ -16184,12 +16178,12 @@ check ovn-nbctl --wait=hv sync
 # 10.42.10.12 and 10.42.10.13 have become invalid so ovn shouldn't
 # advertise them anymore.
 
-OVS_WAIT_UNTIL_EQUAL([ip route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 10.42.10.10 proto 84 metric 1000
-blackhole 10.42.10.11 proto 84 metric 1000
-blackhole 10.42.20.11 proto 84 metric 100
-blackhole 172.16.1.10 proto 84 metric 1000
-blackhole 172.16.1.11 proto 84 metric 1000])
+OVN_ROUTE_EQUAL([ovnvrf$vrf], [dnl
+blackhole 10.42.10.10 proto ovn metric 1000
+blackhole 10.42.10.11 proto ovn metric 1000
+blackhole 10.42.20.11 proto ovn metric 100
+blackhole 172.16.1.10 proto ovn metric 1000
+blackhole 172.16.1.11 proto ovn metric 1000])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 
@@ -16272,9 +16266,9 @@ check ovn-nbctl                                                         \
 check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium])
 
 # Add distributed router connected through "join" LS and ensure
 # that its external NAT IPs are redistributed by R1. LS join has no
@@ -16312,13 +16306,13 @@ check ovn-nbctl --wait=hv sync
 
 AT_CHECK([ip link | grep -q ovnvrf$vrf:.*UP])
 
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::150 dev lo proto 84 metric 100 pref medium
-blackhole 2001:db8:1004::151 dev lo proto 84 metric 100 pref medium
-blackhole 2001:db8:1004::152 dev lo proto 84 metric 100 pref medium
-blackhole 2001:db8:1004::153 dev lo proto 84 metric 100 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto ovn metric 100 pref medium
+blackhole 2001:db8:1004::151 dev lo proto ovn metric 100 pref medium
+blackhole 2001:db8:1004::152 dev lo proto ovn metric 100 pref medium
+blackhole 2001:db8:1004::153 dev lo proto ovn metric 100 pref medium])
 
 # Move DGW of R2 to another chassis to verify that route priority decreases.
 check ovn-nbctl                             \
@@ -16326,13 +16320,13 @@ check ovn-nbctl                             \
   -- ha-chassis-group-remove-chassis g1 hv1
 check ovn-nbctl --wait=hv sync
 
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::151 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::152 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::153 dev lo proto 84 metric 1000 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::152 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::153 dev lo proto ovn metric 1000 pref medium])
 
 # Set LR/LRP.options.dynamic-routing-redistribute-local-only=true
 # and verify that lower priority routes are not advertised anymore.
@@ -16396,12 +16390,12 @@ check ovn-nbctl --wait=hv sync
 # 2001:db8:1004::152 and 2001:db8:1004::153 have become invalid so ovn
 # shouldn't advertise them anymore.
 
-OVS_WAIT_UNTIL_EQUAL([ip -6 route list vrf ovnvrf$vrf | awk '{$1=$1};1'], [dnl
-blackhole 2001:db8:1003::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1003::151 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::150 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1004::151 dev lo proto 84 metric 1000 pref medium
-blackhole 2001:db8:1005::150 dev lo proto 84 metric 100 pref medium])
+OVN_ROUTE_V6_EQUAL([ovnvrf$vrf], [dnl
+blackhole 2001:db8:1003::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1003::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::150 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1004::151 dev lo proto ovn metric 1000 pref medium
+blackhole 2001:db8:1005::150 dev lo proto ovn metric 100 pref medium])
 
 OVS_APP_EXIT_AND_WAIT([ovn-controller])
 # Ensure system resources are cleaned up.
