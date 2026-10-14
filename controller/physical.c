@@ -3020,8 +3020,6 @@ consider_mc_group(const struct physical_ctx *ctx,
             }
         } else if (type == LP_REMOTE) {
             if (port->chassis) {
-                put_load(port->tunnel_key, MFF_LOG_OUTPORT, 0, 32,
-                         &remote_ctx->ofpacts);
                 tunnel_to_chassis(ctx->mff_ovn_geneve, port->chassis->name,
                                   ctx->chassis_tunnels, mc->datapath,
                                   port->tunnel_key, &remote_ctx->ofpacts);
