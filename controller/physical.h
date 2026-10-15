@@ -73,6 +73,7 @@ struct physical_ctx {
     const char **encap_ips;
     struct physical_debug debug;
     bool always_tunnel;
+    uint16_t tunnel_mtu;
     const struct hmap *evpn_bindings;
     const struct hmap *evpn_multicast_groups;
     const struct hmap *evpn_fdbs;
