@@ -377,11 +377,28 @@ en_tunnel_key_icnb_transit_router_handler(struct engine_node *node,
     return ret;
 }
 
+static bool
+icnb_transit_switch_exists(struct ic_context *ctx, const char *name)
+{
+    const struct icnbrec_transit_switch *key =
+        icnbrec_transit_switch_index_init_row(
+            ctx->icnbrec_transit_switch_by_name);
+    icnbrec_transit_switch_index_set_name(key, name);
+    const struct icnbrec_transit_switch *ts =
+        icnbrec_transit_switch_index_find(ctx->icnbrec_transit_switch_by_name,
+                                          key);
+    icnbrec_transit_switch_index_destroy_row(key);
+    return ts != NULL;
+}
+
 /* IC-SB Datapath_Binding: react only to a binding *deletion* by re-creating it
  * for the still-present IC-NB entity (self-healing after an out-of-band
- * delete).  Inserts and modifies are this node's own writes (or already
- * consistent), so they are a no-op here - the requested-tnl-key follow-up is
- * driven by en_ts/en_tr's own handlers on this same table. */
+ * delete).  The deletion of a binding whose IC-NB entity is gone is the echo
+ * of this node's own garbage collection and needs nothing, so it must not
+ * depend on the IC-SB transaction being available.  Inserts and modifies are
+ * this node's own writes (or already consistent), so they are a no-op here -
+ * the requested-tnl-key follow-up is driven by en_ts/en_tr's own handlers on
+ * this same table. */
 enum engine_input_handler_result
 en_tunnel_key_icsb_datapath_binding_handler(struct engine_node *node,
                                             void *data_)
@@ -402,10 +419,15 @@ en_tunnel_key_icsb_datapath_binding_handler(struct engine_node *node,
                 /* Not inserted by ovn-ic: nothing to reconcile. */
                 continue;
             }
+            if (!icnbrec_transit_router_get_for_uuid(ctx->ovninb_idl,
+                                                     isb_dp->nb_ic_uuid)) {
+                continue;
+            }
             char *uuid_str = uuid_to_string(isb_dp->nb_ic_uuid);
             sset_add(&tr_scope, uuid_str);
             free(uuid_str);
-        } else {
+        } else if (icnb_transit_switch_exists(ctx,
+                                              isb_dp->transit_switch)) {
             sset_add(&ts_scope, isb_dp->transit_switch);
         }
     }

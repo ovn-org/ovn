@@ -1449,8 +1449,17 @@ main(int argc, char *argv[])
                 ovsdb_idl_has_ever_connected(ctx.ovninb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnisb_idl) &&
                 ovsdb_idl_has_ever_connected(ctx.ovnisb_unlocked_idl)) {
+                /* The AZ holding the IC-SB lock writes through the locked
+                 * connection, whose transaction isn't available while the
+                 * previous one is being committed.  Postpone the engine run
+                 * in that case, keeping the tracked changes, as the nodes
+                 * would otherwise skip their writes and the changes they
+                 * handle incrementally would be lost. */
+                bool isb_txn_ready = ctx.ovnisb_txn ||
+                                     !ovsdb_idl_has_lock(ctx.ovnisb_idl);
                 if (ctx.ovnnb_txn && ctx.ovnsb_txn && ctx.ovninb_txn &&
-                    ctx.ovnisb_unlocked_txn && inc_proc_ic_can_run(&eng_ctx)) {
+                    ctx.ovnisb_unlocked_txn && isb_txn_ready &&
+                    inc_proc_ic_can_run(&eng_ctx)) {
                     /* The availability zone is now resolved by the en_az
                      * engine node.  The subsystem nodes skip their work when
                      * there is no AZ; the sequence-number bookkeeping below
