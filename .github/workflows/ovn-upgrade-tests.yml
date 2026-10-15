@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   upgrade-tests:
-    name: upgrade-test ${{ matrix.cfg.base_version }} ${{ matrix.cfg.test_range }}
+    name: upgrade-test ${{ matrix.cfg.base_version }} ${{ matrix.cfg.test_range }} -> ${{ matrix.cfg.target_version || github.ref_name }}
     if: (github.repository_owner == 'ovn-org' && github.event_name == 'schedule' && github.ref_name == 'main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-26.04
     timeout-minutes: 120
@@ -21,12 +21,20 @@ jobs:
       fail-fast: false
       matrix:
         cfg:
-        - { base_version: "origin/branch-25.09", test_range: "-100"}
-        - { base_version: "origin/branch-25.09", test_range: "101-200"}
-        - { base_version: "origin/branch-25.09", test_range: "201-", unstable: unstable}
-        - { base_version: "origin/branch-25.03", test_range: "-100"}
-        - { base_version: "origin/branch-25.03", test_range: "101-200"}
-        - { base_version: "origin/branch-25.03", test_range: "201-", unstable: unstable}
+        # Upgrade against latest LTS.
+        - { base_version: "origin/branch-24.03", target_version: "branch-26.03", test_range: "-100" }
+        - { base_version: "origin/branch-24.03", target_version: "branch-26.03", test_range: "101-", unstable: unstable }
+        - { base_version: "origin/branch-25.03", target_version: "branch-26.03", test_range: "-100" }
+        - { base_version: "origin/branch-25.03", target_version: "branch-26.03", test_range: "101-200" }
+        - { base_version: "origin/branch-25.03", target_version: "branch-26.03", test_range: "201-", unstable: unstable }
+        - { base_version: "origin/branch-25.09", target_version: "branch-26.03", test_range: "-100"}
+        - { base_version: "origin/branch-25.09", target_version: "branch-26.03", test_range: "101-200"}
+        - { base_version: "origin/branch-25.09", target_version: "branch-26.03", test_range: "201-", unstable: unstable}
+        # Upgrade from LTS to between LTS and main.
+        - { base_version: "origin/branch-26.03", target_version: "branch-26.09", test_range: "-100" }
+        - { base_version: "origin/branch-26.03", target_version: "branch-26.09", test_range: "101-200" }
+        - { base_version: "origin/branch-26.03", target_version: "branch-26.09", test_range: "201-", unstable: unstable }
+        # Upgrade against latest branch ref.
         - { base_version: "origin/branch-26.03", test_range: "-100" }
         - { base_version: "origin/branch-26.03", test_range: "101-200" }
         - { base_version: "origin/branch-26.03", test_range: "201-", unstable: unstable }
@@ -50,6 +58,7 @@ jobs:
     - name: checkout
       uses: actions/checkout@v6
       with:
+        ref: ${{ matrix.cfg.target_version || github.ref }}
         submodules: recursive
 
     - name: Fix /etc/hosts file
