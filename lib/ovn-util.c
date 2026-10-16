@@ -1634,6 +1634,88 @@ ovn_is_valid_vni(int64_t vni)
     return vni >= 0 && (vni <= (1 << 24) - 1);
 }
 
+/* Adds 'field' to the ECMP 'selection_fields'.  If 'field' is tp_src or
+ * tp_dst, also adds ip_proto: the protocol specific port fields are only
+ * valid with a match on the protocol. */
+void
+ovn_ecmp_selection_fields_add(struct sset *selection_fields,
+                              const char *field)
+{
+    if (!strcmp(field, "tp_src") || !strcmp(field, "tp_dst")) {
+        sset_add(selection_fields, "ip_proto");
+    }
+    sset_add(selection_fields, field);
+}
+
+/* Parses 'fields_s', a comma separated list of the fields that the
+ * Logical_Router_Static_Route selection_fields column accepts, into
+ * 'selection_fields'.  Returns false, and leaves 'selection_fields'
+ * empty, if 'fields_s' contains a field that is not supported. */
+bool
+ovn_ecmp_selection_fields_parse(const char *fields_s,
+                                struct sset *selection_fields)
+{
+    static const char *const supported[] = {
+        "eth_src", "eth_dst", "ip_proto", "ip_src", "ip_dst",
+        "ipv6_src", "ipv6_dst", "tp_src", "tp_dst",
+    };
+
+    char *tokstr = xstrdup(fields_s);
+    char *save_ptr = NULL;
+    bool ok = true;
+    for (char *field = strtok_r(tokstr, ",", &save_ptr); field;
+         field = strtok_r(NULL, ",", &save_ptr)) {
+        size_t i;
+        for (i = 0; i < ARRAY_SIZE(supported); i++) {
+            if (!strcmp(field, supported[i])) {
+                break;
+            }
+        }
+        if (i == ARRAY_SIZE(supported)) {
+            ok = false;
+            break;
+        }
+        ovn_ecmp_selection_fields_add(selection_fields, field);
+    }
+    free(tokstr);
+
+    if (!ok) {
+        sset_clear(selection_fields);
+    }
+    return ok;
+}
+
+/* Returns the fields of an OpenFlow select group with selection_method=hash
+ * for the ECMP 'selection_fields', as a malloc'ed string that the caller
+ * must free, or NULL if 'selection_fields' is empty.  One group serves
+ * every protocol, so tp_src and tp_dst become the ports of TCP, UDP and
+ * SCTP; ovs-vswitchd hashes only the fields that are present in a
+ * packet. */
+char *
+ovn_ecmp_selection_fields_to_hash_fields(const struct sset *selection_fields)
+{
+    if (sset_is_empty(selection_fields)) {
+        return NULL;
+    }
+
+    struct sset of_fields = SSET_INITIALIZER(&of_fields);
+    const char *field;
+    SSET_FOR_EACH (field, selection_fields) {
+        if (!strcmp(field, "tp_src") || !strcmp(field, "tp_dst")) {
+            const char *dir = field + strlen("tp_");
+            sset_add_and_free(&of_fields, xasprintf("tcp_%s", dir));
+            sset_add_and_free(&of_fields, xasprintf("udp_%s", dir));
+            sset_add_and_free(&of_fields, xasprintf("sctp_%s", dir));
+        } else {
+            sset_add(&of_fields, field);
+        }
+    }
+
+    char *hash_fields = sset_join(&of_fields, ",", "");
+    sset_destroy(&of_fields);
+    return hash_fields;
+}
+
 struct sset *
 lrp_network_sset(const char **networks, int n_networks)
 {

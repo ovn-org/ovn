@@ -18386,6 +18386,35 @@ AT_CHECK_UNQUOTED(
 type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:2147483649->reg1[[0..31]],bucket=bucket_id=1,weight:200,actions=load:2147483650->reg1[[0..31]]: GID
 ])
 
+# With ECMP selection fields the group uses the hash selection method,
+# which a NIC can offload.
+check ovn-nbctl --wait=hv set logical_switch ls-evpn \
+    other_config:dynamic-routing-fdb-ecmp-selection-fields="ip_src,ip_dst,tp_src,tp_dst"
+AT_CHECK_UNQUOTED(
+    [ovn-appctl group-table-list | \
+     sed 's/:[[[:space:]]]*[[0-9]]*$/: GID/'], [0], [dnl
+type=select,selection_method=hash,fields(ip_dst,ip_proto,ip_src,sctp_dst,sctp_src,tcp_dst,tcp_src,udp_dst,udp_src),bucket=bucket_id=0,weight:100,actions=load:2147483649->reg1[[0..31]],bucket=bucket_id=1,weight:200,actions=load:2147483650->reg1[[0..31]]: GID
+])
+OVS_WAIT_UNTIL([ovs-ofctl -O OpenFlow15 dump-groups br-int | \
+                grep -q 'selection_method=hash'])
+
+# A field that is not supported keeps dp_hash.
+check ovn-nbctl --wait=hv set logical_switch ls-evpn \
+    other_config:dynamic-routing-fdb-ecmp-selection-fields="ip_src,foo"
+AT_CHECK_UNQUOTED(
+    [ovn-appctl group-table-list | \
+     sed 's/:[[[:space:]]]*[[0-9]]*$/: GID/'], [0], [dnl
+type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:2147483649->reg1[[0..31]],bucket=bucket_id=1,weight:200,actions=load:2147483650->reg1[[0..31]]: GID
+])
+
+check ovn-nbctl --wait=hv remove logical_switch ls-evpn \
+    other_config dynamic-routing-fdb-ecmp-selection-fields
+AT_CHECK_UNQUOTED(
+    [ovn-appctl group-table-list | \
+     sed 's/:[[[:space:]]]*[[0-9]]*$/: GID/'], [0], [dnl
+type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=load:2147483649->reg1[[0..31]],bucket=bucket_id=1,weight:200,actions=load:2147483650->reg1[[0..31]]: GID
+])
+
 # Verify learning suppression flows: two ECMP drop flows added.
 AT_CHECK_UNQUOTED(
     [ovs-ofctl dump-flows br-int table=OFTABLE_LEARN_REMOTE_FDB | grep priority | \

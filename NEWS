@@ -28,6 +28,14 @@ Post v26.09.0
        now written to the SB MAC_Binding table and consumed at the
        same priority as dynamic entries, making the preference option
        obsolete.
+     * Add the "options:dynamic-routing-ecmp-selection-fields" option to
+       Logical Routers.  It selects the fields that ECMP groups of learned
+       routes hash on, the same as the "selection_fields" column of a
+       static route.
+     * Add the "other_config:dynamic-routing-fdb-ecmp-selection-fields"
+       option to Logical Switches.  It selects the fields that the
+       OpenFlow groups of multi-path EVPN FDB entries hash on, instead of
+       dp_hash.
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
    - Removed ovn-docker utility scripts.

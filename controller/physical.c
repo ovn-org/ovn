@@ -3652,7 +3652,12 @@ physical_consider_evpn_fdb(const struct evpn_fdb *fdb,
         const struct mf_field *mf = mf_from_id(MFF_LOG_REMOTE_OUTPORT);
 
         ds_clear(group_ds);
-        ds_put_cstr(group_ds, "type=select,selection_method=dp_hash");
+        if (fdb->hash_fields) {
+            ds_put_format(group_ds, "type=select,selection_method=hash,"
+                          "fields(%s)", fdb->hash_fields);
+        } else {
+            ds_put_cstr(group_ds, "type=select,selection_method=dp_hash");
+        }
 
         for (size_t i = 0; i < vector_len(&fdb->paths); i++) {
             struct evpn_fdb_path path =

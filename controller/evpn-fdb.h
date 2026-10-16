@@ -65,6 +65,9 @@ struct evpn_fdb {
     /* Contains 'struct evpn_fdb_path', one per ECMP path.
      * For single-path entries len == 1. */
     struct vector paths;
+    /* Fields of the ECMP select group for selection_method=hash, NULL for
+     * selection_method=dp_hash. */
+    char *hash_fields;
 };
 
 void evpn_fdb_run(const struct evpn_fdb_ctx_in *, struct evpn_fdb_ctx_out *);
