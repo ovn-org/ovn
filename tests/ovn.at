@@ -12953,6 +12953,467 @@ ignored_tables=OFTABLE_PHY_TO_LOG
 AT_CLEANUP
 ])
 
+dnl BFD_RECONCILE_SETUP([rbac])
+dnl
+dnl Sandbox gw1 runs the BFD session of distributed gateway port r0-ext
+dnl (10.0.0.1/24) towards 10.0.0.254, the nexthop of a default route.  No
+dnl peer answers unless a test plays it with bfd_rc_peer_start.  Unless
+dnl "rbac" is given, gw1's ovn-controller uses an SB connection without an
+dnl RBAC role.  (With SSL, the default connection has role ovn-controller,
+dnl see ovn_start.)
+m4_define([BFD_RECONCILE_SETUP], [
+CHECK_SCAPY
+ovn_start
+net_add n1
+net_add provider
+sim_add gw1
+as gw1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl add-br br-ex
+net_attach provider br-ex
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-ex
+if test "$1" != rbac && test X$HAVE_OPENSSL = Xyes; then
+    check ovs-vsctl set open . \
+        external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+    OVS_WAIT_UNTIL([grep -q 'ovn-sb.sock: connected' gw1/ovn-controller.log])
+fi
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add-localnet-port ext ln-ext phys
+check ovn-nbctl lrp-add r0 r0-ext 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port ext ext-r0 r0-ext
+check ovn-nbctl lrp-set-gateway-chassis r0-ext gw1
+check ovn-nbctl static-mac-binding-add r0-ext 10.0.0.254 00:00:00:00:00:fe
+check ovn-nbctl --bfd lr-route-add r0 0.0.0.0/0 10.0.0.254 r0-ext
+wait_column "$(fetch_column Chassis _uuid name=gw1)" Port_Binding chassis \
+    logical_port=cr-r0-ext
+wait_row_count BFD 1
+bfd=$(fetch_column BFD _uuid dst_ip=10.0.0.254)
+wait_column down BFD status dst_ip=10.0.0.254
+OVN_WAIT_PATCH_PORT_FLOWS([ln-ext], [gw1])
+check ovn-nbctl --wait=hv sync
+
+# bfd_rc_peer_pkt STATE MULT
+#
+# Prints a BFD control packet from the peer 10.0.0.254 to gw1's session, in
+# state STATE (0 admin_down, 1 down, 2 init, 3 up), with 1 s intervals and
+# detection multiplier MULT.  The session's detection time is then MULT s.
+bfd_rc_peer_pkt() {
+    local disc flags mult
+    disc=$(printf %08x $(fetch_column BFD disc dst_ip=10.0.0.254))
+    flags=$(printf %02x $((${1} * 64)))
+    mult=$(printf %02x ${2})
+    fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:fe')/ \
+             IP(src='10.0.0.254', dst='10.0.0.1', ttl=255)/ \
+             UDP(sport=49152, dport=3784)/ \
+             Raw(load=bytes.fromhex('20${flags}${mult}18000000fe${disc}' \
+                                    '000f4240000f424000000000'))"
+}
+
+# bfd_rc_peer_start [STATE [MULT]]
+#
+# Plays the peer: sends a packet in STATE (default 2, init) with detection
+# multiplier MULT (default 3) every 0.3 s, until bfd_rc_peer_stop.  "init"
+# brings the session up and keeps it up.
+bfd_rc_peer_start() {
+    local pkt
+    pkt=$(bfd_rc_peer_pkt ${1:-2} ${2:-3})
+    (while :; do
+         as gw1 ovs-appctl netdev-dummy/receive br-ex_provider $pkt \
+             >/dev/null 2>&1
+         sleep 0.3
+     done) &
+    echo $! > bfd-peer.pid
+    on_exit 'test -e bfd-peer.pid && kill $(cat bfd-peer.pid)'
+}
+
+bfd_rc_peer_stop() {
+    kill $(cat bfd-peer.pid)
+    wait $(cat bfd-peer.pid) 2>/dev/null
+    rm -f bfd-peer.pid
+}
+
+# bfd_rc_stop
+#
+# Stops gw1's ovn-controller without cleanup: its gateway stays bound.
+bfd_rc_stop() {
+    OVN_CONTROLLER_EXIT([gw1], [--restart])
+}
+
+# bfd_rc_start
+#
+# Starts gw1's ovn-controller with debug logs from pinctrl.  Sets
+# bfd_rc_first to the first line of its log.
+bfd_rc_start() {
+    bfd_rc_first=$(($(wc -l < gw1/ovn-controller.log) + 1))
+    as gw1 start_daemon ovn-controller --enable-dummy-vif-plug \
+        -vpinctrl:file:dbg
+}
+
+# bfd_rc_writes STATUS
+#
+# Prints how many transactions from ovn-controller set a BFD status to
+# STATUS, as received by the SB database.
+bfd_rc_writes() {
+    grep 'received request, method="transact"' ovn-sb/ovsdb-server.log \
+        | grep '"comment":"ovn-controller' \
+        | grep -c "\"row\":{\"status\":\"${1}\"},\"table\":\"BFD\""
+}
+
+# bfd_rc_counter COUNTER
+#
+# Prints the value of coverage counter COUNTER in gw1's ovn-controller.
+bfd_rc_counter() {
+    as gw1 ovn-appctl -t ovn-controller coverage/read-counter ${1}
+}
+
+# bfd_rc_ms TIMESTAMP...
+#
+# Prints each log TIMESTAMP in ms since the epoch.
+bfd_rc_ms() {
+    local ts
+    for ts in "${@}"; do
+        date -d "$ts" +%s%3N
+    done
+}
+
+# bfd_rc_log_ms PATTERN [FIRST_LINE]
+#
+# Prints the times, in ms since the epoch, of the lines of gw1's
+# ovn-controller log that match PATTERN, from line FIRST_LINE on.
+bfd_rc_log_ms() {
+    bfd_rc_ms $(tail -n +${2:-1} gw1/ovn-controller.log | grep "${1}" \
+                | cut -d'|' -f1)
+}
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - reconcile SB status with the session state])
+AT_KEYWORDS([bfd bfd-reconcile])
+BFD_RECONCILE_SETUP
+
+AS_BOX([The session comes up])
+bfd_rc_peer_start
+wait_column up BFD status dst_ip=10.0.0.254
+
+AS_BOX([A status written by another client is corrected])
+# The session stays up, so its state does not change: only the correction
+# writes the status back.
+for status in down init; do
+    check ovn-sbctl set BFD $bfd status=$status
+    wait_column up BFD status dst_ip=10.0.0.254
+    OVS_WAIT_UNTIL([grep -q "BFD r0-ext dst 10.0.0.254: correcting SB status \"$status\" to the session state \"up\" (correction 1)" \
+                        gw1/ovn-controller.log])
+done
+OVS_WAIT_UNTIL([test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 2])
+
+AS_BOX([No writes while the status is right])
+writes=$(bfd_rc_writes up)
+sleep 6
+check_column up BFD status dst_ip=10.0.0.254
+check test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 2
+check test "$(bfd_rc_writes up)" = "$writes"
+check test "$(bfd_rc_writes down)" = 0
+# The corrections do not "verify" the status: a failed verify would abort
+# the whole SB transaction of ovn-controller.
+AT_CHECK([grep 'received request, method="transact"' ovn-sb/ovsdb-server.log \
+              | grep '"comment":"ovn-controller' | grep '"table":"BFD"' \
+              | grep -c '"columns":."status".,"op":"wait"'], [1], [0
+])
+
+AS_BOX([A restart while the peer answers does not change the status])
+# The new session is down until the peer answers it.  Correcting SB "up"
+# to "down" in the meantime would remove the route for no reason.
+bfd_rc_stop
+bfd_rc_start
+OVS_WAIT_UNTIL([tail -n +$bfd_rc_first gw1/ovn-controller.log | \
+                    grep -q 'rx BFD packets from 10.0.0.254, remote state init, local state up'])
+check_column up BFD status dst_ip=10.0.0.254
+check test "$(bfd_rc_writes down)" = 0
+AT_CHECK([tail -n +$bfd_rc_first gw1/ovn-controller.log | grep -c 'correcting SB status'],
+         [1], [0
+])
+
+AS_BOX([The hold counts from when the session starts sending])
+# The session was created long ago.  Stop it with "admin_down" and start it
+# again while SB says "init": the new handshake must not see a "down"
+# written over "init", which a hold counted from the session's creation
+# would allow.  Keep ovn-northd from setting the status itself meanwhile.
+check as northd ovn-appctl -t ovn-northd pause
+check ovn-sbctl set BFD $bfd status=admin_down
+first=$(($(wc -l < gw1/ovn-controller.log) + 1))
+OVS_WAIT_UNTIL([tail -n +$first gw1/ovn-controller.log | \
+                    grep -q 'local state admin_down'])
+# A stopped session ignores the peer.  Let its last packet from the peer
+# become older than the detection time (3 s), as for a new session.
+sleep 4
+check ovn-sbctl set BFD $bfd status=init
+# The session goes down, starts sending and comes up: "up" is written by the
+# state change, nothing is written before.
+wait_column up BFD status dst_ip=10.0.0.254
+check test "$(bfd_rc_writes down)" = 0
+AT_CHECK([tail -n +$first gw1/ovn-controller.log | grep -c 'correcting SB status'],
+         [1], [0
+])
+check as northd ovn-appctl -t ovn-northd resume
+
+AS_BOX([ovn-controller advertises that it corrects the status])
+AT_CHECK([ovn-sbctl get Chassis gw1 other_config:ovn-bfd-status-reconcile],
+         [0], [dnl
+"true"
+])
+
+# Let the session time out before the final flow checks.
+bfd_rc_peer_stop
+wait_column down BFD status dst_ip=10.0.0.254
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([gw1
+ignored_tables=OFTABLE_PHY_TO_LOG
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - reconcile SB status when the peer does not come up])
+AT_KEYWORDS([bfd bfd-reconcile])
+BFD_RECONCILE_SETUP
+# No SB probes, which would wake ovn-controller up regularly: nothing else
+# happens in the databases, so only the correction's own timer can wake it
+# up in time.
+check as gw1 ovs-vsctl set open . external-ids:ovn-remote-probe-interval=0
+
+AS_BOX([A stale "up" from an earlier session is corrected after the hold])
+# The session starts sending when pinctrl_run() first runs it, which can be
+# a little after it was created: measure from the later of the two.  Log
+# times can be a few ms later than the times that the hold counts from.
+bfd_rc_stop
+check ovn-sbctl set BFD $bfd status=up
+bfd_rc_start
+wait_column down BFD status dst_ip=10.0.0.254
+started=$(bfd_rc_log_ms 'BFD r0-ext dst 10.0.0.254: session \(starts\|can send now\)' \
+              $bfd_rc_first | tail -1)
+corrected=$(bfd_rc_log_ms 'correcting SB status "up" to the session state "down" (correction 1)' $bfd_rc_first)
+echo "corrected $((corrected - started)) ms after the session started"
+check test $((corrected - started)) -ge 4900
+check test $((corrected - started)) -lt 7000
+check test "$(bfd_rc_writes down)" = 1
+OVS_WAIT_UNTIL([test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 1])
+
+AS_BOX([An "admin_down" is never overwritten])
+check as northd ovn-appctl -t ovn-northd pause
+check ovn-sbctl set BFD $bfd status=admin_down
+sleep 6
+check_column admin_down BFD status dst_ip=10.0.0.254
+check test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 1
+check test "$(bfd_rc_writes down)" = 1
+check as northd ovn-appctl -t ovn-northd resume
+# The route uses the row, so ovn-northd sets "down" again.
+wait_column down BFD status dst_ip=10.0.0.254
+
+AS_BOX([A peer that answers but does not come up holds it for 30 s at most])
+# The peer stays admin_down: the session hears from it but stays down.
+bfd_rc_peer_start 0
+bfd_rc_stop
+check ovn-sbctl set BFD $bfd status=up
+bfd_rc_start
+OVS_WAIT_UNTIL([tail -n +$bfd_rc_first gw1/ovn-controller.log | \
+                    grep -q 'rx BFD packets from 10.0.0.254, remote state admin_down, local state down'])
+OVS_CTL_TIMEOUT_SAVED=$OVS_CTL_TIMEOUT
+OVS_CTL_TIMEOUT=60
+wait_column down BFD status dst_ip=10.0.0.254
+OVS_CTL_TIMEOUT=$OVS_CTL_TIMEOUT_SAVED
+started=$(bfd_rc_log_ms 'BFD r0-ext dst 10.0.0.254: session \(starts\|can send now\)' \
+              $bfd_rc_first | tail -1)
+corrected=$(bfd_rc_log_ms 'correcting SB status "up" to the session state "down" (correction 1)' $bfd_rc_first)
+echo "corrected $((corrected - started)) ms after the session started"
+check test $((corrected - started)) -ge 29900
+check test $((corrected - started)) -lt 32000
+bfd_rc_peer_stop
+
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([gw1
+ignored_tables=OFTABLE_PHY_TO_LOG
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - session times out while ovs-vswitchd is down])
+AT_KEYWORDS([bfd bfd-reconcile])
+BFD_RECONCILE_SETUP
+
+# Detection time 10 s.  ovn-controller's reconnection attempts to
+# ovs-vswitchd wake it up 1, 3, 7 and 15 s after the disconnection, so
+# only the detection timer can wake it up in time.
+bfd_rc_peer_start 2 10
+wait_column up BFD status dst_ip=10.0.0.254
+
+AS_BOX([ovs-vswitchd stops: the session times out and "down" is written])
+as gw1
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+bfd_rc_peer_stop
+stopped=$(date +%s%3N)
+wait_column down BFD status dst_ip=10.0.0.254
+written=$(bfd_rc_ms $(grep 'received request, method="transact"' \
+                          ovn-sb/ovsdb-server.log \
+                      | grep '"comment":"ovn-controller' \
+                      | grep '"row":{"status":"down"},"table":"BFD"' \
+                      | tail -1 | cut -d'|' -f1))
+echo "down written $((written - stopped)) ms after ovs-vswitchd stopped"
+check test $((written - stopped)) -lt 12000
+
+AS_BOX([No "up" without packets from the peer])
+sleep 6
+check_column down BFD status dst_ip=10.0.0.254
+check test "$(bfd_rc_writes up)" = 1
+check test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 0
+
+AS_BOX([ovn-controller starts while ovs-vswitchd is down])
+# Its new session cannot send; a stale "up" is corrected after the hold.
+bfd_rc_stop
+check ovn-sbctl set BFD $bfd status=up
+bfd_rc_start
+wait_column down BFD status dst_ip=10.0.0.254
+started=$(bfd_rc_log_ms 'BFD r0-ext dst 10.0.0.254: session starts (cannot send yet)' $bfd_rc_first)
+corrected=$(bfd_rc_log_ms 'correcting SB status "up" to the session state "down" (correction 1)' $bfd_rc_first)
+echo "corrected $((corrected - started)) ms after the session started"
+check test $((corrected - started)) -ge 4900
+check test $((corrected - started)) -lt 7000
+
+AS_BOX([ovs-vswitchd and the peer come back])
+as gw1
+start_daemon ovs-vswitchd --enable-dummy=system -vvconn -vofproto_dpif -vunixctl
+# ovn-controller acknowledges this only after it installed its flows again.
+check ovn-nbctl --wait=hv sync
+OVS_WAIT_UNTIL([tail -n +$bfd_rc_first gw1/ovn-controller.log | \
+                    grep -q 'BFD r0-ext dst 10.0.0.254: session can send now'])
+check_column down BFD status dst_ip=10.0.0.254
+bfd_rc_peer_start
+wait_column up BFD status dst_ip=10.0.0.254
+
+# Let the session time out before the final flow checks.
+bfd_rc_peer_stop
+wait_column down BFD status dst_ip=10.0.0.254
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([gw1
+ignored_tables=OFTABLE_PHY_TO_LOG
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - reconcile SB status when SB RBAC rejects the update])
+AT_KEYWORDS([bfd bfd-reconcile])
+AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
+BFD_RECONCILE_SETUP([rbac])
+# Two more sessions, towards 10.0.0.253 and 10.0.0.252.  SB RBAC allows gw1
+# to update only the row whose chassis_name is gw1, here 10.0.0.253.  Keep
+# ovn-northd from setting chassis_name meanwhile.
+check ovn-nbctl --bfd lr-route-add r0 10.1.0.0/16 10.0.0.253 r0-ext
+check ovn-nbctl --bfd lr-route-add r0 10.2.0.0/16 10.0.0.252 r0-ext
+wait_row_count BFD 3
+for ip in 10.0.0.254 10.0.0.253 10.0.0.252; do
+    wait_column down BFD status dst_ip=$ip
+done
+own=$(fetch_column BFD _uuid dst_ip=10.0.0.253)
+other=$(fetch_column BFD _uuid dst_ip=10.0.0.252)
+check as northd ovn-appctl -t ovn-northd pause
+check ovn-sbctl set BFD $bfd chassis_name=\"\" \
+    -- set BFD $own chassis_name=gw1 -- set BFD $other chassis_name=\"\"
+# Let the start-up holds of the new sessions end, so that all three rows are
+# corrected in the same pass below.
+sleep 6
+
+AS_BOX([Corrections back off, then stop, and do not block other rows])
+# One transaction sets all three rows to a stale "up".  The row that gw1 may
+# update must not fail with the others.
+check ovn-sbctl set BFD $bfd status=up -- set BFD $own status=up \
+    -- set BFD $other status=up
+wait_column down BFD status dst_ip=10.0.0.253
+OVS_CTL_TIMEOUT_SAVED=$OVS_CTL_TIMEOUT
+OVS_CTL_TIMEOUT=120
+OVS_WAIT_UNTIL([test $(grep -c 'did not follow 4 corrections' gw1/ovn-controller.log) = 2])
+# The last corrections fail too: 5 failed transactions, as the two rows that
+# gw1 may not update are corrected together.
+OVS_WAIT_UNTIL([test $(grep -c 'OVNSB commit failed' gw1/ovn-controller.log) -ge 5])
+OVS_CTL_TIMEOUT=$OVS_CTL_TIMEOUT_SAVED
+check_column up BFD status dst_ip=10.0.0.254
+check_column up BFD status dst_ip=10.0.0.252
+check_column down BFD status dst_ip=10.0.0.253
+
+bfd_rc_log_ms 'BFD r0-ext dst 10.0.0.254: correcting SB status "up" to the session state "down"' > times
+AT_CHECK([wc -l < times], [0], [5
+])
+# 5, 10, 20 and 40 s apart, so at most 3 corrections in the first 30 s.
+prev=
+for gap in 0 5000 10000 20000 40000; do
+    read t
+    if test -n "$prev"; then
+        echo "correction $((t - prev)) ms after the previous one"
+        check test $((t - prev)) -ge $((gap - 50))
+        check test $((t - prev)) -lt $((gap + 3000))
+    fi
+    prev=$t
+done < times
+AT_CHECK([grep -c 'BFD r0-ext dst 10.0.0.253: correcting SB status' \
+              gw1/ovn-controller.log], [0], [1
+])
+AT_CHECK([grep 'BFD r0-ext dst 10.0.0.254: SB status "up" did not follow' \
+              gw1/ovn-controller.log | sed 's/.*|WARN|//; s/@{:@. row/@{:@N row/'],
+         [0], [dnl
+BFD r0-ext dst 10.0.0.254: SB status "up" did not follow 4 corrections to the session state "down"; making one last correction, then none until the row changes or for 10 minutes (N row(s) of this chassis stopped).  The SB server may be rejecting them: with SB RBAC, the row's chassis_name ("") must be this chassis ("gw1")
+])
+OVS_WAIT_UNTIL([test "$(bfd_rc_counter pinctrl_bfd_status_reconcile_stuck)" = 2])
+OVS_WAIT_UNTIL([test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 11])
+
+AS_BOX([Stopped rows cost no failed SB transactions])
+failed=$(grep -c 'OVNSB commit failed' gw1/ovn-controller.log)
+sleep 10
+check test "$(grep -c 'OVNSB commit failed' gw1/ovn-controller.log)" = "$failed"
+check test "$(bfd_rc_counter pinctrl_bfd_status_reconcile)" = 11
+
+AS_BOX([Another status in a stopped row resumes its corrections])
+check ovn-sbctl set BFD $other status=init
+OVS_WAIT_UNTIL([grep -q 'BFD r0-ext dst 10.0.0.252: SB status changed, SB status corrections resume' \
+                    gw1/ovn-controller.log])
+OVS_WAIT_UNTIL([grep -q 'BFD r0-ext dst 10.0.0.252: correcting SB status "init" to the session state "down" (correction 1)' \
+                    gw1/ovn-controller.log])
+
+AS_BOX([chassis_name becoming gw1 restarts the corrections at once])
+OVS_WAIT_UNTIL([grep -q 'BFD r0-ext dst 10.0.0.252: correcting SB status "init" to the session state "down" (correction 2)' \
+                    gw1/ovn-controller.log])
+# The next correction would come 10 s after the second one.
+t0=$(date +%s%3N)
+check ovn-sbctl set BFD $other chassis_name=gw1
+wait_column down BFD status dst_ip=10.0.0.252
+t1=$(date +%s%3N)
+echo "corrected $((t1 - t0)) ms after chassis_name changed"
+check test $((t1 - t0)) -lt 5000
+AT_CHECK([grep -c 'BFD r0-ext dst 10.0.0.252: correcting SB status "init" to the session state "down" (correction 3)' \
+              gw1/ovn-controller.log], [1], [0
+])
+
+AS_BOX([Setting chassis_name lets the correction through])
+check ovn-sbctl set BFD $bfd chassis_name=gw1
+wait_column down BFD status dst_ip=10.0.0.254
+check grep -q 'BFD r0-ext dst 10.0.0.254: SB chassis_name changed, SB status corrections resume' \
+    gw1/ovn-controller.log
+AT_CHECK([grep -c 'BFD r0-ext dst 10.0.0.254: correcting SB status' \
+              gw1/ovn-controller.log], [0], [6
+])
+
+check as northd ovn-appctl -t ovn-northd resume
+check ovn-nbctl --wait=hv sync
+OVN_CLEANUP([gw1
+/did not follow 4 corrections/d
+/transaction error/d
+ignored_tables=OFTABLE_PHY_TO_LOG
+])
+AT_CLEANUP
+])
+
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port])
 ovn_start

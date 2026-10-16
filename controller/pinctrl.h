@@ -61,6 +61,10 @@ void pinctrl_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
                  const struct shash *local_active_ports_ras,
                  const struct ovsrec_open_vswitch_table *ovs_table,
                  int64_t cur_cfg);
+void pinctrl_bfd_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+                     const struct sbrec_bfd_table *,
+                     struct ovsdb_idl_index *sbrec_port_binding_by_name,
+                     const struct sbrec_chassis *chassis);
 void pinctrl_wait(struct ovsdb_idl_txn *ovnsb_idl_txn);
 void pinctrl_destroy(void);
 void pinctrl_seqno_run(void);

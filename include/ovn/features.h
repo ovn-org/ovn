@@ -27,6 +27,7 @@
 #define OVN_FEATURE_CT_NEXT_ZONE "ct-next-zone"
 #define OVN_FEATURE_CT_LABEL_FLUSH "ct-label-flush"
 #define OVN_FEATURE_CT_STATE_SAVE "ct-state-save"
+#define OVN_FEATURE_BFD_STATUS_RECONCILE "ovn-bfd-status-reconcile"
 
 /* DEPRECATED: The following features can be removed
  * after the next LTS version release. */
