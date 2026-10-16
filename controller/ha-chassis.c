@@ -217,6 +217,31 @@ ha_chassis_group_contains(
     return false;
 }
 
+/* Returns true if 'ha_chassis_grp' has an HA chassis other than
+ * 'local_chassis' that is registered, that is, whose Chassis row still
+ * exists.  HA_Chassis refers to its Chassis weakly, so the reference is
+ * cleared when a chassis exits with cleanup or is removed with
+ * "ovn-sbctl chassis-del".  This tells nothing about whether that chassis
+ * is alive or reachable. */
+bool
+ha_chassis_group_has_other_registered(
+    const struct sbrec_ha_chassis_group *ha_chassis_grp,
+    const struct sbrec_chassis *local_chassis)
+{
+    if (!ha_chassis_grp) {
+        return false;
+    }
+
+    for (size_t i = 0; i < ha_chassis_grp->n_ha_chassis; i++) {
+        const struct sbrec_chassis *chassis
+            = ha_chassis_grp->ha_chassis[i]->chassis;
+        if (chassis && chassis != local_chassis) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct ha_chassis_ordered *
 ha_chassis_get_ordered(const struct sbrec_ha_chassis_group *ha_chassis_grp)
 {

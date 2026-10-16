@@ -454,7 +454,9 @@
           <ref table="Chassis_Private" db="OVN_Southbound"/>,
           <ref table="Encap" db="OVN_Southbound"/>, and
           <ref table="IGMP_Group" db="OVN_Southbound"/> rows when it terminates
-          through the <code>exit</code> runtime command.  The default value is
+          through the <code>exit</code> runtime command.  Before that, it
+          marks down the BFD sessions that no other chassis could take over,
+          as described for <code>exit</code> below.  The default value is
           <code>true</code>.
         </p>
         <p>
@@ -907,9 +909,29 @@
       <dl>
       <dt><code>exit</code> [<code>--restart</code>]</dt>
       <dd>
-        Causes <code>ovn-controller</code> to gracefully terminate.  With
-        <code>--restart</code>, it skips the database cleanup normally done
-        on exit.
+        <p>
+          Causes <code>ovn-controller</code> to gracefully terminate.  With
+          <code>--restart</code>, it skips the database cleanup normally done
+          on exit.
+        </p>
+
+        <p>
+          The cleanup first sets the <ref table="BFD" column="status"
+          db="OVN_Southbound"/> of a BFD session that this chassis runs to
+          <code>down</code>, if the status is <code>up</code> or
+          <code>init</code> and no other chassis in the HA chassis group of
+          the gateway port is registered.  Nobody else could take such a
+          session over, so its status would otherwise stay unchanged after
+          the exit.  This update is committed before the port bindings are
+          released.  <code>ovn-controller</code> gives it at most about 1.5
+          seconds: if the Southbound database rejects it or does not answer
+          in time, <code>ovn-controller</code> logs a warning and continues
+          the exit.  With role-based access control in the Southbound
+          database, the update is allowed only for rows whose
+          <ref table="BFD" column="chassis_name" db="OVN_Southbound"/> is
+          this chassis.  Nothing is updated when <code>ovn-controller</code>
+          terminates any other way, for example on <code>SIGTERM</code>.
+        </p>
       </dd>
 
       <dt><code>ct-zone-list</code></dt>

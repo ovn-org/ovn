@@ -47968,3 +47968,444 @@ AT_CHECK([grep "skipping output to input port" \
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+dnl Helpers for the "BFD - cleanup exit" tests.  No BFD peer answers in
+dnl these tests, so they set the SB status to "up" as if the session had
+dnl come up.
+m4_define([BFD_EXIT_HELPERS], [
+# bfd_exit_add_hv HV IP [rbac]
+#
+# Adds sandbox HV.  Unless "rbac" is given, its ovn-controller then uses an
+# SB connection without an RBAC role.  (With SSL, the default connection has
+# role ovn-controller, see ovn_start.)
+bfd_exit_add_hv() {
+    local hv=${1}
+    sim_add $hv
+    as $hv
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys ${2}
+    if test "${3}" != rbac && test X$HAVE_OPENSSL = Xyes; then
+        check ovs-vsctl set open . \
+            external-ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock
+        OVS_WAIT_UNTIL([grep -q 'ovn-sb.sock: connected' $hv/ovn-controller.log])
+    fi
+}
+
+# bfd_exit_add_gw PORT N HV[:PRIORITY]...
+#
+# Adds gateway port PORT (172.16.N.1/24) to lr0, with the given gateway
+# chassis, and a route to 10.N.0.0/16 via 172.16.N.100 monitored by BFD.
+bfd_exit_add_gw() {
+    local port=${1} n=${2} hv prio
+    shift 2
+    check ovn-nbctl lrp-add lr0 $port 00:00:00:00:ff:0$n 172.16.$n.1/24
+    check ovn-nbctl ls-add ls-$port
+    check ovn-nbctl lsp-add-router-port ls-$port ls-$port-lr0 $port
+    for hv in "${@}"; do
+        prio=${hv#*:}
+        test "$prio" = "$hv" && prio=
+        check ovn-nbctl lrp-set-gateway-chassis $port ${hv%%:*} $prio
+    done
+    check ovn-nbctl --bfd lr-route-add lr0 10.$n.0.0/16 172.16.$n.100 $port
+}
+
+# bfd_exit_wait_claimed PORT HV
+#
+# Waits until the chassisredirect binding of PORT is bound to HV.
+bfd_exit_wait_claimed() {
+    wait_row_count Chassis 1 name=${2}
+    wait_column "$(fetch_column Chassis _uuid name=${2})" Port_Binding \
+        chassis logical_port=cr-${1}
+}
+
+# bfd_exit_set_status DST_IP STATUS
+#
+# Sets the SB status of the BFD row for DST_IP and waits until ovn-northd
+# has copied it to NB.
+bfd_exit_set_status() {
+    check ovn-sbctl set BFD $(fetch_column BFD _uuid dst_ip=${1}) status=${2}
+    wait_column ${2} nb:BFD status dst_ip=${1}
+}
+
+# bfd_exit_sb_txns
+#
+# Stores the transactions that ovn-controllers sent to the SB database in
+# sb-txns.log, one per line, in the order the database received them.
+bfd_exit_sb_txns() {
+    grep 'received request, method="transact"' ovn-sb/ovsdb-server.log \
+        | grep '"comment":"ovn-controller' > sb-txns.log
+}
+
+# bfd_exit_bfd_update DST_IP
+#
+# Prints a regular expression that matches the update of the BFD row for
+# DST_IP in a transaction.
+bfd_exit_bfd_update() {
+    echo "\"table\":\"BFD\",\"where\":..\"_uuid\",\"==\",.\"uuid\",\"$(fetch_column BFD _uuid dst_ip=${1})\""
+}
+
+# bfd_exit_check_no_write DST_IP...
+#
+# Checks that no ovn-controller updated the BFD rows for DST_IP....
+bfd_exit_check_no_write() {
+    local ip
+    bfd_exit_sb_txns
+    for ip in "${@}"; do
+        check test "$(grep -c "$(bfd_exit_bfd_update $ip)" sb-txns.log)" = 0
+    done
+}
+
+# bfd_exit_check_order DST_IP...
+#
+# Checks that the BFD rows for DST_IP... were set down by one transaction
+# that updated nothing but BFD rows, and that the SB database received it
+# before the transaction that released the port bindings.
+bfd_exit_check_order() {
+    local ip down release
+    bfd_exit_sb_txns
+    down=$(grep -n '"row":{"status":"down"},"table":"BFD"' sb-txns.log \
+           | tail -1 | cut -d: -f1)
+    release=$(grep -n '"row":{"chassis":."set",...},"table":"Port_Binding"' \
+                  sb-txns.log | tail -1 | cut -d: -f1)
+    echo "BFD down in transaction $down, release in transaction $release"
+    check test -n "$down"
+    check test -n "$release"
+    check test "$down" -lt "$release"
+    sed -n "${down}p" sb-txns.log > sb-txn-down.log
+    check test "$(grep -o '"table":"' sb-txn-down.log | wc -l)" = \
+               "$(grep -o '"table":"BFD"' sb-txn-down.log | wc -l)"
+    for ip in "${@}"; do
+        check grep -q "\"row\":{\"status\":\"down\"},$(bfd_exit_bfd_update $ip)" \
+            sb-txn-down.log
+    done
+}
+
+# bfd_exit_log_count HV PATTERN
+#
+# Prints how many lines of HV's ovn-controller log match PATTERN.
+bfd_exit_log_count() {
+    grep -c "${2}" ${1}/ovn-controller.log
+}
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - cleanup exit marks the only gateway's sessions down])
+AT_KEYWORDS([bfd bfd-exit])
+BFD_EXIT_HELPERS
+ovn_start
+net_add n1
+bfd_exit_add_hv hv1 192.168.0.1
+
+# The session to 172.16.1.101 stays down.  No route uses 172.16.1.200, so
+# ovn-northd keeps that row admin_down.
+check ovn-nbctl lr-add lr0
+bfd_exit_add_gw lr0-pub 1 hv1
+check ovn-nbctl --bfd lr-route-add lr0 10.11.0.0/16 172.16.1.101 lr0-pub
+check_uuid ovn-nbctl create BFD logical_port=lr0-pub dst_ip=172.16.1.200
+check ovn-nbctl lr-add lr1 -- set Logical_Router lr1 options:chassis=hv1
+check ovn-nbctl lrp-add lr1 lr1-pub 00:00:00:00:ff:07 172.16.7.1/24
+check ovn-nbctl ls-add ls-lr1-pub
+check ovn-nbctl lsp-add-router-port ls-lr1-pub ls-lr1-pub-lr1 lr1-pub
+check ovn-nbctl --bfd lr-route-add lr1 10.7.0.0/16 172.16.7.100 lr1-pub
+bfd_exit_wait_claimed lr0-pub hv1
+wait_column "$(fetch_column Chassis _uuid name=hv1)" Port_Binding chassis \
+    logical_port=lr1-pub
+wait_column admin_down BFD status dst_ip=172.16.1.200
+wait_row_count BFD 3 status=down
+bfd_exit_set_status 172.16.1.100 up
+bfd_exit_set_status 172.16.7.100 up
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep -c 'reg0 = 172.16.1.100'], [0],
+         [ignore])
+
+OVN_CONTROLLER_EXIT([hv1])
+
+# The sessions are down, and the route via 172.16.1.100 is gone.
+check_column down BFD status dst_ip=172.16.1.100
+check_column down BFD status dst_ip=172.16.7.100
+wait_column down nb:BFD status dst_ip=172.16.1.100
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list lr0 | grep -c 'reg0 = 172.16.1.100'], [1], [0
+])
+AT_CHECK([bfd_exit_log_count hv1 'Marked 2 BFD session(s) down'], [0], [1
+])
+check_column admin_down BFD status dst_ip=172.16.1.200
+bfd_exit_check_no_write 172.16.1.101 172.16.1.200
+
+# The cleanup still ran, and only after the BFD update was committed.
+check_row_count Chassis 0 name=hv1
+check_column "" Port_Binding chassis logical_port=cr-lr0-pub
+check_column "" Port_Binding chassis logical_port=lr1-pub
+bfd_exit_check_order 172.16.1.100 172.16.7.100
+
+# The chassis of this ovn-controller was deleted just before the exit.
+# While paused, ovn-controller does not see the deletion.  It also acts on
+# "exit" only after something else wakes it up, hence the second request.
+as hv1 start_daemon ovn-controller
+bfd_exit_wait_claimed lr0-pub hv1
+bfd_exit_set_status 172.16.1.101 up
+pid=$(cat hv1/ovn-controller.pid)
+check as hv1 ovn-appctl -t ovn-controller vlog/set unixctl:file:dbg
+check as hv1 ovn-appctl -t ovn-controller debug/pause
+check ovn-sbctl chassis-del hv1
+check_column "" Port_Binding chassis logical_port=cr-lr0-pub
+as hv1 ovn-appctl -t ovn-controller exit > exit.out 2>&1 &
+exit_pid=$!
+OVS_WAIT_UNTIL([grep -q 'received request exit' hv1/ovn-controller.log])
+as hv1 ovn-appctl -t ovn-controller debug/status > /dev/null 2>&1 &
+exit_status=0
+wait $exit_pid || exit_status=$?
+check test $exit_status = 0
+OVS_WAIT_WHILE([kill -0 $pid 2>/dev/null])
+check_row_count Chassis 0 name=hv1
+check_column up BFD status dst_ip=172.16.1.101
+bfd_exit_check_no_write 172.16.1.101
+AT_CHECK([bfd_exit_log_count hv1 'BFD session(s) down'], [0], [1
+])
+AT_CHECK([grep -i 'assert\|backtrace' hv1/ovn-controller.log], [1])
+
+as hv1 start_daemon ovn-controller
+bfd_exit_wait_claimed lr0-pub hv1
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - cleanup exit with another registered gateway chassis])
+AT_KEYWORDS([bfd bfd-exit])
+BFD_EXIT_HELPERS
+ovn_start
+net_add n1
+bfd_exit_add_hv hv1 192.168.0.1
+bfd_exit_add_hv hv2 192.168.0.2
+
+check ovn-nbctl lr-add lr0
+bfd_exit_add_gw lr0-pub 1 hv1:20 hv2:10
+ovn_wait_for_bfd_up hv1 hv2
+bfd_exit_wait_claimed lr0-pub hv1
+wait_column down BFD status dst_ip=172.16.1.100
+bfd_exit_set_status 172.16.1.100 up
+
+# hv2 is registered and can take over, so hv1 writes nothing.
+OVN_CONTROLLER_EXIT([hv1])
+check_column up BFD status dst_ip=172.16.1.100
+bfd_exit_check_no_write 172.16.1.100
+AT_CHECK([bfd_exit_log_count hv1 'BFD session(s) down'], [1], [0
+])
+bfd_exit_wait_claimed lr0-pub hv2
+
+# Now hv2 is the last registered member.
+check_row_count HA_Chassis 2
+OVN_CONTROLLER_EXIT([hv2])
+check_column down BFD status dst_ip=172.16.1.100
+AT_CHECK([bfd_exit_log_count hv2 'Marked 1 BFD session(s) down'], [0], [1
+])
+bfd_exit_check_order 172.16.1.100
+
+as hv1 start_daemon ovn-controller
+as hv2 start_daemon ovn-controller
+ovn_wait_for_bfd_up hv1 hv2
+bfd_exit_wait_claimed lr0-pub hv1
+OVN_CLEANUP([hv1
+/Incorrect your_disc/d
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+], [hv2
+/Incorrect your_disc/d
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - no BFD update on exit without cleanup])
+AT_KEYWORDS([bfd bfd-exit])
+BFD_EXIT_HELPERS
+ovn_start
+net_add n1
+bfd_exit_add_hv hv1 192.168.0.1
+
+check ovn-nbctl lr-add lr0
+bfd_exit_add_gw lr0-pub 1 hv1
+bfd_exit_wait_claimed lr0-pub hv1
+wait_column down BFD status dst_ip=172.16.1.100
+bfd_exit_set_status 172.16.1.100 up
+
+OVN_CONTROLLER_EXIT([hv1], [--restart])
+check_column up BFD status dst_ip=172.16.1.100
+check_row_count Chassis 1 name=hv1
+
+as hv1 start_daemon ovn-controller
+check ovn-nbctl --wait=hv sync
+check as hv1 ovs-vsctl set open . external-ids:ovn-cleanup-on-exit=false
+OVN_CONTROLLER_EXIT([hv1])
+AT_CHECK([bfd_exit_log_count hv1 'resource cleanup: False'], [0], [2
+])
+check_column up BFD status dst_ip=172.16.1.100
+check_row_count Chassis 1 name=hv1
+bfd_exit_wait_claimed lr0-pub hv1
+bfd_exit_check_no_write 172.16.1.100
+
+# A later cleanup exit does mark the session down.
+check as hv1 ovs-vsctl remove open . external-ids ovn-cleanup-on-exit
+as hv1 start_daemon ovn-controller
+check ovn-nbctl --wait=hv sync
+OVN_CONTROLLER_EXIT([hv1])
+check_column down BFD status dst_ip=172.16.1.100
+
+as hv1 start_daemon ovn-controller
+bfd_exit_wait_claimed lr0-pub hv1
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - cleanup exit marks down only the sessions it may])
+AT_KEYWORDS([bfd bfd-exit])
+BFD_EXIT_HELPERS
+ovn_start
+net_add n1
+bfd_exit_add_hv hv1 192.168.0.1
+bfd_exit_add_hv hv2 192.168.0.2
+
+# lr0-pub1 and lr0-pub4: only hv1.  lr0-pub2: only hv2.  lr0-pub3: hv1,
+# with hv2 as backup.
+check ovn-nbctl lr-add lr0
+bfd_exit_add_gw lr0-pub1 1 hv1
+check ovn-nbctl --bfd lr-route-add lr0 10.11.0.0/16 172.16.1.101 lr0-pub1
+bfd_exit_add_gw lr0-pub2 2 hv2
+bfd_exit_add_gw lr0-pub3 3 hv1:20 hv2:10
+bfd_exit_add_gw lr0-pub4 4 hv1
+ovn_wait_for_bfd_up hv1 hv2
+bfd_exit_wait_claimed lr0-pub1 hv1
+bfd_exit_wait_claimed lr0-pub2 hv2
+bfd_exit_wait_claimed lr0-pub3 hv1
+bfd_exit_wait_claimed lr0-pub4 hv1
+wait_row_count BFD 5 status=down
+for ip in 172.16.1.100 172.16.1.101 172.16.2.100 172.16.3.100; do
+    bfd_exit_set_status $ip up
+done
+bfd_exit_set_status 172.16.4.100 init
+
+OVN_CONTROLLER_EXIT([hv1])
+check_column down BFD status dst_ip=172.16.1.100
+check_column down BFD status dst_ip=172.16.1.101
+check_column down BFD status dst_ip=172.16.4.100
+check_column up BFD status dst_ip=172.16.2.100
+check_column up BFD status dst_ip=172.16.3.100
+AT_CHECK([bfd_exit_log_count hv1 'Marked 3 BFD session(s) down'], [0], [1
+])
+bfd_exit_check_order 172.16.1.100 172.16.1.101 172.16.4.100
+bfd_exit_check_no_write 172.16.2.100 172.16.3.100
+
+as hv1 start_daemon ovn-controller
+ovn_wait_for_bfd_up hv1 hv2
+bfd_exit_wait_claimed lr0-pub1 hv1
+bfd_exit_wait_claimed lr0-pub3 hv1
+bfd_exit_wait_claimed lr0-pub4 hv1
+OVN_CLEANUP([hv1
+/Incorrect your_disc/d
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+], [hv2
+/Incorrect your_disc/d
+/No tunnel endpoint found for HA chassis in HA chassis group/d
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - cleanup exit when the SB database does not answer])
+AT_KEYWORDS([bfd bfd-exit])
+BFD_EXIT_HELPERS
+ovn_start
+net_add n1
+bfd_exit_add_hv hv1 192.168.0.1
+
+check ovn-nbctl lr-add lr0
+bfd_exit_add_gw lr0-pub 1 hv1
+bfd_exit_wait_claimed lr0-pub hv1
+wait_column down BFD status dst_ip=172.16.1.100
+bfd_exit_set_status 172.16.1.100 up
+
+# The exit command is answered only after the cleanup, which cannot
+# finish while the SB database sleeps.
+pid=$(cat hv1/ovn-controller.pid)
+sleep_sb
+as hv1 ovn-appctl -t ovn-controller exit > exit.out 2>&1 &
+exit_pid=$!
+OVS_WAIT_UNTIL([grep -q 'did not answer the BFD status update' \
+                    hv1/ovn-controller.log])
+AT_CHECK([bfd_exit_log_count hv1 'Could not mark 1 BFD session(s) down'],
+         [0], [1
+])
+# ovn-controller gave up at the 1.5 s cap, timed by its own clock.  The
+# 0.5 s margin is for a slow wake-up on a busy machine.
+elapsed=$(sed -n 's/.*Could not mark.* \([[0-9]]*\) ms).*/\1/p' \
+              hv1/ovn-controller.log)
+check test "$elapsed" -ge 1500
+check test "$elapsed" -lt 2000
+
+# Then the cleanup runs as before.
+wake_up_sb
+exit_status=0
+wait $exit_pid || exit_status=$?
+check test $exit_status = 0
+OVS_WAIT_WHILE([kill -0 $pid 2>/dev/null])
+check_row_count Chassis 0 name=hv1
+check_column "" Port_Binding chassis logical_port=cr-lr0-pub
+AT_CHECK([grep -i 'assert\|backtrace' hv1/ovn-controller.log], [1])
+
+as hv1 start_daemon ovn-controller
+bfd_exit_wait_claimed lr0-pub hv1
+OVN_CLEANUP([hv1
+/did not answer the BFD status update/d
+/Could not mark 1 BFD session(s) down/d
+])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD - cleanup exit under SB RBAC marks down the rows it may])
+AT_KEYWORDS([bfd bfd-exit])
+AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
+BFD_EXIT_HELPERS
+ovn_start
+net_add n1
+bfd_exit_add_hv hv1 192.168.0.1 rbac
+
+check ovn-nbctl lr-add lr0
+bfd_exit_add_gw lr0-pub1 1 hv1
+bfd_exit_add_gw lr0-pub2 2 hv1
+bfd_exit_wait_claimed lr0-pub1 hv1
+bfd_exit_wait_claimed lr0-pub2 hv1
+wait_row_count BFD 2 status=down
+bfd_exit_set_status 172.16.1.100 up
+bfd_exit_set_status 172.16.2.100 up
+
+# With ovn-northd paused, SB RBAC lets hv1 update only the second row.
+check as northd ovn-appctl -t ovn-northd pause
+check ovn-sbctl set BFD $(fetch_column BFD _uuid dst_ip=172.16.1.100) \
+    chassis_name='""' \
+    -- set BFD $(fetch_column BFD _uuid dst_ip=172.16.2.100) chassis_name=hv1
+
+# The update of both rows is rejected, then the second row is updated
+# alone.
+OVN_CONTROLLER_EXIT([hv1])
+check_column up BFD status dst_ip=172.16.1.100
+check_column down BFD status dst_ip=172.16.2.100
+AT_CHECK([grep 'Could not mark' hv1/ovn-controller.log | \
+          sed 's/.*|WARN|//; s/[[0-9]]* ms)/X ms)/'], [0], [dnl
+Could not mark 1 BFD session(s) down during exit cleanup (1 marked, 1 attempt(s) on all rows, 1 on rows with this chassis_name, X ms); continuing exit.  If SB RBAC is enabled, check BFD chassis_name: logical_port lr0-pub1 dst_ip 172.16.1.100 (status up, chassis_name "")
+])
+bfd_exit_check_order 172.16.2.100
+check_row_count Chassis 0 name=hv1
+check as northd ovn-appctl -t ovn-northd resume
+
+as hv1 start_daemon ovn-controller
+bfd_exit_wait_claimed lr0-pub1 hv1
+bfd_exit_wait_claimed lr0-pub2 hv1
+OVN_CLEANUP([hv1
+/Could not mark 1 BFD session(s) down/d
+/transaction error/d
+])
+AT_CLEANUP
+])

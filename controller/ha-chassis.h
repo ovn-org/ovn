@@ -41,6 +41,10 @@ bool ha_chassis_group_contains(
     const struct sbrec_ha_chassis_group *ha_chassis_grp,
     const struct sbrec_chassis *chassis);
 
+bool ha_chassis_group_has_other_registered(
+    const struct sbrec_ha_chassis_group *ha_chassis_grp,
+    const struct sbrec_chassis *local_chassis);
+
 struct ha_chassis_ordered *ha_chassis_get_ordered(
     const struct sbrec_ha_chassis_group *ha_chassis_grp);
 
