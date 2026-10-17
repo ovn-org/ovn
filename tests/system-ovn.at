@@ -14211,7 +14211,7 @@ check ovn-nbctl lsp-add public public-rp -- set Logical_Switch_Port public-rp \
     -- lsp-set-addresses public-rp router
 
 # Wait for a flow outputing to patch port, so we know ovn-controller handled the patch port creation in OVS.
-OVN_WAIT_PATCH_PORT_FLOWS(["ln1"], ["./"])
+check ovn-nbctl --wait=hv sync
 
 check ovn-nbctl lrp-add R1 rp-sw0 00:00:01:01:02:03 192.168.1.1/24
 

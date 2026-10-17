@@ -3375,7 +3375,7 @@ for i in 1 2; do
     done
 done
 wait_for_ports_up
-OVN_WAIT_PATCH_PORT_FLOWS(["ln1" "ln2" "ln3"], ["hv1"] ["hv2"])
+check ovn-nbctl --wait=hv sync
 
 check ovn-nbctl --wait=sb sync
 ovn-sbctl dump-flows > sbflows
@@ -3542,8 +3542,7 @@ done
 
 
 wait_for_ports_up
-check ovn-nbctl --wait=sb sync
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-11" "ln-21"], ["hv-1" "hv-2"])
+check ovn-nbctl --wait=hv sync
 
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -3831,7 +3830,7 @@ for i in 1 2; do
     check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:00:0$i
 
     OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
-    OVN_WAIT_PATCH_PORT_FLOWS(["ln-$i-20"], ["hv-$i"])
+    check ovn-nbctl --wait=hv sync
 done
 
 wait_for_ports_up
@@ -4083,7 +4082,7 @@ for i in 1 2; do
 
     # Patch port might be created after ports are reported up
     # Wait for a flow outputing to patch port
-    OVN_WAIT_PATCH_PORT_FLOWS(["ln-100"], ["hv-$i"])
+    check ovn-nbctl --wait=hv sync
 done
 
 test_packet() {
@@ -4151,7 +4150,7 @@ for i in 1 2; do
 
     # Patch port might be created after ports are reported up
     # Wait for a flow outputing to patch port
-    OVN_WAIT_PATCH_PORT_FLOWS(["ln-100"], ["hv-$i"])
+    check ovn-nbctl --wait=hv sync
 done
 # create taps on fabric to check vlan encapsulation there
 for i in 1 2; do
@@ -4233,7 +4232,7 @@ for i in 1 2; do
 
     # Patch port might be created after ports are reported up
     # Wait for a flow outputing to patch port
-    OVN_WAIT_PATCH_PORT_FLOWS(["ln"], ["hv-$i"])
+    check ovn-nbctl --wait=hv sync
 done
 
 for i in 1 2; do
@@ -4455,7 +4454,7 @@ for tag in 10 20; do
         check ovn-nbctl lsp-set-port-security $lsp_name f0:00:00:00:0$i:$tag
 
         OVS_WAIT_UNTIL([test x`ovn-nbctl lsp-get-up $lsp_name` = xup])
-        OVN_WAIT_PATCH_PORT_FLOWS(["ln-$tag"], ["hv-$tag-$i"])
+        check ovn-nbctl --wait=hv sync
     done
 done
 wait_for_ports_up
@@ -10146,9 +10145,9 @@ AT_CAPTURE_FILE([sbflows])
 
 # Wait until the patch ports are created in hv1 and hv2 to connect br-int to br-eth0
 AT_CHECK([ovn-nbctl set logical_router lr0 options:chassis=hv1])
-OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv1"])
+check ovn-nbctl --wait=hv sync
 AT_CHECK([ovn-nbctl set logical_router lr0 options:chassis=hv2])
-OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv2"])
+check ovn-nbctl --wait=hv sync
 
 # Temporarily remove lr0 chassis
 # Wait for hv confirmation to make sure chassis is removed before we reset pcap
@@ -12871,7 +12870,6 @@ for i in 1 2; do
         > bfd$i.expected
 done
 
-OVN_WAIT_PATCH_PORT_FLOWS([ln-ext], [gw1 gw2])
 check ovn-nbctl --wait=hv sync
 
 check_bfd_packets() {
@@ -13310,8 +13308,7 @@ check as ext1 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 wait_for_ports_up
 check ovn-nbctl --wait=sb sync
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-alice"], ["gw1"] ["gw2"],["gw3"])
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-outside"], ["ext1"])
+check ovn-nbctl --wait=hv sync
 
 ovn-sbctl dump-flows > sbflows
 AT_CAPTURE_FILE([sbflows])
@@ -13555,7 +13552,6 @@ check as hv3 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 dnl Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-outside"], ["hv3"])
 
 (echo "---------NB dump-----"
  ovn-nbctl show
@@ -13670,7 +13666,7 @@ OVN_CHECK_PACKETS_UNIQ([hv3/vif1-tx.pcap], [hv3-vif1.expected])
 as hv2 ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
 
 # Wait until the patch ports are created in hv2 to connect br-int to br-phys
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-alice"], ["hv2"])
+check ovn-nbctl --wait=hv sync
 
 dnl Allow some time for ovn-controller to catch up.
 wait_for_ports_up
@@ -13742,7 +13738,6 @@ check ovn-nbctl lsp-add foo foo2 \
 # Allow some time for ovn-northd and ovn-controller to catch up.
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-alice"], ["hv1"])
 
 : > hv1-vif2.expected
 
@@ -13842,7 +13837,7 @@ OVN_CHECK_PACKETS([hv1/snoopvif-tx.pcap], [packets])
 AT_CHECK([as hv2 ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
 
 # Wait until the patch ports are created in hv2 to connect br-int to br-phys
-OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv2"])
+check ovn-nbctl --wait=hv sync
 
 # Wait for packets to be received.
 OVS_WAIT_UNTIL([test `wc -c < "hv1/snoopvif-tx.pcap"` -ge 100])
@@ -13870,7 +13865,7 @@ ovs-vsctl -- add-port br-int hv3-vif2 -- \
 AT_CHECK([as hv3 ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=physnet1:br-phys])
 
 # Wait until the patch ports are created in hv3 to connect br-int to br-phys
-OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv3"])
+check ovn-nbctl --wait=hv sync
 
 # Re-add nat-addresses option
 check ovn-nbctl lsp-set-options lrp0-rp router-port=lrp0 nat-addresses="router"
@@ -15550,7 +15545,6 @@ AT_CHECK([ovn-nbctl lsp-add-localnet-port ls0 ln_port physnet1])
 # wait for earlier changes to take effect
 wait_for_ports_up
 check ovn-nbctl --wait=hv sync
-OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv2"] ["hv3"])
 
 # reset hv1/snoopvif after hv2/br-phys_n1 and hv3/br-phys_n1 as we wait
 # for packets to be received on hv1/snoopvif-tx.
@@ -16880,8 +16874,7 @@ reset_env
 # Start port migration hv1 -> hv2: both hypervisors are now bound
 check ovn-nbctl --wait=hv lsp-set-options migrator requested-chassis=hv1,hv2
 wait_for_ports_up
-OVN_WAIT_PATCH_PORT_FLOWS(["public"], ["hv1"])
-OVN_WAIT_PATCH_PORT_FLOWS(["public"], ["hv2"])
+check ovn-nbctl --wait=hv sync
 OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv1"],["hv2"])
 OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv2"],["hv1"])
 OVN_WAIT_REMOTE_OUTPUT_FLOWS(["hv3"],["hv1"])
@@ -23920,7 +23913,7 @@ check ovn-nbctl --wait=sb sync
 #ovn-sbctl dump-flows
 for i in 1 2; do
     for j in 1 2; do
-        OVN_WAIT_PATCH_PORT_FLOWS(["ln$j"], ["hv$i"])
+        check ovn-nbctl --wait=hv sync
     done
 done
 
@@ -26364,8 +26357,7 @@ m4_define([DVR_N_S_ARP_HANDLING],
    check ovn-nbctl lrp-set-gateway-chassis router-to-underlay hv3
    wait_for_ports_up
    check ovn-nbctl --wait=sb sync
-   OVN_WAIT_PATCH_PORT_FLOWS(["ln1"] ["ln2"], ["hv1"] ["hv2"] ["hv3"])
-   OVN_WAIT_PATCH_PORT_FLOWS(["ln4"], ["hv4"])
+   check ovn-nbctl --wait=hv sync
 
    wait_row_count Port_Binding 1 logical_port=cr-router-to-underlay
 
@@ -26589,8 +26581,7 @@ m4_define([DVR_N_S_PING],
 
    wait_for_ports_up
    check ovn-nbctl --wait=sb sync
-   OVN_WAIT_PATCH_PORT_FLOWS(["ln1"] ["ln2"], ["hv1"] ["hv2"] ["hv3"])
-   OVN_WAIT_PATCH_PORT_FLOWS(["ln4"], ["hv4"])
+   check ovn-nbctl --wait=hv sync
 
    OVN_POPULATE_ARP
 
@@ -27328,8 +27319,7 @@ check ovn-nbctl lrp-set-redirect-type router-to-underlay bridged
 wait_for_ports_up
 check ovn-nbctl --wait=sb sync
 
-OVN_WAIT_PATCH_PORT_FLOWS(["ln1"] ["ln2"] ["ln3"], ["hv1"] ["hv2"] ["hv3"])
-OVN_WAIT_PATCH_PORT_FLOWS(["ln4"], ["hv4"])
+check ovn-nbctl --wait=hv sync
 
 OVN_POPULATE_ARP
 
@@ -40418,7 +40408,7 @@ for i in 1 2; do
 
     # Patch port might be created after ports are reported up
     # Wait for a flow outputing to patch port
-    OVN_WAIT_PATCH_PORT_FLOWS(["public0"], ["hv-$i"])
+    check ovn-nbctl --wait=hv sync
 done
 
 check ovn-nbctl set Logical_Switch_Port lsp1 options:qos_min_rate=200000
@@ -40936,14 +40926,19 @@ check ovn-nbctl --wait=hv sync
 
 sleep_ovsdb hv1
 
-# Do following operations through one nbctl command
-# Otherwise, they would probably result in multiple sb updates to ovn-controller
-# As ovsdb is sleeping those multiple updates would resulti in requests to ovsdb being
-# postponed as ovsdb becomes ro.
-# Hence, patch port creation would be delayed after ovsdb becomes rw.
-check ovn-nbctl --wait=hv lsp-add-localnet-port ls1 ln1 phys
+# Create a localnet port and wait for ovn-controller to process the change.
+# --wait=hv cannot be used here because hv1's ovsdb is asleep.
+# Make sure ovn-controller has not updated nb_cfg.
+runtime_data_runs=$(as hv1 ovn-appctl -t ovn-controller inc-engine/show-stats runtime_data compute)
+nb_cfg="$(fetch_column nb:NB_Global nb_cfg)"
 
-# Controller should now have created the patch port, but is not yet notified of the ofport of those interfaces
+check ovn-nbctl --wait=sb lsp-add-localnet-port ls1 ln1 phys
+
+OVS_WAIT_UNTIL([test $(as hv1 ovn-appctl -t ovn-controller inc-engine/show-stats runtime_data compute) -gt $runtime_data_runs])
+check_row_count Chassis_Private 1 name=hv1 nb_cfg="${nb_cfg}"
+
+# Controller should now have sent transaction to create the patch port, but it
+# has not yet been received by ovsdb-server.
 sleep_controller hv1
 wake_up_ovsdb hv1
 check as hv1 ovs-vsctl remove Interface vif1 external_ids iface-id
@@ -41746,7 +41741,7 @@ as hv1 check ovs-vsctl set Open_vSwitch . external-ids:garp-max-timeout-sec=2
 
 # Wait until the patch ports are created in hv1 to connect br-int to br-eth0
 check ovn-nbctl set logical_router lr0 options:chassis=hv1
-OVN_WAIT_PATCH_PORT_FLOWS(["ln_port"], ["hv1"])
+check ovn-nbctl --wait=hv sync
 
 # sleep for 12s to get a garp every ~ 2s
 sleep 12
@@ -44707,7 +44702,7 @@ AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -v 
 # Add localnet port to sw0
 check ovn-nbctl --wait=hv lsp-add-localnet-port sw0 ln-sw0 physnet1 -- set logical_switch_port ln-sw0 tag_request=100
 
-OVN_WAIT_PATCH_PORT_FLOWS(["ln-sw0"], ["hv1"])
+check ovn-nbctl --wait=hv sync
 AT_CHECK([as hv1 ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep -v NXST_FLOW | grep "in_port=" | grep -v "in_port=$of1" | grep -v "in_port=$of2" | wc -l], [0], [dnl
 3
 ])
@@ -47964,6 +47959,82 @@ AT_CHECK([grep -q $igmp_packet tx_packets.txt], [1])
 # Check if ovs did prevent any loop.
 AT_CHECK([grep "skipping output to input port" \
     hv1/ovs-vswitchd.log], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([--wait=hv waits for patch port flows])
+
+ovn_start
+
+check ovn-nbctl ls-add ls1
+net_add n
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+check ovs-vsctl set open . external-ids:ovn-bridge-mappings=phys:br-phys
+ovn_attach n br-phys 192.168.0.1
+
+check ovn-nbctl lsp-add ls1 lsp1
+check as hv1 ovs-vsctl --no-wait -- add-port br-int vif1 \
+                    -- set Interface vif1 external_ids:iface-id=lsp1 \
+                    -- set Interface vif1 type=internal
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+n_flows=$(ovs-ofctl dump-flows br-int | wc -l)
+nb_cfg=$(fetch_column nb:NB_Global nb_cfg)
+
+sleep_ovsdb hv1
+
+# Add a localnet port.  ovn-controller will try to create patch ports, but
+# ovsdb-server is asleep so the transaction cannot commit.
+check ovn-nbctl --wait=sb lsp-add-localnet-port ls1 ln1 phys
+
+# Wait for ovn-controller to process the localnet port change before
+# pausing ovs-vswitchd.
+OVS_WAIT_UNTIL([test "$(ovs-ofctl dump-flows br-int | wc -l)" -gt $n_flows])
+
+# Pause ovs-vswitchd so it cannot assign ofport when ovsdb wakes up.
+sleep_ovs hv1
+wake_up_ovsdb hv1
+
+# ovn-controller is now notified about patch port creation, but
+# ovs-vswitchd is asleep so ofport is not assigned.  --wait=hv must
+# not succeed yet.
+if ! ovn-nbctl --timeout=1 --wait=hv sync; then
+    wake_up_ovs hv1
+fi
+
+check ovn-nbctl --wait=hv sync
+
+# Verify that nb_cfg has advanced past the value from before the localnet port
+# was added.
+check_row_count Chassis_Private 1 name=hv1 nb_cfg\>${nb_cfg}
+
+# Pause ovn-controller so we can inspect the flow table.
+sleep_controller hv1
+wake_up_ovs hv1
+
+# Verify that the patch port has an ofport and a corresponding flow.
+check ovs-vsctl wait-until Interface patch-br-int-to-ln1 "ofport>0"
+ofport=$(ovs-vsctl --bare --columns ofport \
+    find Interface name=patch-br-int-to-ln1)
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG \
+    | grep -q in_port=$ofport], [0], [])
+
+wake_up_controller hv1
+
+# Delete the localnet port and verify --wait=hv waits for cleanup.
+check ovn-nbctl --wait=hv lsp-del ln1
+
+# Verify that the patch port and its flow are gone.
+AT_CHECK([ovs-vsctl show | grep -c patch-br-int-to-ln1], [1], [0
+])
+AT_CHECK([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG \
+    | grep in_port=$ofport], [1], [])
 
 OVN_CLEANUP([hv1])
 AT_CLEANUP

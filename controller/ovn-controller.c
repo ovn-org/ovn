@@ -8591,16 +8591,19 @@ main(int argc, char *argv[])
                         }
                     }
 
+                    bool patch_ports_synced = true;
+
                     runtime_data = engine_get_data(&en_runtime_data);
                     if (runtime_data) {
                         stopwatch_start(PATCH_RUN_STOPWATCH_NAME, time_msec());
-                        patch_run(ovs_idl_txn,
-                            sbrec_port_binding_by_type,
+                        patch_ports_synced = patch_run(
+                            ovs_idl_txn, sbrec_port_binding_by_type,
                             ovsrec_bridge_table_get(ovs_idl_loop.idl),
                             ovsrec_open_vswitch_table_get(ovs_idl_loop.idl),
-                            ovsrec_port_by_name,
-                            br_int, chassis, &runtime_data->local_datapaths);
+                            ovsrec_port_by_name, br_int, chassis,
+                            &runtime_data->local_datapaths);
                         stopwatch_stop(PATCH_RUN_STOPWATCH_NAME, time_msec());
+
                         if (vif_plug_provider_has_providers() && ovs_idl_txn) {
                             struct vif_plug_ctx_in vif_plug_ctx_in = {
                                 .ovs_idl_txn = ovs_idl_txn,
@@ -8727,18 +8730,22 @@ main(int argc, char *argv[])
                                      chassis, mac_cache_data);
                     }
 
-                    /* Snapshot (nb_cfg, sb_ts) atomically from SB_Global
-                     * and pair them through the barrier ack so the
-                     * eventual completion can be attributed to the
-                     * timestamp that corresponded to this exact nb_cfg
-                     * generation -- not whatever SB_Global value has
-                     * moved on to by the time the barrier acks. */
-                    struct nb_cfg_snap snap = get_nb_cfg(
-                        sbrec_sb_global_table_get(ovnsb_idl_loop.idl),
-                        ovnsb_cond_seqno, ovnsb_expected_cond_seqno);
-                    ofctrl_stamped_seqno_update_create(ofctrl_seq_type_nb_cfg,
-                                                      snap.nb_cfg,
-                                                      snap.ts);
+                    /* Wait for patch ports to be installed and synced before
+                     * incrementing nb_cfg so that --wait=hv properly waits
+                     * for patch ports. */
+                    if (patch_ports_synced) {
+                        /* Snapshot (nb_cfg, sb_ts) atomically from SB_Global
+                         * and pair them through the barrier ack so the
+                         * eventual completion can be attributed to the
+                         * timestamp that corresponded to this exact nb_cfg
+                         * generation -- not whatever SB_Global value has
+                         * moved on to by the time the barrier acks. */
+                        struct nb_cfg_snap snap = get_nb_cfg(
+                            sbrec_sb_global_table_get(ovnsb_idl_loop.idl),
+                            ovnsb_cond_seqno, ovnsb_expected_cond_seqno);
+                        ofctrl_stamped_seqno_update_create(
+                            ofctrl_seq_type_nb_cfg, snap.nb_cfg, snap.ts);
+                    }
 
                     struct local_binding_data *binding_data =
                         runtime_data ? &runtime_data->lbinding_data : NULL;

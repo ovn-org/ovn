@@ -84,25 +84,6 @@ m4_divert_text([PREPARE_TESTS],
        [dump_diff__ "$rcv_pcap" "$exp_text"])
    }
 
-   ovn_wait_patch_port_flows () {
-     for localnet in $1; do
-       patch_port="patch-br-int-to-$localnet"
-       for hv in $2; do
-         echo "$3: waiting for flows for $patch_port on $hv"
-         # Patch port might be created after ports are reported up
-         OVS_WAIT_UNTIL([
-             test 1 = $(as $hv ovs-vsctl show | grep "Port \b$patch_port\b" | wc -l)
-         ])
-         # Wait for a flow outputing to patch port
-         OVS_WAIT_UNTIL([
-             hv_patch_ofport=$(as $hv ovs-vsctl --bare --columns ofport find Interface name=$patch_port)
-             echo "$patch_port=$hv_patch_ofport"
-             test -n "$hv_patch_ofport" && test 1 -le $(as $hv ovs-ofctl dump-flows br-int | grep -c "output:\b$hv_patch_ofport\b")
-         ])
-       done
-     done
-   }
-
    ovn_wait_remote_output_flows () {
      hv1=$1
      hv2=$2
@@ -179,9 +160,6 @@ m4_define([OVN_CHECK_PACKETS_CONTAIN],
 # Duplicate packets are accepted, but the macro fails if unexpected packets are received.
 m4_define([OVN_CHECK_PACKETS_UNIQ],
   [ovn_wait_packets_uniq__ "$1" "$2" "__file__:__line__" $3])
-
-m4_define([OVN_WAIT_PATCH_PORT_FLOWS],
-  [ovn_wait_patch_port_flows "$1" "$2" "__file__:__line__"])
 
 m4_define([OVN_WAIT_REMOTE_OUTPUT_FLOWS],
   [ovn_wait_remote_output_flows "$1" "$2" "__file__:__line__"])
