@@ -5559,7 +5559,16 @@ tcp.flags = RST;
       </column>
 
       <column name="chassis_name">
-        The name of the chassis where the logical port is bound.
+        The name of the chassis that would run the BFD session.  For a
+        distributed gateway port, this is the chassis where its
+        chassisredirect port is bound.  For other ports, it is the chassis
+        where the logical port is bound.  The column is empty when that
+        binding has no chassis.  <code>ovn-controller</code> runs the
+        session only for a distributed gateway port or an l3gateway port
+        whose binding has a peer, so the chassis named here does not always
+        run it.  <code>ovn-northd</code> sets this column.  With role-based
+        access control, <code>ovn-controller</code> may update
+        <ref column="status"/> only from the chassis named here.
       </column>
 
       <column name="options">

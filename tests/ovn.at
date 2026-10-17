@@ -12954,6 +12954,79 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([BFD status of a distributed gateway port with SB RBAC])
+AT_KEYWORDS([ovn-bfd bfd-rbac])
+# With SSL, ovn-controller connects to the SB database with the RBAC role
+# "ovn-controller" (see ovn_start).
+AT_SKIP_IF([test "$HAVE_OPENSSL" = no])
+CHECK_SCAPY
+ovn_start
+
+net_add underlay
+net_add provider
+sim_add gw1
+as gw1
+check ovs-vsctl add-br br-phys
+ovn_attach underlay br-phys 192.168.0.1
+check ovs-vsctl add-br br-ex
+net_attach provider br-ex
+check ovs-vsctl set Open_vSwitch . external-ids:ovn-bridge-mappings=phys:br-ex
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl ls-add ext
+check ovn-nbctl lsp-add-localnet-port ext ln-ext phys
+check ovn-nbctl lrp-add r0 r0-ext 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port ext ext-r0 r0-ext
+check ovn-nbctl lrp-set-gateway-chassis r0-ext gw1
+check ovn-nbctl static-mac-binding-add r0-ext 10.0.0.254 00:00:00:00:00:fe
+check ovn-nbctl --bfd lr-route-add r0 0.0.0.0/0 10.0.0.254 r0-ext
+wait_column "$(fetch_column Chassis _uuid name=gw1)" Port_Binding chassis \
+    logical_port=cr-r0-ext
+wait_row_count BFD 1
+wait_column down BFD status dst_ip=10.0.0.254
+# SB RBAC lets gw1 update the row only if chassis_name is gw1.
+wait_column gw1 BFD chassis_name dst_ip=10.0.0.254
+OVN_WAIT_PATCH_PORT_FLOWS([ln-ext], [gw1])
+check ovn-nbctl --wait=hv sync
+
+# Plays the BFD peer 10.0.0.254: sends a control packet in state "init",
+# with 1 s intervals and detection multiplier 3, every 0.3 s.  That brings
+# gw1's session up and keeps it up.
+pkt=$(fmt_pkt "Ether(dst='00:00:00:00:00:01', src='00:00:00:00:00:fe')/ \
+    IP(src='10.0.0.254', dst='10.0.0.1', ttl=255)/ \
+    UDP(sport=49152, dport=3784)/ \
+    Raw(load=bytes.fromhex('20800318000000fe' + \
+        '$(printf %08x $(fetch_column BFD disc dst_ip=10.0.0.254))' + \
+        '000f4240000f424000000000'))")
+(while :; do
+     as gw1 ovs-appctl netdev-dummy/receive br-ex_provider $pkt \
+         >/dev/null 2>&1
+     sleep 0.3
+ done) &
+echo $! > bfd-peer.pid
+on_exit 'test -e bfd-peer.pid && kill $(cat bfd-peer.pid)'
+
+AS_BOX([The session comes up])
+wait_column up BFD status dst_ip=10.0.0.254
+OVS_WAIT_UNTIL([ovn-sbctl lflow-list r0 | grep lr_in_ip_routing | \
+                grep -q 'reg0 = 10.0.0.254'])
+
+AS_BOX([The peer stops answering])
+kill $(cat bfd-peer.pid)
+rm bfd-peer.pid
+wait_column down BFD status dst_ip=10.0.0.254
+OVS_WAIT_UNTIL([! ovn-sbctl lflow-list r0 | grep lr_in_ip_routing | \
+                grep -q 'reg0 = 10.0.0.254'])
+
+# The SB database accepted all of gw1's updates.
+AT_CHECK([grep -c 'transaction error' gw1/ovn-controller.log], [1], [0
+])
+
+OVN_CLEANUP([gw1])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([4 HV, 1 LS, 1 LR, packet test with HA distributed router gateway port])
 ovn_start
 
