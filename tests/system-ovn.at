@@ -22993,6 +22993,12 @@ OVS_WAIT_UNTIL([
     test "$route_recompute_ct" -ne 0
 ])
 check ovn-sbctl chassis-add hv2 geneve 169.0.0.2
+OVS_WAIT_UNTIL([
+    tunnel_ofport=$(ovs-vsctl --bare --columns=ofport find Interface \
+                    options:local_ip=169.0.0.1 options:remote_ip=169.0.0.2)
+    test -n "$tunnel_ofport" && test "$tunnel_ofport" -ge 0
+])
+check ovn-nbctl --wait=hv sync
 hv2=$(fetch_column Chassis _uuid name=hv2)
 check ovn-sbctl set Port_Binding be0 chassis=$hv2
 wait_row_count Service_Monitor 1 logical_port=be0 status=offline
@@ -23849,6 +23855,12 @@ OVS_WAIT_UNTIL([
 check ovs-vsctl set Interface ovs-be0 external_ids:iface-id="not-be0"
 wait_column "" Port_Binding chassis logical_port=be0
 check ovn-sbctl chassis-add hv2 geneve 169.0.0.2
+OVS_WAIT_UNTIL([
+    tunnel_ofport=$(ovs-vsctl --bare --columns=ofport find Interface \
+                    options:local_ip=169.0.0.1 options:remote_ip=169.0.0.2)
+    test -n "$tunnel_ofport" && test "$tunnel_ofport" -ge 0
+])
+check ovn-nbctl --wait=hv sync
 hv2=$(fetch_column Chassis _uuid name=hv2)
 check ovn-sbctl set Port_Binding be0 chassis=$hv2
 
@@ -23876,6 +23888,12 @@ check ovn-nbctl --wait=hv set Logical_Router_Port lr-origin-share \
 check ovs-vsctl set Interface ovs-be0 external_ids:iface-id="not-be0"
 wait_column "" Port_Binding chassis logical_port=be0
 check ovn-sbctl chassis-add hv2 geneve 169.0.0.2
+OVS_WAIT_UNTIL([
+    tunnel_ofport=$(ovs-vsctl --bare --columns=ofport find Interface \
+                    options:local_ip=169.0.0.1 options:remote_ip=169.0.0.2)
+    test -n "$tunnel_ofport" && test "$tunnel_ofport" -ge 0
+])
+check ovn-nbctl --wait=hv sync
 hv2=$(fetch_column Chassis _uuid name=hv2)
 check ovn-sbctl set Port_Binding be0 chassis=$hv2
 
