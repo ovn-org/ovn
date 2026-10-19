@@ -354,6 +354,14 @@ static unsigned int wait_before_clear_time = 0;
  * If the timer is not started yet, it is set to 0. */
 static long long int wait_before_clear_expire = 0;
 
+/* Set by ofctrl_set_initial_flows_ready() once the engine has produced a
+ * complete initial lflow/pflow table after a (re)connect. Lets
+ * run_S_WAIT_BEFORE_CLEAR() clear existing flows as soon as the new ones are
+ * genuinely ready, instead of always idling out the full
+ * ovn-ofctrl-wait-before-clear timer - that timer remains a ceiling for the
+ * case flow computation is slow or never completes, not a fixed floor. */
+static bool initial_flows_ready = false;
+
 /* Transaction IDs for messages in flight to the switch. */
 static ovs_be32 xid, xid2;
 
@@ -645,6 +653,14 @@ run_S_WAIT_BEFORE_CLEAR(void)
         return;
     }
 
+    if (initial_flows_ready) {
+        VLOG_INFO("Initial flow computation finished early (within %u ms "
+                  "ofctrl-wait-before-clear budget): clearing existing "
+                  "flows now.", wait_before_clear_time);
+        state = S_CLEAR_FLOWS;
+        return;
+    }
+
     if (!wait_before_clear_expire) {
         /* Start the timer. */
         wait_before_clear_expire = time_msec() + wait_before_clear_time;
@@ -653,6 +669,17 @@ run_S_WAIT_BEFORE_CLEAR(void)
                   wait_before_clear_time);
     }
     poll_timer_wait_until(wait_before_clear_expire);
+}
+
+/* Called (from ovn-controller.c's main loop) with 'ready' true once the
+ * engine has produced a complete initial lflow/pflow table after a
+ * (re)connect, so run_S_WAIT_BEFORE_CLEAR() can stop holding existing flows
+ * as soon as the new ones are actually ready instead of always waiting out
+ * the full ovn-ofctrl-wait-before-clear timer. */
+void
+ofctrl_set_initial_flows_ready(bool ready)
+{
+    initial_flows_ready = ready;
 }
 
 static void

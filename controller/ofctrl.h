@@ -66,6 +66,7 @@ bool ofctrl_has_backlog(void);
 void ofctrl_wait(void);
 void ofctrl_destroy(void);
 uint64_t ofctrl_get_cur_cfg(void);
+void ofctrl_set_initial_flows_ready(bool ready);
 
 void ofctrl_ct_flush_zone(uint16_t zone_id);
 

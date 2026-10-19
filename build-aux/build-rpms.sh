@@ -57,7 +57,11 @@ sed -i 's/^Version: @VERSION@/Epoch: 1\nVersion: @VERSION@/' "$ROOT/ovs/rhel/ope
 
 ( cd "$ROOT/ovs" && ./boot.sh )
 ( cd "$ROOT/ovs" && ./configure --prefix=/usr --localstatedir=/var --sysconfdir=/etc --enable-ssl )
-( cd "$ROOT/ovs" && make rpm-fedora RPMBUILD_OPT="--without check" )
+# --without autoenable: makes explicit (rather than relying on the spec's own
+# default) that we never want openvswitch-fedora.spec.in's %{with autoenable}
+# branch, which does a plain `systemctl restart openvswitch` with no
+# flow-save/restore - a SysV-to-systemd migration shim this build never needs.
+( cd "$ROOT/ovs" && make rpm-fedora RPMBUILD_OPT="--without check --without autoenable" )
 
 # Install OVS RPMs required for OVN build
 dnf install -y "$ROOT"/ovs/rpm/rpmbuild/RPMS/*/*.rpm || true

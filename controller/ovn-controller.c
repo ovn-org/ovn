@@ -6169,6 +6169,13 @@ main(int argc, char *argv[])
                     lflow_output_data = engine_get_data(&en_lflow_output);
                     pflow_output_data = engine_get_data(&en_pflow_output);
                     lb_data = engine_get_data(&en_lb_data);
+                    /* Lets ofctrl's S_WAIT_BEFORE_CLEAR state clear existing
+                     * flows as soon as a complete flow table is actually
+                     * available, rather than always idling out the full
+                     * ovn-ofctrl-wait-before-clear timer. */
+                    ofctrl_set_initial_flows_ready(lflow_output_data &&
+                                                    pflow_output_data &&
+                                                    ct_zones_data && lb_data);
                     if (lflow_output_data && pflow_output_data &&
                         ct_zones_data && lb_data) {
                         stopwatch_start(OFCTRL_PUT_STOPWATCH_NAME,
