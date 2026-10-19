@@ -1257,6 +1257,13 @@ lsp_disable_arp_nd_rsp(const struct nbrec_logical_switch_port *nbsp)
 }
 
 static bool
+port_can_learn_fdb(const struct ovn_port *op)
+{
+    return op->nbsp && lsp_is_enabled(op->nbsp) &&
+           (op->has_unknown || lsp_is_vtep(op->nbsp));
+ }
+
+static bool
 lsp_is_type_changed(const struct sbrec_port_binding *sb,
                 const struct nbrec_logical_switch_port *nbsp,
                 bool *update_sbrec)
@@ -4145,9 +4152,7 @@ ovn_port_add_tnlid(struct ovn_port *op, uint32_t tunnel_key)
             op->od->port_key_hint = tunnel_key;
         }
 
-        /* Track the assigned tunnel_key for enabled LSP
-         * with unknown address. */
-        if (op->nbsp && lsp_is_enabled(op->nbsp) && op->has_unknown) {
+        if (port_can_learn_fdb(op)) {
             ovs_assert(ovn_add_tnlid(&op->od->fdb_ports_tnlids, tunnel_key));
         }
     }
@@ -4203,7 +4208,7 @@ ovn_port_allocate_key(struct ovn_port *op)
             return false;
         }
 
-        if (op->nbsp && lsp_is_enabled(op->nbsp) && op->has_unknown) {
+        if (port_can_learn_fdb(op)) {
             ovs_assert(ovn_add_tnlid(&op->od->fdb_ports_tnlids,
                                      op->tunnel_key));
         }
