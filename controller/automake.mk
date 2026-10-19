@@ -28,6 +28,8 @@ controller_ovn_controller_SOURCES = \
 	controller/ofctrl.h \
 	controller/ofctrl-seqno.c \
 	controller/ofctrl-seqno.h \
+	controller/ofctrl-wait-before-clear.c \
+	controller/ofctrl-wait-before-clear.h \
 	controller/pinctrl.c \
 	controller/pinctrl.h \
 	controller/patch.c \

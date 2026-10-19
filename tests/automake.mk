@@ -40,6 +40,7 @@ TESTSUITE_AT = \
 	tests/ovn-macros.at \
 	tests/ovn-performance.at \
 	tests/ovn-ofctrl-seqno.at \
+	tests/ovn-ofctrl-wait-before-clear.at \
 	tests/ovn-ipam.at \
 	tests/ovn-features.at \
 	tests/ovn-lflow-cache.at \
@@ -286,6 +287,7 @@ tests_ovstest_SOURCES = \
 	controller/test-lflow-cache.c \
 	controller/test-lflow-conj-ids.c \
 	controller/test-ofctrl-seqno.c \
+	controller/test-ofctrl-wait-before-clear.c \
 	controller/test-vif-plug.c \
 	lib/test-ovn-features.c \
 	northd/test-ipam.c
@@ -302,6 +304,7 @@ tests_ovstest_LDADD = $(OVS_LIBDIR)/daemon.lo \
 	controller/local_data.$(OBJEXT) \
 	controller/lport.$(OBJEXT) \
 	controller/ofctrl-seqno.$(OBJEXT) \
+	controller/ofctrl-wait-before-clear.$(OBJEXT) \
 	controller/ovsport.$(OBJEXT) \
 	controller/patch.$(OBJEXT) \
 	controller/vif-plug.$(OBJEXT) \

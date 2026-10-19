@@ -24,6 +24,7 @@
 #include "hindex.h"
 #include "lflow.h"
 #include "ofctrl.h"
+#include "ofctrl-wait-before-clear.h"
 #include "openflow/openflow.h"
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/hmap.h"
@@ -639,26 +640,30 @@ error:
 static void
 run_S_WAIT_BEFORE_CLEAR(void)
 {
-    if (!wait_before_clear_time ||
-        (wait_before_clear_expire &&
-         time_msec() >= wait_before_clear_expire)) {
-        if (!wait_before_clear_time) {
-            VLOG_INFO("ofctrl-wait-before-clear is 0 ms: existing flows will "
-                      "be cleared as soon as the new ones are ready.");
-        } else {
-            VLOG_INFO("ofctrl-wait-before-clear (%u ms) expired: existing "
-                      "flows will now be cleared.", wait_before_clear_time);
-        }
+    enum ofctrl_wait_before_clear_reason reason =
+        ofctrl_wait_before_clear_decide(initial_flows_ready,
+                                         wait_before_clear_time,
+                                         wait_before_clear_expire,
+                                         time_msec());
+    switch (reason) {
+    case OFCTRL_WBC_DISABLED:
+        VLOG_INFO("ofctrl-wait-before-clear is 0 ms: existing flows will "
+                  "be cleared as soon as the new ones are ready.");
         state = S_CLEAR_FLOWS;
         return;
-    }
-
-    if (initial_flows_ready) {
+    case OFCTRL_WBC_EXPIRED:
+        VLOG_INFO("ofctrl-wait-before-clear (%u ms) expired: existing "
+                  "flows will now be cleared.", wait_before_clear_time);
+        state = S_CLEAR_FLOWS;
+        return;
+    case OFCTRL_WBC_FLOWS_READY:
         VLOG_INFO("Initial flow computation finished early (within %u ms "
                   "ofctrl-wait-before-clear budget): clearing existing "
                   "flows now.", wait_before_clear_time);
         state = S_CLEAR_FLOWS;
         return;
+    case OFCTRL_WBC_STILL_WAITING:
+        break;
     }
 
     if (!wait_before_clear_expire) {

@@ -1,0 +1,70 @@
+#
+# Unit tests for the controller/ofctrl-wait-before-clear.c module.
+#
+# PCD-5619: ofctrl.c's S_WAIT_BEFORE_CLEAR state used to only exit on the
+# configured ovn-ofctrl-wait-before-clear timer expiring (or being disabled
+# at 0ms) - it had no early exit once the engine actually finished
+# computing a complete flow table, so a fast recompute still idled out the
+# full configured window (up to 180s in PCD) before installing it. These
+# cases cover every branch of ofctrl_wait_before_clear_decide(), the
+# decision ofctrl.c's run_S_WAIT_BEFORE_CLEAR() now delegates to.
+#
+AT_BANNER([OVN unit tests - ofctrl-wait-before-clear])
+
+AT_SETUP([unit test -- wait-before-clear disabled (0 ms)])
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide false 0 0 1000], [0], [dnl
+disabled
+])
+dnl Even with flows ready and a timer in flight, 0 ms always wins.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide true 0 500 1000], [0], [dnl
+disabled
+])
+AT_CLEANUP
+
+AT_SETUP([unit test -- wait-before-clear still waiting])
+dnl wait_time=180000, expire already set to 10180000 (started at t=10000000),
+dnl now=10100000 is still short of expiry, and flows aren't ready yet.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide false 180000 10180000 10100000], \
+          [0], [dnl
+still-waiting
+])
+dnl Timer not started yet (expire=0) is also "still waiting".
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide false 180000 0 10000000], [0], [dnl
+still-waiting
+])
+AT_CLEANUP
+
+AT_SETUP([unit test -- wait-before-clear expired])
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide false 180000 10180000 10180000], \
+          [0], [dnl
+expired
+])
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide false 180000 10180000 99999999], \
+          [0], [dnl
+expired
+])
+AT_CLEANUP
+
+AT_SETUP([unit test -- wait-before-clear early exit on flows ready])
+dnl This is the fix: flows ready well before the 180000 ms timer expires
+dnl (started at t=10000000, now only 10000500 - 500ms in) still clears
+dnl immediately instead of idling out the rest of the window.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide true 180000 10180000 10000500], \
+          [0], [dnl
+flows-ready
+])
+dnl Expiry takes priority if both conditions are simultaneously true - either
+dnl is a valid reason to proceed, and this keeps the logging deterministic.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_wait_before_clear_decide true 180000 10180000 10180000], \
+          [0], [dnl
+expired
+])
+AT_CLEANUP
