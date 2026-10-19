@@ -620,7 +620,11 @@ OVS_WAIT_UNTIL([vtep-ctl list Ucast_Macs_Local | grep -q aa:bb:cc:dd:ff:02])
 
 # Check that first MACs is propagated to FDB table
 wait_row_count fdb 1 mac='"aa:bb:cc:dd:ff:01"'
+uuid1=$(fetch_column fdb _uuid mac='"aa:bb:cc:dd:ff:01"')
+check test -n "$uuid1"
 wait_row_count fdb 1 mac='"aa:bb:cc:dd:ff:02"'
+uuid2=$(fetch_column fdb _uuid mac='"aa:bb:cc:dd:ff:02"')
+check test -n "$uuid2"
 
 # Switch context
 as
@@ -631,6 +635,9 @@ OVS_WAIT_WHILE([vtep-ctl list-remote-macs lswitch1 | grep -q aa:bb:cc:dd:ff:01])
 
 OVS_WAIT_UNTIL([vtep-ctl list-remote-macs lswitch1 | grep -q aa:bb:cc:dd:ff:02])
 OVS_WAIT_WHILE([vtep-ctl list-remote-macs lswitch0 | grep -q aa:bb:cc:dd:ff:02])
+
+check test "$uuid1" = "$(fetch_column fdb _uuid mac='"aa:bb:cc:dd:ff:01"')"
+check test "$uuid2" = "$(fetch_column fdb _uuid mac='"aa:bb:cc:dd:ff:02"')"
 
 # Switch context to br-vtep1
 as br-vtep1
