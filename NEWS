@@ -28,6 +28,15 @@ Post v26.09.0
        now written to the SB MAC_Binding table and consumed at the
        same priority as dynamic entries, making the preference option
        obsolete.
+     * The routes of a distributed gateway port are now installed and
+       advertised by every member of its HA chassis group instead of only
+       by the active one.  The standby members use a higher priority band
+       (and hence a higher metric/BGP MED) so the fabric prefers the active
+       chassis while holding a precomputed backup path (BGP PIC Edge).
+     * "options:dynamic-routing-maintain-vrf" on a distributed gateway port
+       now creates the VRF on every member of the port's HA chassis group
+       instead of only on the active one, so the routing daemon can bring
+       up its session in the VRF before a failover.
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
    - Removed ovn-docker utility scripts.

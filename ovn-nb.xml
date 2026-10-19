@@ -3556,6 +3556,20 @@ or
         <li><ref column="options" key="dynamic-routing-redistribute"
                  table="Logical_Router_Port"/> on Logical_Router_Port</li>
         </ul>
+
+        <p>
+          The routes of a distributed gateway port are installed and
+          advertised by every member of the port's HA chassis group, not only
+          by the chassis that is currently active for it. The standby members
+          do so in a strictly higher priority band, which the routing daemon
+          translates into a higher metric and hence, for BGP, a higher MED.
+          The fabric consequently prefers the active chassis while already
+          holding a precomputed backup path towards each standby, which allows
+          for a fast local repair (BGP PIC Edge) when the active chassis
+          fails. Note that this increases the number of paths the fabric has
+          to hold for each advertised prefix by the size of the HA chassis
+          group.
+        </p>
       </column>
 
       <column name="options" key="dynamic-routing-redistribute"
@@ -4925,6 +4939,18 @@ or
           the <ref column="options" key="dynamic-routing-vrf-id"
           table="Logical_Router"/> or datapath id of the Logical Router
           appended to it.
+        </p>
+
+        <p>
+          If this LRP is a distributed gateway port, the VRF is created on
+          every chassis of its HA chassis group, not only on the one that is
+          currently active for the port.  Every member of the group advertises
+          the port's routes from that vrf, so the routing daemon has its
+          session established and the fabric has a backup path in place before
+          a failover happens; see <ref column="options" key="dynamic-routing"
+          table="Logical_Router"/>.  A standby chassis removes the vrf again
+          once this option is cleared; the chassis the port is resident on
+          keeps it, as described below.
         </p>
 
         <p>

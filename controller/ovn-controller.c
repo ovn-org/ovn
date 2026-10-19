@@ -7456,6 +7456,7 @@ inc_proc_ovn_controller_init(
 
     engine_add_input(&en_route, &en_ovs_open_vswitch, NULL);
     engine_add_input(&en_route, &en_sb_chassis, NULL);
+    engine_add_input(&en_route, &en_sb_ha_chassis_group, NULL);
     engine_add_input(&en_route, &en_sb_port_binding,
                      route_sb_port_binding_data_handler);
     engine_add_input(&en_route, &en_runtime_data,

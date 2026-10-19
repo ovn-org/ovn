@@ -337,6 +337,36 @@ to ensure host routes are only announced from the chassis that owns the
 workload, providing optimal traffic forwarding and avoiding unnecessary
 traffic tromboning.
 
+Advertisement from Standby Gateway Chassis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the advertising port of an ``Advertised_Route`` is a distributed
+gateway port, the route is installed and advertised by **every** chassis
+in the port's HA chassis group, not only by the one the ``chassisredirect``
+port is currently bound to.  ``ovn-controller`` derives the membership from
+the ``ha_chassis_group`` column of the ``chassisredirect`` ``Port_Binding``;
+there is no option to opt in or out.
+
+The chassis the ``chassisredirect`` port is bound to is the active one.
+Every other member is a standby and installs the route one full priority
+band (1000) above the priority it would otherwise use, which the routing
+daemon translates into a correspondingly higher metric and, for BGP, a
+higher MED.  Since the band exceeds the spread of the ordinary priorities,
+every standby route sorts strictly below every active one from the fabric's
+point of view.
+
+The fabric therefore keeps preferring the active chassis while already
+holding a resolved backup path towards each standby, so a failover is a
+local repair at the peer (BGP PIC Edge) instead of a reconvergence that
+waits for the newly active chassis to originate the prefix.  The cost is
+that the number of paths the fabric holds per advertised prefix grows with
+the size of the HA chassis group.
+
+Note that this is distinct from the ``tracked_port`` priority described
+above: that one differentiates chassis by where the *tracked* workload or
+gateway port lives, and applies even when the advertising port itself is an
+ordinary, chassis-local logical router port.
+
 IP Route Learning
 -----------------
 
@@ -429,6 +459,12 @@ interface on the chassis where the port is bound.  This includes:
 
 - Deleting the VRF interface when dynamic routing is disabled or the
   port is unbound.
+
+If the logical router port is a distributed gateway port, the VRF is
+created on every chassis of its HA chassis group, not only on the one the
+``chassisredirect`` port is currently bound to.  The routing daemon on a
+standby chassis can therefore establish its session in the VRF ahead of a
+failover, rather than while traffic is already blackholed.
 
 If ``dynamic-routing-maintain-vrf`` is ``false`` (the default), the VRF
 is expected to already exist on the chassis, managed by external tooling

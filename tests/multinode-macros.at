@@ -463,6 +463,87 @@ m_check_column() {
     fi
 }
 
+# m_route_metric NODE TABLE PREFIX
+#
+# Prints the metric of every route for PREFIX in routing table TABLE on NODE.
+# The prefix is not always the first field: a route OVN redistributes without
+# a locally resolvable nexthop, which is what a NAT or a static route with an
+# off-link nexthop installs, renders as
+# "blackhole PREFIX proto ovn metric N".
+m_route_metric() {
+    m_as $1 ip route show table $2 | awk -v p="$3" '
+        { match_found = 0
+          for (i = 1; i <= NF; i++) if ($i == p) match_found = 1
+          if (match_found) {
+              for (i = 1; i <= NF; i++) if ($i == "metric") print $(i + 1)
+          } }'
+}
+
+# m_wait_route_metric NODE TABLE PREFIX EXPECTED
+#
+# Waits until the metric of PREFIX in routing table TABLE on NODE is EXPECTED.
+m_wait_route_metric() {
+    # OVS_WAIT_UNTIL runs its body in a context where the positional
+    # parameters are its own, so copy them out first.
+    local rm_node=$1 rm_table=$2 rm_prefix=$3 rm_expected=$4
+
+    echo "Waiting for $rm_prefix in table $rm_table on $rm_node to have" \
+         "metric $rm_expected..."
+    OVS_WAIT_UNTIL([test "$rm_expected" = \
+                        "$(m_route_metric $rm_node $rm_table $rm_prefix)"], [
+        echo "Routes in table $rm_table on $rm_node:"
+        m_as $rm_node ip route show table $rm_table])
+}
+
+# m_route_count NODE TABLE PREFIX
+#
+# Prints the number of routes for PREFIX in routing table TABLE on NODE.  See
+# m_route_metric() for why the prefix is looked for in every field.
+m_route_count() {
+    m_as $1 ip route show table $2 | awk -v p="$3" '
+        { for (i = 1; i <= NF; i++) if ($i == p) { found++; break } }
+        END { print found + 0 }'
+}
+
+# m_wait_route_count NODE TABLE PREFIX EXPECTED
+#
+# Waits until routing table TABLE on NODE holds EXPECTED routes for PREFIX.
+m_wait_route_count() {
+    local rc_node=$1 rc_table=$2 rc_prefix=$3 rc_expected=$4
+
+    echo "Waiting until table $rc_table on $rc_node has $rc_expected" \
+         "route(s) for $rc_prefix..."
+    OVS_WAIT_UNTIL([test "$rc_expected" = \
+                        "$(m_route_count $rc_node $rc_table $rc_prefix)"], [
+        echo "Routes in table $rc_table on $rc_node:"
+        m_as $rc_node ip route show table $rc_table])
+}
+
+# m_vrf_exists NODE DEV
+#
+# Prints "yes" if the vrf device DEV exists on NODE, "no" otherwise.
+m_vrf_exists() {
+    if m_as $1 ip link show dev $2 type vrf > /dev/null 2>&1; then
+        echo yes
+    else
+        echo no
+    fi
+}
+
+# m_wait_vrf NODE DEV EXPECTED
+#
+# Waits until the presence of the vrf device DEV on NODE is EXPECTED, which is
+# either "yes" or "no".
+m_wait_vrf() {
+    local wv_node=$1 wv_dev=$2 wv_expected=$3
+
+    echo "Waiting until vrf $wv_dev on $wv_node is present=$wv_expected..."
+    OVS_WAIT_UNTIL([test "$wv_expected" = \
+                        "$(m_vrf_exists $wv_node $wv_dev)"], [
+        echo "vrf devices on $wv_node:"
+        m_as $wv_node ip -o link show type vrf])
+}
+
 # m_add_internal_port NODE NETNS OVS_BRIDGE PORT IP [GW]
 #
 # Adds an OVS internal PORT to OVS_BRIDGE on NODE and moves the resulting

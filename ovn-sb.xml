@@ -4144,6 +4144,16 @@ tcp.flags = RST;
           <ref table="Logical_Router_Port" db="OVN_Northbound"/>
           <code>options:dynamic-routing-maintain-vrf</code> option.
         </p>
+
+        <p>
+          On a <code>chassisredirect</code> port the VRF is created by every
+          <code>ovn-controller</code> whose chassis is a member of the port's
+          <ref column="ha_chassis_group"/>, so that it is in place before the
+          port fails over. Every one of those chassis also advertises the
+          port's routes in it; the ones the port is not resident on do so in a
+          strictly higher priority band, so that the fabric holds a backup
+          path without ever preferring it over the resident chassis.
+        </p>
       </column>
 
       <column name="options" key="dynamic-routing-vrf-name">

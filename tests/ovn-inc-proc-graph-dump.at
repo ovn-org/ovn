@@ -461,6 +461,7 @@ digraph "Incremental-Processing-Engine" {
 	route [[style=filled, shape=box, fillcolor=white, label="route"]];
 	OVS_open_vswitch -> route [[label=""]];
 	SB_chassis -> route [[label=""]];
+	SB_ha_chassis_group -> route [[label=""]];
 	SB_port_binding -> route [[label="route_sb_port_binding_data_handler"]];
 	runtime_data -> route [[label="route_runtime_data_handler"]];
 	SB_advertised_route -> route [[label="route_sb_advertised_route_data_handler"]];
