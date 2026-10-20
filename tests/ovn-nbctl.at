@@ -3777,3 +3777,27 @@ AT_CHECK([ovn-nbctl lsp-hc-del lport0])
 AT_CHECK([ovn-nbctl lsp-hc-del lport3])
 check_row_count nb:Logical_Switch_Port_Health_Check 0
 ])
+
+OVN_NBCTL_TEST([router_policy_nonexistent_deletion], [Router policy nonexistent deletion], [
+check ovn-nbctl lr-add lr0
+
+# Baseline, no policies exist. Try to delete a policy.
+AT_CHECK([ovn-nbctl lr-policy-del lr0 10], [1], [],
+[ovn-nbctl: No matching logical router policies found (match: None, priority 10, chain None)
+])
+check ovn-nbctl --if-exists lr-policy-del lr0 10
+
+# Now add some policies.
+check ovn-nbctl lr-policy-add lr0 100 "1" allow
+check ovn-nbctl lr-policy-add lr0 200 "ip4" drop
+
+# Try again now that there are actually policies.
+AT_CHECK([ovn-nbctl lr-policy-del lr0 10], [1], [],
+[ovn-nbctl: No matching logical router policies found (match: None, priority 10, chain None)
+])
+check ovn-nbctl --if-exists lr-policy-del lr0 10
+
+# And let's ensure legitimate deletions work.
+check ovn-nbctl lr-policy-del lr0 100
+check ovn-nbctl lr-policy-del lr0 200
+])

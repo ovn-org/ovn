@@ -4922,6 +4922,7 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
 
     int64_t priority = 0;
     struct uuid uuid_from_cmd;
+    bool if_exists = shash_find(&ctx->options, "--if-exists");
 
     /* An uuid is specified, delete the policy with uuid only */
     if (ctx->argc == 3 && uuid_from_string(&uuid_from_cmd, ctx->argv[2])) {
@@ -4934,7 +4935,7 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
             }
         }
 
-        if (!shash_find(&ctx->options, "--if-exists")) {
+        if (!if_exists) {
             ctl_error(ctx, "Logical router policy uuid is not found.");
         }
 
@@ -4951,6 +4952,7 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
 
     char *match = (ctx->argc == 4) ? ctx->argv[3] : NULL;
 
+    bool removed = false;
     for (int i = 0; i < lr->n_policies; i++) {
         struct nbrec_logical_router_policy *policy = lr->policies[i];
 
@@ -4960,7 +4962,14 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
             && (!strcmp(chain, string_ptr(policy->chain)))
             && (!match || !strcmp(match, policy->match))) {
             nbrec_logical_router_update_policies_delvalue(lr, policy);
+            removed = true;
         }
+    }
+
+    if (!removed && !if_exists) {
+        ctl_error(ctx, "No matching logical router policies found "
+                  "(match: %s, priority %"PRId64", chain %s)",
+                  match ? match : "None", priority, *chain ? chain : "None");
     }
 }
 

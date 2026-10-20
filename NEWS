@@ -1,5 +1,9 @@
 Post v26.09.0
 --------------
+   - ovn-nbctl lr-policy-del will now return non-zero and emit an error
+     message if a priority, match, or chain is provided as the input, but
+     no router policies are actually deleted. This message is suppressed
+     and ovn-nbctl will return 0 if "--if-exists" is supplied.
    - Router policies that used the deprecated "nexthop" column used to
      always be skipped and not applied. Now these router policies are
      only skipped if their action is "reroute". Router policies of type
