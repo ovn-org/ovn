@@ -221,6 +221,15 @@ from Graphviz:
 As an example, here is each binary's graph rendered up to one representative
 node:
 
+.. note::
+
+   The images below are a snapshot taken when this documentation was
+   written, meant to illustrate what the generated output looks like. The
+   incremental-processing engine gains and loses nodes and handlers over
+   time, so a graph generated from a current build may no longer match
+   what is shown here exactly. Run the commands above against your own
+   build to get an up-to-date graph.
+
 `ovn-northd`, up to the `datapath_sync` node:
 
 .. code-block:: bash
