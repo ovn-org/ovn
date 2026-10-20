@@ -270,6 +270,26 @@ vtep_lswitch_run(struct shash *vtep_pbs, struct sset *vtep_pswitches,
     sset_destroy(&used_ls);
 }
 
+static void
+vtep_cache_mmr_ext(struct mmr_hash_node_data **mmr_ext,
+                   const struct vteprec_logical_switch *vtep_ls,
+                   int64_t tnl_key, struct shash *mcast_macs_rmts)
+{
+    if (*mmr_ext) {
+        return;
+    }
+
+    char *mac_tnlkey = xasprintf("%s_%"PRId64, "unknown-dst", tnl_key);
+    *mmr_ext = shash_find_data(mcast_macs_rmts, mac_tnlkey);
+
+    if (*mmr_ext && (*mmr_ext)->mmr->logical_switch == vtep_ls) {
+        /* Delete the entry from the hash table so the mmr does not get
+         * removed from the DB later on during stale checking. */
+        shash_find_and_delete(mcast_macs_rmts, mac_tnlkey);
+    }
+    free(mac_tnlkey);
+}
+
 /* Updates the vtep 'Ucast_Macs_Remote' and 'Mcast_Macs_Remote' tables based
  * on non-vtep port bindings. */
 static void
@@ -405,19 +425,8 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
             shash_add(&ls_node->physical_locators, chassis_ip, pl);
         }
 
-        if (!ls_node->mmr_ext) {
-            char *mac_tnlkey = xasprintf("%s_%"PRId64, "unknown-dst", tnl_key);
-            ls_node->mmr_ext = shash_find_data(mcast_macs_rmts, mac_tnlkey);
-
-            if (ls_node->mmr_ext &&
-                ls_node->mmr_ext->mmr->logical_switch == ls_node->vtep_ls) {
-
-                /* Delete the entry from the hash table so the mmr does not get
-                * removed from the DB later on during stale checking. */
-                shash_find_and_delete(mcast_macs_rmts, mac_tnlkey);
-            }
-            free(mac_tnlkey);
-        }
+        vtep_cache_mmr_ext(&ls_node->mmr_ext, ls_node->vtep_ls, tnl_key,
+                           mcast_macs_rmts);
 
         for (i = 0; i < port_binding_rec->n_mac; i++) {
             const struct vteprec_ucast_macs_remote *umr;
@@ -520,6 +529,9 @@ vtep_macs_run(struct ovsdb_idl_txn *vtep_idl_txn, struct shash *ucast_macs_rmts,
                                &ploc_entry->locators_node);
             shash_add(&ls_node->physical_locators, chassis_ip, pl);
         }
+
+        vtep_cache_mmr_ext(&ls_node->mmr_ext, ls_node->vtep_ls, tnl_key,
+                           mcast_macs_rmts);
 
         char *fdb_dp_port_key =
             xasprintf("%"PRId64"_%"PRId64,
