@@ -204,6 +204,34 @@ m4_define([CHECK_UNEXPECTED_DB_CHANGES],[
     fi
 ])
 
+# CHECK_NO_REPEATED_DB_ENTRIES()
+# Checks every db used by the test for a transaction that recurs more than
+# 500 times, once uuids and "_date" are normalized away over the db's
+# whole recorded history.
+#
+# A test that purposely adds/removes the same entry many times can raise the
+# threshold, or skip this check entirely, by setting
+# CHECK_NO_REPEATED_DB_ENTRIES_THRESHOLD.
+m4_define([CHECK_NO_REPEATED_DB_ENTRIES], [
+    dup_threshold=${CHECK_NO_REPEATED_DB_ENTRIES_THRESHOLD-500}
+    if test -n "$dup_threshold"; then
+        db_list=$(find "$ovs_base" -name "*.db" | sort)
+        for db in $db_list; do
+            # normalize away uuids and "_date" so that transactions with the
+            # same logical content compare equal, count how many times each one
+            # occurs, and keep only if occurring > $dup_threshold.
+            dup=$(sed 's/[[0-9a-f]]\{8\}-[[0-9a-f]]\{4\}-[[0-9a-f]]\{4\}-[[0-9a-f]]\{4\}-[[0-9a-f]]\{12\}/UUID/g
+                       s/"_date":[[0-9]]*/"_date":0/' "$db" | \
+                  sort | uniq -c | sort -rn | awk -v thresh="$dup_threshold" '@S|@1 > thresh')
+            dup_max=$(printf '%s\n' "$dup" | head -n 1 | tr -s ' ' | cut -d' ' -f2)
+            if test -n "$dup_max" && test "$dup_max" -gt "$dup_threshold"; then
+                printf 'Repeated db transactions in %s:\n%s\n' "$db" "$dup"
+                AT_CHECK([test "$dup_max" -le "$dup_threshold"])
+            fi
+        done
+    fi
+])
+
 # OVN_CLEANUP_DBS
 #
 # Gracefully terminate NB, SB OVN daemons.
@@ -219,6 +247,7 @@ m4_define([OVN_CLEANUP_DBS],[
 #
 # Gracefully terminate all central OVN daemons: NB, SB and ovn-northd.
 m4_define([OVN_CLEANUP_NORTHD],[
+    CHECK_NO_REPEATED_DB_ENTRIES
     CHECK_UNEXPECTED_DB_CHANGES
     OVN_CLEANUP_DBS
 
@@ -479,6 +508,7 @@ m4_define([OVN_CLEANUP_SBOX],[
 # Gracefully terminate all OVN daemons, including those in the
 # specified sandbox instances.
 m4_define([OVN_CLEANUP],[
+    CHECK_NO_REPEATED_DB_ENTRIES
     CHECK_UNEXPECTED_DB_CHANGES
     m4_foreach([sbox_and_error], [$@], [
         sbox=$(echo "sbox_and_error" |sed -n '1p')
@@ -543,6 +573,7 @@ m4_define([OVN_CLEANUP_AZ],[
 # Gracefully terminate all interconnection DBs, and daemons in the
 # specified AZs, if any.
 m4_define([OVN_CLEANUP_IC],[
+    CHECK_NO_REPEATED_DB_ENTRIES
     CHECK_UNEXPECTED_DB_CHANGES
     m4_foreach([az], [$@], [
         OVN_CLEANUP_AZ([az])

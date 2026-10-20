@@ -72,6 +72,7 @@ m4_define([OVN_CONTROLLER_VTEP_STOP],[
    test -n "$2" && as "$2"
    #AT_CHECK([check_logs "$1"])
    OVS_APP_EXIT_AND_WAIT([ovs-vtep])
+   CHECK_NO_REPEATED_DB_ENTRIES
    CHECK_UNEXPECTED_DB_CHANGES
    OVS_APP_EXIT_AND_WAIT([ovn-controller-vtep])
    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
