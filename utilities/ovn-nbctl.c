@@ -5079,15 +5079,16 @@ nbctl_lr_policy_list(struct ctl_context *ctx)
        Note that at this point policies are sorted out by chain names too.
     */
     char *chain_current;
+    char *chain_prev = NULL;
     int  print_chain_head = (n_policies
                              && policies[n_policies - 1].chain[0]);
 
     for (int i = 0; i < n_policies; i++) {
+        chain_current = policies[i].chain;
         /* Print chain heading */
         if (print_chain_head
-            && (i == 0
-                || strcmp(chain_current, policies[i].chain))) {
-            chain_current = policies[i].chain;
+            && (!chain_prev || strcmp(chain_prev, chain_current))) {
+            chain_prev = policies[i].chain;
             if (*chain_current) {
                 ds_put_format(&ctx->output, "\nChain %s:\n", chain_current);
             } else {
