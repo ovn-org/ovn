@@ -41,14 +41,26 @@ time:
 
    ovn-logical-flows.7
 
-The remainder are still in roff format can be found below:
+The remainder are still in roff format and can be found below:
 
 .. list-table::
 
+   * - ovn-appctl(8)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-appctl.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-appctl.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-appctl.8.txt>`__
    * - ovn-architecture(7)
      - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-architecture.7.pdf>`__
      - `(html) <http://www.ovn.org/support/dist-docs/ovn-architecture.7.html>`__
      - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-architecture.7.txt>`__
+   * - ovn-br(5)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-br.5.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-br.5.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-br.5.txt>`__
+   * - ovn-br-controller(8)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-br-controller.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-br-controller.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-br-controller.8.txt>`__
    * - ovn-controller(8)
      - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-controller.8.pdf>`__
      - `(html) <http://www.ovn.org/support/dist-docs/ovn-controller.8.html>`__
@@ -61,6 +73,34 @@ The remainder are still in roff format can be found below:
      - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ctl.8.pdf>`__
      - `(html) <http://www.ovn.org/support/dist-docs/ovn-ctl.8.html>`__
      - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ctl.8.txt>`__
+   * - ovn-debug(8)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-debug.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-debug.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-debug.8.txt>`__
+   * - ovn-detrace(1)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-detrace.1.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-detrace.1.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-detrace.1.txt>`__
+   * - ovn-ic(8)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ic.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-ic.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ic.8.txt>`__
+   * - ovn-ic-nb(5)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ic-nb.5.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-ic-nb.5.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ic-nb.5.txt>`__
+   * - ovn-ic-nbctl(8)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ic-nbctl.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-ic-nbctl.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ic-nbctl.8.txt>`__
+   * - ovn-ic-sb(5)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ic-sb.5.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-ic-sb.5.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ic-sb.5.txt>`__
+   * - ovn-ic-sbctl(8)
+     - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-ic-sbctl.8.pdf>`__
+     - `(html) <http://www.ovn.org/support/dist-docs/ovn-ic-sbctl.8.html>`__
+     - `(plain text) <http://www.ovn.org/support/dist-docs/ovn-ic-sbctl.8.txt>`__
    * - ovn-nb(5)
      - `(pdf) <http://www.ovn.org/support/dist-docs/ovn-nb.5.pdf>`__
      - `(html) <http://www.ovn.org/support/dist-docs/ovn-nb.5.html>`__
