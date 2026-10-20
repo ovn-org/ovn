@@ -189,14 +189,18 @@ m4_define([CHECK_UNEXPECTED_DB_CHANGES],[
     # Second pass: if there is any db change, rerun check and ignore small number of changes.
     if [[ "$diff" -ne 0 ]]; then
         sleep 1
-        while read before_count db; do
-            after_count=$(wc -l < "$db")
-            diff=$((after_count - before_count))
-            if [[ "$diff" -ge "50" ]]; then
-                printf 'Got %d changes in %s\n' "$diff" "$db"
-                AT_CHECK([test "$diff" -lt "50"])
+        db_list=$(cut -d' ' -f2- db.txt)
+        for db in $db_list; do
+            before_count=$(grep " $db\$" db.txt | cut -d' ' -f1)
+            if test -n "$before_count"; then
+                after_count=$(wc -l < "$db")
+                diff=$((after_count - before_count))
+                if [[ "$diff" -ge "50" ]]; then
+                    printf 'Got %d changes in %s\n' "$diff" "$db"
+                    AT_CHECK([test "$diff" -lt "50"])
+                fi
             fi
-        done < db.txt
+        done
     fi
 ])
 
