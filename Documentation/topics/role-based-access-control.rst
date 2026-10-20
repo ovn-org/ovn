@@ -52,12 +52,14 @@ table
 insert_delete
   Describes whether insertion and deletion of records is allowed.
 update
-  A list of columns that are allowed to be updated.
+  A list of columns that authorized clients are allowed to modify. If a
+  listed column is a map, the client may freely add, remove, or change any
+  key in it; there is no way to allow only some keys.
 authorization
-  A list of column names. One of the listed columns must match the SSL/TLS
-  certificate CN in order for the attempted operation on the table to
-  succeed. If a key-value pair is provided, then the key is the column name,
-  and the value is the name of a key in that column. An empty string gives
+  A list of column names, or entries of the form ``column:key`` for a
+  specific key of a map-typed column. One of the listed columns (or
+  column:key pairs) must match the SSL/TLS certificate CN in order for the
+  attempted operation on the table to succeed. An empty string gives
   permission to all clients to perform operations.
 
 The RBAC_Role table contains the following columns:
@@ -82,12 +84,23 @@ command:
 
    $ ovn-sbctl set-connection role=ovn-controller ssl:192.168.0.1:6642
 
+For a complete walk-through, including certificate setup, see
+:doc:`/tutorials/ovn-rbac`.
+
+.. note::
+
+   When using OVSDB Relay servers in front of the OVN southbound database,
+   RBAC must not be configured on the remote that the Relay servers connect
+   to; it should instead be configured on the listener that the Relay
+   servers expose to ovn-controller.  See :doc:`/tutorials/ovn-ovsdb-relay`
+   for details.
+
 .. note::
 
    There is currently no pre-defined role for ovn-northd. You must configure
    a separate listener on the OVN southbound database that ovn-northd can
-   connect to if your deployment topology require ovn-northd to connect to a
-   OVN southbound database instance on a remote machine.
+   connect to if your deployment topology requires ovn-northd to connect to
+   an OVN southbound database instance on a remote machine.
 
 Pre-defined Roles
 -----------------
