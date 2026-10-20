@@ -89,7 +89,7 @@ dies, communication with the WAN ceases for all systems in logical space.
 
 To mitigate this risk, multiple gateways should be run in a "High Availability
 Cluster" or "HA Cluster".  The HA cluster will be responsible for performing
-the duties of a gateways,  while being able to recover gracefully from
+the duties of a gateway, while being able to recover gracefully from
 individual member failures.
 
 ::
@@ -127,7 +127,7 @@ L2 vs L3 High Availability
 In order to achieve this goal, there are two broad approaches one can take.
 The HA cluster can appear to the network like a giant Layer 2 Ethernet Switch,
 or like a giant IP Router. These approaches are called L2HA, and L3HA
-respectively.  L2HA allows ethernet broadcast domains to extend into logical
+respectively.  L2HA allows Ethernet broadcast domains to extend into logical
 space, a significant advantage, but this comes at a cost.  The need to avoid
 transient L2 loops during failover significantly complicates their design.  On
 the other hand, L3HA works for most use cases, is simpler, and fails more
@@ -174,7 +174,7 @@ dies, it recreates the routers on one of the backups.
 
 This approach basically works in most cases and should likely be the starting
 point for OVN -- it's strictly better than no HA solution and is a good
-foundation for more sophisticated solutions.  That said, it's not without it's
+foundation for more sophisticated solutions.  That said, it's not without its
 limitations. Specifically, this approach doesn't coordinate with the physical
 network to minimize disruption during failures, and it tightly couples failover
 to ovn-northd (we'll discuss why this is bad in a bit), and wastes resources by
@@ -189,9 +189,12 @@ the new gateway.  Otherwise, traffic could be blackholed for longer than
 necessary making failovers worse than they need to be.
 
 For now, let's assume that OVN requires all gateways to be on the same IP
-subnet on the physical network.  If this isn't the case, gateways would need to
-participate in routing protocols to orchestrate failovers, something which is
-difficult and out of scope of this document.
+subnet on the physical network; orchestrating failovers across gateways on
+different subnets via routing protocols is out of scope of this document.
+(OVN's dynamic routing integration, see
+:doc:`/topics/dynamic-routing/architecture`, now provides such a
+routing-protocol-based alternative, letting each gateway chassis run its own
+BGP session independently of the others.)
 
 Since all gateways are on the same IP subnet, we simply need to worry about
 updating the MAC learning tables of the Ethernet switches on that subnet.
@@ -289,7 +292,7 @@ In order to avoid confusing the physical network, under these circumstances
 it's important for the backup gateways to drop traffic they've received
 erroneously.  In order to do this, each Gateway must know whether or not it is,
 in fact active.  This can be achieved by creating a mesh of tunnels between
-gateways.  Each gateway monitors the other gateways its cluster to determine
+gateways.  Each gateway monitors the other gateways in its cluster to determine
 which are alive, and therefore whether or not that gateway happens to be the
 leader.  If leading, the gateway forwards traffic normally, otherwise it drops
 all traffic.
@@ -315,9 +318,14 @@ HA cluster.  This could happen for several reasons including:
 * The Gateway recently booted and isn't fully configured
 
 In this case, the Gateway should resign leadership by holding its tunnels down
-using the ``other_config:cpath_down`` flag.  This indicates to participating
-hypervisors and Gateways that this gateway should be treated as if it's down,
-even though its tunnels are still healthy.
+using the ``bfd:cpath_down`` key on the tunnel interface.  This indicates to
+participating hypervisors and Gateways that this gateway should be treated as
+if it's down, even though its tunnels are still healthy.
+
+.. note::
+    This resignation mechanism is a design proposal: ``ovn-controller``
+    does not currently set ``bfd:cpath_down`` on tunnel interfaces for any
+    of the reasons listed above.
 
 Router Specific Active-Backup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -371,9 +379,9 @@ ovn-controller recompute OpenFlow for the gateway, though other options exist.
 The final complication is that ovn-northd's logic must be updated to choose
 these per logical router leadership priorities in a more sophisticated manner.
 It doesn't matter much exactly what algorithm it chooses to do this, beyond
-that it should provide good balancing in the common case.  I.E. each logical
-routers priorities should be different enough that routers balance to different
-gateways even when failures occur.
+that it should provide good balancing in the common case.  I.e., each logical
+router's priorities should be different enough that routers balance to
+different gateways even when failures occur.
 
 Preemption
 ++++++++++
@@ -420,10 +428,13 @@ Fully Active-Active HA
 
 The final step in L3HA is to have true active-active HA.  In this scenario each
 router has an instance on each Gateway, and a mechanism similar to ECMP is used
-to distribute traffic evenly among all instances.  This mechanism would require
+to distribute traffic evenly among all instances.  This mechanism requires
 Gateways to participate in routing protocols with the physical network to
 attract traffic and alert of failures.  It is out of scope of this document,
-but may eventually be necessary.
+but is addressed separately by OVN's dynamic routing integration, which lets
+each gateway chassis peer with the physical fabric (e.g. via BGP) and
+advertise routes for the logical routers it hosts; see
+:doc:`/topics/dynamic-routing/architecture` for details.
 
 L2HA
 ----
