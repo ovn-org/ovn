@@ -44,6 +44,16 @@
         its value is used as the default.  Otherwise, the default is
         <code>unix:@RUNDIR@/ovn_ic_sb_db.sock</code>.
       </dd>
+      <dt><code>--dump-inc-proc-graph</code>
+        [<code>=<var>node</var></code>]</dt>
+      <dd>
+        <p>
+          Dump the incremental processing engine graph representation in
+          DOT format to stdout at startup and then exit.  If
+          <var>node</var> is specified, only the subgraph rooted at that
+          engine node is printed.
+        </p>
+      </dd>
     </dl>
     <p>
       <var>database</var> in the above options must be an OVSDB active or
@@ -103,6 +113,78 @@
         Prints this server's status.  Status will be "active" if ovn-ic has
         acquired OVSDB lock on SB DB, "standby" if it has not or "paused" if
         this instance is paused.
+      </dd>
+
+      <dt><code>inc-engine/show-stats</code></dt>
+      <dd>
+        Display <code>ovn-ic</code> engine counters. For each engine
+        node the following counters have been added:
+        <ul>
+          <li>
+            <code>recompute</code>
+          </li>
+          <li>
+            <code>compute</code>
+          </li>
+          <li>
+            <code>cancel</code>
+          </li>
+        </ul>
+      </dd>
+
+      <dt><code>inc-engine/show-stats</code>
+        <var>engine_node_name</var> [<var>counter_name</var>]</dt>
+      <dd>
+      <p>
+        Display the <code>ovn-ic</code> engine counter(s) for the
+        specified <var>engine_node_name</var>.  <var>counter_name</var> is
+        optional and can be one of <code>recompute</code>,
+        <code>compute</code> or <code>cancel</code>.
+      </p>
+      </dd>
+
+      <dt><code>inc-engine/clear-stats</code></dt>
+      <dd>
+        Reset <code>ovn-ic</code> engine counters.
+      </dd>
+
+      <dt><code>inc-engine/recompute</code></dt>
+      <dd>
+        Triggers a full recompute of the incremental processing engine
+        on the next iteration.
+      </dd>
+
+      <dt><code>inc-engine/compute-log-timeout</code> <var>msecs</var></dt>
+      <dd>
+        Sets the timeout in milliseconds for logging engine compute
+        events.
+      </dd>
+
+      <dt><code>inc-engine/list-stopwatches</code> [<var>node</var>]</dt>
+      <dd>
+        Lists the engine nodes and their change handler names.  If
+        <var>node</var> is specified, only the handlers for that engine
+        node are listed.
+      </dd>
+
+      <dt><code>inc-engine/enable-stopwatch</code> [<var>node</var>]</dt>
+      <dd>
+        Enables the per-node and per-handler stopwatches in the
+        incremental processing engine.  If <var>node</var> is specified,
+        only that node's stopwatches are enabled; otherwise all nodes
+        are affected.  While enabled, every engine node recompute and
+        change handler invocation is timed and the results can be
+        viewed with the <code>stopwatch/show</code> command.
+        Stopwatches are disabled by default because they add measurable
+        CPU overhead.
+      </dd>
+
+      <dt><code>inc-engine/disable-stopwatch</code> [<var>node</var>]</dt>
+      <dd>
+        Disables the per-node and per-handler stopwatches in the
+        incremental processing engine.  If <var>node</var> is specified,
+        only that node's stopwatches are disabled; otherwise all nodes
+        are affected.  This is the default state.
       </dd>
       </dl>
 

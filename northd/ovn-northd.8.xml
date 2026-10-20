@@ -229,7 +229,7 @@
         Display the <code>ovn-northd</code> engine counter(s) for the specified
         <var>engine_node_name</var>.  <var>counter_name</var> is optional and
         can be one of <code>recompute</code>, <code>compute</code> or
-        <code>abort</code>.
+        <code>cancel</code>.
       </p>
       </dd>
 

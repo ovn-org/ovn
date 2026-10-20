@@ -57,8 +57,11 @@ The engine facilitates:
 Engine Node State
 ~~~~~~~~~~~~~~~~~
 
-The state of an engine node (`enum engine_node_state`) describes the validity
-of its data after an engine run:
+The whole graph is processed by a single top-level `engine_run(bool
+recompute_allowed)` call, typically made once per main loop iteration; this
+is distinct from the per-node `run` method described above. The state of an
+engine node (`enum engine_node_state`) describes the validity of its data
+after such an `engine_run()` call:
 
 - `EN_STALE`: The data in the node is not up to date with the DB or its inputs.
   This is the initial state before the engine runs.
@@ -69,6 +72,51 @@ of its data after an engine run:
   changed inputs.
 - `EN_CANCELED`: Processing for this node was canceled during the last run.
   This usually triggers a full recomputation in the next iteration.
+
+Engine Invocation per Binary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `recompute_allowed` argument to that call is what determines whether
+cancellation can happen: a node is canceled when it is marked as writing to
+the Southbound DB (`sb_write`) and needs a full recompute while the caller
+passed `recompute_allowed = false`. Cancellation stops that engine run
+immediately; the whole graph is retried once `recompute_allowed` is `true`
+again on some later iteration, which need not be the very next one.
+
+`ovn-northd` calls `engine_run()` only once it holds the Southbound DB lock
+and has valid Northbound and Southbound transactions in hand. `ovn-ic`
+similarly checks that all four of its NB/SB/IC-NB/IC-SB transactions are
+non-NULL. Otherwise, they skip running the engine for that iteration
+entirely. Because of this, they always pass `recompute_allowed = true` and
+their nodes are never canceled.
+
+`ovn-br-controller`'s nodes are never canceled either: it connects to two
+databases -- the local `Open_vSwitch` database and the separate OVN Bridge
+database -- but only reads from them. Unlike `ovn-northd` and `ovn-ic`
+though, this isn't an enforced guarantee: its precondition for calling
+`engine_run()` doesn't actually check for a valid transaction, it simply
+happens that no node needs one today.
+
+`ovn-controller` takes a different approach: it calls `engine_run()` on
+every main loop iteration regardless of whether a full recompute is
+currently possible, so that purely incremental changes can still be
+processed even when a full recompute isn't. It passes
+`recompute_allowed = true` only when it has a Southbound DB transaction
+and no backlog of unsent OpenFlow messages; otherwise it passes
+`recompute_allowed = false`, for two reasons:
+
+- It has no Southbound DB transaction yet this iteration. If, during that
+  run, a node marked `sb_write` has an input that changed and needs a full
+  recompute (no change handler for it, or its change handler returned
+  `EN_UNHANDLED` -- see "Run Function" above), the engine cancels that node
+  instead of calling its `run` method. A recompute would have been unsafe
+  anyway: a write attempted with no transaction can't be caught by the
+  engine's write-protection check.
+- `ovs-vswitchd` isn't necessarily unresponsive, but `ovn-controller` still
+  has OpenFlow messages from a previous round that it hasn't managed to hand
+  off to the socket connecting to it yet. Rather than wait for any
+  acknowledgment, it simply defers adding more work on top of what's already
+  queued. This is a deliberate optimization, not a hard requirement.
 
 Input Handler Result
 ~~~~~~~~~~~~~~~~~~~~
@@ -97,8 +145,13 @@ DOT format.
 Dumping the Graph
 ~~~~~~~~~~~~~~~~~
 
-Both `ovn-northd`, `ovn-controller` and `ovn-ic` support the
+`ovn-northd`, `ovn-controller` and `ovn-ic` all support the
 `--dump-inc-proc-graph` command-line option.
+
+.. note::
+    `ovn-br-controller` also builds its desired state (bridge flows) using
+    the incremental processing engine, but it does not currently implement
+    `--dump-inc-proc-graph`.
 
 Full Graph Dump
 +++++++++++++++
@@ -165,8 +218,10 @@ from Graphviz:
    ovn-ic --dump-inc-proc-graph | dot -Tpng -o engine_graph.png
 
 
-Visual representation of the ovn-northd incremental processing engine
-dependencies up to the `datapath_sync` node:
+As an example, here is each binary's graph rendered up to one representative
+node:
+
+`ovn-northd`, up to the `datapath_sync` node:
 
 .. code-block:: bash
 
@@ -177,9 +232,7 @@ dependencies up to the `datapath_sync` node:
    :width: 80%
    :align: center
 
-
-Visual representation of the ovn-controller incremental processing engine
-dependencies up to the `evpn_arp` node:
+`ovn-controller`, up to the `evpn_arp` node:
 
 .. code-block:: bash
 
@@ -190,9 +243,7 @@ dependencies up to the `evpn_arp` node:
    :width: 80%
    :align: center
 
-
-Visual representation of the ovn-ic incremental processing engine
-dependencies up to the `ic` node:
+`ovn-ic`, up to the `ic` node:
 
 .. code-block:: bash
 
@@ -200,8 +251,35 @@ dependencies up to the `ic` node:
 
 .. figure:: ic-graph.png
    :alt: OVN Incremental Processing Graph (ic node)
-   :width: 80%
+   :width: 25%
    :align: center
+
+Runtime Introspection
+---------------------
+
+`ovn-northd`, `ovn-controller`, `ovn-ic` and `ovn-br-controller` all register
+the same set of `ovn-appctl`/`ovs-appctl` commands for inspecting and
+controlling the engine at runtime:
+
+- `inc-engine/show-stats [node] [counter]`: Display the per-node
+  `recompute`, `compute` and `cancel` counters. If `node` is given, only
+  that node's counters are shown; `counter` further restricts the output to
+  one of `recompute`, `compute` or `cancel`.
+- `inc-engine/clear-stats`: Reset all engine counters to zero.
+- `inc-engine/recompute`: Force a full recompute of the engine on the next
+  iteration, bypassing incremental change handlers.
+- `inc-engine/compute-log-timeout <msecs>`: Set the threshold, in
+  milliseconds, above which a node's compute/recompute time is logged as
+  slow (default 500ms).
+- `inc-engine/list-stopwatches [node]`: List engine nodes and, for each,
+  the change handlers that can be timed. If `node` is given, only that
+  node's handlers are listed.
+- `inc-engine/enable-stopwatch [node]`: Start timing recompute and change
+  handler invocations for `node`, or for every node if omitted. Results are
+  viewed with the `stopwatch/show` command. Stopwatches are disabled by
+  default, as they add measurable CPU overhead.
+- `inc-engine/disable-stopwatch [node]`: Stop timing for `node`, or for
+  every node if omitted. This is the default state.
 
 Implementation Details
 ----------------------
@@ -213,9 +291,18 @@ Key Structures
 ~~~~~~~~~~~~~~
 
 - `struct engine_node`: The base structure for a node. Contains inputs, data,
-  state, and callback functions (`run`, `init`, `cleanup`).
+  state, callback functions (`run`, `init`, `cleanup`, `is_valid`,
+  `clear_tracked_data`, `get_compute_failure_info`), the per-node `stats`
+  counters exposed by `inc-engine/show-stats`, and the `stopwatch_enabled`
+  flag toggled by `inc-engine/enable-stopwatch` and
+  `inc-engine/disable-stopwatch`.
 - `struct engine_node_input`: Describes a dependency on another node and the
   associated change handler.
+- `struct engine_context`: Carries the OVSDB transaction handles for the
+  current iteration, plus an opaque `client_ctx` pointer that each binary
+  uses to pass its own private state (e.g. `ovn-controller`'s
+  `controller_engine_ctx`) through to `run()` methods and change handlers.
+  Accessed with `engine_get_context()`.
 
 Usage Guidelines
 ----------------

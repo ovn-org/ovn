@@ -1157,8 +1157,8 @@
       <dt><code>inc-engine/list-stopwatches</code> [<var>node</var>]</dt>
       <dd>
         Lists the engine nodes and their change handler names.  If
-        <var>node</var> is specified, only the handlers for that engine node
-        are listed.
+        <var>node</var> is specified, only the handlers for that engine
+        node are listed.
       </dd>
 
       <dt><code>inc-engine/enable-stopwatch</code> [<var>node</var>]</dt>
