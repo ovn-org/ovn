@@ -53,11 +53,23 @@ Running the sandbox does the following steps to the environment:
 
 3. Creates the ``hardware_vtep`` database as described in `vtep(5)`_.
 
-4. Runs the `ovn-northd(8)`_, `ovn-controller(8)`_, and
+4. Creates the OVN interconnection ``OVN_IC_Northbound`` and
+   ``OVN_IC_Southbound`` databases as described in `ovn-ic-nb(5)`_ and
+   `ovn-ic-sb(5)`_.
+
+5. Runs the `ovn-northd(8)`_, `ovn-ic(8)`_, `ovn-controller(8)`_, and
    `ovn-controller-vtep(8)`_ daemons.
 
-5. Makes OVN and VTEP utilities available for use in the environment, including
-   `vtep-ctl(8)`_, `ovn-nbctl(8)`_, and `ovn-sbctl(8)`_.
+6. Makes OVN and VTEP utilities available for use in the environment, including
+   `vtep-ctl(8)`_, `ovn-nbctl(8)`_, `ovn-sbctl(8)`_, `ovn-ic-nbctl(8)`_, and
+   `ovn-ic-sbctl(8)`_.
+
+.. note::
+
+   If your OVS build has SSL/TLS support, the sandbox also sets up SSL/TLS
+   between the daemons and the databases, and enables RBAC (see
+   :doc:`/topics/role-based-access-control`) on the southbound database
+   connection used by ``ovn-controller``.
 
 Using GDB
 ---------
@@ -67,6 +79,7 @@ section of `ovs-advanced`_ in the Open vSwitch documentation for more info.
 Additional flags exist for launching the debugger for the OVN programs::
 
     --gdb-ovn-northd
+    --gdb-ovn-ic
     --gdb-ovn-controller
     --gdb-ovn-controller-vtep
 
@@ -167,12 +180,17 @@ man page for more detail.
 .. _ovn-nb(5): http://www.ovn.org/support/dist-docs/ovn-nb.5.html
 .. _ovn-sb(5): http://www.ovn.org/support/dist-docs/ovn-sb.5.html
 .. _vtep(5): http://openvswitch.org/support/dist-docs/vtep.5.html
+.. _ovn-ic-nb(5): http://www.ovn.org/support/dist-docs/ovn-ic-nb.5.html
+.. _ovn-ic-sb(5): http://www.ovn.org/support/dist-docs/ovn-ic-sb.5.html
 .. _ovn-northd(8): http://www.ovn.org/support/dist-docs/ovn-northd.8.html
+.. _ovn-ic(8): http://www.ovn.org/support/dist-docs/ovn-ic.8.html
 .. _ovn-controller(8): http://www.ovn.org/support/dist-docs/ovn-controller.8.html
 .. _ovn-controller-vtep(8): http://www.ovn.org/support/dist-docs/ovn-controller-vtep.8.html
 .. _vtep-ctl(8): http://openvswitch.org/support/dist-docs/vtep-ctl.8.html
 .. _ovn-nbctl(8): http://www.ovn.org/support/dist-docs/ovn-nbctl.8.html
 .. _ovn-sbctl(8): http://www.ovn.org/support/dist-docs/ovn-sbctl.8.html
+.. _ovn-ic-nbctl(8): http://www.ovn.org/support/dist-docs/ovn-ic-nbctl.8.html
+.. _ovn-ic-sbctl(8): http://www.ovn.org/support/dist-docs/ovn-ic-sbctl.8.html
 .. _ovn-trace(8): http://www.ovn.org/support/dist-docs/ovn-trace.8.html
 .. _ovs-advanced: https://github.com/openvswitch/ovs/blob/main/Documentation/tutorials/ovs-advanced.rst
 
