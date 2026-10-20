@@ -1,5 +1,7 @@
 Post v26.09.0
 --------------
+   - ovn-nbctl lr-policy-del, when not passed a --chain value, can now delete
+     matching policies with any chain value.
    - ovn-nbctl lr-policy-del will now return non-zero and emit an error
      message if a priority, match, or chain is provided as the input, but
      no router policies are actually deleted. This message is suppressed

@@ -2555,52 +2555,35 @@ Chain <Default>:
        101                               ip6.src == 2002::/64            drop
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
 
-Chain inbound:
-       100                              ip4.src == 1.1.1.0/24            drop
-
 Chain outbound:
        100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
-AT_CHECK([ovn-nbctl --chain inbound lr-policy-del lr0 100 "ip4.src == 1.1.1.0/24"])
+AT_CHECK([ovn-nbctl --chain outbound lr-policy-del lr0 100 "ip4.src == 2.1.1.0/24"])
 
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
 Routing Policies
-Chain <Default>:
        101                              ip4.src == 2.1.1.0/24           allow
        101                              ip4.src == 2.1.2.0/24            drop
        101                              ip4.src == 3.1.1.0/24         reroute              192.168.0.10 lrp0
        101                               ip6.src == 2002::/64            drop
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
-
-Chain outbound:
-       100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
 dnl Delete all policies for given priority
 AT_CHECK([ovn-nbctl lr-policy-del lr0 101])
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
 Routing Policies
-Chain <Default>:
        100                              ip4.src == 1.1.2.0/24           allow               pkt_mark=100,foo=bar
-
-Chain outbound:
-       100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
 dnl Delete policy by specified uuid
 uuid=$(ovn-nbctl --bare --column _uuid find logical_router_policy 'chain{<=}""')
 AT_CHECK([ovn-nbctl lr-policy-del lr0 $uuid])
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
-Routing Policies
-
-Chain outbound:
-       100                              ip4.src == 2.1.1.0/24            jump -> inbound
 ])
 
 AT_CHECK([ovn-nbctl --if-exists lr-policy-del lr0 $uuid])
-
-AT_CHECK([ovn-nbctl --chain outbound lr-policy-del lr0])
 
 AT_CHECK([ovn-nbctl lr-policy-list lr0], [0], [dnl
 ])
@@ -3800,4 +3783,17 @@ check ovn-nbctl --if-exists lr-policy-del lr0 10
 # And let's ensure legitimate deletions work.
 check ovn-nbctl lr-policy-del lr0 100
 check ovn-nbctl lr-policy-del lr0 200
+])
+
+OVN_NBCTL_TEST([route_policy_delete_no_chain], [Router policy deletion with no specified chain], [
+check ovn-nbctl lr-add lr0
+check ovn-nbctl --chain=foo lr-policy-add lr0 100 "1" allow
+
+# Let's make sure that when we try to delete all policies of
+# priority 100, it gets the policy we just added. We should not
+# need to specify a chain.
+check ovn-nbctl lr-policy-del lr0 100
+
+# Double check it was actually deleted.
+wait_row_count nb:Logical_Router_Policy 0
 ])

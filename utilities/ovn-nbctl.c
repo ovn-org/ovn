@@ -4959,7 +4959,7 @@ nbctl_lr_policy_del(struct ctl_context *ctx)
         /* Delete policies selected by chain, priority (if set),
            match (if set). Sure, at least one option is set here */
         if ((!priority || priority == policy->priority)
-            && (!strcmp(chain, string_ptr(policy->chain)))
+            && (!*chain || !strcmp(chain, string_ptr(policy->chain)))
             && (!match || !strcmp(match, policy->match))) {
             nbrec_logical_router_update_policies_delvalue(lr, policy);
             removed = true;
