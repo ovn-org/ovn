@@ -1,6 +1,7 @@
 EXTRA_DIST += \
 	build-aux/automake.mk \
     build-aux/build-common.sh \
+    build-aux/build-common-version-test.sh \
     build-aux/build-debs.sh \
 	build-aux/calculate-pipeline-cksum \
     build-aux/build-rpms.sh \
