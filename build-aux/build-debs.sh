@@ -84,6 +84,18 @@ test -f "$OVSBUILDDIR/config.status" || { echo "OVS not configured at $OVSBUILDD
 
 export OVSDIR OVSBUILDDIR EXTRA_CONFIGURE_OPTS="--with-ovs-build=$OVSBUILDDIR"
 
+# ./boot.sh above ran plain libtoolize, which drops its own fresh
+# build-aux/ltmain.sh. dpkg-buildpackage's first action is 'debian/rules
+# clean', which runs dh_autoreconf_clean (debhelper's --with autoreconf
+# addon) - that unconditionally tries to reverse dh-autoreconf's own
+# ltmain-as-needed.diff quirk-patch against whatever ltmain.sh it finds, and
+# fails because this one was never patched by dh_autoreconf in the first
+# place (different libtool version, different output). Removing it here lets
+# dh_autoreconf regenerate + patch its own copy from scratch during the
+# build phase that follows, instead of 2-out-of-2 hunks failing (and the
+# whole build dying) at the clean phase before any of that ever happens.
+rm -f build-aux/ltmain.sh
+
 # Build OVN Debs (Artifacts land in parent of $ROOT, i.e., $ROOT/../)
 DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -b -us -uc
 

@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+#include <config.h>
+
 #include "ofctrl-wait-before-clear.h"
 
 enum ofctrl_wait_before_clear_reason
