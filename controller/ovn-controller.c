@@ -96,6 +96,7 @@
 #include "route-exchange.h"
 #include "route-table.h"
 #include "garp_rarp.h"
+#include "ha-chassis.h"
 #include "host-if-monitor.h"
 #include "neighbor.h"
 #include "neighbor-exchange.h"
@@ -1373,6 +1374,10 @@ struct ed_type_runtime_data {
      */
     struct related_lports related_lports;
     struct sset active_tunnels;
+    /* HA chassis groups that contain the local chassis and the subset of
+     * them for which the local chassis is the active one. */
+    struct uuidset local_ha_groups;
+    struct uuidset active_ha_groups;
 
     /* runtime data engine private data. */
     struct hmap qos_map;
@@ -1449,6 +1454,18 @@ struct ed_type_runtime_data {
  * |                  | interfaces we need to track the changes to the   |
  * |                  | active tunnels.                                  |
  *  ---------------------------------------------------------------------
+ * | local_ha_groups  | HA chassis groups that contain the local chassis |
+ * | active_ha_groups | and the ones for which it is the active chassis. |
+ * |                  | New and deleted groups and changes to the        |
+ * |                  | reference chassis of the groups that don't       |
+ * |                  | change active_ha_groups are handled without      |
+ * |                  | changing any other runtime data.  Any other      |
+ * |                  | change to a group that contains or contained the |
+ * |                  | local chassis, or that is referenced by a port   |
+ * |                  | binding of a local datapath, triggers the full   |
+ * |                  | recompute of runtime data engine and hence the   |
+ * |                  | tracked data doesn't track them.                 |
+ *  ---------------------------------------------------------------------
  *
  */
 
@@ -1473,6 +1490,8 @@ en_runtime_data_init(struct engine_node *node OVS_UNUSED,
     simap_init(&data->local_lports);
     related_lports_init(&data->related_lports);
     sset_init(&data->active_tunnels);
+    uuidset_init(&data->local_ha_groups);
+    uuidset_init(&data->active_ha_groups);
     hmap_init(&data->qos_map);
     smap_init(&data->local_iface_ids);
     local_binding_data_init(&data->lbinding_data);
@@ -1493,6 +1512,8 @@ en_runtime_data_cleanup(void *data)
     simap_destroy(&rt_data->local_lports);
     related_lports_destroy(&rt_data->related_lports);
     sset_destroy(&rt_data->active_tunnels);
+    uuidset_destroy(&rt_data->local_ha_groups);
+    uuidset_destroy(&rt_data->active_ha_groups);
     destroy_qos_map(&rt_data->qos_map);
     smap_destroy(&rt_data->local_iface_ids);
     local_datapaths_destroy(&rt_data->local_datapaths);
@@ -1597,6 +1618,37 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->localnet_learn_fdb_changed = false;
 }
 
+/* Calculates the set of 'active_tunnels', the set of HA chassis groups
+ * that contain the local chassis ('local_ha_groups') and the subset of
+ * them for which the local chassis is the active one ('active_ha_groups').
+ */
+static void
+runtime_data_calculate_active_ha(struct engine_node *node,
+                                 const struct binding_ctx_in *b_ctx_in,
+                                 struct sset *active_tunnels,
+                                 struct uuidset *local_ha_groups,
+                                 struct uuidset *active_ha_groups)
+{
+    struct ed_type_ofctrl_is_connected *ed_ofctrl_is_connected =
+        engine_get_input_data("ofctrl_is_connected", node);
+    if (ed_ofctrl_is_connected->connected) {
+        /* Calculate the active tunnels only if have an an active
+         * OpenFlow connection to br-int.
+         * If we don't have a connection to br-int, it could mean
+         * ovs-vswitchd is down for some reason and the BFD status
+         * in the Interface rows could be stale. So its better to
+         * consider 'active_tunnels' set to be empty if it's not
+         * connected. */
+        bfd_calculate_active_tunnels(b_ctx_in->br_int, active_tunnels);
+    }
+
+    const struct sbrec_ha_chassis_group_table *ha_ch_grp_table =
+        EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
+    ha_chassis_groups_collect_local(ha_ch_grp_table, active_tunnels,
+                                    b_ctx_in->chassis_rec, local_ha_groups,
+                                    active_ha_groups);
+}
+
 static enum engine_node_state
 en_runtime_data_run(struct engine_node *node, void *data)
 {
@@ -1619,6 +1671,8 @@ en_runtime_data_run(struct engine_node *node, void *data)
         simap_destroy(local_lports);
         related_lports_destroy(&rt_data->related_lports);
         sset_destroy(active_tunnels);
+        uuidset_clear(&rt_data->local_ha_groups);
+        uuidset_clear(&rt_data->active_ha_groups);
         destroy_qos_map(&rt_data->qos_map);
         smap_destroy(&rt_data->local_iface_ids);
         hmap_init(local_datapaths);
@@ -1638,18 +1692,9 @@ en_runtime_data_run(struct engine_node *node, void *data)
     struct binding_ctx_out b_ctx_out;
     init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
 
-    struct ed_type_ofctrl_is_connected *ed_ofctrl_is_connected =
-        engine_get_input_data("ofctrl_is_connected", node);
-    if (ed_ofctrl_is_connected->connected) {
-        /* Calculate the active tunnels only if have an an active
-         * OpenFlow connection to br-int.
-         * If we don't have a connection to br-int, it could mean
-         * ovs-vswitchd is down for some reason and the BFD status
-         * in the Interface rows could be stale. So its better to
-         * consider 'active_tunnels' set to be empty if it's not
-         * connected. */
-        bfd_calculate_active_tunnels(b_ctx_in.br_int, active_tunnels);
-    }
+    runtime_data_calculate_active_ha(node, &b_ctx_in, active_tunnels,
+                                     &rt_data->local_ha_groups,
+                                     &rt_data->active_ha_groups);
 
     binding_run(&b_ctx_in, &b_ctx_out);
     rt_data->localnet_learn_fdb = b_ctx_out.localnet_learn_fdb;
@@ -1746,6 +1791,126 @@ runtime_data_ovs_interface_shadow_handler(struct engine_node *node, void *data)
     }
 
     return result;
+}
+
+/* Returns true if the only change to the tracked 'ha_ch_grp' is an update
+ * of its 'ref_chassis' column. */
+static bool
+ha_chassis_group_only_ref_chassis_updated(
+    const struct sbrec_ha_chassis_group *ha_ch_grp)
+{
+    if (!sbrec_ha_chassis_group_is_updated(
+            ha_ch_grp, SBREC_HA_CHASSIS_GROUP_COL_REF_CHASSIS)) {
+        return false;
+    }
+
+    for (size_t i = 0; i < SBREC_HA_CHASSIS_GROUP_N_COLUMNS; i++) {
+        if (i != SBREC_HA_CHASSIS_GROUP_COL_REF_CHASSIS &&
+            sbrec_ha_chassis_group_is_updated(ha_ch_grp, i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Returns true if a port binding of any of the 'local_datapaths'
+ * references 'ha_ch_grp'. */
+static bool
+ha_chassis_group_is_referenced_locally(
+    const struct sbrec_ha_chassis_group *ha_ch_grp,
+    const struct hmap *local_datapaths,
+    struct ovsdb_idl_index *sbrec_port_binding_by_datapath)
+{
+    struct sbrec_port_binding *target =
+        sbrec_port_binding_index_init_row(sbrec_port_binding_by_datapath);
+    bool found = false;
+
+    const struct local_datapath *ld;
+    HMAP_FOR_EACH (ld, hmap_node, local_datapaths) {
+        sbrec_port_binding_index_set_datapath(target, ld->datapath);
+
+        const struct sbrec_port_binding *pb;
+        SBREC_PORT_BINDING_FOR_EACH_EQUAL (pb, target,
+                                           sbrec_port_binding_by_datapath) {
+            if (pb->ha_chassis_group == ha_ch_grp) {
+                found = true;
+                goto out;
+            }
+        }
+    }
+
+out:
+    sbrec_port_binding_index_destroy_row(target);
+    return found;
+}
+
+static enum engine_input_handler_result
+runtime_data_sb_ha_chassis_group_handler(struct engine_node *node,
+                                         void *data)
+{
+    struct ed_type_runtime_data *rt_data = data;
+    struct binding_ctx_in b_ctx_in;
+    struct binding_ctx_out b_ctx_out;
+    init_binding_ctx(node, rt_data, &b_ctx_in, &b_ctx_out);
+
+    const struct sbrec_ha_chassis_group_table *ha_ch_grp_table =
+        EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
+    const struct sbrec_ha_chassis_group *ha_ch_grp;
+    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH_TRACKED (ha_ch_grp,
+                                                   ha_ch_grp_table) {
+        const struct uuid *uuid = &ha_ch_grp->header_.uuid;
+
+        if (sbrec_ha_chassis_group_is_deleted(ha_ch_grp)) {
+            /* Port bindings referencing a deleted group are handled by the
+             * SB_port_binding handler. */
+            uuidset_find_and_delete(&rt_data->local_ha_groups, uuid);
+            uuidset_find_and_delete(&rt_data->active_ha_groups, uuid);
+            continue;
+        }
+
+        bool is_local = ha_chassis_group_contains(ha_ch_grp,
+                                                  b_ctx_in.chassis_rec);
+        bool is_active = is_local &&
+                         ha_chassis_group_is_active(ha_ch_grp,
+                                                    &rt_data->active_tunnels,
+                                                    b_ctx_in.chassis_rec);
+        if (sbrec_ha_chassis_group_is_new(ha_ch_grp)) {
+            /* Port bindings referencing a new group are handled by the
+             * SB_port_binding handler. */
+            if (is_local) {
+                uuidset_insert(&rt_data->local_ha_groups, uuid);
+            }
+            if (is_active) {
+                uuidset_insert(&rt_data->active_ha_groups, uuid);
+            }
+            continue;
+        }
+
+        if (!ha_chassis_group_only_ref_chassis_updated(ha_ch_grp)) {
+            /* The local datapaths and the physical flows of the port
+             * bindings referencing the group depend on its HA chassis.
+             * Only care about the groups relevant to the local chassis. */
+            if (is_local ||
+                uuidset_contains(&rt_data->local_ha_groups, uuid) ||
+                ha_chassis_group_is_referenced_locally(
+                    ha_ch_grp, &rt_data->local_datapaths,
+                    b_ctx_in.sbrec_port_binding_by_datapath)) {
+                return EN_UNHANDLED;
+            }
+            continue;
+        }
+
+        /* Changes to the reference chassis, which are frequent as they
+         * follow the workloads, can't change whether the group contains
+         * the local chassis but they can change whether it is the active
+         * one. */
+        if (is_active != uuidset_contains(&rt_data->active_ha_groups,
+                                          uuid)) {
+            return EN_UNHANDLED;
+        }
+    }
+
+    return EN_HANDLED_UNCHANGED;
 }
 
 static enum engine_input_handler_result
@@ -7636,6 +7801,11 @@ inc_proc_ovn_controller_init(
                      runtime_data_sb_port_binding_handler);
     /* Run sb_ro_handler after port_binding_handler in case port get deleted */
     engine_add_input(&en_runtime_data, &en_sb_ro, runtime_data_sb_ro_handler);
+    /* The HA chassis group handler must be executed after the
+     * sb_port_binding_handler as it relies on new port bindings referencing
+     * new HA chassis groups to be processed first. */
+    engine_add_input(&en_runtime_data, &en_sb_ha_chassis_group,
+                     runtime_data_sb_ha_chassis_group_handler);
 
     /* The OVS interface handler for runtime_data changes MUST be executed
      * after the sb_port_binding_handler as port_binding deletes must be

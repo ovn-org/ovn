@@ -17,6 +17,7 @@
 
 #include "ha-chassis.h"
 #include "lib/sset.h"
+#include "lib/uuidset.h"
 #include "openvswitch/vlog.h"
 #include "lib/ovn-sb-idl.h"
 
@@ -215,6 +216,35 @@ ha_chassis_group_contains(
         }
     }
     return false;
+}
+
+/* Adds to 'local_groups' the UUID of every HA chassis group in
+ * 'ha_ch_grp_table' that contains 'local_chassis' and to 'active_groups'
+ * the UUID of every such group for which 'local_chassis' is currently the
+ * active chassis, given the set of 'active_tunnels'. */
+void
+ha_chassis_groups_collect_local(
+    const struct sbrec_ha_chassis_group_table *ha_ch_grp_table,
+    const struct sset *active_tunnels,
+    const struct sbrec_chassis *local_chassis,
+    struct uuidset *local_groups,
+    struct uuidset *active_groups)
+{
+    if (!local_chassis) {
+        return;
+    }
+
+    const struct sbrec_ha_chassis_group *ha_ch_grp;
+    SBREC_HA_CHASSIS_GROUP_TABLE_FOR_EACH (ha_ch_grp, ha_ch_grp_table) {
+        if (!ha_chassis_group_contains(ha_ch_grp, local_chassis)) {
+            continue;
+        }
+        uuidset_insert(local_groups, &ha_ch_grp->header_.uuid);
+        if (ha_chassis_group_is_active(ha_ch_grp, active_tunnels,
+                                       local_chassis)) {
+            uuidset_insert(active_groups, &ha_ch_grp->header_.uuid);
+        }
+    }
 }
 
 struct ha_chassis_ordered *

@@ -46,6 +46,21 @@ $recompute : compute - $compute"
     check test "$node_compute_ct" -ne "0"
   fi
 }
+
+# bfd_state HV REMOTE
+#
+# Prints the BFD state of the tunnel from HV to REMOTE, or "disabled" if
+# BFD is not enabled on that tunnel.
+bfd_state() {
+    if test "$(as $1 ovs-vsctl --if-exists get interface ovn-$2-0 \
+               bfd:enable | tr -d '"')" != true; then
+        echo disabled
+    else
+        as $1 ovs-vsctl --if-exists get interface ovn-$2-0 \
+            bfd_status:state | tr -d '"'
+    fi
+}
+
 m4_divert_pop([PREPARE_TESTS])
 
 OVN_FOR_EACH_NORTHD([
@@ -4294,5 +4309,154 @@ OVS_WAIT_UNTIL([test "$(as hv1 ovs-vsctl --bare get port ovn-hv2-0 other_config)
 OVS_WAIT_UNTIL([test "$(as hv2 ovs-vsctl --bare get port ovn-hv1-0 other_config)" = '{}'])
 
 OVN_CLEANUP([hv1],[hv2])
+AT_CLEANUP
+])
+
+m4_define([HA_GW_REF_CHASSIS_SETUP], [
+ovn_start
+
+net_add n1
+for i in 1 2; do
+    sim_add gw$i
+    as gw$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.$i
+    check ovs-vsctl set open . external_ids:ovn-bridge-mappings=public:br-phys
+
+    sim_add hv$i
+    as hv$i
+    check ovs-vsctl add-br br-phys
+    ovn_attach n1 br-phys 192.168.0.1$i
+done
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 vm1 -- lsp-set-addresses vm1 "50:54:00:00:00:01 10.0.0.11"
+check ovn-nbctl lsp-add sw0 vm2 -- lsp-set-addresses vm2 "50:54:00:00:00:02 10.0.0.12"
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+check ovn-nbctl lrp-add lr0 lr0-pub 00:00:00:00:ff:02 172.168.0.1/24
+check ovn-nbctl lrp-set-gateway-chassis lr0-pub gw1 $1
+check ovn-nbctl lrp-set-gateway-chassis lr0-pub gw2 $2
+check ovn-nbctl ls-add pub
+check ovn-nbctl lsp-add-router-port pub pub-lr0 lr0-pub
+check ovn-nbctl lsp-add-localnet-port pub ln-pub public
+check ovn-nbctl lr-nat-add lr0 snat 172.168.0.10 10.0.0.0/24
+check ovn-nbctl --wait=hv sync
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - HA gateway failover on ref_chassis changes])
+AT_KEYWORDS([ovn ha-ref-chassis])
+
+HA_GW_REF_CHASSIS_SETUP([10], [20])
+
+gw1=$(fetch_column Chassis _uuid name=gw1)
+gw2=$(fetch_column Chassis _uuid name=gw2)
+wait_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw2
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 gw2)" = up])
+
+# Stop ovs-vswitchd on gw2, the active gateway.  gw1 has no BFD session
+# with any reference chassis, so it can't become active.
+as gw2
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 gw2)" = down])
+check_row_count Port_Binding 0 logical_port=cr-lr0-pub chassis=$gw1
+
+# Bind a VM on hv1.  hv1 becomes the only reference chassis and once the
+# BFD session between gw1 and hv1 is up, gw1 becomes active.
+as hv1 check ovs-vsctl add-port br-int vif1 -- \
+    set interface vif1 external_ids:iface-id=vm1
+wait_for_ports_up vm1
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv1)" = up])
+wait_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw1
+
+# Remove the VM from hv1.  gw1 has no BFD session with any reference
+# chassis anymore, so it must release the gateway port.
+as hv1 check ovs-vsctl del-port br-int vif1
+wait_row_count Port_Binding 1 logical_port=vm1 chassis=[[]]
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv1)" = disabled])
+wait_row_count Port_Binding 0 logical_port=cr-lr0-pub chassis=$gw1
+
+as gw2
+OVS_APP_EXIT_AND_WAIT([ovn-controller])
+OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+
+OVN_CLEANUP([gw1],[hv1],[hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - HA gateway failover on ref_chassis only changes])
+AT_KEYWORDS([ovn ha-ref-chassis])
+
+HA_GW_REF_CHASSIS_SETUP([10], [20])
+
+# A second, unconnected, router whose active gateway is gw3 keeps hv1 as a
+# reference chassis of a group that contains gw1, so the BFD session
+# between gw1 and hv1 doesn't depend on the reference chassis of lr0-pub.
+sim_add gw3
+as gw3
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.3
+check ovs-vsctl set open . external_ids:ovn-bridge-mappings=public:br-phys
+
+check ovn-nbctl ls-add sw1
+check ovn-nbctl lsp-add sw1 vm3 -- lsp-set-addresses vm3 "50:54:00:00:00:03 10.0.1.11"
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lrp-add lr1 lr1-sw1 00:00:00:00:ff:11 10.0.1.1/24
+check ovn-nbctl lsp-add-router-port sw1 sw1-lr1 lr1-sw1
+check ovn-nbctl lrp-add lr1 lr1-pub 00:00:00:00:ff:12 172.168.0.2/24
+check ovn-nbctl lrp-set-gateway-chassis lr1-pub gw1 10
+check ovn-nbctl lrp-set-gateway-chassis lr1-pub gw3 20
+check ovn-nbctl ls-add pub1
+check ovn-nbctl lsp-add-router-port pub1 pub1-lr1 lr1-pub
+check ovn-nbctl lsp-add-localnet-port pub1 ln-pub1 public
+
+gw1=$(fetch_column Chassis _uuid name=gw1)
+gw2=$(fetch_column Chassis _uuid name=gw2)
+gw3=$(fetch_column Chassis _uuid name=gw3)
+
+as hv1 check ovs-vsctl add-port br-int vif3 -- \
+    set interface vif3 external_ids:iface-id=vm3
+wait_for_ports_up vm3
+wait_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw2
+wait_row_count Port_Binding 1 logical_port=cr-lr1-pub chassis=$gw3
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 gw2)" = up])
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 gw3)" = up])
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv1)" = up])
+
+# Stop ovs-vswitchd on gw2, the active gateway of lr0-pub.  gw1 has a BFD
+# session with hv1 but hv1 isn't a reference chassis of the lr0-pub
+# group, so gw1 can't become active for it.
+as gw2
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 gw2)" = down])
+check ovn-nbctl --wait=sb sync
+check_row_count Port_Binding 0 logical_port=cr-lr0-pub chassis=$gw1
+
+# Bind a VM of sw0 on hv1.  Only the reference chassis of the lr0-pub group
+# change, the BFD session with hv1 is already up, and gw1 becomes active.
+as hv1 check ovs-vsctl add-port br-int vif1 -- \
+    set interface vif1 external_ids:iface-id=vm1
+wait_for_ports_up vm1
+wait_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw1
+
+# Stop ovs-vswitchd on hv1.  gw1 loses its BFD session with the only
+# reference chassis of the lr0-pub group, so it must release the gateway
+# port.
+as hv1
+OVS_APP_EXIT_AND_WAIT([ovs-vswitchd])
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv1)" = down])
+wait_row_count Port_Binding 0 logical_port=cr-lr0-pub chassis=$gw1
+check_row_count Port_Binding 1 logical_port=cr-lr1-pub chassis=$gw3
+
+for hv in gw2 hv1; do
+    as $hv
+    OVS_APP_EXIT_AND_WAIT([ovn-controller])
+    OVS_APP_EXIT_AND_WAIT([ovsdb-server])
+done
+
+OVN_CLEANUP([gw1],[gw3],[hv2])
 AT_CLEANUP
 ])

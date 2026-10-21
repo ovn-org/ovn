@@ -316,6 +316,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_port_binding [[style=filled, shape=box, fillcolor=white, label="SB_port_binding"]];
 	postponed_ports [[style=filled, shape=box, fillcolor=white, label="postponed_ports"]];
 	sb_ro [[style=filled, shape=box, fillcolor=white, label="sb_ro"]];
+	SB_ha_chassis_group [[style=filled, shape=box, fillcolor=white, label="SB_ha_chassis_group"]];
 	OVS_port [[style=filled, shape=box, fillcolor=white, label="OVS_port"]];
 	OVS_interface [[style=filled, shape=box, fillcolor=white, label="OVS_interface"]];
 	ovs_interface_shadow [[style=filled, shape=box, fillcolor=white, label="ovs_interface_shadow"]];
@@ -331,6 +332,7 @@ digraph "Incremental-Processing-Engine" {
 	SB_port_binding -> runtime_data [[label="runtime_data_sb_port_binding_handler"]];
 	postponed_ports -> runtime_data [[label="runtime_data_sb_port_binding_handler"]];
 	sb_ro -> runtime_data [[label="runtime_data_sb_ro_handler"]];
+	SB_ha_chassis_group -> runtime_data [[label="runtime_data_sb_ha_chassis_group_handler"]];
 	OVS_port -> runtime_data [[label="engine_noop_handler"]];
 	ovs_interface_shadow -> runtime_data [[label="runtime_data_ovs_interface_shadow_handler"]];
 	port_groups [[style=filled, shape=box, fillcolor=white, label="port_groups"]];
@@ -451,7 +453,6 @@ digraph "Incremental-Processing-Engine" {
 	SB_fdb -> mac_cache [[label="mac_cache_sb_fdb_handler"]];
 	SB_datapath_binding -> mac_cache [[label="mac_cache_sb_datapath_binding_handler"]];
 	SB_port_binding -> mac_cache [[label="engine_noop_handler"]];
-	SB_ha_chassis_group [[style=filled, shape=box, fillcolor=white, label="SB_ha_chassis_group"]];
 	bfd_chassis [[style=filled, shape=box, fillcolor=white, label="bfd_chassis"]];
 	OVS_open_vswitch -> bfd_chassis [[label=""]];
 	SB_chassis -> bfd_chassis [[label=""]];
@@ -546,6 +547,8 @@ digraph "Incremental-Processing-Engine" {
 	postponed_ports [[style=filled, shape=box, fillcolor=white, label="postponed_ports"]];
 	sb_ro -> runtime_data [[label="runtime_data_sb_ro_handler"]];
 	sb_ro [[style=filled, shape=box, fillcolor=white, label="sb_ro"]];
+	SB_ha_chassis_group -> runtime_data [[label="runtime_data_sb_ha_chassis_group_handler"]];
+	SB_ha_chassis_group [[style=filled, shape=box, fillcolor=white, label="SB_ha_chassis_group"]];
 	OVS_port -> runtime_data [[label="engine_noop_handler"]];
 	OVS_port [[style=filled, shape=box, fillcolor=white, label="OVS_port"]];
 	ovs_interface_shadow -> runtime_data [[label="runtime_data_ovs_interface_shadow_handler"]];
