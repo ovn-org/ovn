@@ -117,6 +117,10 @@ struct binding_ctx_out {
 
     bool localnet_learn_fdb;
     bool localnet_learn_fdb_changed;
+
+    /* Track if any tunnel OVS interface has been added, deleted or
+     * updated. */
+    bool tunnel_ifaces_changed;
 };
 
 /* Local bindings. binding.c module binds the logical port (represented by

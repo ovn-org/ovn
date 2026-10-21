@@ -4346,6 +4346,66 @@ check ovn-nbctl --wait=hv sync
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - HA gateway I-P for ref_chassis and BFD changes])
+AT_KEYWORDS([ovn ha-ref-chassis])
+
+HA_GW_REF_CHASSIS_SETUP([20], [10])
+
+gw1=$(fetch_column Chassis _uuid name=gw1)
+
+# Bind vm2 on hv2 so that hv2 is already a reference chassis.
+as hv2 check ovs-vsctl add-port br-int vif2 -- \
+    set interface vif2 external_ids:iface-id=vm2
+wait_for_ports_up vm2
+wait_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw1
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 gw2)" = up])
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv2)" = up])
+OVS_WAIT_UNTIL([test "$(bfd_state gw2 hv2)" = up])
+check ovn-nbctl --wait=hv sync
+
+# Bind the first VM on hv1.  hv1 becomes a reference chassis, so both
+# gateways enable BFD towards it.  This must not trigger a recompute of
+# runtime data on the gateways as the active gateway doesn't change.
+for gw in gw1 gw2; do
+    check as $gw ovn-appctl -t ovn-controller inc-engine/clear-stats
+done
+as hv1 check ovs-vsctl add-port br-int vif1 -- \
+    set interface vif1 external_ids:iface-id=vm1
+wait_for_ports_up vm1
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv1)" = up])
+OVS_WAIT_UNTIL([test "$(bfd_state gw2 hv1)" = up])
+check ovn-nbctl --wait=hv sync
+
+check_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw1
+for gw in gw1 gw2; do
+    check_controller_engine_stats $gw runtime_data norecompute compute
+done
+CHECK_AFTER_RECOMPUTE([gw1], [gw1])
+CHECK_AFTER_RECOMPUTE([gw2], [gw2])
+
+# Remove the last VM from hv1.  Both gateways disable BFD towards it,
+# again without recomputing runtime data.
+for gw in gw1 gw2; do
+    check as $gw ovn-appctl -t ovn-controller inc-engine/clear-stats
+done
+as hv1 check ovs-vsctl del-port br-int vif1
+wait_row_count Port_Binding 1 logical_port=vm1 chassis=[[]]
+OVS_WAIT_UNTIL([test "$(bfd_state gw1 hv1)" = disabled])
+OVS_WAIT_UNTIL([test "$(bfd_state gw2 hv1)" = disabled])
+check ovn-nbctl --wait=hv sync
+
+check_row_count Port_Binding 1 logical_port=cr-lr0-pub chassis=$gw1
+for gw in gw1 gw2; do
+    check_controller_engine_stats $gw runtime_data norecompute compute
+done
+CHECK_AFTER_RECOMPUTE([gw1], [gw1])
+CHECK_AFTER_RECOMPUTE([gw2], [gw2])
+
+OVN_CLEANUP([gw1],[gw2],[hv1],[hv2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-controller - HA gateway failover on ref_chassis changes])
 AT_KEYWORDS([ovn ha-ref-chassis])
 

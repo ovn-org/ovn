@@ -1444,15 +1444,18 @@ struct ed_type_runtime_data {
  * | qos_map          | engine (used only in binding.c) and hence there  |
  * |                  | there is no need to track.                       |
  *  ---------------------------------------------------------------------
- * |                  | Active tunnels is built in the                   |
+ * | active_tunnels   | Active tunnels is built in the                   |
  * |                  | bfd_calculate_active_tunnels() for the tunnel    |
- * |                  | OVS interfaces. Any changes to non VIF OVS       |
- * |                  | interfaces results in triggering the full        |
- * | active_tunnels   | recompute of runtime data engine and hence there |
- * |                  | the tracked data doesn't track it. When we       |
- * |                  | support handling changes to non VIF OVS          |
- * |                  | interfaces we need to track the changes to the   |
- * |                  | active tunnels.                                  |
+ * |                  | OVS interfaces.  Its consumers only use it to    |
+ * |                  | find out whether the local chassis is the active |
+ * |                  | chassis of an HA chassis group.  If the local    |
+ * |                  | chassis belongs to an HA chassis group, changes  |
+ * |                  | to the tunnel OVS interfaces that don't change   |
+ * |                  | active_ha_groups are handled without changing    |
+ * |                  | any other runtime data.  Any other change to non |
+ * |                  | VIF OVS interfaces triggers the full recompute   |
+ * |                  | of runtime data engine and hence the tracked     |
+ * |                  | data doesn't track it.                           |
  *  ---------------------------------------------------------------------
  * | local_ha_groups  | HA chassis groups that contain the local chassis |
  * | active_ha_groups | and the ones for which it is the active chassis. |
@@ -1616,6 +1619,7 @@ init_binding_ctx(struct engine_node *node,
     b_ctx_out->if_mgr = ctrl_ctx->if_mgr;
     b_ctx_out->localnet_learn_fdb = rt_data->localnet_learn_fdb;
     b_ctx_out->localnet_learn_fdb_changed = false;
+    b_ctx_out->tunnel_ifaces_changed = false;
 }
 
 /* Calculates the set of 'active_tunnels', the set of HA chassis groups
@@ -1647,6 +1651,61 @@ runtime_data_calculate_active_ha(struct engine_node *node,
     ha_chassis_groups_collect_local(ha_ch_grp_table, active_tunnels,
                                     b_ctx_in->chassis_rec, local_ha_groups,
                                     active_ha_groups);
+}
+
+static bool
+ha_groups_equal(const struct uuidset *a, const struct uuidset *b)
+{
+    if (uuidset_count(a) != uuidset_count(b)) {
+        return false;
+    }
+
+    const struct uuidset_node *node;
+    UUIDSET_FOR_EACH (node, a) {
+        if (!uuidset_contains(b, &node->uuid)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Recalculates the active tunnels.  Returns false if the local chassis
+ * doesn't belong to any HA chassis group or if this changes the set of HA
+ * chassis groups for which the local chassis is the active one, in which
+ * case the runtime data must be recomputed.  Otherwise updates
+ * 'rt_data->active_tunnels' and returns true. */
+static bool
+runtime_data_handle_active_tunnels(struct engine_node *node,
+                                   struct ed_type_runtime_data *rt_data,
+                                   const struct binding_ctx_in *b_ctx_in)
+{
+    if (uuidset_is_empty(&rt_data->local_ha_groups)) {
+        /* The local chassis is not an HA chassis, so BFD is enabled on its
+         * tunnels only while it is a reference chassis, i.e., while it has
+         * datapaths of distributed gateway ports local.  Recompute in that
+         * case, as removing datapaths that are no longer local is not
+         * supported incrementally. */
+        return false;
+    }
+
+    struct sset active_tunnels = SSET_INITIALIZER(&active_tunnels);
+    struct uuidset local_ha_groups = UUIDSET_INITIALIZER(&local_ha_groups);
+    struct uuidset active_ha_groups =
+        UUIDSET_INITIALIZER(&active_ha_groups);
+
+    runtime_data_calculate_active_ha(node, b_ctx_in, &active_tunnels,
+                                     &local_ha_groups, &active_ha_groups);
+
+    bool handled = ha_groups_equal(&active_ha_groups,
+                                  &rt_data->active_ha_groups);
+    if (handled) {
+        sset_swap(&active_tunnels, &rt_data->active_tunnels);
+    }
+
+    sset_destroy(&active_tunnels);
+    uuidset_destroy(&local_ha_groups);
+    uuidset_destroy(&active_ha_groups);
+    return handled;
 }
 
 static enum engine_node_state
@@ -1782,6 +1841,11 @@ runtime_data_ovs_interface_shadow_handler(struct engine_node *node, void *data)
     b_ctx_out.tracked_dp_bindings = &rt_data->tracked_dp_bindings;
 
     if (!binding_handle_ovs_interface_changes(&b_ctx_in, &b_ctx_out)) {
+        return EN_UNHANDLED;
+    }
+
+    if (b_ctx_out.tunnel_ifaces_changed &&
+        !runtime_data_handle_active_tunnels(node, rt_data, &b_ctx_in)) {
         return EN_UNHANDLED;
     }
 

@@ -2697,6 +2697,12 @@ consider_iface_release(const struct ovsrec_interface *iface_rec,
 }
 
 static bool
+is_iface_tunnel(const struct ovsrec_interface *iface_rec)
+{
+    return smap_get(&iface_rec->options, "remote_ip") != NULL;
+}
+
+static bool
 is_iface_vif(const struct ovsrec_interface *iface_rec)
 {
     if (iface_rec->type && iface_rec->type[0] &&
@@ -2824,6 +2830,12 @@ binding_handle_ovs_interface_changes(struct binding_ctx_in *b_ctx_in,
         const char *iface_id = smap_get(&iface_rec->external_ids, "iface-id");
         const char *old_iface_id = smap_get(b_ctx_out->local_iface_ids,
                                             iface_rec->name);
+        if (!iface_id && !old_iface_id && is_iface_tunnel(iface_rec)) {
+            /* Tunnel interfaces are only relevant for the active tunnels
+             * which the caller is expected to recalculate. */
+            b_ctx_out->tunnel_ifaces_changed = true;
+            continue;
+        }
         if (!iface_id && !old_iface_id && !is_iface_vif(iface_rec)) {
             /* Right now we are not handling ovs_interface changes if the
              * interface doesn't have iface-id or didn't have it
