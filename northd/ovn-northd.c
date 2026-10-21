@@ -946,6 +946,8 @@ main(int argc, char *argv[])
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl, &sbrec_sb_global_col_nb_cfg);
     ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
                          &sbrec_sb_global_col_nb_cfg_timestamp);
+    ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
+                         &sbrec_ha_chassis_group_col_ref_chassis);
     for (size_t i = 0; i < SBREC_ADDRESS_SET_N_COLUMNS; i++) {
         ovsdb_idl_omit_alert(ovnsb_idl_loop.idl,
                              &sbrec_address_set_columns[i]);

@@ -811,6 +811,52 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([HA_Chassis_Group ref_chassis updates - no recompute])
+ovn_start
+
+check ovn-sbctl chassis-add gw1 geneve 127.0.0.1
+check ovn-sbctl chassis-add gw2 geneve 127.0.0.2
+check ovn-sbctl chassis-add comp1 geneve 127.0.0.3
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:20:20:12:13 172.168.0.100/24
+check ovn-nbctl lrp-set-gateway-chassis lr0-public gw1 20
+check ovn-nbctl lrp-set-gateway-chassis lr0-public gw2 10
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:20:20:12:14 10.0.0.1/24
+check ovn-nbctl --wait=sb lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+wait_column "" HA_Chassis_Group ref_chassis
+
+comp1=$(fetch_column Chassis _uuid name=comp1)
+
+# Binding the first port of sw0 makes comp1 a reference chassis of the
+# HA chassis group.  ovn-northd writes it to the SB but must not recompute
+# when the update comes back.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl lsp-bind sw0-p1 comp1
+wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 up=true
+wait_column "$comp1" HA_Chassis_Group ref_chassis
+check ovn-nbctl --wait=sb sync
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+# Unbinding the last port of sw0 removes comp1 from the reference chassis.
+check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
+check ovn-sbctl lsp-unbind sw0-p1
+wait_row_count nb:Logical_Switch_Port 1 name=sw0-p1 up=false
+wait_column "" HA_Chassis_Group ref_chassis
+check ovn-nbctl --wait=sb sync
+check_engine_stats northd norecompute compute
+check_engine_stats lflow norecompute compute
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ovn-northd pause and resume])
 # By starting the backup northd paused, we ensure that the primary
 # northd is active; otherwise, there's a race.  (We also test that
