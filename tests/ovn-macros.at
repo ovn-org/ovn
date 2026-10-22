@@ -1500,6 +1500,40 @@ ovn_strip_lflows() {
      sed 's/table=[[0-9]]\{1,2\}\s\?/table=??/g' | sort
 }
 
+# The ECMP group and member ids are derived from hashes of the routes, replace
+# them with <gid> and <mid>.
+ovn_strip_ecmp_ids() {
+    sed -e 's/\(reg8\[[0\.\.15\]] =\{1,2\} \)[[1-9]][[0-9]]*/\1<gid>/' \
+        -e 's/\(reg8\[[16\.\.31\]] =\{1,2\} \)[[1-9]][[0-9]]*/\1<mid>/' \
+        -e ':a' \
+        -e 's/\(select[[^)]]*[[(, ]]\)[[0-9]][[0-9]]*/\1<mid>/' \
+        -e 'ta'
+}
+
+# ecmp_ids LR PREFIX: prints the group id and the comma separated member ids
+# of the ECMP group of PREFIX on LR, and fails if the members listed in its
+# select() action are not the ones that have a flow in lr_in_ip_routing_ecmp.
+ecmp_ids() {
+    local flows gid sel mids
+    flows=$(ovn-sbctl dump-flows $1)
+    gid=$(echo "$flows" | sed -n "s|.*ip[[46]]\.dst == $2).*reg8\[[0\.\.15\]] = \([[0-9]]*\);.*|\1|p")
+    sel=$(echo "$flows" | sed -n "s|.*ip[[46]]\.dst == $2).*select(\([[^)]]*\));.*|\1|p" | tr -d ' ')
+    mids=$(echo "$flows" | sed -n "s|.*(reg8\[[0\.\.15\]] == $gid && reg8\[[16\.\.31\]] == \([[0-9]]*\)).*|\1|p" | sort -n | paste -sd, -)
+    if test -z "$gid" || test "$sel" != "$mids"; then
+        echo "$2: group '$gid', select($sel) != members($mids)" >&2
+        return 1
+    fi
+    echo "$gid $sel"
+}
+
+# ecmp_member_id LR PREFIX NEXTHOP: prints the member id of NEXTHOP in the
+# ECMP group of PREFIX on LR.
+ecmp_member_id() {
+    local gid
+    gid=$(ecmp_ids $1 $2 | cut -d' ' -f1)
+    ovn-sbctl dump-flows $1 | sed -n "s|.*(reg8\[[0\.\.15\]] == $gid && reg8\[[16\.\.31\]] == \([[0-9]]*\)), action=(reg0 = $3;.*|\1|p"
+}
+
 ovn_strip_collector_set() {
     sed 's/collector_set=[[0-9]]*,\?/collector_set=??,/g'
 }
