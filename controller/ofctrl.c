@@ -837,6 +837,18 @@ ofctrl_run(const struct ovsrec_bridge *br_int,
         reconnected = true;
         state = S_NEW;
 
+        /* wait_before_clear_expire/initial_flows_ready guard the *next* pass
+         * through S_WAIT_BEFORE_CLEAR, which this reconnect is about to
+         * re-enter (via S_TLV_TABLE_REQUESTED). Both are static for the life
+         * of the process, so without resetting them here, only the first
+         * reconnect ever gets a fresh ovn-ofctrl-wait-before-clear budget: any
+         * later reconnect - e.g. a second OVS restart while ovn-controller
+         * itself keeps running - would see the deadline from the *first*
+         * reconnect, already long past, and OFCTRL_WBC_EXPIRED would clear
+         * existing flows immediately with no grace period at all. */
+        wait_before_clear_expire = 0;
+        initial_flows_ready = false;
+
         /* Reset the state of any outstanding ct flushes to resend them. */
         struct shash_node *iter;
         SHASH_FOR_EACH(iter, pending_ct_zones) {
