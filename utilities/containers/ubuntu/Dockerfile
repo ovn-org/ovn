@@ -16,6 +16,7 @@ RUN apt update -y \
         ethtool \
         gcc \
         git \
+        gnu-coreutils \
         init \
         iproute2 \
         iputils-arping \
@@ -49,6 +50,10 @@ RUN apt update -y \
     apt autoremove \
     && \
     apt clean
+
+# Replace tee with gnutee until uutils 0.13.0 lands in Ubuntu 26.04.
+RUN update-alternatives --install /usr/local/bin/tee \
+    tee "$(command -v gnutee)" 100
 
 WORKDIR /workspace
 
