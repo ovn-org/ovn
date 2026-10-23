@@ -3,6 +3,7 @@ import argparse
 import sys
 
 import ovs.db.idl
+import ovs.jsonrpc
 import ovs.poller
 import ovs.stream
 import ovs.vlog
@@ -16,8 +17,13 @@ SCHEMA = '../ovn-nb.ovsschema'
 
 
 def die(msg):
-    vlog.warn(f'Fatal error encountered: {msg}')
+    sys.stderr.write(f'\nError: {msg}\n')
     sys.exit(1)
+
+
+def ip_node(i):
+    """Convert node index to two IP octets, supporting up to 65535 nodes."""
+    return f'{i >> 8}.{i & 0xff}'
 
 
 def create_topology(idl, n):
@@ -50,18 +56,18 @@ def create_topology(idl, n):
         vlog.info(f'Provisioning node {i}')
         chassis = f'chassis-{i}'
         gwr = txn.insert(idl.tables['Logical_Router'])
-        gwr.name = f'lr-{i}'
+        gwr.name = f'gw-{i}'
         gwr.addvalue('load_balancer_group', lbg.uuid)
         gwr.setkey('options', 'chassis', chassis)
 
         gwr2join = txn.insert(idl.tables['Logical_Router_Port'])
-        gwr2join.name = f'lr2j-{i}'
+        gwr2join.name = f'gw2j-{i}'
         gwr2join.mac = '00:00:00:00:00:01'
         gwr2join.networks = ['10.0.0.1/8']
         gwr.addvalue('ports', gwr2join.uuid)
 
         join2gwr = txn.insert(idl.tables['Logical_Switch_Port'])
-        join2gwr.name = f'j2lr-{i}'
+        join2gwr.name = f'j2gw-{i}'
         join2gwr.type = 'router'
         join2gwr.addresses = ['router']
         join2gwr.setkey('options', 'router-port', gwr2join.name)
@@ -121,7 +127,7 @@ def add_chassis_template_vars(idl, n, n_vips, n_backends):
         txn = ovs.db.idl.Transaction(idl)
         tv = txn.insert(idl.tables['Chassis_Template_Var'])
         tv.chassis = f'chassis-{i}'
-        tv.setkey('variables', 'vip', f'42.42.42.{i}')
+        tv.setkey('variables', 'vip', f'42.42.{ip_node(i)}')
 
         for j in range(n_vips):
             port = j + 1
@@ -142,7 +148,7 @@ def find_by_name(idl, table, name):
 
 def add_explicit_lbs(idl, n, n_vips, n_backends):
     for i in range(n):
-        lr = find_by_name(idl, 'Logical_Router', f'lr-{i}')
+        lr = find_by_name(idl, 'Logical_Router', f'gw-{i}')
         ls = find_by_name(idl, 'Logical_Switch', f'ls-{i}')
         for j in range(n_vips):
             vlog.info(f'Adding LB {j} for node {i}')
@@ -154,7 +160,8 @@ def add_explicit_lbs(idl, n, n_vips, n_backends):
 
             lb = txn.insert(idl.tables['Load_Balancer'])
             lb.name = f'lb-{j}-{i}'
-            lb.setkey('vips', f'42.42.42.{i}:{port}', f'{",".join(backends)}')
+            lb.setkey('vips', f'42.42.{ip_node(i)}:{port}',
+                      f'{",".join(backends)}')
             lb.protocol = 'tcp'
             lr.addvalue('load_balancer', lb.uuid)
             ls.addvalue('load_balancer', lb.uuid)
@@ -167,21 +174,17 @@ def run(remote, n, n_vips, n_backends, templates):
     schema_helper.register_all()
     idl = ovs.db.idl.Idl(remote, schema_helper, leader_only=False)
 
-    seqno = 0
-
     error, stream = ovs.stream.Stream.open_block(
         ovs.stream.Stream.open(remote), 2000
     )
     if error:
-        sys.stderr.write(f'failed to connect to \"{remote}\"')
-        sys.exit(1)
+        die(f'failed to connect to "{remote}"')
 
     if not stream:
-        sys.stderr.write(f'failed to connect to \"{remote}\"')
-        sys.exit(1)
+        die(f'failed to connect to "{remote}"')
     rpc = ovs.jsonrpc.Connection(stream)
 
-    while idl.change_seqno == seqno and not idl.run():
+    while idl.change_seqno == 0 and not idl.run():
         rpc.run()
 
         poller = ovs.poller.Poller()
@@ -223,6 +226,22 @@ def main(argv):
     )
     parser.set_defaults(template=False)
     args = parser.parse_args()
+
+    if args.nodes < 1:
+        die('node count must be at least 1')
+    if args.nodes > 65535:
+        die('maximum supported node count is 65535')
+
+    if args.vips < 0:
+        die('VIP count must not be negative')
+    if args.vips > 63999:
+        die('maximum supported VIPs is 63999')
+
+    if args.backends < 0:
+        die('backend count must not be negative')
+    if args.backends > 255:
+        die('maximum supported backends is 255')
+
     run(args.remote, args.nodes, args.vips, args.backends, args.template)
 
 
