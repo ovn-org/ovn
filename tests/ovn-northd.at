@@ -16566,7 +16566,7 @@ AT_SETUP([RBAC -- Recover builtin role and permissions])
 ovn_start
 
 wait_row_count RBAC_Role 1 name=ovn-controller
-RBR_BUILTIN_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]>*//g' | tr -d '=,{}')
+RBR_BUILTIN_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]*>//g' | tr -d '=,{}')
 
 declare -A RBR_BUILTIN_PERM
 
@@ -16577,15 +16577,15 @@ do
 done
 
 rbr_match_builtin() {
-  local RBR_REAL_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]>*//g' | tr -d '=,{}')
+  local RBR_REAL_PNAMES=$(fetch_column RBAC_Role permissions name=ovn-controller | uuidfilt | sed -e 's/<[[^<>]]*>//g' | tr -d '=,{}')
 
-  AT_CHECK([test "$RBR_BUILTIN_PNAMES" == "$RBR_REAL_PNAMES"])
+  test "$RBR_BUILTIN_PNAMES" == "$RBR_REAL_PNAMES" || return 1
 
   for V in $RBR_BUILTIN_PNAMES
   do
     local _UUID=`ovn-sbctl get RBAC_Role ovn-controller permissions:$V`
     local RBR_REAL_PERM=`ovn-sbctl get RBAC_Permission $_UUID authorization insert_delete table update | paste -s -d " "`
-    AT_CHECK([test "${RBR_BUILTIN_PERM[[$V]]}" == "$RBR_REAL_PERM"])
+    test "${RBR_BUILTIN_PERM[[$V]]}" == "$RBR_REAL_PERM" || return 1
   done
 }
 
@@ -16598,13 +16598,13 @@ rbr_match_custom() {
    [[Load_Balancer]]='[[]] false Load_Balancer [[]]'
   )
 
-  AT_CHECK([test "$RBR_BUILTIN_ROLE" == "$RBR_REAL_ROLE"])
+  test "$RBR_BUILTIN_ROLE" == "$RBR_REAL_ROLE" || return 1
 
   for V in $RBR_BUILTIN_PNAMES
   do
     local _UUID=`ovn-sbctl get RBAC_Role custom-role permissions:$V`
     local _PREAL=`ovn-sbctl get RBAC_Permission $_UUID authorization insert_delete table update | paste -s -d " "`
-    AT_CHECK([test "${RBR_BUILTIN_PERM[[$V]]}" == "$_PREAL"])
+    test "${RBR_BUILTIN_PERM[[$V]]}" == "$_PREAL" || return 1
   done
 }
 
@@ -16618,7 +16618,7 @@ OVS_WAIT_UNTIL([rbr_match_builtin])
 
 AS_BOX([Recover after permission delete])
 PERM_UID=`ovn-sbctl get RBAC_Role ovn-controller permissions:Chassis`
-check check ovn-sbctl destroy RBAC_Permission $PERM_UID
+check ovn-sbctl destroy RBAC_Permission $PERM_UID
 OVS_WAIT_UNTIL([rbr_match_builtin])
 
 AS_BOX([Recover after permission link removal from role])
