@@ -68,6 +68,10 @@ Testing is also important:
   feature.  A bug fix patch should preferably add a test that would
   fail if the bug recurs.
 
+- To check for memory or performance regressions, you can run
+  ``./ovn-benchmark.sh`` inside the OVN sandbox (``make sandbox``).
+  See the "ovn-benchmark" section of :doc:`/topics/testing` for details.
+
 If you are using GitHub, then you may utilize the GitHub Actions CI system.
 This will run the above tests automatically when you push changes to your
 repository.

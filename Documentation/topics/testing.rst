@@ -294,6 +294,45 @@ of these cached objects, be sure to rebuild the test.
 The cached objects are stored under the relevant folder in
 ``tests/perf-testsuite.dir/cached``.
 
+ovn-benchmark
++++++++++++++
+
+The ``tutorial/`` directory contains a memory and performance benchmarking
+tool that can be used to detect regressions between commits:
+
+- ``ovn-benchmark.sh``: Shell wrapper that tracks peak memory and
+  execution time for ``ovn-northd`` and ``ovn-controller``.  By default
+  it reports peak virtual memory (VmPeak) from ``/proc/<pid>/status``,
+  which captures all allocated memory including pages not yet accessed.
+  Pass ``--valgrind`` to restart the tracked processes under Valgrind
+  Massif and report peak heap memory instead; this is more accurate but
+  10-50x slower.
+- ``ovn-benchmark.py``: Python script that populates the Northbound database
+  with a realistic ovn-kubernetes-style topology.
+
+The generated topology includes gateway routers, logical switches, NAT rules,
+ACLs, DHCP/DHCPv6, DNS, load balancers, QoS rules, address sets, port groups,
+static routes, and routing policies -- all with both IPv4 and IPv6 coverage.
+After creation, incremental add/modify/delete operations exercise the northd
+engine and flag unexpected recomputes.
+
+The benchmark must be run from inside the OVN sandbox.  Run
+``./ovn-benchmark.sh --help`` for the full list of options::
+
+    $ make sandbox
+    $ ./ovn-benchmark.sh
+
+By default, the topology is generated through many individual OVSDB
+transactions via ``ovn-benchmark.py``.
+
+.. note::
+
+   The ``-f`` option loads a Northbound database file via ``ovsdb-client
+   restore`` instead, which applies the entire database as a single
+   transaction.  This may yield different memory and timing results because
+   ``ovn-northd`` and ``ovn-controller`` process one large batch of changes
+   rather than reacting to each transaction incrementally.
+
 OVN Upgrade Testing
 ~~~~~~~~~~~~~~~~~~~
 
