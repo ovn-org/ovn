@@ -193,6 +193,11 @@
         </p>
       </column>
 
+      <column name="options" key="tunnel_mtu">
+        Copied from <ref db="OVN_Northbound" table="NB_Global"
+        column="options" key="tunnel_mtu"/> by <code>ovn-northd</code>.
+      </column>
+
       <group title="Options for configuring BFD">
         <p>
           These options apply when <code>ovn-controller</code> configures
