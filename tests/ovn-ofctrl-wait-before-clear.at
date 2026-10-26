@@ -68,3 +68,33 @@ AT_CHECK([ovstest test-ofctrl-wait-before-clear \
 expired
 ])
 AT_CLEANUP
+
+AT_SETUP([unit test -- initial flows ready requires southbound monitor sync])
+dnl All four engine outputs present and the southbound condition seqno the
+dnl IDL has acked (arg 5) matches the one this chassis last requested (arg 6):
+dnl the table is complete relative to what the switch needs.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_initial_flows_ready true true true true 7 7], [0], [dnl
+ready
+])
+dnl The bug this guards against: all four outputs present - a real,
+dnl internally-consistent table - but update_sb_monitors() widened the
+dnl requested condition (6 -> 7) earlier in the same iteration and the IDL
+dnl hasn't acked it yet, so those outputs were computed from the narrower
+dnl view and are missing rows. Must NOT be declared ready, or
+dnl S_WAIT_BEFORE_CLEAR would replace working flows with a partial table.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_initial_flows_ready true true true true 6 7], [0], [dnl
+not-ready
+])
+dnl Sync alone isn't enough either: any single missing engine output means
+dnl there's no complete table yet, seqnos notwithstanding.
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_initial_flows_ready false true true true 7 7], [0], [dnl
+not-ready
+])
+AT_CHECK([ovstest test-ofctrl-wait-before-clear \
+          ofctrl_initial_flows_ready true true true false 7 7], [0], [dnl
+not-ready
+])
+AT_CLEANUP

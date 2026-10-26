@@ -33,3 +33,13 @@ ofctrl_wait_before_clear_decide(bool initial_flows_ready,
     }
     return OFCTRL_WBC_STILL_WAITING;
 }
+
+bool
+ofctrl_initial_flows_ready(bool lflow_output, bool pflow_output,
+                           bool ct_zones, bool lb,
+                           unsigned int sb_cond_seqno,
+                           unsigned int sb_expected_cond_seqno)
+{
+    return lflow_output && pflow_output && ct_zones && lb
+           && sb_cond_seqno == sb_expected_cond_seqno;
+}

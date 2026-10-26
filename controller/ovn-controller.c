@@ -47,6 +47,7 @@
 #include "lport.h"
 #include "memory.h"
 #include "ofctrl.h"
+#include "ofctrl-wait-before-clear.h"
 #include "ofctrl-seqno.h"
 #include "openvswitch/vconn.h"
 #include "openvswitch/vlog.h"
@@ -6172,28 +6173,18 @@ main(int argc, char *argv[])
                     /* Lets ofctrl's S_WAIT_BEFORE_CLEAR state clear existing
                      * flows as soon as a complete flow table is actually
                      * available, rather than always idling out the full
-                     * ovn-ofctrl-wait-before-clear timer.
-                     *
-                     * Non-null engine outputs alone aren't enough: the
-                     * update_sb_monitors() call above, earlier in this same
-                     * iteration, can have just widened ovnsb_expected_cond_seqno
-                     * (e.g. a newly-bound local port needs rows this chassis
-                     * wasn't monitoring before). ovnsb_cond_seqno still holds
-                     * whatever the southbound IDL had acked as of the *start*
-                     * of this iteration - the engine outputs above were
-                     * computed from that same not-yet-widened view, so they
-                     * can be a real, internally-consistent table that is
-                     * nonetheless missing rows the switch needs. Requiring the
-                     * two seqnos to match means flows are only declared ready
-                     * once the IDL has acked the condition this chassis
-                     * actually ended up requesting and the engine has
-                     * reprocessed against that - not merely once some table
-                     * happens to be non-null. */
-                    ofctrl_set_initial_flows_ready(lflow_output_data &&
-                                                    pflow_output_data &&
-                                                    ct_zones_data && lb_data &&
-                                                    ovnsb_cond_seqno ==
-                                                    ovnsb_expected_cond_seqno);
+                     * ovn-ofctrl-wait-before-clear timer. The seqno pair
+                     * matters because update_sb_monitors() above, earlier in
+                     * this same iteration, can have just widened the
+                     * expected one - see ofctrl_initial_flows_ready() for why
+                     * non-null outputs alone would be a partial table. */
+                    ofctrl_set_initial_flows_ready(
+                        ofctrl_initial_flows_ready(lflow_output_data != NULL,
+                                                   pflow_output_data != NULL,
+                                                   ct_zones_data != NULL,
+                                                   lb_data != NULL,
+                                                   ovnsb_cond_seqno,
+                                                   ovnsb_expected_cond_seqno));
                     if (lflow_output_data && pflow_output_data &&
                         ct_zones_data && lb_data) {
                         stopwatch_start(OFCTRL_PUT_STOPWATCH_NAME,

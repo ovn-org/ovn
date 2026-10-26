@@ -62,6 +62,34 @@ test_ofctrl_wait_before_clear_decide(struct ovs_cmdl_context *ctx)
     printf("%s\n", reason_to_string(reason));
 }
 
+/* Args: <lflow_output> <pflow_output> <ct_zones> <lb>
+ *       <sb_cond_seqno> <sb_expected_cond_seqno>
+ * The first four are "true" or "false"; the seqnos are unsigned integers. */
+static void
+test_ofctrl_initial_flows_ready(struct ovs_cmdl_context *ctx)
+{
+    bool lflow_output = !strcmp(ctx->argv[1], "true");
+    bool pflow_output = !strcmp(ctx->argv[2], "true");
+    bool ct_zones = !strcmp(ctx->argv[3], "true");
+    bool lb = !strcmp(ctx->argv[4], "true");
+    unsigned int sb_cond_seqno;
+    unsigned int sb_expected_cond_seqno;
+
+    if (!test_read_uint_value(ctx, 5, "sb_cond_seqno", &sb_cond_seqno)) {
+        return;
+    }
+    if (!test_read_uint_value(ctx, 6, "sb_expected_cond_seqno",
+                              &sb_expected_cond_seqno)) {
+        return;
+    }
+
+    printf("%s\n",
+           ofctrl_initial_flows_ready(lflow_output, pflow_output, ct_zones,
+                                      lb, sb_cond_seqno,
+                                      sb_expected_cond_seqno)
+           ? "ready" : "not-ready");
+}
+
 static void
 test_ofctrl_wait_before_clear_main(int argc, char *argv[])
 {
@@ -69,6 +97,8 @@ test_ofctrl_wait_before_clear_main(int argc, char *argv[])
     static const struct ovs_cmdl_command commands[] = {
         {"ofctrl_wait_before_clear_decide", NULL, 4, 4,
          test_ofctrl_wait_before_clear_decide, OVS_RO},
+        {"ofctrl_initial_flows_ready", NULL, 6, 6,
+         test_ofctrl_initial_flows_ready, OVS_RO},
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };
     struct ovs_cmdl_context ctx;

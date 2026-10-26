@@ -37,4 +37,24 @@ enum ofctrl_wait_before_clear_reason ofctrl_wait_before_clear_decide(
     bool initial_flows_ready, unsigned int wait_time,
     long long int expire, long long int now);
 
+/* Whether the engine's current output is a complete flow table that
+ * S_WAIT_BEFORE_CLEAR may hand to the switch in place of the existing one -
+ * the one input to ofctrl_set_initial_flows_ready().
+ *
+ * The four *_output flags are "that engine node has produced data". The two
+ * seqnos are the southbound IDL's condition seqno as acked at the start of
+ * the current ovn-controller main-loop iteration, and the one this chassis
+ * most recently requested (update_sb_monitors() can bump the latter earlier
+ * in the same iteration, e.g. a newly-bound local port needing rows it wasn't
+ * monitoring before). Non-null outputs alone are not enough: they were
+ * computed against the acked view, so with the seqnos unequal they can be a
+ * real, internally-consistent table that is nonetheless missing rows the
+ * switch needs. Only once both match has the IDL acked the condition this
+ * chassis actually ended up requesting and the engine reprocessed against
+ * it. */
+bool ofctrl_initial_flows_ready(bool lflow_output, bool pflow_output,
+                                bool ct_zones, bool lb,
+                                unsigned int sb_cond_seqno,
+                                unsigned int sb_expected_cond_seqno);
+
 #endif /* controller/ofctrl-wait-before-clear.h */
