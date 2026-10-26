@@ -566,6 +566,24 @@ bfd_sync_routes_change_handler(struct engine_node *node,
     return EN_HANDLED_UNCHANGED;
 }
 
+enum engine_input_handler_result
+bfd_sync_sb_port_binding_handler(struct engine_node *node, void *data)
+{
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    const struct sbrec_port_binding_table *sbrec_port_binding_table =
+        EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
+    struct bfd_sync_data *bfd_sync_data = data;
+
+    /* The en_northd node ignores changes of the chassis of a binding, which
+     * the SB BFD "chassis_name" depends on. */
+    if (!bfd_sync_handle_sb_port_binding_changes(sbrec_port_binding_table,
+                                                 &northd_data->lr_ports,
+                                                 &bfd_sync_data->bfd_ports)) {
+        return EN_UNHANDLED;
+    }
+    return EN_HANDLED_UNCHANGED;
+}
+
 enum engine_node_state
 en_bfd_sync_run(struct engine_node *node, void *data)
 {
