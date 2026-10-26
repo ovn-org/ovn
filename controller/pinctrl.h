@@ -86,4 +86,21 @@ void send_self_originated_neigh_packet(struct rconn *swconn,
                                        struct in6_addr *local,
                                        struct in6_addr *target,
                                        uint8_t table_id);
+
+/* A local port that the multicast flood group would deliver a query to, along
+ * with the conntrack zone that the flood group's per-port action loads. */
+struct mcast_querier_port {
+    uint32_t port_key;
+    uint16_t ct_zone;
+};
+
+/* Records the local ports of the flood group for datapath 'dp_key', so the
+ * querier can send its query to each port directly rather than through the
+ * flood group.  'ports' may be NULL to record an empty list.
+ *
+ * Called from the main thread; read by the handler thread.
+ * Takes pinctrl_mutex internally. */
+void pinctrl_mcast_querier_set_ports(int64_t dp_key,
+                                     const struct mcast_querier_port *ports,
+                                     size_t n_ports);
 #endif /* controller/pinctrl.h */
