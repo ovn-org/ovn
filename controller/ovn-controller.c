@@ -6813,6 +6813,18 @@ neighbor_sb_port_binding_handler(struct engine_node *node, void *data)
     struct ed_type_neighbor *ne_data = data;
     const struct sbrec_port_binding_table *pb_table =
         EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
+    const struct ovsrec_open_vswitch_table *ovs_table =
+        EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
+    struct ovsdb_idl_index *sbrec_chassis_by_name =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_chassis", node),
+            "name");
+
+    const char *chassis_id = get_ovs_chassis_id(ovs_table);
+    ovs_assert(chassis_id);
+    const struct sbrec_chassis *chassis =
+        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    ovs_assert(chassis);
 
     const struct sbrec_port_binding *pb;
     SBREC_PORT_BINDING_TABLE_FOR_EACH_TRACKED (pb, pb_table) {
@@ -6822,8 +6834,19 @@ neighbor_sb_port_binding_handler(struct engine_node *node, void *data)
             return EN_HANDLED_UNCHANGED;
         }
 
-        if (sbrec_port_binding_is_updated(pb, SBREC_PORT_BINDING_COL_MAC) &&
-            sset_contains(&ne_data->advertised_pbs, pb->logical_port)) {
+        bool local = lport_pb_is_chassis_resident(chassis, pb);
+        enum sbrec_port_binding_column_id mac_col = SBREC_PORT_BINDING_COL_MAC;
+        if (sset_contains(&ne_data->advertised_pbs, pb->logical_port) &&
+            (sbrec_port_binding_is_updated(pb, mac_col) || !local)) {
+            return EN_UNHANDLED;
+        }
+
+        enum en_lport_type type = get_lport_type(pb);
+        enum sbrec_port_binding_column_id chassis_col =
+            SBREC_PORT_BINDING_COL_CHASSIS;
+        if (type == LP_CHASSISREDIRECT &&
+            sbrec_port_binding_is_updated(pb, chassis_col) &&
+            local) {
             return EN_UNHANDLED;
         }
     }

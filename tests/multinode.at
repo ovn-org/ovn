@@ -4466,6 +4466,83 @@ OVS_WAIT_FOR_OUTPUT([m_as ovn-gw-2 ovs-ofctl dump-flows br-int table=OFTABLE_GET
 1
 ])
 
+AS_BOX([Check gateway EVPN advertisements follow HA ownership])
+# Both gateways already have local workloads on ls.  Migrating only the
+# chassisredirect binding must refresh advertisements even when neither
+# the local datapaths nor the Advertised_MAC_Binding rows change.
+gw1_chassis=$(m_fetch_column Chassis _uuid name=ovn-gw-1)
+gw2_chassis=$(m_fetch_column Chassis _uuid name=ovn-gw-2)
+check multinode_nbctl \
+    -- ha-chassis-group-add evpn-ha \
+    -- ha-chassis-group-add-chassis evpn-ha ovn-gw-1 20 \
+    -- ha-chassis-group-add-chassis evpn-ha ovn-gw-2 10
+evpn_ha=$(m_fetch_column nb:HA_Chassis_Group _uuid name=evpn-ha)
+check multinode_nbctl --wait=hv set logical_router_port lr-ls ha_chassis_group=$evpn_ha
+
+priority=20
+for gw in 1 2 1; do
+    active=ovn-gw-$gw
+    standby=ovn-gw-$((3 - gw))
+    if test "$gw" = 1; then
+        chassis=$gw1_chassis
+        host_ip=$host_bgp_ip_gw1
+    else
+        chassis=$gw2_chassis
+        host_ip=$host_bgp_ip_gw2
+    fi
+    check multinode_nbctl ha-chassis-group-add-chassis evpn-ha $active $priority
+    m_wait_row_count Port_Binding 1 logical_port=cr-lr-ls chassis=$chassis
+
+    # Ignore VLAN 1 copies, which are not managed by neighbor exchange.
+    # A desired static entry may retain extern_learn; do not require it
+    # to be cleared in order to recognize the local advertisement.
+    OVS_WAIT_UNTIL([m_as $active bridge fdb show dev lo-10 | \
+        grep -v ' vlan ' | grep '^00:00:00:01:00:00 ' | grep -q ' static'])
+    OVS_WAIT_FOR_OUTPUT([m_as $standby bridge fdb show dev lo-10 | \
+        grep -v ' vlan ' | grep -q '^00:00:00:01:00:00 '], [1])
+    OVS_WAIT_UNTIL([m_as $active ip -4 neigh show to 10.0.0.1 dev br-10 nud all | \
+        grep 'lladdr 00:00:00:01:00:00 ' | grep -q NOARP])
+    OVS_WAIT_UNTIL([m_as $active ip -6 neigh show to 10::1 dev br-10 nud all | \
+        grep 'lladdr 00:00:00:01:00:00 ' | grep -q NOARP])
+    OVS_WAIT_FOR_OUTPUT([m_as $standby ip -4 neigh show to 10.0.0.1 dev br-10 nud all | \
+        grep -q 'lladdr 00:00:00:01:00:00 '], [1])
+    OVS_WAIT_FOR_OUTPUT([m_as $standby ip -6 neigh show to 10::1 dev br-10 nud all | \
+        grep -q 'lladdr 00:00:00:01:00:00 '], [1])
+
+    OVS_WAIT_FOR_OUTPUT_UNQUOTED([m_as $active ip netns exec frr-ns \
+        vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+        grep --no-group-separator -A1 00:00:00:01:00:00 | \
+        sed 's/ RD [[0-9.:]]*//g'], [0], [dnl
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:01:00:00]]
+                    $host_ip                            0 4210000000 i
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:01:00:00]]:[[32]]:[[10.0.0.1]]
+                    $host_ip                            0 4210000000 i
+ *>  [[2]]:[[0]]:[[48]]:[[00:00:00:01:00:00]]:[[128]]:[[10::1]]
+                    $host_ip                            0 4210000000 i
+])
+    OVS_WAIT_FOR_OUTPUT([m_as $standby ip netns exec frr-ns \
+        vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+        grep -q 00:00:00:01:00:00], [1])
+    priority=$((priority + 10))
+done
+
+# Restore the distributed router before the exact workload cleanup checks.
+check multinode_nbctl --wait=hv \
+    -- clear logical_router_port lr-ls ha_chassis_group \
+    -- ha-chassis-group-del evpn-ha
+m_wait_row_count Port_Binding 0 logical_port=cr-lr-ls
+for gw in ovn-gw-1 ovn-gw-2; do
+    OVS_WAIT_FOR_OUTPUT([m_as $gw bridge fdb show dev lo-10 | \
+        grep -v ' vlan ' | grep -q '^00:00:00:01:00:00 '], [1])
+    OVS_WAIT_FOR_OUTPUT([m_as $gw ip -4 neigh show to 10.0.0.1 dev br-10 nud all | \
+        grep -q 'lladdr 00:00:00:01:00:00 '], [1])
+    OVS_WAIT_FOR_OUTPUT([m_as $gw ip -6 neigh show to 10::1 dev br-10 nud all | \
+        grep -q 'lladdr 00:00:00:01:00:00 '], [1])
+    OVS_WAIT_FOR_OUTPUT([m_as $gw ip netns exec frr-ns \
+        vtysh --vty_socket /run/frr/frr-ns -c 'show bgp l2vpn evpn route' | \
+        grep -q 00:00:00:01:00:00], [1])
+done
+
 # Remove "workloads" (VIF LSPs) on both chassis.
 check multinode_nbctl --wait=hv lsp-del w1 -- lsp-del w2
 
