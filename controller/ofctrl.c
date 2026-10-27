@@ -684,6 +684,17 @@ run_S_WAIT_BEFORE_CLEAR(void)
 void
 ofctrl_set_initial_flows_ready(bool ready)
 {
+    /* Becoming ready is itself new information the run loop needs to act
+     * on: without an immediate wake here, a quiet controller sitting in
+     * poll_block() (nothing else pending) would wait for some unrelated
+     * event or the wait-before-clear timer itself before run_S_WAIT_
+     * BEFORE_CLEAR() ever gets another chance to notice and install the
+     * now-ready flows - silently reintroducing the delay this early-exit
+     * exists to avoid. Only the false->true edge needs this: once ready,
+     * nothing here changes again until a reconnect resets it. */
+    if (ready && !initial_flows_ready) {
+        poll_immediate_wake();
+    }
     initial_flows_ready = ready;
 }
 
