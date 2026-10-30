@@ -26147,9 +26147,18 @@ packet_out_ts() {
     dnl Prints the send time (in ms) of the $1-th OFPT_PACKET_OUT
     dnl message in hv1/ovs-vswitchd.log.  The first field of a log
     dnl line is the UTC timestamp with millisecond precision.
+    dnl
+    dnl Only the whole-second part is passed to date(1) and the
+    dnl millisecond field is taken from the timestamp itself.
+    dnl The current version of date(1) shipping with Ubuntu 26.04 drops
+    dnl leading zeros in the nanosecond field before truncating for %3N
+    dnl producing the wrong millisecond value.
     grep "received: OFPT_PACKET_OUT" hv1/ovs-vswitchd.log \
         | awk -F'|' -v n="$1" 'NR==n { print $1 }' \
-        | while read -r ts; do date -d "$ts" +%s%3N; done
+        | while read -r ts; do
+            ms=${ts##*.}; ms=${ms%Z}
+            echo $(( $(date -d "${ts%%.*}Z" +%s) * 1000 + 10#$ms ))
+          done
 }
 round_time() {
     dnl The IGMP query of round $1 is the (2n-1)-th OFPT_PACKET_OUT.
