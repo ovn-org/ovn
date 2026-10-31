@@ -748,8 +748,17 @@ def create_explicit_lbs(idl, n, n_vips, n_backends, routers, switches):
     """Create explicit (non-templated) load balancers.
 
     Uses explicit (non-templated) LBs to maximize memory usage for
-    regression testing.
+    regression testing.  Each LB is added to the 'lbg' load balancer
+    group as well as directly to the router and switch.
     """
+    lbg = None
+    for row in idl.tables['Load_Balancer_Group'].rows.values():
+        if row.name == 'lbg':
+            lbg = row
+            break
+    if not lbg:
+        die('Missing load balancer group lbg')
+
     for i in range(n):
         lr = routers.get(f'gw-{i}')
         ls = switches.get(f'ls-{i}')
@@ -782,6 +791,7 @@ def create_explicit_lbs(idl, n, n_vips, n_backends, routers, switches):
                 ','.join(f'[fd42:{k:x}::{j1:x}:{j2:x}]:{port}'
                          for k in range(n_backends)))
             lb.protocol = 'tcp'
+            lbg.addvalue('load_balancer', lb.uuid)
             lr.addvalue('load_balancer', lb.uuid)
             ls.addvalue('load_balancer', lb.uuid)
             if txn.commit_block() != ovs.db.idl.Transaction.SUCCESS:
