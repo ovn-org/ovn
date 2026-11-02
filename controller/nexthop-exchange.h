@@ -20,8 +20,11 @@
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
+#include "hash.h"
 #include "openvswitch/hmap.h"
+#include "util.h"
 
 struct ds;
 struct ofpbuf;
@@ -47,9 +50,6 @@ struct nexthop_entry {
     char ifname[IFNAMSIZ + 1];
     /* True if the nexthop discards the traffic sent to it. */
     bool is_blackhole;
-    /* True if the nexthop belongs to a bridge FDB, i.e. it is used by EVPN
-     * rather than by the routing table. */
-    bool is_fdb;
     /* Number of group entries, "0" in case of gateway entry. */
     size_t n_grps;
     /* Array of group entries. */
@@ -64,6 +64,52 @@ struct nh_table_msg {
     /* The inner entry. */
     struct nexthop_entry *nhe;
 };
+
+/* Member of a set of kernel nexthop object ids. */
+struct nexthop_id_node {
+    struct hmap_node hmap_node;
+    uint32_t id;
+};
+
+/* Adds 'id' to the set 'ids' if it is not there yet. */
+static inline void
+nexthop_ids_add(struct hmap *ids, uint32_t id)
+{
+    uint32_t hash = hash_int(id, 0);
+
+    struct nexthop_id_node *node;
+    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, hash, ids) {
+        if (node->id == id) {
+            return;
+        }
+    }
+
+    node = xmalloc(sizeof *node);
+    node->id = id;
+    hmap_insert(ids, &node->hmap_node, hash);
+}
+
+static inline bool
+nexthop_ids_contains(const struct hmap *ids, uint32_t id)
+{
+    const struct nexthop_id_node *node;
+    HMAP_FOR_EACH_WITH_HASH (node, hmap_node, hash_int(id, 0), ids) {
+        if (node->id == id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static inline void
+nexthop_ids_clear(struct hmap *ids)
+{
+    struct nexthop_id_node *node;
+    HMAP_FOR_EACH_POP (node, hmap_node, ids) {
+        free(node);
+    }
+}
 
 void nexthops_sync(struct hmap *nexthops);
 void nexthop_entry_format(struct ds *ds, const struct nexthop_entry *nhe);

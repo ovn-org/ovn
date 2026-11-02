@@ -56,8 +56,7 @@ nexthop_grp_weight(const struct nexthop_grp *entry)
 
 /* Populates 'nexthops' with all nexthop entries (struct nexthop_entry) that
  * exist in the kernel nexthop table.  Both the FDB nexthops used by EVPN and
- * the nexthops referenced by routes through a nexthop id are included, use
- * 'is_fdb' to tell them apart. */
+ * the nexthops referenced by routes through a nexthop id are included. */
 void
 nexthops_sync(struct hmap *nexthops)
 {
@@ -206,7 +205,6 @@ nh_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
 
     static const struct nl_policy policy[] = {
         [NHA_ID] = { .type = NL_A_U32 },
-        [NHA_FDB] = { .type = NL_A_FLAG, .optional = true },
         [NHA_BLACKHOLE] = { .type = NL_A_FLAG, .optional = true },
         [NHA_OIF] = { .type = NL_A_U32, .optional = true },
         [NHA_GROUP] = { .type = NL_A_UNSPEC, .optional = true,
@@ -260,7 +258,6 @@ nh_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
         .id = nl_attr_get_u32(attrs[NHA_ID]),
         .addr = addr,
         .is_blackhole = nl_attr_get_flag(attrs[NHA_BLACKHOLE]),
-        .is_fdb = nl_attr_get_flag(attrs[NHA_FDB]),
         .n_grps = n_grps,
     };
 

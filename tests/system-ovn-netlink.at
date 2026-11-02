@@ -637,6 +637,14 @@ Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.2
 Route table_id=$table_id dst=fd20:100:: plen=64 nexthop=fd20::1
 ])
 
+dnl The learned routes depend on the nexthop objects they name and, for a
+dnl group, on its members as well: replacing a member moves the routes without
+dnl the group itself being reported as changed.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink route-sync-nhids $table_id | sort],
+    [0], [$(printf 'Referenced nexthop id=%s\n' \
+            $nh_v4 $nh_v4_b $nh_v6 $nh_grp | sort)
+])
+
 dnl Replacing a nexthop object changes where the routes referencing it point,
 dnl without the kernel touching the routes themselves.
 check ip nexthop replace id $nh_v4 via 20.0.0.9 dev lo-test

@@ -116,11 +116,11 @@ enum route_exchange_handled route_exchange_handle_route_changes(
     struct route_exchange_state *, const struct route_exchange_ctx_in *,
     struct route_exchange_ctx_out *, const struct vector *changed_routes);
 
-/* Updates the routes OVN learned after the kernel nexthop objects they may
- * resolve through changed. */
+/* Updates the routes OVN learned after the kernel nexthop objects with the
+ * ids in 'changed_nhids' (uint32_t) changed. */
 enum route_exchange_handled route_exchange_handle_nexthop_changes(
     struct route_exchange_state *, const struct route_exchange_ctx_in *,
-    struct route_exchange_ctx_out *);
+    struct route_exchange_ctx_out *, const struct vector *changed_nhids);
 
 void route_exchange_cleanup_vrfs(void);
 void route_exchange_destroy(void);

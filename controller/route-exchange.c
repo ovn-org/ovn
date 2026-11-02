@@ -50,6 +50,10 @@ struct route_table_state {
     uint32_t table_id;
     /* Routes of the table OVN learns from (struct re_nl_cached_route). */
     struct hmap learned_routes;
+    /* Ids (struct nexthop_id_node) of the kernel nexthop objects those routes
+     * resolve through.  A change to any other nexthop object cannot affect
+     * what OVN learned from this table. */
+    struct hmap referenced_nhids;
 };
 
 struct route_exchange_state {
@@ -126,6 +130,7 @@ route_table_state_get(struct route_exchange_state *state, uint32_t table_id)
     rt = xmalloc(sizeof *rt);
     rt->table_id = table_id;
     hmap_init(&rt->learned_routes);
+    hmap_init(&rt->referenced_nhids);
     hmap_insert(&state->tables, &rt->node,
                 maintained_route_table_hash(table_id));
 
@@ -139,6 +144,8 @@ route_table_state_destroy(struct route_exchange_state *state,
     hmap_remove(&state->tables, &rt->node);
     re_nl_cached_routes_clear(&rt->learned_routes);
     hmap_destroy(&rt->learned_routes);
+    nexthop_ids_clear(&rt->referenced_nhids);
+    hmap_destroy(&rt->referenced_nhids);
     free(rt);
 }
 
@@ -483,9 +490,13 @@ route_table_resolve_and_sync(
     struct vector received_routes =
         VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
 
+    /* Which nexthop objects matter is decided by the routes we have now. */
+    nexthop_ids_clear(&rt->referenced_nhids);
+
     const struct re_nl_cached_route *cr;
     HMAP_FOR_EACH (cr, node, &rt->learned_routes) {
-        re_nl_resolve_route(cr->msg, r_ctx_in->nexthops, &received_routes);
+        re_nl_resolve_route(cr->msg, r_ctx_in->nexthops, &received_routes,
+                            &rt->referenced_nhids);
     }
 
     struct hmapx_node *dp_node;
@@ -586,20 +597,28 @@ enum route_exchange_handled
 route_exchange_handle_nexthop_changes(
     struct route_exchange_state *state,
     const struct route_exchange_ctx_in *r_ctx_in,
-    struct route_exchange_ctx_out *r_ctx_out)
+    struct route_exchange_ctx_out *r_ctx_out,
+    const struct vector *changed_nhids)
 {
     struct hmapx changed_tables = HMAPX_INITIALIZER(&changed_tables);
 
-    /* A route names a nexthop object, the object does not name the routes
-     * using it, so every table we know of may resolve differently now. */
+    /* Only a nexthop object one of the routes we learned resolves through can
+     * change what we learned.  Anything else, e.g. the FDB nexthops used by
+     * EVPN or the ones used by routes in tables we do not sync, leaves the
+     * Learned_Route rows as they are. */
     struct route_table_state *rt;
     HMAP_FOR_EACH (rt, node, &state->tables) {
-        hmapx_add(&changed_tables, rt);
+        uint32_t id;
+        VECTOR_FOR_EACH (changed_nhids, id) {
+            if (nexthop_ids_contains(&rt->referenced_nhids, id)) {
+                hmapx_add(&changed_tables, rt);
+                break;
+            }
+        }
     }
 
     enum route_exchange_handled handled =
         resync_changed_tables(&changed_tables, r_ctx_in, r_ctx_out);
-
     hmapx_destroy(&changed_tables);
 
     return handled;

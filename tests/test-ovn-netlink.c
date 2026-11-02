@@ -196,7 +196,8 @@ static int
 sync_and_resolve_routes(uint32_t table_id,
                         const struct hmap *routes_to_advertise,
                         const struct hmap *nexthops,
-                        struct vector *received_routes)
+                        struct vector *received_routes,
+                        struct hmap *referenced_nhids)
 {
     struct hmap learned_routes = HMAP_INITIALIZER(&learned_routes);
     struct vector route_tables =
@@ -209,7 +210,8 @@ sync_and_resolve_routes(uint32_t table_id,
 
     const struct re_nl_cached_route *cr;
     HMAP_FOR_EACH (cr, node, &learned_routes) {
-        re_nl_resolve_route(cr->msg, nexthops, received_routes);
+        re_nl_resolve_route(cr->msg, nexthops, received_routes,
+                            referenced_nhids);
     }
 
     re_nl_cached_routes_clear(&learned_routes);
@@ -230,6 +232,7 @@ test_route_sync(struct ovs_cmdl_context *ctx)
     }
 
     struct hmap routes_to_advertise = HMAP_INITIALIZER(&routes_to_advertise);
+    struct hmap referenced_nhids = HMAP_INITIALIZER(&referenced_nhids);
     struct hmap nexthops = HMAP_INITIALIZER(&nexthops);
     struct vector received_routes =
         VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
@@ -265,7 +268,8 @@ test_route_sync(struct ovs_cmdl_context *ctx)
     nexthops_sync(&nexthops);
 
     ovs_assert(sync_and_resolve_routes(table_id, &routes_to_advertise,
-                                       &nexthops, &received_routes) == 0);
+                                       &nexthops, &received_routes,
+                                       &referenced_nhids) == 0);
 
     struct ds msg = DS_EMPTY_INITIALIZER;
 
@@ -282,6 +286,8 @@ done:
         free(e);
     }
     hmap_destroy(&routes_to_advertise);
+    nexthop_ids_clear(&referenced_nhids);
+    hmap_destroy(&referenced_nhids);
     nexthops_destroy(&nexthops);
     hmap_destroy(&nexthops);
     vector_destroy(&received_routes);
@@ -375,6 +381,41 @@ test_nexthop_table_notify(struct ovs_cmdl_context *ctx)
 
     ds_destroy(&ds);
     ovn_netlink_notifiers_destroy();
+}
+
+/* Reports the kernel nexthop objects that the routes learned from 'table_id'
+ * depend on. */
+static void
+test_route_sync_nhids(struct ovs_cmdl_context *ctx)
+{
+    unsigned int table_id;
+
+    if (!test_read_uint_value(ctx, 1, "table id", &table_id)) {
+        return;
+    }
+
+    struct hmap routes_to_advertise = HMAP_INITIALIZER(&routes_to_advertise);
+    struct hmap referenced_nhids = HMAP_INITIALIZER(&referenced_nhids);
+    struct hmap nexthops = HMAP_INITIALIZER(&nexthops);
+    struct vector received_routes =
+        VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
+
+    nexthops_sync(&nexthops);
+    ovs_assert(sync_and_resolve_routes(table_id, &routes_to_advertise,
+                                       &nexthops, &received_routes,
+                                       &referenced_nhids) == 0);
+
+    const struct nexthop_id_node *node;
+    HMAP_FOR_EACH (node, hmap_node, &referenced_nhids) {
+        printf("Referenced nexthop id=%"PRIu32"\n", node->id);
+    }
+
+    nexthop_ids_clear(&referenced_nhids);
+    hmap_destroy(&referenced_nhids);
+    nexthops_destroy(&nexthops);
+    hmap_destroy(&nexthops);
+    hmap_destroy(&routes_to_advertise);
+    vector_destroy(&received_routes);
 }
 
 /* Reports the routes of 'table_id' OVN learns from after applying the changes
@@ -501,6 +542,7 @@ test_ovn_netlink(int argc, char *argv[])
          test_neighbor_table_notify, OVS_RO},
         {"host-if-monitor", NULL, 2, 3, test_host_if_monitor, OVS_RO},
         {"route-sync", NULL, 1, INT_MAX, test_route_sync, OVS_RO},
+        {"route-sync-nhids", NULL, 1, 1, test_route_sync_nhids, OVS_RO},
         {"route-table-notify", NULL, 1, 1,
          test_route_table_notify, OVS_RO},
         {"route-table-update", NULL, 2, 2,

@@ -21404,7 +21404,16 @@ check ovn-nbctl --wait=hv sync
 OVS_WAIT_UNTIL([settled=$(route_recomputes); sleep 2;
                 test "$settled" = "$(route_recomputes)"])
 
-# Replacing the object the route names moves the route, even though the
+# No route names this object, so there is nothing to relearn for it.
+re_recompute=$(route_recomputes)
+nh_unused=$(nexthop_alloc)
+check ip nexthop add id $nh_unused via 20.0.0.26 dev local-bgp-port
+on_exit "ip nexthop del id $nh_unused"
+check ovn-nbctl --wait=hv sync
+AT_CHECK_UNQUOTED([route_recomputes], [0], [$re_recompute
+])
+
+# Replacing the object the route does name moves the route, even though the
 # kernel reports nothing about the route itself.  Relearning has to happen for
 # this change, waiting for the route to move would also accept it happening
 # later on for an unrelated reason.

@@ -52,7 +52,8 @@ enum route_exchange_handled
 route_exchange_handle_nexthop_changes(
     struct route_exchange_state *state OVS_UNUSED,
     const struct route_exchange_ctx_in *r_ctx_in OVS_UNUSED,
-    struct route_exchange_ctx_out *r_ctx_out OVS_UNUSED)
+    struct route_exchange_ctx_out *r_ctx_out OVS_UNUSED,
+    const struct vector *changed_nhids OVS_UNUSED)
 {
     return ROUTE_EXCHANGE_UNCHANGED;
 }
