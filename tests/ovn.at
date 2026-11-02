@@ -43435,6 +43435,64 @@ ignored_dp=ls0])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Port claimed outside of binding does not stay postponed])
+AT_KEYWORDS([claim postpone])
+ovn_start
+
+check ovn-nbctl ls-add ls0
+check ovn-nbctl lsp-add ls0 lsp0
+
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+# A chassis that is not running ovn-controller, so that nothing releases or
+# claims the ports bound to it.
+check ovn-sbctl chassis-add fake geneve 192.168.0.100
+hv1_uuid=$(fetch_column Chassis _uuid name=hv1)
+fake_uuid=$(fetch_column Chassis _uuid name=fake)
+
+as hv1 check ovn-appctl -t ovn-controller vlog/set binding:file:dbg
+as hv1 check ovs-vsctl add-port br-int vif -- \
+    set Interface vif external_ids:iface-id=lsp0
+wait_for_ports_up lsp0
+pb_uuid=$(fetch_column Port_Binding _uuid logical_port=lsp0)
+
+# Bind lsp0 to the other chassis shortly after hv1 claimed it, so that hv1
+# postpones claiming it back.  If hv1 was too late to postpone, it claims
+# lsp0 back right away, so just try again.
+OVS_WAIT_UNTIL([
+    check ovn-sbctl set Port_Binding $pb_uuid chassis=$fake_uuid
+    sleep 0.1
+    grep -q "Postponed claim on logical port lsp0" hv1/ovn-controller.log
+])
+
+# Bind lsp0 back to hv1 without going through binding, as if-status does
+# once the claim threshold has passed.  hv1 sees lsp0 bound to itself, so
+# the claim is complete.
+sleep_controller hv1
+check ovn-sbctl set Port_Binding $pb_uuid chassis=$hv1_uuid
+wake_up_controller hv1
+wait_column "$hv1_uuid" Port_Binding chassis logical_port=lsp0
+check ovn-nbctl --wait=hv sync
+
+# lsp0 must not stay postponed, otherwise it is processed again on every
+# engine run.
+as hv1 check ovn-appctl -t ovn-controller vlog/set inc_proc_eng:file:dbg
+check ovn-nbctl --wait=hv sync
+check ovn-nbctl --wait=hv sync
+as hv1 check ovn-appctl -t ovn-controller vlog/set inc_proc_eng:file:info
+AT_CHECK([grep -c "node: postponed_ports, old_state Stale, new_state Updated" \
+    hv1/ovn-controller.log], [1], [0
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 dnl This test checks that the megaflows translated by ovs-vswitchd
 dnl don't match on IPv6 source and destination addresses for
 dnl simple switching.
