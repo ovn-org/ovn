@@ -1461,6 +1461,7 @@ claim_lport(const struct sbrec_port_binding *pb,
             register_claim_timestamp(pb->logical_port, now);
             sset_find_and_delete(postponed_ports, pb->logical_port);
         } else {
+            sset_find_and_delete(postponed_ports, pb->logical_port);
             update_tracked = true;
             if ((pb->n_up && !pb->up[0]) ||
                 (is_vif && !smap_get_bool(&iface_rec->external_ids,
