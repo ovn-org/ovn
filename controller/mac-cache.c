@@ -1033,6 +1033,10 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
 
         struct in6_addr local = in6addr_any;
         if (IN6_IS_ADDR_V4MAPPED(&mb->data.ip)) {
+            if (laddr.n_ipv4_addrs) {
+                local = in6_addr_mapped_ipv4(laddr.ipv4_addrs[0].addr);
+            }
+
             ovs_be32 ip4 = in6_addr_get_mapped_ipv4(&mb->data.ip);
             for (size_t i = 0; i < laddr.n_ipv4_addrs; i++) {
                 struct ipv4_netaddr address = laddr.ipv4_addrs[i];
@@ -1042,6 +1046,10 @@ mac_binding_probe_stats_run(struct vector *stats_vec, uint64_t *req_delay,
                 }
             }
         } else {
+            if (laddr.n_ipv6_addrs) {
+                local = laddr.ipv6_addrs[0].addr;
+            }
+
             for (size_t i = 0; i < laddr.n_ipv6_addrs; i++) {
                 struct ipv6_netaddr address = laddr.ipv6_addrs[i];
                 struct in6_addr neigh_prefix =
