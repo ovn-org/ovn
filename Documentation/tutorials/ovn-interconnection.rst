@@ -25,13 +25,13 @@
 OVN Interconnection
 ===================
 
-This document provides a guide for interconnecting multiple OVN deployements
-with OVN managed tunneling.  More details about the OVN Interconnectiong design
+This document provides a guide for interconnecting multiple OVN deployments
+with OVN managed tunneling.  More details about the OVN Interconnection design
 can be found in ``ovn-architecture``\(7) manpage.
 
-This document assumes two or more OVN deployments are setup and runs normally,
-possibly at different data-centers, and the gateway chassises of each OVN
-are with IP addresses that are reachable between each other.
+This document assumes two or more OVN deployments are setup and running
+normally, possibly at different data-centers, and the gateway chassis of each
+OVN are with IP addresses that are reachable between each other.
 
 Setup Interconnection Databases
 -------------------------------
@@ -40,7 +40,7 @@ To interconnect different OVNs, you need to create global OVSDB databases that
 store interconnection data.  The databases can be setup on any nodes that are
 accessible from all the central nodes of each OVN deployment.  It is
 recommended that the global databases are setup with HA, with nodes in
-different avaialbility zones, to avoid single point of failure.
+different availability zones, to avoid single point of failure.
 
 1. Install OVN packages on each global database node.
 
@@ -93,7 +93,7 @@ DB connection method specified in options ::
 Configure Gateways
 ------------------
 
-For each OVN deployment, specify some chassises as interconnection gateways.
+For each OVN deployment, specify some chassis as interconnection gateways.
 The number of gateways you need depends on the scale and bandwidth you need for
 the traffic between the OVN deployments.
 
@@ -166,6 +166,64 @@ The ports connected to transit switches will be automatically populated to
 
     $ ovn-ic-sbctl show
 
+Create Transit Logical Routers
+------------------------------
+
+Transit Logical Routers, or Transit Routers, are virtual routers that are
+shared across OVN deployments.  While transit switches provide L2 connectivity
+between logical routers in different availability zones (requiring manual
+router port and switch port creation in each AZ), transit routers provide a
+centrally managed L3 interconnection point.  When a transit router is created,
+``ovn-ic`` automatically mirrors it as a ``Logical_Router`` in each
+availability zone's Northbound database.
+
+Create a transit router ::
+
+    $ ovn-ic-nbctl tr-add <name>
+
+After creating a transit router, it can be seen from each OVN deployment's
+Northbound database ::
+
+    $ ovn-nbctl find logical_router options:interconn-tr=<name>
+
+You will also see it with ``ovn-nbctl lr-list``.
+
+To list all transit routers ::
+
+    $ ovn-ic-nbctl tr-list
+
+Connect Ports to Transit Routers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Add ports to a transit router using ``ovn-ic-nbctl``.  Each port requires a
+MAC address and optionally one or more network addresses (CIDR notation).
+Unlike transit switches, there is no need to manually create logical router
+ports in each AZ -- ``ovn-ic`` creates the corresponding
+``Logical_Router_Port`` entries automatically.
+
+For example, to add a port to transit router ``tr1`` ::
+
+    $ ovn-ic-nbctl trp-add tr1 trp-tr1-east aa:aa:aa:aa:aa:01 \
+          169.254.200.1/24
+
+Optionally, a port can be bound to a specific chassis ::
+
+    $ ovn-ic-nbctl trp-add tr1 trp-tr1-west aa:aa:aa:aa:aa:02 \
+          169.254.200.2/24 chassis=gw-west
+
+When ``chassis`` is set, the port is bound to that chassis.  When omitted, the
+port is distributed -- every availability zone instantiates it as a
+distributed router port of its own copy of the transit router.
+
+To delete a port ::
+
+    $ ovn-ic-nbctl trp-del trp-tr1-east
+
+The transit router ports are automatically populated to the ``IC-SB``
+database, which can be verified by ::
+
+    $ ovn-ic-sbctl show
+
 Create Static Routes
 --------------------
 
@@ -212,4 +270,4 @@ In ovn-west you will see ::
 
 Static routes configured in the routers can be advertised and learned as well.
 For more details of router advertisement and its configure options, please
-see <code>ovn-nb</code>(5).
+see ``ovn-nb``\(5).

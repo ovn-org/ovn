@@ -86,6 +86,13 @@ Additional flags exist for launching the debugger for the OVN programs::
 Creating OVN Resources
 ----------------------
 
+.. note::
+
+  The sample command outputs shown below (UUIDs, table numbers, stage
+  names) are illustrative and will differ from what you see.  In
+  particular, logical flow table numbers and stage names change between
+  OVN releases as the pipeline evolves.
+
 Once you have ``ovn-sandbox`` running, you can start using OVN utilities to
 create resources.  As an example, we will create an environment that has two
 logical switches connected by a logical router.

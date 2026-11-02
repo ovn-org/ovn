@@ -26,12 +26,18 @@ OVN OpenStack Tutorial
 ======================
 
 This tutorial demonstrates how OVN works in an OpenStack "DevStack"
-environment.  It was tested with the "master" branches of DevStack and
-Open vSwitch near the beginning of May 2017.  Anyone using an earlier
-version is likely to encounter some differences.  In particular, we
-noticed some shortcomings in OVN utilities while writing the tutorial
-and pushed out some improvements, so it's best to use recent Open
-vSwitch at least from that point of view.
+environment.  It was originally written and tested with the "master"
+branches of DevStack and Open vSwitch near the beginning of May 2017.
+Anyone using a different version is likely to encounter some
+differences.
+
+.. note::
+
+  The logical flow table numbers, stage names, and sample outputs shown
+  in this tutorial reflect the OVN version at the time of writing and
+  will differ from current OVN.  The concepts and tools demonstrated
+  remain valid; follow along with your own output rather than expecting
+  an exact match.
 
 The goal of this tutorial is to demonstrate OVN in an end-to-end way,
 that is, to show how it works from the cloud management system at the
@@ -178,8 +184,8 @@ Here are step-by-step instructions to get started:
 
 3. Get copies of DevStack and Neutron and set them up::
 
-     $ git clone https://git.openstack.org/openstack-dev/devstack.git
-     $ git clone https://git.openstack.org/openstack/neutron.git
+     $ git clone https://opendev.org/openstack/devstack.git
+     $ git clone https://opendev.org/openstack/neutron.git
      $ cd devstack
      $ cp ../neutron/devstack/ovn-local.conf.sample local.conf
 
@@ -366,13 +372,14 @@ and the software components that connect them are:
   We will use OpenStack's ``openstack`` utility to observe and modify
   Neutron and other OpenStack configuration.
 
-* networking-ovn, the Neutron driver that interfaces with OVN and
-  translates the internal Neutron representation of the virtual
-  network into OVN's representation and pushes that representation
-  down the OVN northbound database.
+* The ML2/OVN driver (formerly known as networking-ovn), the Neutron
+  mechanism driver that interfaces with OVN and translates the internal
+  Neutron representation of the virtual network into OVN's
+  representation and pushes that representation down the OVN northbound
+  database.
 
   In this tutorial it's rarely worth distinguishing Neutron from
-  networking-ovn, so we usually don't break out this layer separately.
+  ML2/OVN, so we usually don't break out this layer separately.
 
 * The OVN Northbound database, aka NB DB.  This is an instance of
   OVSDB, a simple general-purpose database that is used for multiple
@@ -380,7 +387,7 @@ and the software components that connect them are:
   networking concepts such as switches and routers.  The NB DB serves
   the purpose that in other systems might be filled by some kind of
   API; for example, in place of calling an API to create or delete a
-  logical switch, networking-ovn performs these operations by
+  logical switch, ML2/OVN performs these operations by
   inserting or deleting a row in the NB DB's Logical_Switch table.
 
   We will use OVN's ``ovn-nbctl`` utility to observe the NB DB.  (We
@@ -527,7 +534,7 @@ or router::
   tunnel_key          : 2
 
 This output lists the NB DB UUIDs in external_ids:logical-switch and
-Neutron UUIDs in externals_ids:uuid.  We can dive in deeper by viewing
+Neutron UUIDs in external_ids:name.  We can dive in deeper by viewing
 the OVN logical flows that implement a logical switch.  Our new
 logical switch is a simple and almost pathological example given that
 it doesn't yet have any ports attached to it.  We'll look at the
@@ -990,7 +997,7 @@ Now go back to your DevStack session and run::
 
   $ sudo watch ovs-dpctl dump-flows
 
-We're working with a new program.  ovn-dpctl is an interface to Open
+We're working with a new program.  ovs-dpctl is an interface to Open
 vSwitch datapaths, in this case to the Linux kernel datapath.  Its
 ``dump-flows`` command displays the contents of the in-kernel flow
 cache, and by running it under the ``watch`` program we see a new

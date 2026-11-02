@@ -108,6 +108,71 @@
       </dd>
     </dl>
 
+    <h1>Transit Router Commands</h1>
+
+    <dl>
+      <dt>[<code>--may-exist</code>] <code>tr-add</code> <var>router</var></dt>
+      <dd>
+        <p>
+          Creates a new transit router named <var>router</var>.
+        </p>
+
+        <p>
+          Transit router names must be unique. Adding a duplicated name results
+          in error.  With <code>--may-exist</code>, adding a duplicate name
+          succeeds but does not create a new transit router.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>tr-del</code> <var>router</var></dt>
+      <dd>
+        Deletes <var>router</var>.  It is an error if <var>router</var> does
+        not exist, unless <code>--if-exists</code> is specified.
+      </dd>
+
+      <dt><code>tr-list</code></dt>
+      <dd>
+        Lists all existing transit routers on standard output, one per line.
+      </dd>
+
+      <dt>[<code>--may-exist</code>] <code>trp-add</code> <var>router</var>
+      <var>port</var> <var>mac</var> [<var>network</var>]...
+      [<var>column</var>[<code>:</code><var>key</var>]<code>=</code><var>value</var>]...</dt>
+      <dd>
+        <p>
+          Creates a new transit router port named <var>port</var> with Ethernet
+          address <var>mac</var> on <var>router</var>.
+        </p>
+
+        <p>
+          <var>network</var> arguments specify the IP addresses and netmasks of
+          the router port in CIDR notation (e.g. <code>192.168.0.1/24</code>).
+          Multiple addresses may be given.
+        </p>
+
+        <p>
+          Additional column settings may be specified as
+          <var>column</var><code>=</code><var>value</var> pairs.  For example,
+          <code>chassis=</code><var>name</var> binds the port to a specific
+          chassis.  If <code>chassis</code> is not set, the port is distributed
+          across all availability zones.
+        </p>
+
+        <p>
+          Transit router port names must be unique. Adding a duplicated name
+          results in an error. With <code>--may-exist</code>, adding a
+          duplicate name succeeds provided the existing port has the same
+          <var>mac</var> and <var>network</var> arguments.
+        </p>
+      </dd>
+
+      <dt>[<code>--if-exists</code>] <code>trp-del</code> <var>port</var></dt>
+      <dd>
+        Deletes <var>port</var>.  It is an error if <var>port</var> does
+        not exist, unless <code>--if-exists</code> is specified.
+      </dd>
+    </dl>
+
     <h1>Database Commands</h1>
     <p>These commands query and modify the contents of <code>ovsdb</code> tables.
     They are a slight abstraction of the <code>ovsdb</code> interface and

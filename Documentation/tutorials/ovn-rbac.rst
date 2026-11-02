@@ -153,7 +153,7 @@ connection to all of them.
 
       $ ovn-sbctl -- --id=@conn_uuid create Connection \
           target="pssl\:16642" \
-          -- add  SB_Global . connections=@conn_uuid
+          -- add SB_Global . connections @conn_uuid
 
    .. note::
 

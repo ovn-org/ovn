@@ -113,7 +113,7 @@ For strongswan backends::
 
 .. note::
 
-   Support for this feature is only availably when OVN is used together with
+   Support for this feature is only available when OVN is used together with
    OVS releases that accept IPsec custom tunnel options.
 
 Troubleshooting
