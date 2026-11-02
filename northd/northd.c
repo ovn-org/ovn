@@ -4758,13 +4758,12 @@ ls_port_has_changed(const struct nbrec_logical_switch_port *new)
 }
 
 static struct ovn_port *
-ovn_port_find_in_datapath(struct ovn_datapath *od,
-                          const struct nbrec_logical_switch_port *nbsp)
+ovn_port_find_in_datapath(const struct ovn_datapath *od, const char *name)
 {
     struct ovn_port *op;
-    HMAP_FOR_EACH_WITH_HASH (op, dp_node, hash_string(nbsp->name, 0),
+    HMAP_FOR_EACH_WITH_HASH (op, dp_node, hash_string(name, 0),
                              &od->ports) {
-        if (!strcmp(op->key, nbsp->name) && op->nbsp == nbsp) {
+        if (!strcmp(op->key, name)) {
             return op;
         }
     }
@@ -5005,13 +5004,18 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
 {
     bool ls_deleted = nbrec_logical_switch_is_deleted(changed_ls);
     bool ls_ports_changed = ls_deleted;
+    struct ovn_port *op;
     if (!nbrec_logical_switch_is_updated(changed_ls,
                                          NBREC_LOGICAL_SWITCH_COL_PORTS)) {
 
         for (size_t i = 0; i < changed_ls->n_ports; i++) {
             if (nbrec_logical_switch_port_row_get_seqno(
-                changed_ls->ports[i], OVSDB_IDL_CHANGE_MODIFY) > 0 ||
-                !ovn_port_find_in_datapath(od, changed_ls->ports[i])) {
+                changed_ls->ports[i], OVSDB_IDL_CHANGE_MODIFY) > 0) {
+                ls_ports_changed = true;
+                break;
+            }
+            op = ovn_port_find_in_datapath(od, changed_ls->ports[i]->name);
+            if (!op || op->nbsp != changed_ls->ports[i]) {
                 ls_ports_changed = true;
                 break;
             }
@@ -5028,7 +5032,6 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             && (vector_len(&od->router_ports) == hmap_count(&od->ports)));
 
     struct ovs_list existing_virtual_ports;
-    struct ovn_port *op;
 
     ovs_list_init(&existing_virtual_ports);
     HMAP_FOR_EACH (op, dp_node, &od->ports) {
@@ -5040,9 +5043,9 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
         /* Compare the individual ports in the old and new Logical Switches */
         for (size_t j = 0; j < changed_ls->n_ports; ++j) {
             struct nbrec_logical_switch_port *new_nbsp = changed_ls->ports[j];
-            op = ovn_port_find_in_datapath(od, new_nbsp);
+            op = ovn_port_find_in_datapath(od, new_nbsp->name);
 
-            if (!op) {
+            if (!op || op->nbsp != new_nbsp) {
                 if (!lsp_can_be_inc_processed(new_nbsp)) {
                     goto fail;
                 }
