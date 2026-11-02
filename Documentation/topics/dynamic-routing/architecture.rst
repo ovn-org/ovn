@@ -397,6 +397,26 @@ For each qualifying route, ``ovn-controller`` creates a ``Learned_Route``
 record in the Southbound database containing the datapath, logical port,
 IP prefix, and nexthop.
 
+Routes that reference a next hop indirectly are also supported.  Modern
+routing daemons frequently install routes that point at a *nexthop object*
+(see ``ip nexthop``) using a nexthop id (the ``RTA_NH_ID`` route attribute)
+instead of encoding the next hop inline in the route.  When such a route is
+encountered, ``ovn-controller`` resolves the referenced nexthop object
+against the kernel nexthop table (``RTM_GETNEXTHOP``) to obtain the actual
+next hop address(es) and output interface(s).  Nexthop groups are expanded
+so that a single route backed by a group results in one ``Learned_Route``
+record per usable group member.  With the ``net.ipv4.nexthop_compat_mode``
+sysctl enabled, which is the default, the kernel reports the resolved next
+hop inline as well, but ``ovn-controller`` resolves through the nexthop id
+whenever the route carries one so that both settings behave the same.
+
+Because several routes can share one nexthop object, changing that object
+redirects all of them at once without the kernel reporting any route change.
+``ovn-controller`` therefore also watches the kernel nexthop table
+(``RTNLGRP_NEXTHOP``) and re-learns the affected routes whenever a nexthop
+object is added, replaced or removed.  The same nexthop table is used to
+resolve the EVPN nexthop groups described below.
+
 Flow Generation by ovn-northd
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

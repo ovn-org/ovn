@@ -32,6 +32,7 @@
 #include "route.h"
 #include "vec.h"
 
+#include "nexthop-exchange.h"
 #include "route-exchange-netlink.h"
 
 VLOG_DEFINE_THIS_MODULE(route_exchange_netlink);
@@ -216,6 +217,7 @@ ovn_route_msg_from_route_data(uint16_t nlmsg_type,
         .plen = rd->rtm_dst_len,
         .protocol = rd->rtm_protocol,
         .priority = rd->rta_priority,
+        .nhid = rd->rta_nhid,
         .n_nexthops = n_nexthops,
     };
 
@@ -237,6 +239,11 @@ ovn_route_msg_format(struct ds *ds, const struct ovn_route_msg *msg)
     ipv6_format_mapped(&msg->prefix, ds);
     ds_put_format(ds, " plen=%u proto=%u priority=%"PRIu32,
                   msg->plen, msg->protocol, msg->priority);
+
+    if (msg->nhid) {
+        ds_put_format(ds, " nhid=%"PRIu32, msg->nhid);
+        return;
+    }
 
     for (size_t i = 0; i < msg->n_nexthops; i++) {
         const struct ovn_route_nexthop *nh = &msg->nexthops[i];
@@ -341,10 +348,78 @@ re_nl_cached_routes_clear(struct hmap *routes)
     }
 }
 
+/* Appends a learned route for the prefix in 'msg' reachable through the leaf
+ * nexthop object 'nhe' to 'learned_routes'. */
+static void
+learn_route_via_nexthop(const struct nexthop_entry *nhe,
+                        const struct ovn_route_msg *msg,
+                        struct vector *learned_routes)
+{
+    if (ipv6_is_zero(&nhe->addr)) {
+        /* Blackhole next hop, or an address on the local link.  As we just
+         * want to learn remote routes we do not need it. */
+        return;
+    }
+
+    struct re_nl_received_route_node rr = (struct re_nl_received_route_node) {
+        .prefix = msg->prefix,
+        .plen = msg->plen,
+        .nexthop = nhe->addr,
+    };
+    ovs_strlcpy(rr.ifname, nhe->ifname, sizeof rr.ifname);
+
+    vector_push(learned_routes, &rr);
+}
+
+/* Resolves the kernel nexthop object identified by 'id' against 'nexthops'
+ * and appends a learned route for the prefix in 'msg' to 'learned_routes' for
+ * each usable next hop.  A nexthop group yields one learned route per
+ * member. */
+static void
+learn_routes_via_nexthop_id(const struct hmap *nexthops, uint32_t id,
+                            const struct ovn_route_msg *msg,
+                            struct vector *learned_routes)
+{
+    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
+
+    const struct nexthop_entry *nhe = nexthop_entry_find(nexthops, id);
+    if (!nhe) {
+        VLOG_DBG_RL(&rl, "could not resolve nexthop id %"PRIu32, id);
+        return;
+    }
+
+    if (!nhe->n_grps) {
+        learn_route_via_nexthop(nhe, msg, learned_routes);
+        return;
+    }
+
+    for (size_t i = 0; i < nhe->n_grps; i++) {
+        const struct nexthop_grp_entry *grp = &nhe->grps[i];
+
+        /* The kernel does not allow a nexthop group to contain other groups,
+         * so a single level of indirection is all we have to follow. */
+        if (!grp->gateway) {
+            VLOG_DBG_RL(&rl, "could not resolve member %"PRIu32" of nexthop "
+                        "group %"PRIu32, grp->id, id);
+            continue;
+        }
+
+        learn_route_via_nexthop(grp->gateway, msg, learned_routes);
+    }
+}
+
 void
 re_nl_resolve_route(const struct ovn_route_msg *msg,
+                    const struct hmap *nexthops,
                     struct vector *learned_routes)
 {
+    if (msg->nhid) {
+        /* The next hop(s) are not encoded in the route itself, they are
+         * described by a separate kernel nexthop object. */
+        learn_routes_via_nexthop_id(nexthops, msg->nhid, msg, learned_routes);
+        return;
+    }
+
     for (size_t i = 0; i < msg->n_nexthops; i++) {
         const struct ovn_route_nexthop *nh = &msg->nexthops[i];
 

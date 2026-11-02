@@ -5977,6 +5977,33 @@ route_table_notify_clear_changes(struct ed_type_route_table_notify *rtn)
     vector_clear(&rtn->changed_routes);
 }
 
+/* The kernel nexthop table is shared by the features below, each of them
+ * independently declares whether it needs it to be tracked. */
+enum nexthop_exchange_user {
+    NEXTHOP_EXCHANGE_USER_EVPN,
+    NEXTHOP_EXCHANGE_USER_ROUTE,
+    NEXTHOP_EXCHANGE_USER_MAX,
+};
+
+/* The nexthop_exchange node is an input node, but is enabled/disabled based on
+ * the en_neighbor_exchange and en_route_exchange nodes. The reason being that
+ * engine periodically runs input nodes to check if there are updates, so it
+ * could be polled for updates without requiring other nodes to run first. */
+struct ed_type_nexthop_exchange {
+    /* Contains 'struct nexthop_entry'. */
+    struct hmap nexthops;
+    /* Set for each feature that currently needs 'nexthops'. */
+    bool users[NEXTHOP_EXCHANGE_USER_MAX];
+    bool enabled;
+    bool recompute;
+    /* True if the last run changed any nexthop that is not an EVPN FDB one,
+     * i.e. any nexthop a route may be referencing. */
+    bool routing_changed;
+};
+
+static void nexthop_exchange_update(struct ed_type_nexthop_exchange *,
+                                    enum nexthop_exchange_user, bool enabled);
+
 struct ed_type_route_exchange {
     /* We need the idl to check if the Learned_Route table exists. */
     struct ovsdb_idl *sb_idl;
@@ -6009,6 +6036,8 @@ route_exchange_ctx_init(struct engine_node *node,
                         struct route_exchange_ctx_out *r_ctx_out)
 {
     struct ed_type_route *route_data = engine_get_input_data("route", node);
+    struct ed_type_nexthop_exchange *nhe_data =
+        engine_get_input_data("nexthop_exchange", node);
 
     const struct ovsrec_open_vswitch_table *ovs_table =
         EN_OVSDB_GET(engine_get_input("OVS_open_vswitch", node));
@@ -6031,6 +6060,7 @@ route_exchange_ctx_init(struct engine_node *node,
             engine_get_input("SB_port_binding", node), "name"),
         .chassis = chassis,
         .announce_routes = &route_data->announce_routes,
+        .nexthops = &nhe_data->nexthops,
     };
     *r_ctx_out = (struct route_exchange_ctx_out) {
         .sb_changes_pending = false,
@@ -6043,6 +6073,8 @@ en_route_exchange_run(struct engine_node *node, void *data)
     struct ed_type_route_exchange *re = data;
     struct ed_type_route_table_notify *rt_notify =
         engine_get_input_data("route_table_notify", node);
+    struct ed_type_nexthop_exchange *nhe_data =
+        engine_get_input_data("nexthop_exchange", node);
 
     /* There can not actually be any routes to advertise unless we also have
      * the Learned_Route table, since they where introduced in the same
@@ -6098,6 +6130,11 @@ en_route_exchange_run(struct engine_node *node, void *data)
 
     vector_clear(&rt_notify->watches);
 
+    /* Routes we learn may reference their next hop through a nexthop id, which
+     * we can only resolve while the kernel nexthop table is tracked. */
+    nexthop_exchange_update(nhe_data, NEXTHOP_EXCHANGE_USER_ROUTE,
+                            !hmap_is_empty(&route_data->announce_routes));
+
     struct route_exchange_ctx_in r_ctx_in;
     struct route_exchange_ctx_out r_ctx_out;
     route_exchange_ctx_init(node, &r_ctx_in, &r_ctx_out);
@@ -6138,6 +6175,39 @@ route_exchange_route_table_handler(struct engine_node *node, void *data)
     switch (route_exchange_handle_route_changes(re->state, &r_ctx_in,
                                                 &r_ctx_out,
                                                 &rt_notify->changed_routes)) {
+    case ROUTE_EXCHANGE_UNHANDLED:
+        return EN_UNHANDLED;
+    case ROUTE_EXCHANGE_UNCHANGED:
+        return EN_HANDLED_UNCHANGED;
+    case ROUTE_EXCHANGE_UPDATED:
+        break;
+    }
+
+    re->sb_changes_pending |= r_ctx_out.sb_changes_pending;
+
+    return EN_HANDLED_UPDATED;
+}
+
+static enum engine_input_handler_result
+route_exchange_nexthop_handler(struct engine_node *node, void *data)
+{
+    struct ed_type_route_exchange *re = data;
+    struct ed_type_nexthop_exchange *nhe_data =
+        engine_get_input_data("nexthop_exchange", node);
+
+    /* Only the nexthops a route can reference through a nexthop id matter
+     * here, changes limited to the FDB nexthops used by EVPN cannot affect
+     * the routes we learn. */
+    if (!nhe_data->routing_changed) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    struct route_exchange_ctx_in r_ctx_in;
+    struct route_exchange_ctx_out r_ctx_out;
+    route_exchange_ctx_init(node, &r_ctx_in, &r_ctx_out);
+
+    switch (route_exchange_handle_nexthop_changes(re->state, &r_ctx_in,
+                                                  &r_ctx_out)) {
     case ROUTE_EXCHANGE_UNHANDLED:
         return EN_UNHANDLED;
     case ROUTE_EXCHANGE_UNCHANGED:
@@ -6866,16 +6936,6 @@ en_neighbor_table_notify_run(struct engine_node *node OVS_UNUSED,
     return state;
 }
 
-/* The nexthop_exchange node is an input node, but is enabled/disabled
- * based on en_neighbor_exchange node. The reason being that engine
- * periodically runs input nodes to check if there are updates, so it could
- * be polled for updates without requiring other nodes to run first. */
-struct ed_type_nexthop_exchange {
-    struct hmap nexthops;
-    bool enabled;
-    bool recompute;
-};
-
 static void *
 en_nexthop_exchange_init(struct engine_node *node OVS_UNUSED,
                          struct engine_arg *arg OVS_UNUSED)
@@ -6921,10 +6981,21 @@ en_nexthop_exchange_run(struct engine_node *node OVS_UNUSED, void *data)
         ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_NEXTHOP);
 
         nhe_data->recompute = false;
+        nhe_data->routing_changed = true;
         return EN_UPDATED;
     }
 
     struct vector *msgs = ovn_netlink_get_msgs(OVN_NL_NOTIFIER_NEXTHOP);
+
+    nhe_data->routing_changed = false;
+    const struct nh_table_msg *msg;
+    VECTOR_FOR_EACH_PTR (msgs, msg) {
+        if (!msg->nhe->is_fdb) {
+            nhe_data->routing_changed = true;
+            break;
+        }
+    }
+
     bool updated = nexthops_handle_changes(&nhe_data->nexthops, msgs);
     ovn_netlink_notifier_flush(OVN_NL_NOTIFIER_NEXTHOP);
 
@@ -6933,20 +7004,33 @@ en_nexthop_exchange_run(struct engine_node *node OVS_UNUSED, void *data)
 
 static void
 nexthop_exchange_update(struct ed_type_nexthop_exchange *nhe_data,
-                        bool enabled)
+                        enum nexthop_exchange_user user, bool enabled)
 {
-    if (nhe_data->enabled == enabled) {
+    if (nhe_data->users[user] == enabled) {
+        return;
+    }
+    nhe_data->users[user] = enabled;
+
+    bool needed = false;
+    for (size_t i = 0; i < NEXTHOP_EXCHANGE_USER_MAX; i++) {
+        needed = needed || nhe_data->users[i];
+    }
+
+    if (nhe_data->enabled == needed) {
         return;
     }
 
-    if (nhe_data->enabled && !enabled) {
+    if (!needed) {
         nexthops_destroy(&nhe_data->nexthops);
-    } else if (!nhe_data->enabled && enabled) {
+    } else {
         nhe_data->recompute = true;
+        /* The table is only dumped the next time this node runs, make sure
+         * that happens without waiting for an unrelated event. */
+        poll_immediate_wake();
     }
 
-    nhe_data->enabled = enabled;
-    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_NEXTHOP, enabled);
+    nhe_data->enabled = needed;
+    ovn_netlink_update_notifier(OVN_NL_NOTIFIER_NEXTHOP, needed);
 }
 
 struct ed_type_neighbor_exchange {
@@ -7014,7 +7098,8 @@ en_neighbor_exchange_run(struct engine_node *node, void *data_)
 
     neighbor_exchange_run(&n_ctx_in, &n_ctx_out);
     neighbor_table_notify_update(&nt_notify->watches);
-    nexthop_exchange_update(nhe_data, !vector_is_empty(&nt_notify->watches));
+    nexthop_exchange_update(nhe_data, NEXTHOP_EXCHANGE_USER_EVPN,
+                            !vector_is_empty(&nt_notify->watches));
 
     return EN_UPDATED;
 }
@@ -7748,6 +7833,11 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_route_exchange, &en_route_table_notify,
                      route_exchange_route_table_handler);
     engine_add_input(&en_route_exchange, &en_route_exchange_status, NULL);
+    /* Routes referencing a nexthop id have to be re-learned whenever the
+     * nexthop object they point at changes, the route itself is not updated
+     * by the kernel in that case. */
+    engine_add_input(&en_route_exchange, &en_nexthop_exchange,
+                     route_exchange_nexthop_handler);
     engine_add_input(&en_route_exchange, &en_sb_ro,
                      route_exchange_sb_ro_handler);
     /* Re-evaluate the initial-dump readiness gate whenever the SB monitor

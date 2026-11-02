@@ -49,6 +49,9 @@ struct ovn_route_msg {
     /* Metric of the route.  The kernel allows several routes for one prefix
      * that differ only by this, so it is part of a route's identity. */
     uint32_t priority;
+    /* Id of the kernel nexthop object the route resolves through, 0 if the
+     * next hops are described by 'nexthops' instead. */
+    uint32_t nhid;
     /* Number of next hops described by the route itself. */
     size_t n_nexthops;
     struct ovn_route_nexthop nexthops[];
@@ -74,6 +77,11 @@ struct route_exchange_ctx_in {
 
     /* Contains struct advertise_datapath_entry */
     const struct hmap *announce_routes;
+
+    /* Contains struct nexthop_entry, the kernel nexthop objects used to
+     * resolve learned routes that reference their next hop through a nexthop
+     * id. */
+    const struct hmap *nexthops;
 };
 
 struct route_exchange_ctx_out {
@@ -107,6 +115,12 @@ enum route_exchange_handled {
 enum route_exchange_handled route_exchange_handle_route_changes(
     struct route_exchange_state *, const struct route_exchange_ctx_in *,
     struct route_exchange_ctx_out *, const struct vector *changed_routes);
+
+/* Updates the routes OVN learned after the kernel nexthop objects they may
+ * resolve through changed. */
+enum route_exchange_handled route_exchange_handle_nexthop_changes(
+    struct route_exchange_state *, const struct route_exchange_ctx_in *,
+    struct route_exchange_ctx_out *);
 
 void route_exchange_cleanup_vrfs(void);
 void route_exchange_destroy(void);

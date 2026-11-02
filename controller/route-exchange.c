@@ -485,7 +485,7 @@ route_table_resolve_and_sync(
 
     const struct re_nl_cached_route *cr;
     HMAP_FOR_EACH (cr, node, &rt->learned_routes) {
-        re_nl_resolve_route(cr->msg, &received_routes);
+        re_nl_resolve_route(cr->msg, r_ctx_in->nexthops, &received_routes);
     }
 
     struct hmapx_node *dp_node;
@@ -577,6 +577,29 @@ route_exchange_handle_route_changes(
     handled = resync_changed_tables(&changed_tables, r_ctx_in, r_ctx_out);
 
 out:
+    hmapx_destroy(&changed_tables);
+
+    return handled;
+}
+
+enum route_exchange_handled
+route_exchange_handle_nexthop_changes(
+    struct route_exchange_state *state,
+    const struct route_exchange_ctx_in *r_ctx_in,
+    struct route_exchange_ctx_out *r_ctx_out)
+{
+    struct hmapx changed_tables = HMAPX_INITIALIZER(&changed_tables);
+
+    /* A route names a nexthop object, the object does not name the routes
+     * using it, so every table we know of may resolve differently now. */
+    struct route_table_state *rt;
+    HMAP_FOR_EACH (rt, node, &state->tables) {
+        hmapx_add(&changed_tables, rt);
+    }
+
+    enum route_exchange_handled handled =
+        resync_changed_tables(&changed_tables, r_ctx_in, r_ctx_out);
+
     hmapx_destroy(&changed_tables);
 
     return handled;

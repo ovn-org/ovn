@@ -50,6 +50,11 @@ Post v26.09.0
        option to Logical Switches.  It selects the fields that the
        OpenFlow groups of multi-path EVPN FDB entries hash on, instead of
        dp_hash.
+     * Learn routes whose next hop is described by a kernel nexthop object
+       referenced through a nexthop id (RTA_NH_ID) instead of being encoded
+       inline in the route.  Nexthop groups are expanded into one learned
+       route per group member, and the learned routes are updated when the
+       nexthop object they reference changes.
    - Removed OVN's ovs-bugtool plugin and helper scripts.
    - Removed ovn-sim utility scripts.
    - Removed ovn-docker utility scripts.

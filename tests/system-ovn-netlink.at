@@ -569,6 +569,110 @@ fe80::/64 dev lo-test proto kernel metric 256 pref medium])
 
 AT_CLEANUP
 
+AT_SETUP([sync netlink routes - learn routes via nexthop id])
+AT_KEYWORDS([netlink-routes])
+CHECK_VRF()
+
+dnl Skip if the running kernel or iproute2 has no nexthop object support.
+AT_SKIP_IF([! ip nexthop show >/dev/null 2>&1])
+
+dnl Make the kernel describe these routes through the nexthop id alone.  In
+dnl compatibility mode, which is the default, it reports the resolved next
+dnl hop inline as well and OVN would not have to resolve anything.
+compat_mode=$(sysctl -n net.ipv4.nexthop_compat_mode)
+on_exit "sysctl -wq net.ipv4.nexthop_compat_mode=$compat_mode"
+check sysctl -wq net.ipv4.nexthop_compat_mode=0
+
+table_id=100
+
+check ip link add vrf-$table_id type vrf table $table_id
+on_exit 'ip link del vrf-$table_id'
+dnl Routes can outlive the VRF they were added to, so make sure the ones this
+dnl test adds do not leak into the following tests.
+on_exit 'ip -6 route flush vrf vrf-$table_id'
+on_exit 'ip route flush vrf vrf-$table_id'
+check ip link set dev vrf-$table_id up
+
+check ip link add lo-test type dummy
+on_exit 'ip link del lo-test'
+check ip link set lo-test master vrf-$table_id
+check ip link set lo-test address 00:00:00:00:00:10
+check ip addr add 20.0.0.10/24 dev lo-test
+check ip addr add fd20::10/64 dev lo-test
+check ip link set up lo-test
+
+dnl Drop the routes a previous test may have left behind in this table.
+check ovstest test-ovn-netlink route-sync $table_id
+
+dnl Create standalone nexthop objects and a nexthop group referencing them.
+dnl These are the "nhid" next hops that OVN has to resolve against the kernel
+dnl nexthop table.
+nh_v4=$(nexthop_alloc)
+check ip nexthop add id $nh_v4 via 20.0.0.1 dev lo-test
+on_exit "ip nexthop del id $nh_v4"
+nh_v4_b=$(nexthop_alloc)
+check ip nexthop add id $nh_v4_b via 20.0.0.2 dev lo-test
+on_exit "ip nexthop del id $nh_v4_b"
+nh_v6=$(nexthop_alloc)
+check ip nexthop add id $nh_v6 via fd20::1 dev lo-test
+on_exit "ip nexthop del id $nh_v6"
+nh_grp=$(nexthop_alloc)
+check ip nexthop add id $nh_grp group $nh_v4/$nh_v4_b
+on_exit "ip nexthop del id $nh_grp"
+
+dnl Add routes that reference their next hop(s) indirectly through a nexthop
+dnl id instead of carrying the next hop inline.  Use a dynamic routing
+dnl protocol so that OVN actually learns them.
+check ip route add 10.10.10.0/24 nhid $nh_v4 vrf vrf-$table_id proto bgp
+check ip route add 10.10.30.0/24 nhid $nh_grp vrf vrf-$table_id proto bgp
+check ip -6 route add fd20:100::/64 nhid $nh_v6 vrf vrf-$table_id proto bgp
+
+dnl OVN should learn all of them, expanding the nexthop group into one
+dnl learned route per member.
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
+    $table_id | sort], [0], [dnl
+Route table_id=$table_id dst=10.10.10.0 plen=24 nexthop=20.0.0.1
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.1
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.2
+Route table_id=$table_id dst=fd20:100:: plen=64 nexthop=fd20::1
+])
+
+dnl Replacing a nexthop object changes where the routes referencing it point,
+dnl without the kernel touching the routes themselves.
+check ip nexthop replace id $nh_v4 via 20.0.0.9 dev lo-test
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
+    $table_id | sort], [0], [dnl
+Route table_id=$table_id dst=10.10.10.0 plen=24 nexthop=20.0.0.9
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.2
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.9
+Route table_id=$table_id dst=fd20:100:: plen=64 nexthop=fd20::1
+])
+
+dnl A blackhole nexthop has no usable next hop, so nothing is learned for the
+dnl routes pointing at it.
+check ip -6 nexthop replace id $nh_v6 blackhole
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
+    $table_id | sort], [0], [dnl
+Route table_id=$table_id dst=10.10.10.0 plen=24 nexthop=20.0.0.9
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.2
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.9
+])
+
+dnl Leaving the kernel in its default compatibility mode, where the resolved
+dnl next hop is reported inline as well, must not change what is learned.
+check sysctl -wq net.ipv4.nexthop_compat_mode=1
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([ovstest test-ovn-netlink route-sync \
+    $table_id | sort], [0], [dnl
+Route table_id=$table_id dst=10.10.10.0 plen=24 nexthop=20.0.0.9
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.2
+Route table_id=$table_id dst=10.10.30.0 plen=24 nexthop=20.0.0.9
+])
+
+AT_CLEANUP
+
 AT_SETUP([sync netlink routes - table notify])
 AT_KEYWORDS([netlink-routes])
 CHECK_VRF()
@@ -792,14 +896,18 @@ Delete nexthop id=11, group=[[2;1]]
 Delete nexthop id=2, address=fd20::2
 ])
 
-dnl Should NOT notify if a blackhole nexthop is added.
+dnl Routes reference nexthop objects that are not FDB ones, so those have to
+dnl be reported as well.
+dnl Should notify if a blackhole nexthop is added.
 NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
     "ip nexthop add id 1 blackhole"], [0], [dnl
+Add nexthop id=1, blackhole
 ])
 
-dnl Should NOT notify if non-FDB nexthop is added.
+dnl Should notify if non-FDB nexthop is added.
 NS_CHECK_EXEC([nh], [ovstest test-ovn-netlink nexthop-table-notify \
     "ip nexthop add id 2 via 127.0.0.2 dev lo"], [0], [dnl
+Add nexthop id=2, address=127.0.0.2, dev=lo
 ])
 
 AT_CLEANUP

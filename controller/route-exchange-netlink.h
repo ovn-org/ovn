@@ -67,8 +67,11 @@ struct re_nl_received_route_node {
 };
 
 /* Turns the route 'msg' into the routes OVN learns from it, appending them to
- * 'learned_routes'. */
+ * 'learned_routes'.  'nexthops' contains the kernel nexthop objects (struct
+ * nexthop_entry) used to resolve a route that references its next hop through
+ * a nexthop id. */
 void re_nl_resolve_route(const struct ovn_route_msg *,
+                         const struct hmap *nexthops,
                          struct vector *learned_routes);
 
 int re_nl_create_vrf(const char *ifname, uint32_t table_id);

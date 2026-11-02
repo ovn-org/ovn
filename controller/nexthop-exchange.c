@@ -54,8 +54,10 @@ nexthop_grp_weight(const struct nexthop_grp *entry)
 }
 #endif
 
-/* Populates 'nexthops' with all nexthop entries
- * (struct nexthop_entry) with fdb flag set that exist in the table. */
+/* Populates 'nexthops' with all nexthop entries (struct nexthop_entry) that
+ * exist in the kernel nexthop table.  Both the FDB nexthops used by EVPN and
+ * the nexthops referenced by routes through a nexthop id are included, use
+ * 'is_fdb' to tell them apart. */
 void
 nexthops_sync(struct hmap *nexthops)
 {
@@ -96,10 +98,7 @@ void
 nexthop_entry_format(struct ds *ds, const struct nexthop_entry *nhe)
 {
     ds_put_format(ds, "id=%"PRIu32", ", nhe->id);
-    if (!nhe->n_grps) {
-        ds_put_cstr(ds, "address=");
-        ipv6_format_mapped(&nhe->addr, ds);
-    } else {
+    if (nhe->n_grps) {
         ds_put_cstr(ds, "group=[");
         for (size_t i = 0; i < nhe->n_grps; i++) {
             const struct nexthop_grp_entry *grp = &nhe->grps[i];
@@ -113,6 +112,15 @@ nexthop_entry_format(struct ds *ds, const struct nexthop_entry *nhe)
 
         ds_truncate(ds, ds->length - 2);
         ds_put_char(ds, ']');
+    } else if (nhe->is_blackhole) {
+        ds_put_cstr(ds, "blackhole");
+    } else {
+        ds_put_cstr(ds, "address=");
+        ipv6_format_mapped(&nhe->addr, ds);
+    }
+
+    if (nhe->ifname[0]) {
+        ds_put_format(ds, ", dev=%s", nhe->ifname);
     }
 }
 
@@ -199,6 +207,8 @@ nh_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
     static const struct nl_policy policy[] = {
         [NHA_ID] = { .type = NL_A_U32 },
         [NHA_FDB] = { .type = NL_A_FLAG, .optional = true },
+        [NHA_BLACKHOLE] = { .type = NL_A_FLAG, .optional = true },
+        [NHA_OIF] = { .type = NL_A_U32, .optional = true },
         [NHA_GROUP] = { .type = NL_A_UNSPEC, .optional = true,
                         .min_len = sizeof(struct nexthop_grp) },
         [NHA_GATEWAY] = { .type = NL_A_UNSPEC, .optional = true,
@@ -211,10 +221,6 @@ nh_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
 
     if (!parsed) {
         VLOG_DBG_RL(&rl, "received unparseable rtnetlink nexthop message");
-        return 0;
-    }
-
-    if (!nl_attr_get_flag(attrs[NHA_FDB])) {
         return 0;
     }
 
@@ -241,8 +247,9 @@ nh_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
     } else if (attrs[NHA_GROUP]) {
         n_grps = nl_attr_get_size(attrs[NHA_GROUP]) / sizeof *grps;
         grps = nl_attr_get(attrs[NHA_GROUP]);
-    } else {
-        VLOG_DBG_RL(&rl, "missing group or gateway nexthop attribute");
+    } else if (!attrs[NHA_BLACKHOLE] && !attrs[NHA_OIF]) {
+        VLOG_DBG_RL(&rl, "missing group, gateway, oif or blackhole nexthop "
+                    "attribute");
         return 0;
     }
 
@@ -252,8 +259,20 @@ nh_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
     *change->nhe = (struct nexthop_entry) {
         .id = nl_attr_get_u32(attrs[NHA_ID]),
         .addr = addr,
+        .is_blackhole = nl_attr_get_flag(attrs[NHA_BLACKHOLE]),
+        .is_fdb = nl_attr_get_flag(attrs[NHA_FDB]),
         .n_grps = n_grps,
     };
+
+    if (attrs[NHA_OIF]) {
+        uint32_t oif = nl_attr_get_u32(attrs[NHA_OIF]);
+
+        if (!if_indextoname(oif, change->nhe->ifname)) {
+            change->nhe->ifname[0] = '\0';
+            VLOG_DBG_RL(&rl, "could not find interface name for nexthop "
+                        "%"PRIu32" if-index %"PRIu32, change->nhe->id, oif);
+        }
+    }
 
     for (size_t i = 0; i < n_grps; i++) {
         const struct nexthop_grp *grp = &grps[i];

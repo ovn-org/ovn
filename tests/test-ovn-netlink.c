@@ -195,6 +195,7 @@ test_host_if_monitor(struct ovs_cmdl_context *ctx)
 static int
 sync_and_resolve_routes(uint32_t table_id,
                         const struct hmap *routes_to_advertise,
+                        const struct hmap *nexthops,
                         struct vector *received_routes)
 {
     struct hmap learned_routes = HMAP_INITIALIZER(&learned_routes);
@@ -208,7 +209,7 @@ sync_and_resolve_routes(uint32_t table_id,
 
     const struct re_nl_cached_route *cr;
     HMAP_FOR_EACH (cr, node, &learned_routes) {
-        re_nl_resolve_route(cr->msg, received_routes);
+        re_nl_resolve_route(cr->msg, nexthops, received_routes);
     }
 
     re_nl_cached_routes_clear(&learned_routes);
@@ -229,6 +230,7 @@ test_route_sync(struct ovs_cmdl_context *ctx)
     }
 
     struct hmap routes_to_advertise = HMAP_INITIALIZER(&routes_to_advertise);
+    struct hmap nexthops = HMAP_INITIALIZER(&nexthops);
     struct vector received_routes =
         VECTOR_EMPTY_INITIALIZER(struct re_nl_received_route_node);
 
@@ -258,8 +260,12 @@ test_route_sync(struct ovs_cmdl_context *ctx)
                     advertise_route_hash(&ar->addr, &ar->nexthop, ar->plen));
     }
 
+    /* Learned routes may reference their next hop through a nexthop id, which
+     * can only be resolved against the kernel nexthop table. */
+    nexthops_sync(&nexthops);
+
     ovs_assert(sync_and_resolve_routes(table_id, &routes_to_advertise,
-                                       &received_routes) == 0);
+                                       &nexthops, &received_routes) == 0);
 
     struct ds msg = DS_EMPTY_INITIALIZER;
 
@@ -276,6 +282,8 @@ done:
         free(e);
     }
     hmap_destroy(&routes_to_advertise);
+    nexthops_destroy(&nexthops);
+    hmap_destroy(&nexthops);
     vector_destroy(&received_routes);
     ds_destroy(&msg);
 }

@@ -16,7 +16,9 @@
 #ifndef NEXTHOP_EXCHANGE_H
 #define NEXTHOP_EXCHANGE_H 1
 
+#include <net/if.h>
 #include <netinet/in.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "openvswitch/hmap.h"
@@ -40,6 +42,14 @@ struct nexthop_entry {
     uint32_t id;
     /* Nexthop IP address, zeroed in case of group entry. */
     struct in6_addr addr;
+    /* Output interface, empty string if the nexthop does not have one.
+     * Adding 1 to this to be sure we actually have a terminating '\0'. */
+    char ifname[IFNAMSIZ + 1];
+    /* True if the nexthop discards the traffic sent to it. */
+    bool is_blackhole;
+    /* True if the nexthop belongs to a bridge FDB, i.e. it is used by EVPN
+     * rather than by the routing table. */
+    bool is_fdb;
     /* Number of group entries, "0" in case of gateway entry. */
     size_t n_grps;
     /* Array of group entries. */
