@@ -27,7 +27,7 @@ OVN OpenStack Tutorial
 
 This tutorial demonstrates how OVN works in an OpenStack "DevStack"
 environment.  It was originally written and tested with the "master"
-branches of DevStack and Open vSwitch near the beginning of May 2017.
+branches of DevStack and Open vSwitch near the beginning of Oct 2026.
 Anyone using a different version is likely to encounter some
 differences.
 
@@ -108,9 +108,9 @@ Here are step-by-step instructions to get started:
 
 1. Install a VM.
 
-   I tested these instructions with Centos 7.6.  Download the "minimal
-   install" ISO and booted it.  The install is straightforward.  Be
-   sure to enable networking, and set a host name, such as
+   I tested these instructions with Centos 10.  Download the "Stream
+   boot install" ISO and booted it.  The install is straightforward.
+   Be sure to enable networking, and set a host name, such as
    "ovn-devstack-1".  Add a regular (non-root) user, and check the box
    "Make this user administrator".  Also, set your time zone.
 
@@ -167,9 +167,9 @@ Here are step-by-step instructions to get started:
    .. note::
 
       Support for `Centos 7 in Devstack <https://review.opendev.org/#/c/688799/>`_
-      is going away, but you can still use it. Especially while Centos 8 support
-      is not finished. The one important caveat for making Centos 7 work with Devstack
-      is that you will explicitly have to install these packages as well::
+      is long gone, but the same caveat applies to every later release:
+      to make Centos 8, 9 or 10 work with Devstack you will explicitly
+      have to install these packages as well::
 
            $ sudo yum install python3 python3-devel
 
@@ -458,52 +458,77 @@ If you ask Neutron to show us the available networks, we see ``n1`` as
 well as the two networks that DevStack creates by default::
 
   $ openstack network list -f yaml | abbrev
-  - ID: 5b6baf
+  - ID: 68cb3a
     Name: n1
-    Subnets: 5e67e7
-  - ID: c02c4d
-    Name: private
-    Subnets: d88a34, fd87f9
-  - ID: d1ac28
+    Subnets:
+    - a375e9
+  - ID: 6cad57
     Name: public
-    Subnets: 0b1e79, c87dc1
+    Subnets:
+    - 1bcea0
+    - 405845
+  - ID: 71160a
+    Name: shared
+    Subnets:
+    - 39e0b5
+  - ID: 935ec0
+    Name: private
+    Subnets:
+    - 88706f
+    - 9d19ae
 
 Neutron pushes this network setup down to the OVN northbound
 database.  We can use ``ovn-nbctl show`` to see an overview of what's
 in the NB DB::
 
-  $ ovn-nbctl show | abbrev
-  switch 5b3d5f (neutron-c02c4d) (aka private)
-      port b256dd
+  $ sudo ovn-nbctl show | abbrev
+  switch 6cad57 (neutron-6cad57) (aka public)
+      port 2d86c4
+          type: localport
+          addresses: ["fa:16:3e:a9:47:00"]
+      port 09c087
           type: router
-          router-port: lrp-b256dd
-      port f264e7
-          type: router
-          router-port: lrp-f264e7
-  switch 2579f4 (neutron-d1ac28) (aka public)
-      port provnet-d1ac28
+          router-port: lrp-09c087
+      port provnet-2deb4b
           type: localnet
           addresses: ["unknown"]
-      port ae9b52
+  switch 71160a (neutron-71160a) (aka shared)
+      port 882366
+          type: localport
+          addresses: ["fa:16:3e:94:e7:c6 192.168.233.2"]
+  switch 68cb3a (neutron-68cb3a) (aka n1)
+      port 465a58
+          type: localport
+          addresses: ["fa:16:3e:cb:26:d5 10.1.1.2"]
+  switch 935ec0 (neutron-935ec0) (aka private)
+      port 4bcc8f
           type: router
-          router-port: lrp-ae9b52
-  switch 3eb263 (neutron-5b6baf) (aka n1)
-  router c59ad2 (neutron-9b057f) (aka router1)
-      port lrp-ae9b52
-          mac: "fa:16:3e:b2:d2:67"
-          networks: ["172.24.4.9/24", "2001:db8::b/64"]
-      port lrp-b256dd
-          mac: "fa:16:3e:35:33:db"
-          networks: ["fdb0:5860:4ba8::1/64"]
-      port lrp-f264e7
-          mac: "fa:16:3e:fc:c8:da"
+          router-port: lrp-4bcc8f
+      port f87782
+          type: router
+          router-port: lrp-f87782
+      port 6344ee
+          type: localport
+          addresses: ["fa:16:3e:da:bb:9e 10.0.0.2 fd8a:9a83:ed81:0:f816:3eff:feda:bb9e"]
+  router 95152d (neutron-d99ace) (aka router1)
+      port lrp-f87782
+          mac: "fa:16:3e:93:8f:4d"
+          ipv6-lla: "fe80::f816:3eff:fe93:8f4d"
           networks: ["10.0.0.1/26"]
-      nat 80914c
-          external ip: "172.24.4.9"
-          logical ip: "10.0.0.0/26"
+      port lrp-4bcc8f
+          mac: "fa:16:3e:8c:31:06"
+          ipv6-lla: "fe80::f816:3eff:fe8c:3106"
+          networks: ["fd8a:9a83:ed81::1/64"]
+      port lrp-09c087
+          mac: "fa:16:3e:48:c3:6b"
+          ipv6-lla: "fe80::f816:3eff:fe48:c36b"
+          networks: ["172.24.4.37/24", "2001:db8::287/64"]
+      nat 930592
+          external ip: "172.24.4.37"
+          logical ip: "0.0.0.0/0"
           type: "snat"
 
-This output shows that OVN has three logical switches, each of which
+This output shows that OVN has four logical switches, each of which
 corresponds to a Neutron network, and a logical router that
 corresponds to the Neutron router that DevStack creates by default.
 The logical switch that corresponds to our new network ``n1`` has no
@@ -516,22 +541,35 @@ router concepts into lower-level concepts of "logical datapaths" and
 logical flows.  There's one logical datapath for each logical switch
 or router::
 
-  $ ovn-sbctl list datapath_binding | abbrev
-  _uuid               : 0ad69d
-  external_ids        : {logical-switch="5b3d5f", name="neutron-c02c4d", "name2"=private}
-  tunnel_key          : 1
-
-  _uuid               : a8a758
-  external_ids        : {logical-switch="3eb263", name="neutron-5b6baf", "name2"="n1"}
-  tunnel_key          : 4
-
-  _uuid               : 191256
-  external_ids        : {logical-switch="2579f4", name="neutron-d1ac28", "name2"=public}
-  tunnel_key          : 3
-
-  _uuid               : b87bec
-  external_ids        : {logical-router="c59ad2", name="neutron-9b057f", "name2"="router1"}
+  $ sudo ovn-sbctl list datapath_binding | abbrev
+  ...
+  _uuid               : d802e0
+  external_ids        : {always_learn_from_arp_request="false", disable_garp_rarp="false", logical-router="95152d", mac_binding_age_threshold="300", name=neutron-d99ace, name2=router1}
+  load_balancers      : []
+  nb_uuid             : 95152d
   tunnel_key          : 2
+  type                : logical-router
+
+  _uuid               : 8ade2d
+  external_ids        : {fdb_age_threshold="300", logical-switch="6cad57", name=neutron-6cad57, name2=public}
+  load_balancers      : []
+  nb_uuid             : 6cad57
+  tunnel_key          : 3
+  type                : logical-switch
+
+  _uuid               : 8b6e64
+  external_ids        : {logical-switch="68cb3a", name=neutron-68cb3a, name2=n1}
+  load_balancers      : []
+  nb_uuid             : 68cb3a
+  tunnel_key          : 5
+  type                : logical-switch
+
+  _uuid               : 77472e
+  external_ids        : {logical-switch="935ec0", name=neutron-935ec0, name2=private}
+  load_balancers      : []
+  nb_uuid             : 935ec0
+  tunnel_key          : 1
+  type                : logical-switch
 
 This output lists the NB DB UUIDs in external_ids:logical-switch and
 Neutron UUIDs in external_ids:name.  We can dive in deeper by viewing
@@ -540,14 +578,19 @@ logical switch is a simple and almost pathological example given that
 it doesn't yet have any ports attached to it.  We'll look at the
 details a bit later::
 
-  $ ovn-sbctl lflow-list n1 | abbrev
-  Datapath: "neutron-5b6baf" aka "n1" (a8a758)  Pipeline: ingress
-    table=0 (ls_in_port_sec_l2  ), priority=100  , match=(eth.src[40]), action=(drop;)
-    table=0 (ls_in_port_sec_l2  ), priority=100  , match=(vlan.present), action=(drop;)
+  $ sudo ovn-sbctl lflow-list n1 | abbrev
+  Datapath: "neutron-68cb3a" aka "n1" (8b6e64)  Pipeline: ingress
+    table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:cb:26:d5 && outport == "465a58" && !is_chassis_resident("465a58") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+    table=0 (ls_in_check_port_sec), priority=105  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
+    table=0 (ls_in_check_port_sec), priority=100  , match=(eth.src[40]), action=(drop;)
+    table=0 (ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+    table=0 (ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[15] = check_in_port_sec(); next;)
+
   ...
-  Datapath: "neutron-5b6baf" aka "n1" (a8a758)  Pipeline: egress
-    table=0 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
-    table=1 (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  Datapath: "neutron-68cb3a" aka "n1" (8b6e64)  Pipeline: egress
+    table=0 (ls_out_lookup_fdb  ), priority=0    , match=(1), action=(next;)
+    table=1 (ls_out_put_fdb     ), priority=0    , match=(1), action=(next;)
+
   ...
 
 We have one hypervisor (aka "compute node", in OpenStack parlance),
@@ -561,21 +604,41 @@ flows listed just below their logical flows.  We also need to use
 and try it::
 
   $ sudo ovn-sbctl --ovs lflow-list n1 | abbrev
-  Datapath: "neutron-5b6baf" aka "n1" (a8a758)  Pipeline: ingress
-    table=0 (ls_in_port_sec_l2  ), priority=100  , match=(eth.src[40]), action=(drop;)
-    table=0 (ls_in_port_sec_l2  ), priority=100  , match=(vlan.present), action=(drop;)
+  Datapath: "neutron-68cb3a23-dcea-4153-850d-cd6177ab7aa0" aka "n1" (8b6e6412-06af-4860-b929-3a90c85171c4)  Pipeline: ingress
+    table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:cb:26:d5 && outport == "465a58ea-6638-4d33-a213-fb4c080ddec6" && !is_chassis_resident("465a58ea-6638-4d33-a213-fb4c080ddec6") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+    table=0 (ls_in_check_port_sec), priority=105  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
+      table=8 icmp,reg10=0x10000/0x10000,metadata=0x1,icmp_type=3,icmp_code=4 actions=drop
+      table=8 icmp6,reg10=0x10000/0x10000,metadata=0x3,icmp_type=2,icmp_code=0 actions=drop
+      table=8 icmp,reg10=0x10000/0x10000,metadata=0x3,icmp_type=3,icmp_code=4 actions=drop
+      table=8 icmp6,reg10=0x10000/0x10000,metadata=0x1,icmp_type=2,icmp_code=0 actions=drop
+    table=0 (ls_in_check_port_sec), priority=100  , match=(eth.src[40]), action=(drop;)
+      table=8 metadata=0x1,dl_src=01:00:00:00:00:00/01:00:00:00:00:00 actions=drop
+      table=8 metadata=0x3,dl_src=01:00:00:00:00:00/01:00:00:00:00:00 actions=drop
+    table=0 (ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+      table=8 metadata=0x1,vlan_tci=0x1000/0x1000 actions=drop
+      table=8 metadata=0x3,vlan_tci=0x1000/0x1000 actions=drop
+    table=0 (ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[15] = check_in_port_sec(); next;)
+      table=8 metadata=0x1 actions=set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[111],resubmit(,9)
+      table=8 metadata=0x3 actions=set_field:0/0x1000->reg10,resubmit(,73),move:NXM_NX_REG10[12]->NXM_NX_XXREG0[111],resubmit(,9)
+
   ...
-  Datapath: "neutron-5b6baf" aka "n1" (a8a758)  Pipeline: egress
-    table=0 (ls_out_pre_lb      ), priority=0    , match=(1), action=(next;)
-    table=1 (ls_out_pre_acl     ), priority=0    , match=(1), action=(next;)
+  Datapath: "neutron-68cb3a23-dcea-4153-850d-cd6177ab7aa0" aka "n1" (8b6e6412-06af-4860-b929-3a90c85171c4)  Pipeline: egress
+    table=0 (ls_out_lookup_fdb  ), priority=0    , match=(1), action=(next;)
+      table=48 metadata=0x1 actions=resubmit(,49)
+      table=48 metadata=0x3 actions=resubmit(,49)
+    table=1 (ls_out_put_fdb     ), priority=0    , match=(1), action=(next;)
+      table=49 metadata=0x1 actions=resubmit(,50)
+      table=49 metadata=0x3 actions=resubmit(,50)
   ...
 
-You were probably disappointed: the output didn't change, and no
-OpenFlow flows were printed.  That's because no OpenFlow flows are
-installed for this logical datapath, which in turn is because there
-are no VIFs for this logical datapath on the local hypervisor.  For a
-better example, you can try ``ovn-sbctl --ovs`` on one of the other
-logical datapaths.
+You can see that some logical flows now have OpenFlow flows
+(indented below them).  These are global rules that OVN installs
+for every logical datapath: port security checks that drop invalid
+packets (multicast source MACs, VLAN-tagged frames, untrusted
+ICMP errors) and forwarding database operations.  For a richer
+example with per-port flows, you can try ``ovn-sbctl --ovs`` on
+one of the other logical datapaths that already have ports, such
+as ``private``.
 
 Attaching VMs
 ~~~~~~~~~~~~~
@@ -628,13 +691,13 @@ Let's chase down what's changed in OVN.  Start with the NB DB at the
 top of the system.  It's clear that our logical switch now has the two
 logical ports attached to it::
 
-  $ ovn-nbctl show | abbrev
+  $ sudo ovn-nbctl show | abbrev
   ...
-  switch 3eb263 (neutron-5b6baf) (aka n1)
-      port c29d41 (aka bp)
-          addresses: ["fa:16:3e:99:7a:17 10.1.1.6"]
-      port 820c08 (aka ap)
-          addresses: ["fa:16:3e:a9:4c:c7 10.1.1.5"]
+  switch 68cb3a (neutron-68cb3a) (aka n1)
+      port f93fab (aka bp)
+          addresses: ["fa:16:3e:3c:e2:c6 10.1.1.6"]
+      port 2ecc01 (aka ap)
+          addresses: ["fa:16:3e:ef:64:b6 10.1.1.5"]
   ...
 
 We can get some more details on each of these by looking at their NB
@@ -642,34 +705,42 @@ DB records in the Logical_Switch_Port table.  Each port has addressing
 information, port security enabled, and a pointer to DHCP
 configuration (which we'll look at much later in `DHCP`_)::
 
-  $ ovn-nbctl list logical_switch_port ap bp | abbrev
-  _uuid               : ef17e5
-  addresses           : ["fa:16:3e:a9:4c:c7 10.1.1.5"]
-  dhcpv4_options      : 165974
+  $ sudo ovn-nbctl list logical_switch_port ap bp | abbrev
+  _uuid               : f013b5
+  addresses           : ["fa:16:3e:ef:64:b6 10.1.1.5"]
+  dhcpv4_options      : a7de4a
   dhcpv6_options      : []
   dynamic_addresses   : []
   enabled             : true
-  external_ids        : {"neutron:port_name"=ap}
-  name                : "820c08"
-  options             : {}
+  external_ids        : {"neutron:cidrs"="10.1.1.5/24", "neutron:device_id"="91df4e", "neutron:device_owner"="compute:nova", "neutron:host_id"=localhost.localdomain, "neutron:mtu"="", "neutron:network_name"=neutron-68cb3a, "neutron:port_capabilities"="", "neutron:port_name"=ap, "neutron:project_id"="584a7ea8c2fd4b9582945443de262f65", "neutron:revision_number"="6", "neutron:security_group_ids"="a9fa0a", "neutron:subnet_pool_addr_scope4"="", "neutron:subnet_pool_addr_scope6"="", "neutron:vnic_type"=normal}
+  ha_chassis_group    : []
+  health_checks       : []
+  mirror_rules        : []
+  name                : "2ecc01"
+  options             : {requested-chassis=localhost.localdomain}
   parent_name         : []
-  port_security       : ["fa:16:3e:a9:4c:c7 10.1.1.5"]
+  peer                : []
+  port_security       : ["fa:16:3e:ef:64:b6 10.1.1.5"]
   tag                 : []
   tag_request         : []
   type                : ""
   up                  : true
 
-  _uuid               : e8af12
-  addresses           : ["fa:16:3e:99:7a:17 10.1.1.6"]
-  dhcpv4_options      : 165974
+  _uuid               : 9b6b71
+  addresses           : ["fa:16:3e:3c:e2:c6 10.1.1.6"]
+  dhcpv4_options      : a7de4a
   dhcpv6_options      : []
   dynamic_addresses   : []
   enabled             : true
-  external_ids        : {"neutron:port_name"=bp}
-  name                : "c29d41"
-  options             : {}
+  external_ids        : {"neutron:cidrs"="10.1.1.6/24", "neutron:device_id"="5c060f", "neutron:device_owner"="compute:nova", "neutron:host_id"=localhost.localdomain, "neutron:mtu"="", "neutron:network_name"=neutron-68cb3a, "neutron:port_capabilities"="", "neutron:port_name"=bp, "neutron:project_id"="584a7ea8c2fd4b9582945443de262f65", "neutron:revision_number"="6", "neutron:security_group_ids"="a9fa0a", "neutron:subnet_pool_addr_scope4"="", "neutron:subnet_pool_addr_scope6"="", "neutron:vnic_type"=normal}
+  ha_chassis_group    : []
+  health_checks       : []
+  mirror_rules        : []
+  name                : "f93fab"
+  options             : {requested-chassis=localhost.localdomain}
   parent_name         : []
-  port_security       : ["fa:16:3e:99:7a:17 10.1.1.6"]
+  peer                : []
+  port_security       : ["fa:16:3e:3c:e2:c6 10.1.1.6"]
   tag                 : []
   tag_request         : []
   type                : ""
@@ -679,7 +750,7 @@ Now that the logical switch is less pathological, it's worth taking
 another look at the SB DB logical flow table.  Try a command like
 this::
 
-  $ ovn-sbctl lflow-list n1 | abbrev | less -S
+  $ sudo ovn-sbctl lflow-list n1 | abbrev | less -S
 
 and then glance through the flows.  Packets that egress a VM into the
 logical switch travel through the flow table's ingress pipeline
@@ -691,35 +762,49 @@ thought it's possible to guess a lot without reading the manpage.  For
 example, consider the flows in ingress pipeline table 0, which are the
 first flows encountered by a packet traversing the switch::
 
-  table=0 (ls_in_port_sec_l2  ), priority=100  , match=(eth.src[40]), action=(drop;)
-  table=0 (ls_in_port_sec_l2  ), priority=100  , match=(vlan.present), action=(drop;)
-  table=0 (ls_in_port_sec_l2  ), priority=50   , match=(inport == "820c08" && eth.src == {fa:16:3e:a9:4c:c7}), action=(next;)
-  table=0 (ls_in_port_sec_l2  ), priority=50   , match=(inport == "c29d41" && eth.src == {fa:16:3e:99:7a:17}), action=(next;)
+  table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:3c:e2:c6 && outport == "f93fab" && !is_chassis_resident("f93fab") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+  table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:cb:26:d5 && outport == "465a58" && !is_chassis_resident("465a58") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+  table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:ef:64:b6 && outport == "2ecc01" && !is_chassis_resident("2ecc01") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+  table=0 (ls_in_check_port_sec), priority=105  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=100  , match=(eth.src[40]), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=100  , match=(vlan.present), action=(drop;)
+  table=0 (ls_in_check_port_sec), priority=50   , match=(1), action=(reg0[15] = check_in_port_sec(); next;)
 
-The first two flows, with priority 100, immediately drop two kinds of
-invalid packets: those with a multicast or broadcast Ethernet source
-address (since multicast is only for packet destinations) and those
-with a VLAN tag (because OVN doesn't yet support VLAN tags inside
-logical networks).  The next two flows implement L2 port security:
-they advance to the next table for packets with the correct Ethernet
-source addresses for their ingress ports.  A packet that does not
-match any flow is implicitly dropped, so there's no need for flows to
-deal with mismatches.
+The three priority-110 flows handle ICMP "packet too big" (PMTUD)
+messages that arrive over an overlay tunnel on behalf of a port that
+is not resident on this chassis: each one swaps ``inport`` and
+``outport`` so that the error is processed in the direction the
+original packet was travelling.  The priority-105 flow drops any
+other tunnelled PMTUD message.  The next two flows, with priority
+100, immediately drop two kinds of invalid packets: those with a
+multicast or broadcast Ethernet source address (since multicast is
+only for packet destinations) and those with a VLAN tag (because OVN
+doesn't yet support VLAN tags inside logical networks).  The final
+priority-50 flow runs the per-port L2 and L3 port security checks
+with the ``check_in_port_sec()`` action, storing the result in
+``reg0[15]``; the next table, ``ls_in_apply_port_sec``, drops the
+packet if that bit is set.
 
 The logical flow table includes many other flows, some of which we
 will look at later.  For now, it's most worth looking at ingress table
-13::
+32, the L2 lookup stage::
 
-  table=13(ls_in_l2_lkup      ), priority=100  , match=(eth.mcast), action=(outport = "_MC_flood"; output;)
-  table=13(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == fa:16:3e:99:7a:17), action=(outport = "c29d41"; output;)
-  table=13(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == fa:16:3e:a9:4c:c7), action=(outport = "820c08"; output;)
+  table=32(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=32(ls_in_l2_lkup      ), priority=100  , match=(reg8[23] == 1), action=(output;)
+  table=32(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+  table=32(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=32(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=32(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
+  table=32(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == fa:16:3e:3c:e2:c6), action=(outport = "f93fab"; output;)
+  table=32(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == fa:16:3e:cb:26:d5), action=(outport = "465a58"; output;)
+  table=32(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == fa:16:3e:ef:64:b6), action=(outport = "2ecc01"; output;)
+  table=32(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
 
-The first flow in table 13 checks whether the packet is an Ethernet
-multicast or broadcast and, if so, outputs it to a special port that
-egresses to every logical port (other than the ingress port).
-Otherwise the packet is output to the port corresponding to its
-Ethernet destination address.  Packets addressed to any other Ethernet
-destination are implicitly dropped.
+The first few flows handle multicast and broadcast traffic by
+outputting to special flood ports.  The priority-50 flows perform
+unicast L2 lookup: each matches a known destination MAC address and
+outputs to the corresponding logical port.  The priority-0 fallback
+uses ``get_fdb`` to look up dynamically learned MAC addresses.
 
 (It's common for an OVN logical switch to know all the MAC addresses
 supported by its logical ports, like this one.  That's why there's no
@@ -733,7 +818,7 @@ play in our example.)
   run a command like the following and then look at the row for the
   correct datapath::
 
-    $ ovn-sbctl find multicast_group name=_MC_flood | abbrev
+    $ sudo ovn-sbctl find multicast_group name=_MC_flood | abbrev
 
 Now if you want to look at the OpenFlow flows, you can actually see
 them.  For example, here's the beginning of the output that lists the
@@ -743,15 +828,20 @@ syntax, the ``ovs-fields``\(7) manpage explains OpenFlow matches and
 ``ovs-ofctl``\(8) explains OpenFlow actions::
 
   $ sudo ovn-sbctl --ovs lflow-list n1 | abbrev
-  Datapath: "neutron-5b6baf" aka "n1" (a8a758)  Pipeline: ingress
-    table=0 (ls_in_port_sec_l2  ), priority=100  , match=(eth.src[40]), action=(drop;)
-      table=8 metadata=0x4,dl_src=01:00:00:00:00:00/01:00:00:00:00:00 actions=drop
-    table=0 (ls_in_port_sec_l2  ), priority=100  , match=(vlan.present), action=(drop;)
-      table=8 metadata=0x4,vlan_tci=0x1000/0x1000 actions=drop
-    table=0 (ls_in_port_sec_l2  ), priority=50   , match=(inport == "820c08" && eth.src == {fa:16:3e:a9:4c:c7}), action=(next;)
-      table=8 reg14=0x1,metadata=0x4,dl_src=fa:16:3e:a9:4c:c7 actions=resubmit(,9)
-    table=0 (ls_in_port_sec_l2  ), priority=50   , match=(inport == "c29d41" && eth.src == {fa:16:3e:99:7a:17}), action=(next;)
-      table=8 reg14=0x2,metadata=0x4,dl_src=fa:16:3e:99:7a:17 actions=resubmit(,9)
+  Datapath: "neutron-68cb3a" aka "n1" (8b6e64)  Pipeline: ingress
+    table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:3c:e2:c6 && outport == "f93fab" && !is_chassis_resident("f93fab") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+    table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:cb:26:d5 && outport == "465a58" && !is_chassis_resident("465a58") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+      table=8 icmp,reg10=0x10000/0x10000,reg15=0x1,metadata=0x5,dl_src=fa:16:3e:cb:26:d5,icmp_type=3,icmp_code=4 actions=push:NXM_NX_REG14[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],pop:NXM_NX_REG15[],resubmit(,9)
+      table=8 icmp6,reg10=0x10000/0x10000,reg15=0x1,metadata=0x5,dl_src=fa:16:3e:cb:26:d5,icmp_type=2,icmp_code=0 actions=push:NXM_NX_REG14[],push:NXM_NX_REG15[],pop:NXM_NX_REG14[],pop:NXM_NX_REG15[],resubmit(,9)
+    table=0 (ls_in_check_port_sec), priority=110  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && eth.src == fa:16:3e:ef:64:b6 && outport == "2ecc01" && !is_chassis_resident("2ecc01") && flags.tunnel_rx == 1), action=(outport <-> inport; next;)
+    table=0 (ls_in_check_port_sec), priority=105  , match=(((ip4 && icmp4.type == 3 && icmp4.code == 4) || (ip6 && icmp6.type == 2 && icmp6.code == 0)) && flags.tunnel_rx == 1), action=(drop;)
+      table=8 icmp,reg10=0x10000/0x10000,metadata=0x1,icmp_type=3,icmp_code=4 actions=drop
+      table=8 icmp6,reg10=0x10000/0x10000,metadata=0x5,icmp_type=2,icmp_code=0 actions=drop
+      table=8 icmp,reg10=0x10000/0x10000,metadata=0x5,icmp_type=3,icmp_code=4 actions=drop
+      table=8 icmp6,reg10=0x10000/0x10000,metadata=0x3,icmp_type=2,icmp_code=0 actions=drop
+      table=8 icmp,reg10=0x10000/0x10000,metadata=0x3,icmp_type=3,icmp_code=4 actions=drop
+      table=8 icmp6,reg10=0x10000/0x10000,metadata=0x1,icmp_type=2,icmp_code=0 actions=drop
+
   ...
 
 Logical Tracing
@@ -769,45 +859,67 @@ simple example.  You can start with a command that just specifies the
 logical datapath, an input port, and nothing else; unspecified fields
 default to all-zeros.  This doesn't do much::
 
-  $ ovn-trace n1 'inport == "ap"'
+  $ sudo ovn-trace n1 'inport == "ap"'
   ...
+
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2: no match (implicit drop)
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
+      next;
+   1. ls_in_apply_port_sec (northd.c:10258): reg0[15] == 1, priority 50, uuid 94843ccc
+      drop;
 
-We see that the packet was dropped in logical table 0,
-"ls_in_port_sec_l2", the L2 port security stage (as we discussed
+We see that the packet was dropped in logical table 1,
+"ls_in_apply_port_sec", the L2 port security stage (as we discussed
 earlier).  That's because we didn't use the right Ethernet source
 address for ``a``.  Let's see what happens if we do::
 
-  $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC
-  ...
+  $ sudo ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
       next;
-  13. ls_in_l2_lkup: no match (implicit drop)
+  ...
+  32. ls_in_l2_lkup (northd.c:6251): 1, priority 0, uuid 17a9905e
+      outport = get_fdb(eth.dst);
+      next;
+  33. ls_in_l2_unknown (northd.c:10196): outport == "none", priority 50, uuid 86bde6cc
+      drop;
 
 Now the packet passes through L2 port security and skips through
 several other tables until it gets dropped in the L2 lookup stage
 (because the destination is unknown).  Let's add the Ethernet
 destination for ``b``::
 
-  $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$BP_MAC
-  ...
+  $ sudo ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$BP_MAC
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
       next;
-  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:99:7a:17, priority 50, uuid 57a4c46f
+  ...
+  32. ls_in_l2_lkup (northd.c:11291): eth.dst == fa:16:3e:3c:e2:c6, priority 50, uuid d10bc6f5
       outport = "bp";
       output;
 
   egress(dp="n1", inport="ap", outport="bp")
   ------------------------------------------
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "bp" && eth.dst == {fa:16:3e:99:7a:17}, priority 50, uuid 8aa6426d
+   5. ls_out_acl_hint (northd.c:6843): !ct.trk, priority 5, uuid 8b134147
+      reg0[8] = 1;
+      reg0[9] = 1;
+      next;
+   8. ls_out_acl_action (northd.c:7804): 1, priority 0, uuid 615c6e6d
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
-      /* output to "bp", type "" */
 
 You can see that in this case the packet gets properly switched from
 ``a`` to ``b``.
@@ -831,7 +943,7 @@ that we need to know the OpenFlow port number of the input port.  One
 way to do that is to look for a port whose "attached-mac" is the one
 we expect and print its ofport number::
 
-  $ AP_PORT=$(ovs-vsctl --bare --columns=ofport find  interface external-ids:attached-mac=\"$AP_MAC\")
+  $ AP_PORT=$(sudo ovs-vsctl --bare --columns=ofport find  interface external-ids:attached-mac=\"$AP_MAC\")
   $ echo $AP_PORT
   3
 
@@ -842,97 +954,12 @@ Now we can feed this input port number into ``ovs-appctl
 ofproto/trace`` along with the correct Ethernet source and
 destination addresses and get a physical trace::
 
-  $ sudo ovs-appctl ofproto/trace br-int in_port=$AP_PORT,dl_src=$AP_MAC,dl_dst=$BP_MAC
-  Flow: in_port=3,vlan_tci=0x0000,dl_src=fa:16:3e:a9:4c:c7,dl_dst=fa:16:3e:99:7a:17,dl_type=0x0000
+  $ sudo ovs-appctl ofproto/trace br-int in_port=$AP_PORT,dl_src=$AP_MAC,dl_dst=$BP_MAC,dl_type=0x0800,nw_src=10.1.1.5,nw_dst=10.1.1.6
 
-  bridge("br-int")
-  ----------------
-   0. in_port=3, priority 100
-      set_field:0x8->reg13
-      set_field:0x9->reg11
-      set_field:0xa->reg12
-      set_field:0x4->metadata
-      set_field:0x1->reg14
-      resubmit(,8)
-   8. reg14=0x1,metadata=0x4,dl_src=fa:16:3e:a9:4c:c7, priority 50, cookie 0x6dcc418a
-      resubmit(,9)
-   9. metadata=0x4, priority 0, cookie 0x8fe8689e
-      resubmit(,10)
-  10. metadata=0x4, priority 0, cookie 0x719549d1
-      resubmit(,11)
-  11. metadata=0x4, priority 0, cookie 0x39c99e6f
-      resubmit(,12)
-  12. metadata=0x4, priority 0, cookie 0x838152a3
-      resubmit(,13)
-  13. metadata=0x4, priority 0, cookie 0x918259e3
-      resubmit(,14)
-  14. metadata=0x4, priority 0, cookie 0xcad14db2
-      resubmit(,15)
-  15. metadata=0x4, priority 0, cookie 0x7834d912
-      resubmit(,16)
-  16. metadata=0x4, priority 0, cookie 0x87745210
-      resubmit(,17)
-  17. metadata=0x4, priority 0, cookie 0x34951929
-      resubmit(,18)
-  18. metadata=0x4, priority 0, cookie 0xd7a8c9fb
-      resubmit(,19)
-  19. metadata=0x4, priority 0, cookie 0xd02e9578
-      resubmit(,20)
-  20. metadata=0x4, priority 0, cookie 0x42d35507
-      resubmit(,21)
-  21. metadata=0x4,dl_dst=fa:16:3e:99:7a:17, priority 50, cookie 0x57a4c46f
-      set_field:0x2->reg15
-      resubmit(,32)
-  32. priority 0
-      resubmit(,33)
-  33. reg15=0x2,metadata=0x4, priority 100
-      set_field:0xb->reg13
-      set_field:0x9->reg11
-      set_field:0xa->reg12
-      resubmit(,34)
-  34. priority 0
-      set_field:0->reg0
-      set_field:0->reg1
-      set_field:0->reg2
-      set_field:0->reg3
-      set_field:0->reg4
-      set_field:0->reg5
-      set_field:0->reg6
-      set_field:0->reg7
-      set_field:0->reg8
-      set_field:0->reg9
-      resubmit(,40)
-  40. metadata=0x4, priority 0, cookie 0xde9f3899
-      resubmit(,41)
-  41. metadata=0x4, priority 0, cookie 0x74074eff
-      resubmit(,42)
-  42. metadata=0x4, priority 0, cookie 0x7789c8b1
-      resubmit(,43)
-  43. metadata=0x4, priority 0, cookie 0xa6b002c0
-      resubmit(,44)
-  44. metadata=0x4, priority 0, cookie 0xaeab2b45
-      resubmit(,45)
-  45. metadata=0x4, priority 0, cookie 0x290cc4d4
-      resubmit(,46)
-  46. metadata=0x4, priority 0, cookie 0xa3223b88
-      resubmit(,47)
-  47. metadata=0x4, priority 0, cookie 0x7ac2132e
-      resubmit(,48)
-  48. reg15=0x2,metadata=0x4,dl_dst=fa:16:3e:99:7a:17, priority 50, cookie 0x8aa6426d
-      resubmit(,64)
-  64. priority 0
-      resubmit(,65)
-  65. reg15=0x2,metadata=0x4, priority 100
-      output:4
+This prints a lot of output, which you can read through if you like,
+but the important part is the last few lines::
 
-  Final flow: reg11=0x9,reg12=0xa,reg13=0xb,reg14=0x1,reg15=0x2,metadata=0x4,in_port=3,vlan_tci=0x0000,dl_src=fa:16:3e:a9:4c:c7,dl_dst=fa:16:3e:99:7a:17,dl_type=0x0000
-  Megaflow: recirc_id=0,ct_state=-new-est-rel-rpl-inv-trk,ct_label=0/0x1,in_port=3,vlan_tci=0x0000/0x1000,dl_src=fa:16:3e:a9:4c:c7,dl_dst=fa:16:3e:99:7a:17,dl_type=0x0000
-  Datapath actions: 4
-
-There's a lot there, which you can read through if you like, but the
-important part is::
-
-  65. reg15=0x2,metadata=0x4, priority 100
+  65. reg15=0x3,metadata=0x5, priority 100, cookie 0xebf36591
       output:4
 
 which means that the packet is ultimately being output to OpenFlow
@@ -984,9 +1011,7 @@ Physical Tracing for Real Packets
 +++++++++++++++++++++++++++++++++
 
 In the previous sections we traced a hypothetical L2 packet, one
-that's honestly not very realistic: we didn't even supply an Ethernet
-type, so it defaulted to zero, which isn't anything one would see on a
-real network.  We could refine our packet so that it becomes a more
+that's honestly not very realistic.  We could refine our packet so that it becomes a more
 realistic TCP or UDP or ICMP, etc. packet, but let's try a different
 approach: working from a real packet.
 
@@ -1010,7 +1035,7 @@ make the window very wide.  This flow's packet counter should be
 increasing at a rate of 1 packet per second.  It looks something like
 this::
 
-  recirc_id(0),in_port(3),eth(src=fa:16:3e:f5:2a:90),eth_type(0x0800),ipv4(src=10.1.1.5,frag=no), packets:388, bytes:38024, used:0.977s, actions:ct(zone=8),recirc(0x18)
+  recirc_id(0),in_port(3),eth(src=fa:16:3e:ef:64:b6,dst=fa:16:3e:3c:e2:c6),eth_type(0x0800),ipv4(src=10.1.1.5,proto=1,frag=no), packets:5, bytes:490, used:0.679s, actions:ct(zone=10),recirc(0x21)
 
 .. note::
 
@@ -1028,109 +1053,94 @@ this::
 
     $ sort --uniq /tmp/flows.txt | grep zone
 
-We can hand the first part of this (everything up to the first space)
-to ``ofproto/trace``, and it will tell us what happens::
+Now we can feed the header fields from that real kernel flow into
+``ofproto/trace``.  We need to specify the bridge name, the input
+port, and enough header fields for port security to pass: the same
+Ethernet and IP addresses and the same protocol that the kernel flow
+matched on.  Be sure to include ``nw_dst`` as well, so that egress
+port security accepts the packet::
 
-  $ sudo ovs-appctl ofproto/trace 'recirc_id(0),in_port(3),eth(src=fa:16:3e:a9:4c:c7),eth_type(0x0800),ipv4(src=10.1.1.5,dst=10.1.0.0/255.255.0.0,frag=no)'
-  Flow: ip,in_port=3,vlan_tci=0x0000,dl_src=fa:16:3e:a9:4c:c7,dl_dst=00:00:00:00:00:00,nw_src=10.1.1.5,nw_dst=10.1.0.0,nw_proto=0,nw_tos=0,nw_ecn=0,nw_ttl=0
+  $ sudo ovs-appctl ofproto/trace br-int "in_port=$AP_PORT,dl_src=$AP_MAC,dl_dst=$BP_MAC,dl_type=0x0800,nw_proto=1,nw_src=10.1.1.5,nw_dst=10.1.1.6"
+
+The output is long because ``ofproto/trace`` automatically follows
+every recirculation.  Here is an abbreviated walkthrough of the three
+phases.
+
+The first phase is the initial ingress into the switch.  Table 0
+sets up the logical datapath metadata, table 8 runs port security,
+and table 15 sends the packet to the kernel connection tracker for
+``a``'s outgoing firewall::
+
+  Flow: icmp,in_port=2,...,dl_src=fa:16:3e:ef:64:b6,dl_dst=fa:16:3e:3c:e2:c6,nw_src=10.1.1.5,nw_dst=10.1.1.6,...
 
   bridge("br-int")
   ----------------
-   0. in_port=3, priority 100
-      set_field:0x8->reg13
-      set_field:0x9->reg11
-      set_field:0xa->reg12
-      set_field:0x4->metadata
-      set_field:0x1->reg14
+   0. in_port=2, priority 100, cookie 0x2f4619d3
+      set_field:0x5->metadata
+      set_field:0x2->reg14
+      ...
       resubmit(,8)
-   8. reg14=0x1,metadata=0x4,dl_src=fa:16:3e:a9:4c:c7, priority 50, cookie 0x6dcc418a
-      resubmit(,9)
-   9. ip,reg14=0x1,metadata=0x4,dl_src=fa:16:3e:a9:4c:c7,nw_src=10.1.1.5, priority 90, cookie 0x343af48c
-      resubmit(,10)
-  10. metadata=0x4, priority 0, cookie 0x719549d1
-      resubmit(,11)
-  11. ip,metadata=0x4, priority 100, cookie 0x46c089e6
-      load:0x1->NXM_NX_XXREG0[96]
-      resubmit(,12)
-  12. metadata=0x4, priority 0, cookie 0x838152a3
-      resubmit(,13)
-  13. ip,reg0=0x1/0x1,metadata=0x4, priority 100, cookie 0xd1941634
-      ct(table=22,zone=NXM_NX_REG13[0..15])
-      drop
-
-  Final flow: ip,reg0=0x1,reg11=0x9,reg12=0xa,reg13=0x8,reg14=0x1,metadata=0x4,in_port=3,vlan_tci=0x0000,dl_src=fa:16:3e:a9:4c:c7,dl_dst=00:00:00:00:00:00,nw_src=10.1.1.5,nw_dst=10.1.0.0,nw_proto=0,nw_tos=0,nw_ecn=0,nw_ttl=0
-  Megaflow: recirc_id=0,ip,in_port=3,vlan_tci=0x0000/0x1000,dl_src=fa:16:3e:a9:4c:c7,nw_src=10.1.1.5,nw_dst=10.1.0.0/16,nw_frag=no
-  Datapath actions: ct(zone=8),recirc(0xb)
-
-.. note::
-   Be careful cutting and pasting ``ovs-dpctl dump-flows`` output into
-   ``ofproto/trace`` because the latter has terrible error reporting.
-   If you add an extra line break, etc., it will likely give you a
-   useless error message.
-
-There's no ``output`` action in the output, but there are ``ct`` and
-``recirc`` actions (which you can see in the ``Datapath actions`` at
-the end).  The ``ct`` action tells the kernel to pass the packet
-through the kernel connection tracking for firewalling purposes and
-the ``recirc`` says to go back to the flow cache for another pass
-based on the firewall results.  The ``0xb`` value inside the
-``recirc`` gives us a hint to look at the kernel flows for a cached
-flow with ``recirc_id(0xb)``.  Indeed, there is one::
-
-  recirc_id(0xb),in_port(3),ct_state(-new+est-rel-rpl-inv+trk),ct_label(0/0x1),eth(src=fa:16:3e:a9:4c:c7,dst=fa:16:3e:99:7a:17),eth_type(0x0800),ipv4(dst=10.1.1.4/255.255.255.252,frag=no), packets:171, bytes:16758, used:0.271s, actions:ct(zone=11),recirc(0xc)
-
-We can then repeat our command with the match part of this kernel
-flow::
-
-  $ sudo ovs-appctl ofproto/trace 'recirc_id(0xb),in_port(3),ct_state(-new+est-rel-rpl-inv+trk),ct_label(0/0x1),eth(src=fa:16:3e:a9:4c:c7,dst=fa:16:3e:99:7a:17),eth_type(0x0800),ipv4(dst=10.1.1.4/255.255.255.252,frag=no)'
+   8. metadata=0x5, priority 50, cookie 0x9f12c419
+      ...
+  15. ip,reg0=0x1/0x1,metadata=0x5, priority 100, cookie 0x15e4fe9
+      ct(table=16,zone=NXM_NX_REG13[0..15])
   ...
-  Datapath actions: ct(zone=11),recirc(0xc)
+  Datapath actions: ct(zone=10),recirc(0xaf)
 
-In other words, the flow passes through the connection tracker a
-second time.  The first time was for ``a``'s outgoing firewall; this
-second time is for ``b``'s incoming firewall.  Again, we continue
-tracing with ``recirc_id(0xc)``::
+The ``ct`` action sends the packet through connection tracking and
+``recirc`` brings it back for a second pass.  The second phase
+resumes at table 16 where ACL evaluation allows the packet through
+``a``'s outgoing firewall (table 17), commits the connection to
+conntrack (table 32), performs L2 lookup (table 40) which selects
+port ``b`` as the output, and then sends the packet through
+connection tracking a second time for ``b``'s incoming firewall::
 
-  $ sudo ovs-appctl ofproto/trace 'recirc_id(0xc),in_port(3),ct_state(-new+est-rel-rpl-inv+trk),ct_label(0/0x1),eth(src=fa:16:3e:a9:4c:c7,dst=fa:16:3e:99:7a:17),eth_type(0x0800),ipv4(dst=10.1.1.6,proto=1,frag=no)'
+  recirc(0xaf) - resume conntrack with default ct_state=trk|new
   ...
-  Datapath actions: 4
+  17. ip,reg0=0x80/0x80,reg14=0x2,metadata=0x5, priority 2002, cookie 0xa30da438
+      ...
+  32. ip,reg0=0x2/0x2002,metadata=0x5, priority 100, cookie 0x82d02cb5
+      ct(commit,zone=NXM_NX_REG13[0..15],nat(src),...)
+      ...
+  40. metadata=0x5,dl_dst=fa:16:3e:3c:e2:c6, priority 50, cookie 0xd10bc6f5
+      set_field:0x3->reg15
+      ...
+  52. ip,reg0=0x1/0x1,metadata=0x5, priority 100, cookie 0xe8d6e468
+      ct(table=53,zone=NXM_NX_REG13[0..15])
+  ...
+  Datapath actions: ct(commit,zone=10,...,nat(src)),ct(zone=13),recirc(0x4c)
 
-It took multiple hops, but we finally came to the end of the line
-where the packet was output to ``b`` after passing through both
-firewalls.  The port number here is a datapath port number, which is
-usually different from an OpenFlow port number.  To check that it is
-``b``'s port, we first list the datapath ports to get the name
-corresponding to the port number::
+The third phase resumes at table 53 for ``b``'s incoming firewall.
+The ACL evaluation allows the ICMP packet (table 54), the connection
+is committed (table 60), egress port security passes (table 62/75),
+and the packet is finally output::
 
-  $ sudo ovs-dpctl show
-  system@ovs-system:
-          lookups: hit:1994 missed:56 lost:0
-          flows: 6
-          masks: hit:2340 total:4 hit/pkt:1.14
-          port 0: ovs-system (internal)
-          port 1: br-int (internal)
-          port 2: br-ex (internal)
-          port 3: tap820c0888-13
-          port 4: tapc29d4120-20
+  recirc(0xb0) - resume conntrack with default ct_state=trk|new
+  ...
+  54. icmp,reg0=0x80/0x80,reg15=0x3,metadata=0x5, priority 2002, cookie 0x6b1e184f
+      ...
+  60. ip,reg0=0x2/0x2002,metadata=0x5, priority 100, cookie 0xcc273017
+      ct(commit,zone=NXM_NX_REG13[0..15],nat(src),...)
+      ...
+  65. reg15=0x3,metadata=0x5, priority 100, cookie 0xebf36591
+      output:4
 
-and then confirm that this is the port we think it is with a command
-like this::
+  Datapath actions: ct(commit,zone=13,...,nat(src)),5
 
-  $ ovs-vsctl --columns=external-ids list interface tapc29d4120-20
-  external_ids        : {attached-mac="fa:16:3e:99:7a:17", iface-id="c29d4120-20a4-4c44-bd83-8d91f5f447fd", iface-status=active, vm-id="2db969ca-ca2a-4d9a-b49e-f287d39c5645"}
+The final ``output:4`` is OpenFlow port 4, which is ``b``'s tap
+interface.  The ``Datapath actions`` end with ``5``, which is the
+datapath port for the same interface.
 
-Finally, we can relate the OpenFlow flows from our traces back to OVN
-logical flows.  For individual flows, cut and paste a "cookie" value
-from ``ofproto/trace`` output into ``ovn-sbctl lflow-list``, e.g.::
+You can relate the OpenFlow flows from traces back to OVN logical
+flows.  For individual flows, cut and paste a "cookie" value from
+``ofproto/trace`` output into ``ovn-sbctl lflow-list``, e.g.::
 
-  $ ovn-sbctl lflow-list 0x6dcc418a|abbrev
-  Datapath: "neutron-5b6baf" aka "n1" (a8a758)  Pipeline: ingress
-    table=0 (ls_in_port_sec_l2  ), priority=50   , match=(inport == "820c08" && eth.src == {fa:16:3e:a9:4c:c7}), action=(next;)
+  $ sudo ovn-sbctl lflow-list 0x2f4619d3 | abbrev
 
 Or, you can pipe ``ofproto/trace`` output through ``ovn-detrace`` to
 annotate every flow::
 
-  $ sudo ovs-appctl ofproto/trace 'recirc_id(0xc),in_port(3),ct_state(-new+est-rel-rpl-inv+trk),ct_label(0/0x1),eth(src=fa:16:3e:a9:4c:c7,dst=fa:16:3e:99:7a:17),eth_type(0x0800),ipv4(dst=10.1.1.6,proto=1,frag=no)' | ovn-detrace
+  $ sudo ovs-appctl ofproto/trace br-int "in_port=$AP_PORT,dl_src=$AP_MAC,dl_dst=$BP_MAC,dl_type=0x0800,nw_proto=1,nw_src=10.1.1.5,nw_dst=10.1.1.6" | ovn-detrace
   ...
 
 Routing
@@ -1156,7 +1166,7 @@ can try tracing a packet from ``a`` to see, for example, that it doesn’t
 make it to ``c``. Instead, it will end up as ``multicast unknown``
 in ``n1``::
 
-  $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$CP_MAC
+  $ sudo ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$CP_MAC
   ...
 
 Now create an OpenStack router and connect it to ``n1`` and ``n2``::
@@ -1173,41 +1183,49 @@ should be one less than between ``a`` and ``b`` (63 instead of 64).
 Observe via ``ovn-nbctl`` the new OVN logical switch and router and
 then ports that connect them together::
 
-  $ ovn-nbctl show|abbrev
+  $ sudo ovn-nbctl show|abbrev
   ...
-  switch f51234 (neutron-332346) (aka n2)
-      port 82b983
+  switch 665f3a (neutron-665f3a) (aka n2)
+      port 76b779
           type: router
-          router-port: lrp-82b983
-      port 2e585f (aka cp)
-          addresses: ["fa:16:3e:89:f2:36 10.1.2.7"]
-  switch 3eb263 (neutron-5b6baf) (aka n1)
-      port c29d41 (aka bp)
-          addresses: ["fa:16:3e:99:7a:17 10.1.1.6"]
-      port 820c08 (aka ap)
-          addresses: ["fa:16:3e:a9:4c:c7 10.1.1.5"]
-      port 17d870
+          router-port: lrp-76b779
+      port 6355f3
+          type: localport
+          addresses: ["fa:16:3e:46:a6:d4 10.1.2.2"]
+      port fd81da (aka cp)
+          addresses: ["fa:16:3e:a2:ea:b5 10.1.2.7"]
+  switch 68cb3a (neutron-68cb3a) (aka n1)
+      port f93fab (aka bp)
+          addresses: ["fa:16:3e:3c:e2:c6 10.1.1.6"]
+      port 2ecc01 (aka ap)
+          addresses: ["fa:16:3e:ef:64:b6 10.1.1.5"]
+      port 465a58
+          type: localport
+          addresses: ["fa:16:3e:cb:26:d5 10.1.1.2"]
+      port 070ccd
           type: router
-          router-port: lrp-17d870
+          router-port: lrp-070ccd
   ...
-  router dde06c (neutron-f88ebc) (aka r)
-      port lrp-82b983
-          mac: "fa:16:3e:19:9f:46"
+  router d06b40 (neutron-3f6409) (aka r)
+      port lrp-76b779
+          mac: "fa:16:3e:53:b0:b7"
+          ipv6-lla: "fe80::f816:3eff:fe53:b0b7"
           networks: ["10.1.2.1/24"]
-      port lrp-17d870
-          mac: "fa:16:3e:f6:e2:8f"
+      port lrp-070ccd
+          mac: "fa:16:3e:74:4f:58"
+          ipv6-lla: "fe80::f816:3eff:fe74:4f58"
           networks: ["10.1.1.1/24"]
 
 We have not yet looked at the logical flows for an OVN logical router.
 You might find it of interest to look at them on your own::
 
-  $ ovn-sbctl lflow-list r | abbrev | less -S
+  $ sudo ovn-sbctl lflow-list r | abbrev | less -S
   ...
 
 Let's grab the ``n1subnet`` router porter MAC address to simplify
 later commands::
 
-  $ N1SUBNET_MAC=$(ovn-nbctl --bare --columns=mac find logical_router_port networks=10.1.1.1/24)
+  $ N1SUBNET_MAC=$(sudo ovn-nbctl --bare --columns=mac find logical_router_port networks=10.1.1.1/24)
 
 Let's see what happens at the logical flow level for an ICMP packet
 from ``a`` to ``c``.  This generates a long trace but an interesting
@@ -1217,98 +1235,173 @@ the firewall on that side (via the "ct_next" connection-tracking
 action), and then the selection of the port that leads to router ``r``
 as the output port::
 
-  $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET_MAC' && ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 && icmp4.type == 8'
+  $ sudo ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET_MAC' && ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 && icmp4.type == 8'
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
       next;
-   1. ls_in_port_sec_ip (northd.c:2364): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == {10.1.1.5}, priority 90, uuid 343af48c
-      next;
-   3. ls_in_pre_acl (northd.c:2646): ip, priority 100, uuid 46c089e6
+   5. ls_in_pre_acl (northd.c:6496): ip, priority 100, uuid 6dd78063
       reg0[0] = 1;
       next;
-   5. ls_in_pre_stateful (northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
-      ct_next;
+   7. ls_in_pre_stateful (northd.c:6761): reg0[0] == 1, priority 100, uuid 015e4fe9
+      ct_next(dnat);
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   6. ls_in_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip4), priority 2002, uuid a12b39f0
+   8. ls_in_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid f90cb568
+      reg0[8] = 1;
+      reg0[10] = 1;
       next;
-  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:f6:e2:8f, priority 50, uuid c43ead31
-      outport = "17d870";
+   9. ls_in_acl_eval (northd.c:7586): reg0[8] == 1 && (inport == @pg_a9fa0a9b_5c81_4462_a360_b154ea031dff && ip4), priority 2002, uuid 8579ab9d
+      reg8[16] = 1;
+      next;
+  11. ls_in_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 44123029
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  22. ls_in_acl_after_lb_action (northd.c:7804): 1, priority 0, uuid 723f4e46
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  32. ls_in_l2_lkup (northd.c:11281): eth.dst == fa:16:3e:74:4f:58, priority 50, uuid fb665f90
+      outport = "070ccd";
       output;
 
-  egress(dp="n1", inport="ap", outport="17d870")
+  egress(dp="n1", inport="ap", outport="070ccd")
   ----------------------------------------------
-   1. ls_out_pre_acl (northd.c:2626): ip && outport == "17d870", priority 110, uuid 60395450
+   2. ls_out_pre_acl (northd.c:6312): ip && outport == "070ccd", priority 110, uuid 3edee410
       next;
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "17d870", priority 50, uuid 91b5cab0
+   3. ls_out_pre_lb (northd.c:6312): ip && outport == "070ccd", priority 110, uuid a68736c3
+      next;
+   5. ls_out_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid bd84dd49
+      reg0[8] = 1;
+      reg0[10] = 1;
+      next;
+   8. ls_out_acl_action (northd.c:7804): 1, priority 0, uuid 615c6e6d
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
-      /* output to "17d870", type "patch" */
+      /* output to "070ccd", type "patch" */
 
-The next two stanzas represent processing through logical router
-``r``.  The processing in table 5 is the core of the routing
-implementation: it recognizes that the packet is destined for an
-attached subnet, decrements the TTL and updates the Ethernet source
-address.  Table 6 then selects the Ethernet destination address based
-on the IP destination.  The packet then passes to switch ``n2`` via an
-OVN "logical patch port"::
+The packet exits logical switch ``n1`` via patch port ``070ccd`` and
+enters logical router ``r``. Table 16 performs IP routing: it
+recognizes the packet is destined for an attached subnet (10.1.2.0/24),
+decrements the TTL, updates the source MAC to the router's interface
+MAC (fa:16:3e:53:b0:b7), and selects the output port. Table 22 then
+resolves the destination MAC via ARP lookup before the packet is
+delivered to logical switch ``n2`` via patch port ``lrp-76b779``::
 
-  ingress(dp="r", inport="lrp-17d870")
+  ingress(dp="r", inport="lrp-070ccd")
   ------------------------------------
-   0. lr_in_admission (northd.c:4071): eth.dst == fa:16:3e:f6:e2:8f && inport == "lrp-17d870", priority 50, uuid fa5270b0
+   0. lr_in_admission (northd.c:14532): eth.dst == fa:16:3e:74:4f:58 && inport == "lrp-070ccd", priority 50, uuid f79681c8
+      xreg0[0..47] = fa:16:3e:74:4f:58;
       next;
-   5. lr_in_ip_routing (northd.c:3782): ip4.dst == 10.1.2.0/24, priority 49, uuid 5f9d469f
+   1. lr_in_lookup_neighbor (northd.c:14740): 1, priority 0, uuid e715bbe9
+      reg9[2] = 1;
+      next;
+   2. lr_in_learn_neighbor (northd.c:14750): reg9[2] == 1 || reg9[3] == 0, priority 100, uuid da0264cc
+      mac_cache_use;
+      next;
+  15. lr_in_ip_routing_pre (northd.c:15048): 1, priority 0, uuid 7366247a
+      reg7 = 0;
+      next;
+  16. lr_in_ip_routing (northd.c:12864): ip4.dst == 10.1.2.0/24, priority 198, uuid b5dcfb57
       ip.ttl--;
+      reg8[0..15] = 0;
       reg0 = ip4.dst;
-      reg1 = 10.1.2.1;
-      eth.src = fa:16:3e:19:9f:46;
-      outport = "lrp-82b983";
+      reg5 = 10.1.2.1;
+      eth.src = fa:16:3e:53:b0:b7;
+      outport = "lrp-76b779";
       flags.loopback = 1;
+      reg9[9] = 1;
       next;
-   6. lr_in_arp_resolve (northd.c:5088): outport == "lrp-82b983" && reg0 == 10.1.2.7, priority 100, uuid 03d506d3
-      eth.dst = fa:16:3e:89:f2:36;
+  17. lr_in_ip_routing_ecmp (northd.c:15061): reg8[0..15] == 0, priority 150, uuid 33ade7cb
       next;
-   8. lr_in_arp_request (northd.c:5260): 1, priority 0, uuid 6dacdd82
+  18. lr_in_policy (northd.c:15455): 1, priority 0, uuid f8be1f7f
+      reg8[0..15] = 0;
+      next;
+  19. lr_in_policy_ecmp (northd.c:15458): reg8[0..15] == 0, priority 150, uuid 23b1bd72
+      next;
+  22. lr_in_arp_resolve (northd.c:15882): outport == "lrp-76b779" && reg0 == 10.1.2.7, priority 100, uuid 9f2cc785
+      eth.dst = fa:16:3e:a2:ea:b5;
+      next;
+  26. lr_in_network_id (northd.c:16431): outport == "lrp-76b779" && ip4 && reg0 == 10.1.2.1/24, priority 110, uuid dad4dd60
+      flags.network_id = 0;
+      next;
+  28. lr_in_ecmp_stateful_egr (northd.c:16392): 1, priority 0, uuid 88e8e455
       output;
 
-  egress(dp="r", inport="lrp-17d870", outport="lrp-82b983")
+  egress(dp="r", inport="lrp-070ccd", outport="lrp-76b779")
   ---------------------------------------------------------
-   3. lr_out_delivery (northd.c:5288): outport == "lrp-82b983", priority 100, uuid 00bea4f2
+   0. lr_out_chk_dnat_local (northd.c:18024): 1, priority 0, uuid 964e8e6c
+      reg9[4] = 0;
+      next;
+   6. lr_out_delivery (northd.c:16527): outport == "lrp-76b779", priority 100, uuid c45c42c0
       output;
-      /* output to "lrp-82b983", type "patch" */
+      /* output to "lrp-76b779", type "patch" */
 
 Finally the logical switch for ``n2`` runs through the same logic as
 ``n1`` and the packet is delivered to VM ``c``::
 
-  ingress(dp="n2", inport="82b983")
+  ingress(dp="n2", inport="76b779")
   ---------------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "82b983", priority 50, uuid 9a789e06
+   0. ls_in_check_port_sec (northd.c:6191): inport == "76b779", priority 70, uuid 7ebebf93
+      reg0[18] = 1;
       next;
-   3. ls_in_pre_acl (northd.c:2624): ip && inport == "82b983", priority 110, uuid ab52f21a
+   5. ls_in_pre_acl (northd.c:6309): ip && inport == "76b779", priority 110, uuid 61493ddd
       next;
-  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:89:f2:36, priority 50, uuid dcafb3e9
+   6. ls_in_pre_lb (northd.c:6309): ip && inport == "76b779", priority 110, uuid 02a02bff
+      next;
+   8. ls_in_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid f90cb568
+      reg0[8] = 1;
+      reg0[10] = 1;
+      next;
+  11. ls_in_acl_action (northd.c:7804): 1, priority 0, uuid 109cb3ac
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  22. ls_in_acl_after_lb_action (northd.c:7804): 1, priority 0, uuid 723f4e46
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  32. ls_in_l2_lkup (northd.c:11291): eth.dst == fa:16:3e:a2:ea:b5, priority 50, uuid a68752c5
       outport = "cp";
       output;
 
-  egress(dp="n2", inport="82b983", outport="cp")
+  egress(dp="n2", inport="76b779", outport="cp")
   ----------------------------------------------
-   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid cd9cfa74
+   2. ls_out_pre_acl (northd.c:6499): ip, priority 100, uuid 0c984d09
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 9e8e22c5
-      ct_next;
+   4. ls_out_pre_stateful (northd.c:6765): reg0[0] == 1, priority 100, uuid e8d6e468
+      ct_next(dnat);
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "cp" && ip4 && ip4.src == $as_ip4_0fc1b6cf_f925_49e6_8f00_6dd13beca9dc), priority 2002, uuid a746fa0d
+   5. ls_out_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid bd84dd49
+      reg0[8] = 1;
+      reg0[10] = 1;
       next;
-   7. ls_out_port_sec_ip (northd.c:2364): outport == "cp" && eth.dst == fa:16:3e:89:f2:36 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.1.2.7}, priority 90, uuid 4d9862b5
+   6. ls_out_acl_eval (northd.c:7586): reg0[8] == 1 && (outport == @pg_a9fa0a9b_5c81_4462_a360_b154ea031dff && ip4 && ip4.src == 0.0.0.0/0 && icmp4), priority 2002, uuid 5f2c2403
+      reg8[16] = 1;
       next;
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "cp" && eth.dst == {fa:16:3e:89:f2:36}, priority 50, uuid 0242cdc3
-      output;
-      /* output to "cp", type "" */
+   8. ls_out_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 1ef90f41
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
 
 Physical Tracing
 ~~~~~~~~~~~~~~~~
@@ -1376,48 +1469,62 @@ Let's dive in and see how this gets implemented in OVN.  First, the
 relevant parts of the NB DB for the "public" and "private" networks
 and the router between them::
 
-  $ ovn-nbctl show | abbrev
-  switch 2579f4 (neutron-d1ac28) (aka public)
-      port provnet-d1ac28
+  $ sudo ovn-nbctl show | abbrev
+  switch 6cad57 (neutron-6cad57) (aka public)
+      port 2d86c4
+          type: localport
+          addresses: ["fa:16:3e:a9:47:00"]
+      port 09c087
+          type: router
+          router-port: lrp-09c087
+      port provnet-2deb4b
           type: localnet
           addresses: ["unknown"]
-      port ae9b52
-          type: router
-          router-port: lrp-ae9b52
-  switch 5b3d5f (neutron-c02c4d) (aka private)
-      port b256dd
-          type: router
-          router-port: lrp-b256dd
-      port f264e7
-          type: router
-          router-port: lrp-f264e7
-      port cae25b (aka dp)
-          addresses: ["fa:16:3e:c1:f5:a2 10.0.0.6 fdb0:5860:4ba8:0:f816:3eff:fec1:f5a2"]
+  switch 71160a (neutron-71160a) (aka shared)
+      port 882366
+          type: localport
+          addresses: ["fa:16:3e:94:e7:c6 192.168.233.2"]
   ...
-  router c59ad2 (neutron-9b057f) (aka router1)
-      port lrp-ae9b52
-          mac: "fa:16:3e:b2:d2:67"
-          networks: ["172.24.4.9/24", "2001:db8::b/64"]
-      port lrp-b256dd
-          mac: "fa:16:3e:35:33:db"
-          networks: ["fdb0:5860:4ba8::1/64"]
-      port lrp-f264e7
-          mac: "fa:16:3e:fc:c8:da"
+  switch 935ec0 (neutron-935ec0) (aka private)
+      port 4bcc8f
+          type: router
+          router-port: lrp-4bcc8f
+      port f87782
+          type: router
+          router-port: lrp-f87782
+      port 5facc2 (aka dp)
+          addresses: ["fa:16:3e:81:74:ac 10.0.0.45 fd8a:9a83:ed81:0:f816:3eff:fe81:74ac"]
+      port 6344ee
+          type: localport
+          addresses: ["fa:16:3e:da:bb:9e 10.0.0.2 fd8a:9a83:ed81:0:f816:3eff:feda:bb9e"]
+  ...
+  router 95152d (neutron-d99ace) (aka router1)
+      port lrp-f87782
+          mac: "fa:16:3e:93:8f:4d"
+          ipv6-lla: "fe80::f816:3eff:fe93:8f4d"
           networks: ["10.0.0.1/26"]
-      nat 788c6d
+      port lrp-4bcc8f
+          mac: "fa:16:3e:8c:31:06"
+          ipv6-lla: "fe80::f816:3eff:fe8c:3106"
+          networks: ["fd8a:9a83:ed81::1/64"]
+      port lrp-09c087
+          mac: "fa:16:3e:48:c3:6b"
+          ipv6-lla: "fe80::f816:3eff:fe48:c36b"
+          networks: ["172.24.4.37/24", "2001:db8::287/64"]
+      nat 0cdf3f
           external ip: "172.24.4.8"
-          logical ip: "10.0.0.6"
+          logical ip: "10.0.0.45"
           type: "dnat_and_snat"
-      nat 80914c
-          external ip: "172.24.4.9"
-          logical ip: "10.0.0.0/26"
+      nat 930592
+          external ip: "172.24.4.37"
+          logical ip: "0.0.0.0/0"
           type: "snat"
   ...
 
 What we see is:
 
 * VM ``d`` is on the "private" switch under its private IP address
-  10.0.0.6.  The "private" switch is connected to "router1" via two
+  10.0.0.45.  The "private" switch is connected to "router1" via two
   router ports (one for IPv4, one for IPv6).
 
 * The "public" switch is connected to "router1" and to the physical
@@ -1427,113 +1534,181 @@ What we see is:
   addition to the router ports that connect to these switches, it has
   "nat" entries that direct network address translation.  The
   translation between floating IP address 172.24.4.8 and private
-  address 10.0.0.6 makes perfect sense.
+  address 10.0.0.45 makes perfect sense.
 
 When the NB DB gets translated into logical flows at the southbound
 layer, the "nat" entries get translated into IP matches that then
 invoke "ct_snat" and "ct_dnat" actions.  The details are intricate,
 but you can get some of the idea by just looking for relevant flows::
 
-  $ ovn-sbctl lflow-list router1 | abbrev | grep nat | grep -E '172.24.4.8'
-    table=3 (lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52")), action=(ct_snat;)
-    table=3 (lr_in_unsnat       ), priority=50   , match=(ip && ip4.dst == 172.24.4.8), action=(reg9[0] = 1; next;)
-    table=4 (lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52")), action=(ct_dnat(10.0.0.6);)
-    table=4 (lr_in_dnat         ), priority=50   , match=(ip && ip4.dst == 172.24.4.8), action=(reg9[0] = 1; next;)
-    table=1 (lr_out_snat        ), priority=33   , match=(ip && ip4.src == 10.0.0.6 && outport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52")), action=(ct_snat(172.24.4.8);)
+  $ sudo ovn-sbctl lflow-list router1 | abbrev | grep nat | grep -E '172.24.4.8'
+    table=5 (lr_in_unsnat       ), priority=100  , match=(ip && ip4.dst == 172.24.4.8 && inport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087")), action=(ct_snat;)
+    table=10(lr_in_dnat         ), priority=100  , match=(ip && ip4.dst == 172.24.4.8 && inport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087")), action=(ct_dnat(10.0.0.45);)
+    table=3 (lr_out_snat        ), priority=161  , match=(ip && ip4.src == 10.0.0.45 && outport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087") && (!ct.trk || !ct.rpl)), action=(ct_snat(172.24.4.8);)
 
 Let's take a look at how a packet passes through this whole gauntlet.
 The first two stanzas just show the packet traveling through the
 "public" network and being forwarded to the "router1" network::
 
-  $ ovn-trace public 'inport == "provnet-d1ac2896-18a7-4bca-8f46-b21e2370e5b1" && eth.src == 00:01:02:03:04:05 && eth.dst == fa:16:3e:b2:d2:67 && ip4.src == 172.24.4.1 && ip4.dst == 172.24.4.8 && ip.ttl == 64 && icmp4.type==8'
+  $ sudo ovn-trace public 'inport == "provnet-2deb4bdc-df0c-49a8-840a-d8dff5a0ab6b" && eth.src == 00:01:02:03:04:05 && eth.dst == fa:16:3e:48:c3:6b && ip4.src == 172.24.4.1 && ip4.dst == 172.24.4.8 && ip.ttl == 64 && icmp4.type==8'
   ...
-  ingress(dp="public", inport="provnet-d1ac28")
+  ingress(dp="public", inport="provnet-2deb4b")
   ---------------------------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "provnet-d1ac28", priority 50, uuid 8d86fb06
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
       next;
-  10. ls_in_arp_rsp (northd.c:3266): inport == "provnet-d1ac28", priority 100, uuid 21313eff
+   3. ls_in_lookup_fdb (northd.c:10322): inport == "provnet-2deb4b", priority 50, uuid 451cefb7
+      flags.localnet = 1;
       next;
-  13. ls_in_l2_lkup (northd.c:3571): eth.dst == fa:16:3e:b2:d2:67 && is_chassis_resident("cr-lrp-ae9b52"), priority 50, uuid 7f28f51f
-      outport = "ae9b52";
+   6. ls_in_pre_lb (northd.c:6309): ip && inport == "provnet-2deb4b", priority 110, uuid e2dec5a1
+      next;
+  32. ls_in_l2_lkup (northd.c:11281): eth.dst == fa:16:3e:48:c3:6b && is_chassis_resident("cr-lrp-09c087"), priority 50, uuid f0e839d4
+      outport = "09c087";
       output;
 
-  egress(dp="public", inport="provnet-d1ac28", outport="ae9b52")
+  egress(dp="public", inport="provnet-2deb4b", outport="09c087")
   --------------------------------------------------------------
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "ae9b52", priority 50, uuid 72fea396
+   3. ls_out_pre_lb (northd.c:6312): ip && outport == "09c087", priority 110, uuid 116f0d4c
+      flags.pkt_sampled = 0;
+      ct_clear;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
-      /* output to "ae9b52", type "patch" */
+      /* output to "09c087", type "patch" */
 
 In "router1", first the ``ct_snat`` action without an argument
 attempts to "un-SNAT" the packet.  ovn-trace treats this as a no-op,
 because it doesn't have any state for tracking connections.  As an
-alternative, it invokes ``ct_dnat(10.0.0.6)`` to NAT the destination
+alternative, it invokes ``ct_dnat(10.0.0.45)`` to NAT the destination
 IP::
 
-  ingress(dp="router1", inport="lrp-ae9b52")
+  ingress(dp="router1", inport="lrp-09c087")
   ------------------------------------------
-   0. lr_in_admission (northd.c:4071): eth.dst == fa:16:3e:b2:d2:67 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 50, uuid 8c6945c2
+   0. lr_in_admission (northd.c:14532): eth.dst == fa:16:3e:48:c3:6b && inport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087"), priority 50, uuid a00eb7d2
+      reg9[1] = check_pkt_larger(1456);
+      xreg0[0..47] = fa:16:3e:48:c3:6b;
       next;
-   3. lr_in_unsnat (northd.c:4591): ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 100, uuid e922f541
+   1. lr_in_lookup_neighbor (northd.c:14740): 1, priority 0, uuid e715bbe9
+      reg9[2] = 1;
+      next;
+   2. lr_in_learn_neighbor (northd.c:14750): reg9[2] == 1 || reg9[3] == 0, priority 100, uuid da0264cc
+      mac_cache_use;
+      next;
+   5. lr_in_unsnat (northd.c:17487): ip && ip4.dst == 172.24.4.8 && inport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087"), priority 100, uuid 39ebd86d
       ct_snat;
 
-  ct_snat /* assuming no un-snat entry, so no change */
-  -----------------------------------------------------
-   4. lr_in_dnat (northd.c:4649): ip && ip4.dst == 172.24.4.8 && inport == "lrp-ae9b52" && is_chassis_resident("cr-lrp-ae9b52"), priority 100, uuid 02f41b79
-      ct_dnat(10.0.0.6);
+  ct_snat /* assuming no un-snat entry, so no change */ /* default (use --ct to customize) */
+  -------------------------------------------------------------------------------------------
+  10. lr_in_dnat (northd.c:17566): ip && ip4.dst == 172.24.4.8 && inport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087"), priority 100, uuid f8ba0d1c
+      ct_dnat(10.0.0.45);
 
 Still in "router1", the routing and output steps transmit the packet
 to the "private" network::
 
-  ct_dnat(ip4.dst=10.0.0.6)
-  -------------------------
-   5. lr_in_ip_routing (northd.c:3782): ip4.dst == 10.0.0.0/26, priority 53, uuid 86e005b0
+  ct_dnat(ip4.dst=10.0.0.45)
+  --------------------------
+  15. lr_in_ip_routing_pre (northd.c:15048): 1, priority 0, uuid 7366247a
+      reg7 = 0;
+      next;
+  16. lr_in_ip_routing (northd.c:12864): ip4.dst == 10.0.0.0/26, priority 214, uuid 8bdb8da7
       ip.ttl--;
+      reg8[0..15] = 0;
       reg0 = ip4.dst;
-      reg1 = 10.0.0.1;
-      eth.src = fa:16:3e:fc:c8:da;
-      outport = "lrp-f264e7";
+      reg5 = 10.0.0.1;
+      eth.src = fa:16:3e:93:8f:4d;
+      outport = "lrp-f87782";
       flags.loopback = 1;
+      reg9[9] = 1;
       next;
-   6. lr_in_arp_resolve (northd.c:5088): outport == "lrp-f264e7" && reg0 == 10.0.0.6, priority 100, uuid 2963d67c
-      eth.dst = fa:16:3e:c1:f5:a2;
+  17. lr_in_ip_routing_ecmp (northd.c:15061): reg8[0..15] == 0, priority 150, uuid 33ade7cb
       next;
-   8. lr_in_arp_request (northd.c:5260): 1, priority 0, uuid eea419b7
+  18. lr_in_policy (northd.c:15455): 1, priority 0, uuid f8be1f7f
+      reg8[0..15] = 0;
+      next;
+  19. lr_in_policy_ecmp (northd.c:15458): reg8[0..15] == 0, priority 150, uuid 23b1bd72
+      next;
+  22. lr_in_arp_resolve (northd.c:15882): outport == "lrp-f87782" && reg0 == 10.0.0.45, priority 100, uuid b88625f8
+      eth.dst = fa:16:3e:81:74:ac;
+      next;
+  26. lr_in_network_id (northd.c:16431): outport == "lrp-f87782" && ip4 && reg0 == 10.0.0.1/26, priority 110, uuid 0328960b
+      flags.network_id = 0;
+      next;
+  28. lr_in_ecmp_stateful_egr (northd.c:16392): 1, priority 0, uuid 88e8e455
       output;
 
-  egress(dp="router1", inport="lrp-ae9b52", outport="lrp-f264e7")
+  egress(dp="router1", inport="lrp-09c087", outport="lrp-f87782")
   ---------------------------------------------------------------
-   3. lr_out_delivery (northd.c:5288): outport == "lrp-f264e7", priority 100, uuid 42dadc23
+   0. lr_out_chk_dnat_local (northd.c:18024): 1, priority 0, uuid 964e8e6c
+      reg9[4] = 0;
+      next;
+   3. lr_out_snat (northd.c:17873): ip && ip4.dst == 10.0.0.45 && inport == "lrp-09c087" && is_chassis_resident("cr-lrp-09c087") && (!ct.trk || !ct.rpl), priority 166, uuid 8f3b8342
+      ct_dnat;
+
+  ct_dnat /* assuming no un-dnat entry, so no change */
+  -----------------------------------------------------
+   6. lr_out_delivery (northd.c:16527): outport == "lrp-f87782", priority 100, uuid 2c123c40
       output;
-      /* output to "lrp-f264e7", type "patch" */
+      /* output to "lrp-f87782", type "patch" */
 
 In the "private" network, the packet passes through VM ``d``'s
 firewall and is output to ``d``::
 
-  ingress(dp="private", inport="f264e7")
+  ingress(dp="private", inport="f87782")
   --------------------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "f264e7", priority 50, uuid 5b721214
+   0. ls_in_check_port_sec (northd.c:6191): inport == "f87782", priority 70, uuid 523f85a2
+      reg0[18] = 1;
       next;
-   3. ls_in_pre_acl (northd.c:2624): ip && inport == "f264e7", priority 110, uuid 5bdc3209
+   5. ls_in_pre_acl (northd.c:6309): ip && inport == "f87782", priority 110, uuid 2aee2328
       next;
-  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:c1:f5:a2, priority 50, uuid 7957f80f
+   6. ls_in_pre_lb (northd.c:6309): ip && inport == "f87782", priority 110, uuid a0bcac76
+      next;
+   8. ls_in_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid f90cb568
+      reg0[8] = 1;
+      reg0[10] = 1;
+      next;
+  11. ls_in_acl_action (northd.c:7804): 1, priority 0, uuid 109cb3ac
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  22. ls_in_acl_after_lb_action (northd.c:7804): 1, priority 0, uuid 723f4e46
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  32. ls_in_l2_lkup (northd.c:11291): eth.dst == fa:16:3e:81:74:ac, priority 50, uuid ceeed558
       outport = "dp";
       output;
 
-  egress(dp="private", inport="f264e7", outport="dp")
+  egress(dp="private", inport="f87782", outport="dp")
   ---------------------------------------------------
-   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid 4981c79d
+   2. ls_out_pre_acl (northd.c:6499): ip, priority 100, uuid 0c984d09
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 247e02eb
-      ct_next;
+   4. ls_out_pre_stateful (northd.c:6765): reg0[0] == 1, priority 100, uuid e8d6e468
+      ct_next(dnat);
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "dp" && ip4 && ip4.src == 0.0.0.0/0 && icmp4), priority 2002, uuid b860fc9f
+   5. ls_out_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid bd84dd49
+      reg0[8] = 1;
+      reg0[10] = 1;
       next;
-   7. ls_out_port_sec_ip (northd.c:2364): outport == "dp" && eth.dst == fa:16:3e:c1:f5:a2 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.0.0.6}, priority 90, uuid 15655a98
+   6. ls_out_acl_eval (northd.c:7586): reg0[8] == 1 && (outport == @pg_a9fa0a9b_5c81_4462_a360_b154ea031dff && ip4 && ip4.src == 0.0.0.0/0 && icmp4), priority 2002, uuid 5f2c2403
+      reg8[16] = 1;
       next;
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "dp" && eth.dst == {fa:16:3e:c1:f5:a2}, priority 50, uuid 5916f94b
+   8. ls_out_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 1ef90f41
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
       /* output to "dp", type "" */
 
@@ -1583,127 +1758,219 @@ relevant parts of the NB DB look like the following.  The interesting
 parts are the new ``fc11::`` and ``fc22::`` addresses on the ports in
 ``n1`` and ``n2`` and the new IPv6 router ports in ``r``::
 
-  $ ovn-nbctl show | abbrev
+  $ sudo ovn-nbctl show | abbrev
   ...
-  switch f51234 (neutron-332346) (aka n2)
-      port 1a8162
+  switch 68cb3a (neutron-68cb3a) (aka n1)
+      port f93fab (aka bp)
+          addresses: ["fa:16:3e:3c:e2:c6 10.1.1.6 fc11::6"]
+      port 070ccd
           type: router
-          router-port: lrp-1a8162
-      port 82b983
+          router-port: lrp-070ccd
+      port 0db813
           type: router
-          router-port: lrp-82b983
-      port 2e585f (aka cp)
-          addresses: ["fa:16:3e:89:f2:36 10.1.2.7 fc22::7"]
-  switch 3eb263 (neutron-5b6baf) (aka n1)
-      port ad952e
-          type: router
-          router-port: lrp-ad952e
-      port c29d41 (aka bp)
-          addresses: ["fa:16:3e:99:7a:17 10.1.1.6 fc11::6"]
-      port 820c08 (aka ap)
-          addresses: ["fa:16:3e:a9:4c:c7 10.1.1.5 fc11::5"]
-      port 17d870
-          type: router
-          router-port: lrp-17d870
+          router-port: lrp-0db813
+      port 2ecc01 (aka ap)
+          addresses: ["fa:16:3e:ef:64:b6 10.1.1.5 fc11::5"]
+      port 465a58
+          type: localport
+          addresses: ["fa:16:3e:cb:26:d5 10.1.1.2"]
   ...
-  router dde06c (neutron-f88ebc) (aka r)
-      port lrp-1a8162
-          mac: "fa:16:3e:06:de:ad"
-          networks: ["fc22::1/64"]
-      port lrp-82b983
-          mac: "fa:16:3e:19:9f:46"
+  switch 665f3a (neutron-665f3a) (aka n2)
+      port 76b779
+          type: router
+          router-port: lrp-76b779
+      port 6355f3
+          type: localport
+          addresses: ["fa:16:3e:46:a6:d4 10.1.2.2"]
+      port fd81da (aka cp)
+          addresses: ["fa:16:3e:a2:ea:b5 10.1.2.7 fc22::7"]
+      port 398d1f
+          type: router
+          router-port: lrp-398d1f
+  ...
+  router d06b40 (neutron-3f6409) (aka r)
+      port lrp-76b779
+          mac: "fa:16:3e:53:b0:b7"
+          ipv6-lla: "fe80::f816:3eff:fe53:b0b7"
           networks: ["10.1.2.1/24"]
-      port lrp-ad952e
-          mac: "fa:16:3e:ef:2f:8b"
-          networks: ["fc11::1/64"]
-      port lrp-17d870
-          mac: "fa:16:3e:f6:e2:8f"
+      port lrp-070ccd
+          mac: "fa:16:3e:74:4f:58"
+          ipv6-lla: "fe80::f816:3eff:fe74:4f58"
           networks: ["10.1.1.1/24"]
+      port lrp-398d1f
+          mac: "fa:16:3e:f4:b3:12"
+          ipv6-lla: "fe80::f816:3eff:fef4:b312"
+          networks: ["fc22::/64"]
+      port lrp-0db813
+          mac: "fa:16:3e:02:43:29"
+          ipv6-lla: "fe80::f816:3eff:fe02:4329"
+          networks: ["fc11::/64"]
 
 Try tracing a packet from ``a`` to ``c``.  The results correspond
 closely to those for IPv4 which we already discussed back under
 `Routing`_::
 
-  $ N1SUBNET6_MAC=$(ovn-nbctl --bare --columns=mac find logical_router_port networks=\"fc11::1/64\")
-  $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET6_MAC' && ip6.src == fc11::5 && ip6.dst == fc22::7 && ip.ttl == 64 && icmp6.type == 8'
+  $ N1SUBNET6_MAC=$(sudo ovn-nbctl --bare --columns=mac find logical_router_port 'networks{>=}"fc11::/64"')
+  $ sudo ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET6_MAC' && ip6.src == fc11::5 && ip6.dst == fc22::7 && ip.ttl == 64 && icmp6.type == 8'
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
       next;
-   1. ls_in_port_sec_ip (northd.c:2390): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip6.src == {fe80::f816:3eff:fea9:4cc7, fc11::5}, priority 90, uuid 604810ea
-      next;
-   3. ls_in_pre_acl (northd.c:2646): ip, priority 100, uuid 46c089e6
+   5. ls_in_pre_acl (northd.c:6496): ip, priority 100, uuid 6dd78063
       reg0[0] = 1;
       next;
-   5. ls_in_pre_stateful (northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
-      ct_next;
+   7. ls_in_pre_stateful (northd.c:6761): reg0[0] == 1, priority 100, uuid 015e4fe9
+      ct_next(dnat);
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   6. ls_in_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip6), priority 2002, uuid 7fdd607e
+   8. ls_in_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid f90cb568
+      reg0[8] = 1;
+      reg0[10] = 1;
       next;
-  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:ef:2f:8b, priority 50, uuid e1d87fc5
-      outport = "ad952e";
+   9. ls_in_acl_eval (northd.c:7586): reg0[8] == 1 && (inport == @pg_a9fa0a9b_5c81_4462_a360_b154ea031dff && ip6), priority 2002, uuid a5c6815e
+      reg8[16] = 1;
+      next;
+  11. ls_in_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 44123029
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  22. ls_in_acl_after_lb_action (northd.c:7804): 1, priority 0, uuid 723f4e46
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  32. ls_in_l2_lkup (northd.c:11281): eth.dst == fa:16:3e:02:43:29, priority 50, uuid 497d95ad
+      outport = "0db813";
       output;
 
-  egress(dp="n1", inport="ap", outport="ad952e")
+  egress(dp="n1", inport="ap", outport="0db813")
   ----------------------------------------------
-   1. ls_out_pre_acl (northd.c:2626): ip && outport == "ad952e", priority 110, uuid 88f68988
+   2. ls_out_pre_acl (northd.c:6312): ip && outport == "0db813", priority 110, uuid 5dd24dd8
       next;
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "ad952e", priority 50, uuid 5935755e
+   3. ls_out_pre_lb (northd.c:6312): ip && outport == "0db813", priority 110, uuid bada3ee6
+      next;
+   5. ls_out_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid bd84dd49
+      reg0[8] = 1;
+      reg0[10] = 1;
+      next;
+   8. ls_out_acl_action (northd.c:7804): 1, priority 0, uuid 615c6e6d
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
-      /* output to "ad952e", type "patch" */
+      /* output to "0db813", type "patch" */
 
-  ingress(dp="r", inport="lrp-ad952e")
+  ingress(dp="r", inport="lrp-0db813")
   ------------------------------------
-   0. lr_in_admission (northd.c:4071): eth.dst == fa:16:3e:ef:2f:8b && inport == "lrp-ad952e", priority 50, uuid ddfeb712
+   0. lr_in_admission (northd.c:14532): eth.dst == fa:16:3e:02:43:29 && inport == "lrp-0db813", priority 50, uuid 6530fbf0
+      xreg0[0..47] = fa:16:3e:02:43:29;
       next;
-   5. lr_in_ip_routing (northd.c:3782): ip6.dst == fc22::/64, priority 129, uuid cc2130ec
+   1. lr_in_lookup_neighbor (northd.c:14740): 1, priority 0, uuid e715bbe9
+      reg9[2] = 1;
+      next;
+   2. lr_in_learn_neighbor (northd.c:14750): reg9[2] == 1 || reg9[3] == 0, priority 100, uuid da0264cc
+      mac_cache_use;
+      next;
+  15. lr_in_ip_routing_pre (northd.c:15048): 1, priority 0, uuid 7366247a
+      reg7 = 0;
+      next;
+  16. lr_in_ip_routing (northd.c:12864): ip6.dst == fc22::/64, priority 518, uuid 6a35627f
       ip.ttl--;
+      reg8[0..15] = 0;
       xxreg0 = ip6.dst;
-      xxreg1 = fc22::1;
-      eth.src = fa:16:3e:06:de:ad;
-      outport = "lrp-1a8162";
+      xxreg1 = fc22::;
+      eth.src = fa:16:3e:f4:b3:12;
+      outport = "lrp-398d1f";
       flags.loopback = 1;
+      reg9[9] = 0;
       next;
-   6. lr_in_arp_resolve (northd.c:5122): outport == "lrp-1a8162" && xxreg0 == fc22::7, priority 100, uuid bcf75288
-      eth.dst = fa:16:3e:89:f2:36;
+  17. lr_in_ip_routing_ecmp (northd.c:15061): reg8[0..15] == 0, priority 150, uuid 33ade7cb
       next;
-   8. lr_in_arp_request (northd.c:5260): 1, priority 0, uuid 6dacdd82
+  18. lr_in_policy (northd.c:15455): 1, priority 0, uuid f8be1f7f
+      reg8[0..15] = 0;
+      next;
+  19. lr_in_policy_ecmp (northd.c:15458): reg8[0..15] == 0, priority 150, uuid 23b1bd72
+      next;
+  22. lr_in_arp_resolve (northd.c:15911): outport == "lrp-398d1f" && xxreg0 == fc22::7, priority 100, uuid 7fa4ce34
+      eth.dst = fa:16:3e:a2:ea:b5;
+      next;
+  26. lr_in_network_id (northd.c:16465): outport == "lrp-398d1f" && ip6 && xxreg0 == fc22::/64, priority 110, uuid 25229b3f
+      flags.network_id = 0;
+      next;
+  28. lr_in_ecmp_stateful_egr (northd.c:16392): 1, priority 0, uuid 88e8e455
       output;
 
-  egress(dp="r", inport="lrp-ad952e", outport="lrp-1a8162")
+  egress(dp="r", inport="lrp-0db813", outport="lrp-398d1f")
   ---------------------------------------------------------
-   3. lr_out_delivery (northd.c:5288): outport == "lrp-1a8162", priority 100, uuid 5260dfc5
+   0. lr_out_chk_dnat_local (northd.c:18024): 1, priority 0, uuid 964e8e6c
+      reg9[4] = 0;
+      next;
+   6. lr_out_delivery (northd.c:16527): outport == "lrp-398d1f", priority 100, uuid 98d18d34
       output;
-      /* output to "lrp-1a8162", type "patch" */
+      /* output to "lrp-398d1f", type "patch" */
 
-  ingress(dp="n2", inport="1a8162")
+  ingress(dp="n2", inport="398d1f")
   ---------------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "1a8162", priority 50, uuid 10957d1b
+   0. ls_in_check_port_sec (northd.c:6191): inport == "398d1f", priority 70, uuid fce56793
+      reg0[18] = 1;
       next;
-   3. ls_in_pre_acl (northd.c:2624): ip && inport == "1a8162", priority 110, uuid a27ebd00
+   5. ls_in_pre_acl (northd.c:6309): ip && inport == "398d1f", priority 110, uuid f0c769b3
       next;
-  13. ls_in_l2_lkup (northd.c:3529): eth.dst == fa:16:3e:89:f2:36, priority 50, uuid dcafb3e9
+   6. ls_in_pre_lb (northd.c:6309): ip && inport == "398d1f", priority 110, uuid 91a17fbb
+      next;
+   8. ls_in_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid f90cb568
+      reg0[8] = 1;
+      reg0[10] = 1;
+      next;
+  11. ls_in_acl_action (northd.c:7804): 1, priority 0, uuid 109cb3ac
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  22. ls_in_acl_after_lb_action (northd.c:7804): 1, priority 0, uuid 723f4e46
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  32. ls_in_l2_lkup (northd.c:11291): eth.dst == fa:16:3e:a2:ea:b5, priority 50, uuid a68752c5
       outport = "cp";
       output;
 
-  egress(dp="n2", inport="1a8162", outport="cp")
+  egress(dp="n2", inport="398d1f", outport="cp")
   ----------------------------------------------
-   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid cd9cfa74
+   2. ls_out_pre_acl (northd.c:6499): ip, priority 100, uuid 0c984d09
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 9e8e22c5
-      ct_next;
+   4. ls_out_pre_stateful (northd.c:6765): reg0[0] == 1, priority 100, uuid e8d6e468
+      ct_next(dnat);
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (outport == "cp" && ip6 && ip6.src == $as_ip6_0fc1b6cf_f925_49e6_8f00_6dd13beca9dc), priority 2002, uuid 12fc96f9
+   5. ls_out_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid bd84dd49
+      reg0[8] = 1;
+      reg0[10] = 1;
       next;
-   7. ls_out_port_sec_ip (northd.c:2390): outport == "cp" && eth.dst == fa:16:3e:89:f2:36 && ip6.dst == {fe80::f816:3eff:fe89:f236, ff00::/8, fc22::7}, priority 90, uuid c622596a
+   6. ls_out_acl_eval (northd.c:7586): reg0[8] == 1 && (outport == @pg_a9fa0a9b_5c81_4462_a360_b154ea031dff && ip6 && ip6.src == $pg_a9fa0a9b_5c81_4462_a360_b154ea031dff_ip6), priority 2002, uuid ccdb6a7f
+      reg8[16] = 1;
       next;
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "cp" && eth.dst == {fa:16:3e:89:f2:36}, priority 50, uuid 0242cdc3
+   8. ls_out_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 1ef90f41
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
       /* output to "cp", type "" */
 
@@ -1721,7 +1988,7 @@ testing.  So, let's create a new security group, which we'll name
 and apply this security group to VM ``c``::
 
   $ openstack security group create custom
-  $ openstack security group rule create --dst-port 22 custom
+  $ openstack security group rule create --protocol tcp --dst-port 22 custom
   $ openstack security group rule create --protocol icmp custom
   $ openstack server remove security group c default
   $ openstack server add security group c custom
@@ -1774,20 +2041,20 @@ Try a few traces.  For example:
 First, obtain the mac address of logical router's IPv4 interface
 on ``n1``::
 
-    $ N1SUBNET4_MAC=$(ovn-nbctl --bare --columns=mac \
+    $ N1SUBNET4_MAC=$(sudo ovn-nbctl --bare --columns=mac \
       find logical_router_port networks=\"10.1.1.1/24\")
 
 * VM ``a`` initiates a new SSH connection to ``c``::
 
-    $ ovn-trace --ct new --ct new --minimal n1 'inport == "ap" &&
+    $ sudo ovn-trace --ct new --ct new --minimal n1 'inport == "ap" &&
       eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET4_MAC' &&
       ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 &&
       tcp.dst == 22'
     ...
     ct_next(ct_state=new|trk) {
         ip.ttl--;
-        eth.src = fa:16:3e:19:9f:46;
-        eth.dst = fa:16:3e:89:f2:36;
+        eth.src = fa:16:3e:53:b0:b7;
+        eth.dst = fa:16:3e:a2:ea:b5;
         ct_next(ct_state=new|trk) {
             output("cp");
         };
@@ -1797,14 +2064,14 @@ on ``n1``::
 
 * VM ``a`` initiates a new Telnet connection to ``c``::
 
-    $ ovn-trace --ct new --ct new --minimal n1 'inport == "ap" &&
+    $ sudo ovn-trace --ct new --ct new --minimal n1 'inport == "ap" &&
       eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET4_MAC' &&
       ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 &&
       tcp.dst == 23'
     ct_next(ct_state=new|trk) {
         ip.ttl--;
-        eth.src = fa:16:3e:19:9f:46;
-        eth.dst = fa:16:3e:89:f2:36;
+        eth.src = fa:16:3e:53:b0:b7;
+        eth.dst = fa:16:3e:a2:ea:b5;
         ct_next(ct_state=new|trk);
     };
 
@@ -1813,15 +2080,15 @@ on ``n1``::
 * VM ``a`` replies to a packet that is part of a Telnet connection
   originally initiated by ``c``::
 
-    $ ovn-trace --ct est,rpl --ct est,rpl --minimal n1 'inport == "ap" &&
+    $ sudo ovn-trace --ct est,rpl --ct est,rpl --minimal n1 'inport == "ap" &&
       eth.src == '$AP_MAC' && eth.dst == '$N1SUBNET4_MAC' &&
       ip4.src == 10.1.1.5 && ip4.dst == 10.1.2.7 && ip.ttl == 64 &&
       tcp.dst == 23'
     ...
     ct_next(ct_state=est|rpl|trk) {
         ip.ttl--;
-        eth.src = fa:16:3e:19:9f:46;
-        eth.dst = fa:16:3e:89:f2:36;
+        eth.src = fa:16:3e:53:b0:b7;
+        eth.dst = fa:16:3e:a2:ea:b5;
         ct_next(ct_state=est|rpl|trk) {
             output("cp");
         };
@@ -1842,18 +2109,22 @@ flows in the SB DB.
 Let's look at the DHCP support for ``a``'s port ``ap``.  The port's
 Logical_Switch_Port record shows that ``ap`` has DHCPv4 options::
 
-  $ ovn-nbctl list logical_switch_port ap | abbrev
-  _uuid               : ef17e5
-  addresses           : ["fa:16:3e:a9:4c:c7 10.1.1.5 fc11::5"]
-  dhcpv4_options      : 165974
-  dhcpv6_options      : 26f7cd
+  $ sudo ovn-nbctl list logical_switch_port ap | abbrev
+  _uuid               : f013b5
+  addresses           : ["fa:16:3e:ef:64:b6 10.1.1.5 fc11::5"]
+  dhcpv4_options      : a7de4a
+  dhcpv6_options      : 109d93
   dynamic_addresses   : []
   enabled             : true
-  external_ids        : {"neutron:port_name"=ap}
-  name                : "820c08"
-  options             : {}
+  external_ids        : {"neutron:cidrs"="10.1.1.5/24 fc11::5/64", "neutron:device_id"="91df4e", "neutron:device_owner"="compute:nova", "neutron:host_id"=localhost.localdomain, "neutron:mtu"="", "neutron:network_name"=neutron-68cb3a, "neutron:port_capabilities"="", "neutron:port_name"=ap, "neutron:project_id"="584a7ea8c2fd4b9582945443de262f65", "neutron:revision_number"="7", "neutron:security_group_ids"="a9fa0a", "neutron:subnet_pool_addr_scope4"="", "neutron:subnet_pool_addr_scope6"="", "neutron:vnic_type"=normal}
+  ha_chassis_group    : []
+  health_checks       : []
+  mirror_rules        : []
+  name                : "2ecc01"
+  options             : {requested-chassis=localhost.localdomain}
   parent_name         : []
-  port_security       : ["fa:16:3e:a9:4c:c7 10.1.1.5 fc11::5"]
+  peer                : []
+  port_security       : ["fa:16:3e:ef:64:b6 10.1.1.5 fc11::5"]
   tag                 : []
   tag_request         : []
   type                : ""
@@ -1861,11 +2132,11 @@ Logical_Switch_Port record shows that ``ap`` has DHCPv4 options::
 
 We can then list them either by UUID or, more easily, by port name::
 
-  $ ovn-nbctl list dhcp_options ap | abbrev
-  _uuid               : 165974
+  $ sudo ovn-nbctl list dhcp_options ap | abbrev
+  _uuid               : a7de4a
   cidr                : "10.1.1.0/24"
-  external_ids        : {subnet_id="5e67e7"}
-  options             : {lease_time="43200", mtu="1442", router="10.1.1.1", server_id="10.1.1.1", server_mac="fa:16:3e:bb:94:72"}
+  external_ids        : {"neutron:network_id"="68cb3a", "neutron:revision_number"="0", subnet_id="a375e9"}
+  options             : {classless_static_route="{169.254.169.254/32,10.1.1.2, 0.0.0.0/0,10.1.1.1}", dns_server="{8.8.8.8}", domain_name="\"openstackgate.local\"", lease_time="43200", mtu="1442", router="10.1.1.1", server_id="10.1.1.1", server_mac="fa:16:3e:27:21:15"}
 
 These options show the basic DHCP configuration for the subnet.  They
 do not include the IP address itself, which comes from the
@@ -1874,47 +2145,59 @@ share a single DHCP_Options record.  You can see this sharing in
 action, if you like, by listing the record for port ``bp``, which is
 on the same subnet as ``ap``, and see that it is the same record as before::
 
-  $ ovn-nbctl list dhcp_options bp | abbrev
-  _uuid               : 165974
+  $ sudo ovn-nbctl list dhcp_options bp | abbrev
+  _uuid               : a7de4a
   cidr                : "10.1.1.0/24"
-  external_ids        : {subnet_id="5e67e7"}
-  options             : {lease_time="43200", mtu="1442", router="10.1.1.1", server_id="10.1.1.1", server_mac="fa:16:3e:bb:94:72"}
+  external_ids        : {"neutron:network_id"="68cb3a", "neutron:revision_number"="0", subnet_id="a375e9"}
+  options             : {classless_static_route="{169.254.169.254/32,10.1.1.2, 0.0.0.0/0,10.1.1.1}", dns_server="{8.8.8.8}", domain_name="\"openstackgate.local\"", lease_time="43200", mtu="1442", router="10.1.1.1", server_id="10.1.1.1", server_mac="fa:16:3e:27:21:15"}
 
 You can take another look at the southbound flow table if you like,
 but the best demonstration is to trace a DHCP packet.  The following
 is a trace of a DHCP request inbound from ``ap``.  The first part is
-just the usual travel through the firewall::
+just the usual travel through the port security check and the ACL
+evaluation::
 
-  $ ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == ff:ff:ff:ff:ff:ff && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && ip.ttl == 1'
+  $ sudo ovn-trace n1 'inport == "ap" && eth.src == '$AP_MAC' && eth.dst == ff:ff:ff:ff:ff:ff && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67 && ip.ttl == 1'
   ...
   ingress(dp="n1", inport="ap")
   -----------------------------
-   0. ls_in_port_sec_l2 (northd.c:3234): inport == "ap" && eth.src == {fa:16:3e:a9:4c:c7}, priority 50, uuid 6dcc418a
+   0. ls_in_check_port_sec (northd.c:10254): 1, priority 50, uuid 9f12c419
+      reg0[15] = check_in_port_sec();
       next;
-   1. ls_in_port_sec_ip (northd.c:2325): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 90, uuid e46bed6f
+   5. ls_in_pre_acl (northd.c:6475): eth.mcast, priority 110, uuid c527dd21
       next;
-   3. ls_in_pre_acl (northd.c:2646): ip, priority 100, uuid 46c089e6
-      reg0[0] = 1;
+   6. ls_in_pre_lb (northd.c:6614): eth.mcast, priority 110, uuid 93c37b59
       next;
-   5. ls_in_pre_stateful (northd.c:2764): reg0[0] == 1, priority 100, uuid d1941634
-      ct_next;
+   8. ls_in_acl_hint (northd.c:6843): !ct.trk, priority 5, uuid 4f8e902f
+      reg0[8] = 1;
+      reg0[9] = 1;
+      next;
+   9. ls_in_acl_eval (northd.c:7586): reg0[8] == 1 && (inport == @pg_a9fa0a9b_5c81_4462_a360_b154ea031dff && ip4), priority 2002, uuid 8579ab9d
+      reg8[16] = 1;
+      next;
+  11. ls_in_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 44123029
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  22. ls_in_acl_after_lb_action (northd.c:7804): 1, priority 0, uuid 723f4e46
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
 
-The next part is the new part.  First, an ACL in table 6 allows a DHCP
-request to pass through.  In table 11, the special ``put_dhcp_opts``
-action replaces a DHCPDISCOVER or DHCPREQUEST packet by a
-reply.  Table 12 flips the packet's source and destination and sends
-it back the way it came in::
+The next part is the interesting part.  In table 27, the special
+``put_dhcp_opts`` action replaces a DHCPDISCOVER or DHCPREQUEST packet
+by a reply.  Table 28 flips the packet's source and destination and
+sends it back the way it came in::
 
-   6. ls_in_acl (northd.c:2925): !ct.new && ct.est && !ct.rpl && ct_label.blocked == 0 && (inport == "ap" && ip4 && ip4.dst == {255.255.255.255, 10.1.1.0/24} && udp && udp.src == 68 && udp.dst == 67), priority 2002, uuid 9c90245d
-      next;
-  11. ls_in_dhcp_options (northd.c:3409): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4.src == 0.0.0.0 && ip4.dst == 255.255.255.255 && udp.src == 68 && udp.dst == 67, priority 100, uuid 8d63f29c
-      reg0[3] = put_dhcp_opts(offerip = 10.1.1.5, lease_time = 43200, mtu = 1442, netmask = 255.255.255.0, router = 10.1.1.1, server_id = 10.1.1.1);
+  27. ls_in_dhcp_options (northd.c:9856): inport == "ap" && eth.src == fa:16:3e:ef:64:b6 && (ip4.src == {10.1.1.5, 0.0.0.0} && ip4.dst == {10.1.1.1, 255.255.255.255}) && udp.src == 68 && udp.dst == 67, priority 100, uuid be293a58
+      reg0[3] = put_dhcp_opts(offerip = 10.1.1.5, classless_static_route = {169.254.169.254/32, 10.1.1.2, 0.0.0.0/0, 10.1.1.1}, dns_server = {8.8.8.8}, domain_name = "openstackgate.local", lease_time = 43200, mtu = 1442, netmask = 255.255.255.0, router = 10.1.1.1, server_id = 10.1.1.1);
       /* We assume that this packet is DHCPDISCOVER or DHCPREQUEST. */
       next;
-  12. ls_in_dhcp_response (northd.c:3438): inport == "ap" && eth.src == fa:16:3e:a9:4c:c7 && ip4 && udp.src == 68 && udp.dst == 67 && reg0[3], priority 100, uuid 995eeaa9
+  28. ls_in_dhcp_response (northd.c:9878): inport == "ap" && eth.src == fa:16:3e:ef:64:b6 && ip4 && udp.src == 68 && udp.dst == 67 && reg0[3], priority 100, uuid 652299cb
       eth.dst = eth.src;
-      eth.src = fa:16:3e:bb:94:72;
-      ip4.dst = 10.1.1.5;
+      eth.src = fa:16:3e:27:21:15;
       ip4.src = 10.1.1.1;
       udp.src = 67;
       udp.dst = 68;
@@ -1927,20 +2210,30 @@ Then the last part is just traveling back through the firewall to VM
 
   egress(dp="n1", inport="ap", outport="ap")
   ------------------------------------------
-   1. ls_out_pre_acl (northd.c:2648): ip, priority 100, uuid 3752b746
+   2. ls_out_pre_acl (northd.c:6499): ip, priority 100, uuid 0c984d09
       reg0[0] = 1;
       next;
-   2. ls_out_pre_stateful (northd.c:2766): reg0[0] == 1, priority 100, uuid 0c066ea1
-      ct_next;
+   4. ls_out_pre_stateful (northd.c:6765): reg0[0] == 1, priority 100, uuid e8d6e468
+      ct_next(dnat);
 
   ct_next(ct_state=est|trk /* default (use --ct to customize) */)
   ---------------------------------------------------------------
-   4. ls_out_acl (northd.c:3008): outport == "ap" && eth.src == fa:16:3e:bb:94:72 && ip4.src == 10.1.1.1 && udp && udp.src == 67 && udp.dst == 68, priority 34000, uuid 0b383e77
-      ct_commit;
+   5. ls_out_acl_hint (northd.c:6856): !ct.new && ct.est && !ct.rpl && ct_mark.blocked == 0, priority 4, uuid bd84dd49
+      reg0[8] = 1;
+      reg0[10] = 1;
       next;
-   7. ls_out_port_sec_ip (northd.c:2364): outport == "ap" && eth.dst == fa:16:3e:a9:4c:c7 && ip4.dst == {255.255.255.255, 224.0.0.0/4, 10.1.1.5}, priority 90, uuid 7b8cbcd5
+   6. ls_out_acl_eval (northd.c:9905): outport == "ap" && eth.src == fa:16:3e:27:21:15 && ip4.src == 10.1.1.1 && udp && udp.src == 67 && udp.dst == 68, priority 34000, uuid 9a4b4716
+      reg8[16] = 1;
       next;
-   8. ls_out_port_sec_l2 (northd.c:3654): outport == "ap" && eth.dst == {fa:16:3e:a9:4c:c7}, priority 50, uuid b874ece8
+   8. ls_out_acl_action (northd.c:7782): reg8[16] == 1, priority 1000, uuid 1ef90f41
+      reg8[16] = 0;
+      reg8[17] = 0;
+      reg8[18] = 0;
+      next;
+  14. ls_out_check_port_sec (northd.c:6272): 1, priority 0, uuid f60d0449
+      reg0[15] = check_out_port_sec();
+      next;
+  15. ls_out_apply_port_sec (northd.c:6279): 1, priority 0, uuid 7644229a
       output;
       /* output to "ap", type "" */
 
