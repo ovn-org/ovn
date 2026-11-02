@@ -88,8 +88,8 @@ test_neighbor_sync(struct ovs_cmdl_context *ctx)
                     advertise_neigh_hash(&ane->lladdr, &ane->addr));
     }
 
-    ovs_assert(ne_nl_sync_neigh(family, if_index, &neighbors_to_add,
-                                &received_neighbors) == 0);
+    ovs_assert(ne_nl_sync_neigh(family, if_index, NEIGH_IFACE_UNSPECIFIED,
+                                &neighbors_to_add, &received_neighbors) == 0);
 
     struct ne_nl_received_neigh *ne;
     VECTOR_FOR_EACH_PTR (&received_neighbors, ne) {

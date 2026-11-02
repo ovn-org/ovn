@@ -18647,6 +18647,14 @@ f0:00:0f:16:01:20 dev $LO_NAME master $BR_NAME static
 f0:00:0f:16:01:20 dev $LO_NAME vlan 1 master $BR_NAME static
 ])
 
+# Simulate workload externally added to lo.
+check bridge fdb add f0:00:ef:16:10:10 dev $LO_NAME master static
+check bridge fdb add f0:00:ef:16:10:20 dev $LO_NAME master extern_learn
+check bridge fdb replace f0:00:ef:16:10:20 dev $LO_NAME master static
+
+OVS_WAIT_FOR_OUTPUT_UNQUOTED([bridge fdb show | grep $LO_NAME | grep "f0:00:ef:16:10:" | sort], [0], [dnl
+])
+
 AS_BOX([L2 EVPN learned FDB advertising])
 
 # Add a port with "unknown" addresses and FDB learning enabled.

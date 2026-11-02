@@ -89,8 +89,8 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
         struct vector received_neighbors =
             VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh);
         SET_NEIGHBOR_EXCHANGE_NL_STATUS(
-            ne_nl_sync_neigh(nim->family, if_index, &nim->announced_neighbors,
-                             &received_neighbors)
+            ne_nl_sync_neigh(nim->family, if_index, nim->type,
+                             &nim->announced_neighbors, &received_neighbors)
         );
 
         struct ne_nl_received_neigh *ne;
@@ -133,6 +133,8 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
         case NEIGH_IFACE_LOOPBACK:
             /* No learning from the loopback interface required. */
             break;
+        case NEIGH_IFACE_UNSPECIFIED:
+            OVS_NOT_REACHED();
         }
 
         vector_push(n_ctx_out->neighbor_table_watches, &if_index);
