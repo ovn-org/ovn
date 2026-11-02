@@ -22,6 +22,7 @@
 #include "openvswitch/hmap.h"
 #include "openvswitch/ofpbuf.h"
 
+#include "neighbor.h"
 #include "vec.h"
 
 struct ne_nl_received_neigh {
@@ -51,10 +52,12 @@ struct ne_table_msg {
 };
 
 int ne_nl_sync_neigh(uint8_t family, int32_t if_index,
+                     enum neighbor_interface_type type,
                      const struct hmap *neighbors,
                      struct vector *learned_neighbors);
 
-bool ne_is_ovn_owned(const struct ne_nl_received_neigh *nd);
+bool ne_is_ovn_owned(const struct ne_nl_received_neigh *nd,
+                     enum neighbor_interface_type type);
 bool ne_is_valid_remote_vtep(struct ne_nl_received_neigh *ne);
 bool ne_is_valid_static_fdb(struct ne_nl_received_neigh *ne);
 bool ne_is_valid_static_arp(struct ne_nl_received_neigh *ne);

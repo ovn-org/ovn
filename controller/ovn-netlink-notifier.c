@@ -169,7 +169,7 @@ ovn_netlink_neighbor_change_handler(const void *change_, void *aux)
 
     const union ovn_notifier_msg_change *change = change_;
 
-    if (!ne_is_ovn_owned(&change->neighbor.nd)) {
+    if (!ne_is_ovn_owned(&change->neighbor.nd, NEIGH_IFACE_UNSPECIFIED)) {
         vector_push(&notifier->msgs, &change->neighbor);
     }
 }

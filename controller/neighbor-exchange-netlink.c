@@ -64,6 +64,9 @@ struct ne_msg_handle_data {
 
     /* Stores 'struct advertise_neighbor_entry'. */
     const struct hmap *neighbors;
+
+    /* Interface type. */
+    enum neighbor_interface_type type;
 };
 
 static void handle_ne_msg(const struct ne_table_msg *, void *data);
@@ -91,6 +94,7 @@ static int ne_nl_del_neigh(int32_t if_index, uint8_t family,
  * Returns 0 on success, errno on failure. */
 int
 ne_nl_sync_neigh(uint8_t family, int32_t if_index,
+                 enum neighbor_interface_type type,
                  const struct hmap *neighbors,
                  struct vector *learned_neighbors)
 {
@@ -110,6 +114,7 @@ ne_nl_sync_neigh(uint8_t family, int32_t if_index,
         .learned_neighbors = learned_neighbors,
         .stale_neighbors = &stale_neighbors,
         .neighbors = neighbors,
+        .type = type,
     };
     ne_table_dump_one_ifindex(family, if_index, handle_ne_msg, &data);
 
@@ -171,10 +176,11 @@ ne_nl_sync_neigh(uint8_t family, int32_t if_index,
 /* OVN expects all static entries added on this ifindex to be OVN-owned.
  * Everything else must be learnt. */
 bool
-ne_is_ovn_owned(const struct ne_nl_received_neigh *nd)
+ne_is_ovn_owned(const struct ne_nl_received_neigh *nd,
+                enum neighbor_interface_type type)
 {
     return !(nd->state & NUD_PERMANENT) && (nd->state & NUD_NOARP)
-           && !(nd->flags & NTF_EXT_LEARNED);
+           && (type == NEIGH_IFACE_LOOPBACK || !(nd->flags & NTF_EXT_LEARNED));
 }
 
 /* OVN expects that the VTEP entry either:
@@ -380,7 +386,7 @@ handle_ne_msg(const struct ne_table_msg *msg, void *data)
         return;
     }
 
-    if (!ne_is_ovn_owned(nd)) {
+    if (!ne_is_ovn_owned(nd, handle_data->type)) {
         if (!handle_data->learned_neighbors) {
             return;
         }
