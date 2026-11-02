@@ -38632,6 +38632,83 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([MAC binding aging - probing off-subnet next hop])
+CHECK_SCAPY
+ovn_start
+
+aging_th=10
+net_add n1
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+ovn-appctl -t ovn-controller vlog/set mac_cache:file:dbg pinctrl:file:dbg
+
+check ovn-nbctl                                                             \
+    -- ls-add ls1                                                           \
+    -- lr-add lr                                                            \
+    -- set logical_router lr options:mac_binding_age_threshold=$aging_th    \
+    -- lrp-add lr lr-ls1 00:00:00:00:10:00 10.10.10.1/32 fd11::1/128        \
+    -- lsp-add-router-port ls1 ls1-lr lr-ls1                                \
+    -- lsp-add ls1 vif1                                                     \
+    -- lsp-set-addresses vif1 "unknown"
+
+# Off-subnet next hops reachable through the router port via explicit
+# output_port routes, as documented in ovn-nb.xml.
+check ovn-nbctl lr-route-add lr 10.10.30.0/24 10.10.20.100 lr-ls1
+check ovn-nbctl lr-route-add lr fd30::/64 fd20::64 lr-ls1
+
+check ovs-vsctl                                                             \
+    -- add-port br-int vif1                                                 \
+    -- set interface vif1 external-ids:iface-id=vif1                        \
+    options:tx_pcap=hv1/vif1-tx.pcap options:rxq_pcap=hv1/vif1-rx.pcap
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+# Wait for pinctrl thread to be connected.
+OVS_WAIT_UNTIL([grep pinctrl hv1/ovn-controller.log | grep -q connected])
+
+# Learn MAC bindings for the off-subnet next hops.
+send_garp hv1 vif1 2 00:00:00:00:10:1a ff:ff:ff:ff:ff:ff 10.10.20.100 10.10.20.100
+wait_row_count mac_binding 1 ip="10.10.20.100" logical_port="lr-ls1"
+
+send_na hv1 vif1 00:00:00:00:10:1a 00:00:00:00:10:00 fd20::64 fd11::1
+wait_row_count mac_binding 1 ip=\"fd20::64\" logical_port=\"lr-ls1\"
+
+# Send IPv4 and IPv6 UDP traffic so the router resolves and uses the learned
+# bindings (this refreshes the OFTABLE_MAC_BINDING entries).  Use a src MAC
+# different from the one learned via GARP/NA so OFTABLE_MAC_CACHE_USE is not
+# reset (that would keep the timestamp fresh and suppress probing).
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 10.10.30.1 172.16.1.1
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd30::1 fd55::1
+
+OVS_WAIT_UNTIL([ovs-ofctl dump-flows br-int table=OFTABLE_MAC_BINDING | \
+                sed 's/reg15=0x.,metadata=0x./reg15=<cleared>,metadata=<cleared>/g' | \
+                grep -q "reg0=0xa0a1464,reg15=<cleared>,metadata=<cleared> actions=mod_dl_dst:00:00:00:00:10:1a"])
+
+# Wait until entries in OFTABLE_MAC_CACHE_USE are stale.
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/nw_src=10.10.20.100/{print substr($6,10,1)}') -ge $((aging_th/2))])
+OVS_WAIT_UNTIL([test $(ovs-ofctl dump-flows br-int table=OFTABLE_MAC_CACHE_USE | \
+                       awk '/ipv6_src=fd20::64/{print substr($6,10,1)}') -ge $((aging_th/2))])
+
+# Send traffic to trigger probing for both entries.
+send_udp hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a 10.10.30.1 172.16.1.1
+send_udp6 hv1 vif1 00:00:00:00:10:00 00:00:00:00:10:2a fd30::1 fd55::1
+
+# Verify ARP/ND probes use the router port's (only) address as the source.
+dump_arp 1 00:00:00:00:10:00 00:00:00:00:10:1a 10.10.10.1 10.10.20.100 00:00:00:00:10:1a > expected
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected])
+
+dump_ns 00:00:00:00:10:1a 00:00:00:00:10:00 fd20::64 fd11::1 fd20::64 > expected_v6
+OVN_CHECK_PACKETS_CONTAIN([hv1/vif1-tx.pcap], [expected_v6])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([MAC binding aging - probing unicast to broadcast transition])
 CHECK_SCAPY
 ovn_start
