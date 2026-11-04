@@ -438,6 +438,9 @@ consider_plug_lport(const struct sbrec_port_binding *pb,
                                        vif_plug_ctx_in)) {
                 return false;
             }
+            if (!vif_plug_port_ctx) {
+                return true;
+            }
 
             ret = consider_plug_lport_update__(vif_plug, &iface_external_ids,
                                                pb, lbinding->iface,
@@ -449,6 +452,9 @@ consider_plug_lport(const struct sbrec_port_binding *pb,
             if (!consider_plug_lport__(vif_plug, pb, &vif_plug_port_ctx,
                                        vif_plug_ctx_in)) {
                 return false;
+            }
+            if (!vif_plug_port_ctx) {
+                return true;
             }
 
             const struct ovsrec_interface *iface_rec =

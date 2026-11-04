@@ -44128,6 +44128,50 @@ OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - vif-plug provider returns false])
+AT_KEYWORDS([vif-plug])
+
+ovn_start
+
+net_add n1
+sim_add hv1
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+check ovn-nbctl ls-add lsw0
+
+check ovn-nbctl lsp-add lsw0 lsp1
+check ovn-nbctl lsp-set-addresses lsp1 "f0:00:00:00:00:01 172.16.0.101"
+
+# Ask the dummy provider to signal "not ready" from its prepare callback.
+# ovn-controller must defer plugging and keep running instead of crashing.
+check ovn-nbctl lsp-set-options lsp1 \
+    requested-chassis=hv1 \
+    vif-plug-type=dummy \
+    vif-plug-dummy-return-false=true
+
+OVS_WAIT_UNTIL([
+    grep -q "Not plugging/updating lport lsp1 on direction from VIF plug provider." hv1/ovn-controller.log
+])
+
+# The controller must still be alive and the port must not be plugged.
+AT_CHECK([as hv1 ovs-appctl -t ovn-controller version >/dev/null], [0], [], [ignore])
+AT_CHECK([as hv1 ovs-vsctl get Interface lsp1 _uuid], [1], [], [ignore])
+
+# Once the provider is ready again, the port gets plugged.
+check ovn-nbctl lsp-set-options lsp1 \
+    requested-chassis=hv1 \
+    vif-plug-type=dummy
+
+OVS_WAIT_UNTIL([
+    as hv1 ovs-vsctl get Interface lsp1 _uuid >/dev/null 2>&1
+])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
+
 AT_SETUP([Patch ports not owned by OVN])
 
 AT_KEYWORDS([ovn])
