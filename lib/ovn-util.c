@@ -1634,6 +1634,19 @@ ovn_is_valid_vni(int64_t vni)
     return vni >= 0 && (vni <= (1 << 24) - 1);
 }
 
+/* Adds 'field' to the ECMP 'selection_fields'.  If 'field' is tp_src or
+ * tp_dst, also adds ip_proto: the protocol specific port fields are only
+ * valid with a match on the protocol. */
+void
+ovn_ecmp_selection_fields_add(const char *field,
+                              struct sset *selection_fields)
+{
+    if (!strcmp(field, "tp_src") || !strcmp(field, "tp_dst")) {
+        sset_add(selection_fields, "ip_proto");
+    }
+    sset_add(selection_fields, field);
+}
+
 struct sset *
 lrp_network_sset(const char **networks, int n_networks)
 {
