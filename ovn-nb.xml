@@ -1014,6 +1014,31 @@
         </p>
       </column>
 
+      <column name="other_config"
+              key="dynamic-routing-fdb-ecmp-selection-fields"
+              type='{"type": "string"}'>
+        <p>
+          Only relevant if <ref column="other_config" key="dynamic-routing-vni"
+                                table="Logical_switch"/> is set to valid VNI.
+        </p>
+
+        <p>
+          A comma separated list of the fields that select the remote VTEP
+          for an EVPN FDB entry with more than one path (multi-homing), for
+          example <code>ip_proto,ip_src,ip_dst,tp_src,tp_dst</code>.  The
+          supported fields are the same as for the
+          <ref column="selection_fields" table="Logical_Router_Static_Route"/>
+          column of a static route.  <code>tp_src</code> and
+          <code>tp_dst</code> select the TCP, UDP and SCTP ports.  When set,
+          <code>ovn-controller</code> creates the OpenFlow select group of
+          the entry with the <code>hash</code> selection method on these
+          fields instead of <code>dp_hash</code>.  This lets a NIC offload
+          the group, because <code>hash</code> does not need a
+          recirculation.  If the list contains a field that is not
+          supported, OVN uses <code>dp_hash</code>.
+        </p>
+      </column>
+
       <column name="other_config" key="dynamic-routing-redistribute"
               type='{"type": "string"}'>
         <p>

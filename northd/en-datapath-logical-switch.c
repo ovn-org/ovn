@@ -173,6 +173,25 @@ gather_external_ids(const struct nbrec_logical_switch *nbs,
             smap_add(external_ids, "dynamic-routing-redistribute",
                      redistribute);
         }
+
+        const char *fdb_ecmp_fields =
+            smap_get(&nbs->other_config,
+                     "dynamic-routing-fdb-ecmp-selection-fields");
+        if (fdb_ecmp_fields) {
+            struct sset fields = SSET_INITIALIZER(&fields);
+            if (ovn_ecmp_selection_fields_parse(fdb_ecmp_fields, &fields)) {
+                smap_add(external_ids,
+                         "dynamic-routing-fdb-ecmp-selection-fields",
+                         fdb_ecmp_fields);
+            } else {
+                static struct vlog_rate_limit rl =
+                    VLOG_RATE_LIMIT_INIT(5, 1);
+                VLOG_WARN_RL(&rl, "bad 'dynamic-routing-fdb-ecmp-selection-"
+                             "fields' %s on switch %s, using the default "
+                             "selection method", fdb_ecmp_fields, nbs->name);
+            }
+            sset_destroy(&fields);
+        }
     }
 
     /* For backwards-compatibility, also store the NB UUID in
