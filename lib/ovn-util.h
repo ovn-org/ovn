@@ -737,6 +737,8 @@ bool ovn_is_valid_vni(int64_t vni);
 
 void ovn_ecmp_selection_fields_add(const char *field,
                                    struct sset *selection_fields);
+bool ovn_ecmp_selection_fields_parse(const char *fields_s,
+                                     struct sset *selection_fields);
 
 const struct sbrec_port_binding *lport_lookup_by_name(
     struct ovsdb_idl_index *sbrec_port_binding_by_name,
