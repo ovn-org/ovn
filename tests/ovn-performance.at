@@ -361,9 +361,35 @@ for i in 1 2; do
     )
 
     # Bind port $lp and wait for it to come up
+    #
+    # Create openflow backlog by pausing ovs/ovsdb.
+    # We can't simply pause ovs to delay flow handling, as this would also
+    # prevent ofport creation.
+    # So, follow this pattern:
+    # 1) Pause ovs to prevent oflow creation, but keep ovsdb running so we
+    #    can add interfaces.
+    # 2) Create interface.
+    # 3) Pause ovs-db and restart ovs. ovs now creates ofport, but ovsdb
+    #    is sleeping.
+    # 4) After one second (i.e. enough for ovs to have time to write ofport),
+    #    pause ovs and restart ovsdb.
+    # 5) Now ovn-controller should get ofport, claim and program flows (while
+    #    ovs is paused).
+    #    Sleep 2 more seconds to let ovn-controller handle the diff, start
+    #    programming openflows, hitting backlog and cancelling.
+    #    If previous pauses are not long enough (which should be rare), we
+    #    might miss some failures on buggy code, but this should not cause
+    #    flaky tests.
+    # 6) Wake up ovs so flows get programmed.
+    # 7) Wait for port up + sync.
+    # 8) This used to cause recomputes.
+    sleep_ovs hv$i
     OVN_CONTROLLER_EXPECT_NO_HIT(
         [hv$i hv$j], [lflow_run],
-        [as hv$i ovs-vsctl add-port br-int $vif -- set Interface $vif external-ids:iface-id=$lp &&
+        [as hv$i ovs-vsctl --no-wait add-port br-int $vif -- set Interface $vif external-ids:iface-id=$lp &&
+         sleep_ovsdb hv$i && wake_up_ovs hv$i &&
+         sleep 1 && sleep_ovs hv$i && wake_up_ovsdb hv$i &&
+         sleep 2 && wake_up_ovs hv$i &&
          check ovn-nbctl wait-until Logical_Switch_Port $lp 'up=true' &&
          check ovn-nbctl --wait=hv sync]
     )

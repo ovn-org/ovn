@@ -6242,15 +6242,29 @@ route_exchange_nexthop_handler(struct engine_node *node, void *data)
     return EN_HANDLED_UPDATED;
 }
 
+/* Change handler shared by the 'sb_ro' and 'sb_cond_seqno' inputs. */
 static enum engine_input_handler_result
-route_exchange_sb_ro_handler(struct engine_node *node OVS_UNUSED, void *data)
+route_exchange_sb_handler(struct engine_node *node, void *data)
 {
     struct ed_type_route_exchange *re = data;
-    if (re->sb_changes_pending) {
-        return EN_UNHANDLED;
+
+    if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
+        return EN_HANDLED_UNCHANGED;
     }
 
-    return EN_HANDLED_UNCHANGED;
+    bool ready = route_exchange_ready(node, re);
+    if (re->initial_routes_loaded == ready && !re->sb_changes_pending) {
+        /* The readiness gate did not flip and there is no SB write left
+         * over from a previous attempt: this event is not relevant to us. */
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    if (!engine_get_context()->ovnsb_idl_txn) {
+        return EN_HANDLED_UNCHANGED;
+    }
+
+    return route_exchange_sync(node, re) ? EN_HANDLED_UPDATED
+                                         : EN_HANDLED_UNCHANGED;
 }
 
 
@@ -7884,11 +7898,12 @@ inc_proc_ovn_controller_init(
     engine_add_input(&en_route_exchange, &en_nexthop_exchange,
                      route_exchange_nexthop_handler);
     engine_add_input(&en_route_exchange, &en_sb_ro,
-                     route_exchange_sb_ro_handler);
+                     route_exchange_sb_handler);
     /* Re-evaluate the initial-dump readiness gate whenever the SB monitor
      * conditions change (including the final ack of the scoped
      * Advertised_Route dump). */
-    engine_add_input(&en_route_exchange, &en_sb_cond_seqno, NULL);
+    engine_add_input(&en_route_exchange, &en_sb_cond_seqno,
+                     route_exchange_sb_handler);
 
     engine_add_input(&en_addr_sets, &en_sb_address_set,
                      addr_sets_sb_address_set_handler);

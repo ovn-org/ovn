@@ -479,8 +479,8 @@ digraph "Incremental-Processing-Engine" {
 	route_table_notify -> route_exchange [[label="route_exchange_route_table_handler"]];
 	route_exchange_status -> route_exchange [[label=""]];
 	nexthop_exchange -> route_exchange [[label="route_exchange_nexthop_handler"]];
-	sb_ro -> route_exchange [[label="route_exchange_sb_ro_handler"]];
-	sb_cond_seqno -> route_exchange [[label=""]];
+	sb_ro -> route_exchange [[label="route_exchange_sb_handler"]];
+	sb_cond_seqno -> route_exchange [[label="route_exchange_sb_handler"]];
 	garp_rarp [[style=filled, shape=box, fillcolor=white, label="garp_rarp"]];
 	OVS_open_vswitch -> garp_rarp [[label=""]];
 	SB_chassis -> garp_rarp [[label=""]];
