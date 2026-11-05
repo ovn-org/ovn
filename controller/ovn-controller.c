@@ -6069,22 +6069,10 @@ route_exchange_ctx_init(struct engine_node *node,
     };
 }
 
-static enum engine_node_state
-en_route_exchange_run(struct engine_node *node, void *data)
+static bool
+route_exchange_ready(struct engine_node *node,
+                     struct ed_type_route_exchange *re)
 {
-    struct ed_type_route_exchange *re = data;
-    struct ed_type_route_table_notify *rt_notify =
-        engine_get_input_data("route_table_notify", node);
-    struct ed_type_nexthop_exchange *nhe_data =
-        engine_get_input_data("nexthop_exchange", node);
-
-    /* There can not actually be any routes to advertise unless we also have
-     * the Learned_Route table, since they where introduced in the same
-     * release. */
-    if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
-        return EN_STALE;
-    }
-
     struct ed_type_route *route_data =
         engine_get_input_data("route", node);
     struct controller_engine_ctx *ctrl_ctx =
@@ -6101,10 +6089,20 @@ en_route_exchange_run(struct engine_node *node, void *data)
      * of the removed datapaths. */
     bool have_local_re_datapaths =
         !hmap_is_empty(&route_data->announce_routes);
-    bool ready = ctrl_ctx->sb_all_data_loaded
-                 && (have_local_re_datapaths
-                     ? ctrl_ctx->sb_ar_condition_scoped
-                     : re->initial_sync_completed);
+    return ctrl_ctx->sb_all_data_loaded
+           && (have_local_re_datapaths
+               ? ctrl_ctx->sb_ar_condition_scoped
+               : re->initial_sync_completed);
+}
+
+/* Re-evaluates the initial-dump readiness gate and, if ready, runs the
+ * kernel sync (which also retries any SB write left pending by a previous
+ * sync).  Returns true if a sync actually ran. */
+static bool
+route_exchange_sync(struct engine_node *node,
+                    struct ed_type_route_exchange *re)
+{
+    bool ready = route_exchange_ready(node, re);
 
     if (re->initial_routes_loaded && !ready) {
         /* The set of local route-exchange datapaths changed or the SB
@@ -6113,11 +6111,11 @@ en_route_exchange_run(struct engine_node *node, void *data)
         re->initial_routes_loaded = false;
         VLOG_INFO("Route-exchange datapath set changed; deferring route "
                   "sync until the Advertised_Route dump completes.");
-        return EN_UNCHANGED;
+        return false;
     }
     if (!re->initial_routes_loaded) {
         if (!ready) {
-            return EN_UNCHANGED;   /* still loading; kernel untouched */
+            return false;   /* still loading; kernel untouched */
         }
         re->initial_routes_loaded = true;
         /* Past the start-up danger window from now on: the view has been
@@ -6130,7 +6128,15 @@ en_route_exchange_run(struct engine_node *node, void *data)
         /* Fall through: run once now to reconcile the kernel. */
     }
 
+    struct ed_type_route_table_notify *rt_notify =
+        engine_get_input_data("route_table_notify", node);
+    struct ed_type_nexthop_exchange *nhe_data =
+        engine_get_input_data("nexthop_exchange", node);
+
     vector_clear(&rt_notify->watches);
+
+    struct ed_type_route *route_data =
+        engine_get_input_data("route", node);
 
     /* Routes we learn may reference their next hop through a nexthop id, which
      * we can only resolve while the kernel nexthop table is tracked. */
@@ -6146,8 +6152,22 @@ en_route_exchange_run(struct engine_node *node, void *data)
     route_table_notify_update(&rt_notify->watches);
 
     re->sb_changes_pending = r_ctx_out.sb_changes_pending;
+    return true;
+}
 
-    return EN_UPDATED;
+static enum engine_node_state
+en_route_exchange_run(struct engine_node *node, void *data)
+{
+    struct ed_type_route_exchange *re = data;
+
+    /* There can not actually be any routes to advertise unless we also have
+     * the Learned_Route table, since they were introduced in the same
+     * release. */
+    if (!sbrec_server_has_learned_route_table(re->sb_idl)) {
+        return EN_STALE;
+    }
+
+    return route_exchange_sync(node, re) ? EN_UPDATED : EN_UNCHANGED;
 }
 
 static enum engine_input_handler_result
