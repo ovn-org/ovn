@@ -377,6 +377,7 @@ Róbert Mulik                       robert.mulik@ericsson.com
 Romain Lenglet                     romain.lenglet@berabera.info
 Roni Bar Yanai                     roniba@mellanox.com
 Rosemarie O'Riorden                rosemarie@redhat.com
+Ruairi Carroll                     rcarroll@crusoe.ai
 Russell Bryant                     russell@ovn.org
 RYAN D. MOATS                      rmoats@us.ibm.com
 Ryan Goulding                      rgouldin@redhat.com
