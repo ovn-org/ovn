@@ -197,6 +197,17 @@
         </p>
       </dd>
 
+      <dt><code>external_ids:ovn-tunnel-mtu</code></dt>
+      <dd>
+        <p>
+          Optional underlay MTU in bytes for path MTU discovery on multichassis
+          logical ports.  An integer from 1 through 65535 overrides
+          <code>NB_Global.options:tunnel_mtu</code>; an unset or invalid
+          override uses the global setting.  See <code>ovn-nb</code>(5) for
+          the tunnel path requirements and minimum safe value.
+        </p>
+      </dd>
+
       <dt><code>external_ids:ovn-encap-ip</code></dt>
       <dd>
         <p>

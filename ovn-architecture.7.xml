@@ -864,6 +864,14 @@
     Set the <code>redirect-type</code> option on a distributed gateway port.
   </p>
 
+  <p>
+    During live migration, multichassis logical ports use tunnels even on
+    networks bridged to a physical VLAN.  OVN limits packet sizes using the
+    VIF MTU minus tunnel overhead and returns ICMP errors for oversized IP
+    packets.  Set <code>NB_Global.options:tunnel_mtu</code> to use the tunnel
+    path's MTU instead; see <code>ovn-nb</code>(5) for details.
+  </p>
+
   <h4>Using Distributed Gateway Ports For Scalability</h4>
 
   <p>
