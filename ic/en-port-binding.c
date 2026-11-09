@@ -465,6 +465,25 @@ create_nb_lsp(struct ic_context *ctx,
               const struct icsbrec_port_binding *isb_pb,
               const struct nbrec_logical_switch *ls)
 {
+    /* The NB Logical_Switch_Port name is unique across the whole NB, but a
+     * remote AZ may bind a port whose name is already used here, e.g. by a
+     * local port with the same name on this transit switch or by a port of
+     * an unrelated logical switch.  Inserting it would violate the name
+     * index, abort the whole NB transaction and retry it forever, so skip the
+     * remote port instead. */
+    const struct nbrec_logical_switch_port *existing =
+        get_lsp_by_ts_port_name(ctx, isb_pb->logical_port);
+    if (existing) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Port %s of transit switch %s in availability "
+                     "zone %s conflicts with an existing logical switch "
+                     "port with the same name, skipping it.",
+                     isb_pb->logical_port, isb_pb->transit_switch,
+                     isb_pb->availability_zone
+                     ? isb_pb->availability_zone->name : "<unknown>");
+        return;
+    }
+
     const struct nbrec_logical_switch_port *lsp =
         nbrec_logical_switch_port_insert(ctx->ovnnb_txn);
     nbrec_logical_switch_port_set_name(lsp, isb_pb->logical_port);
@@ -521,11 +540,45 @@ find_transit_router_by_name(struct ic_context *ctx, const char *name)
 }
 
 static const struct icsbrec_port_binding *
-create_isb_pb(struct ovsdb_idl_txn *isb_txn, const char *logical_port,
+find_isb_pb_by_name(struct ic_context *ctx, const char *logical_port)
+{
+    const struct icsbrec_port_binding *key =
+        icsbrec_port_binding_index_init_row(
+            ctx->icsbrec_port_binding_by_name);
+    icsbrec_port_binding_index_set_logical_port(key, logical_port);
+    const struct icsbrec_port_binding *isb_pb =
+        icsbrec_port_binding_index_find(ctx->icsbrec_port_binding_by_name,
+                                        key);
+    icsbrec_port_binding_index_destroy_row(key);
+    return isb_pb;
+}
+
+static const struct icsbrec_port_binding *
+create_isb_pb(struct ic_context *ctx, struct ovsdb_idl_txn *isb_txn,
+              const char *logical_port,
               const struct icsbrec_availability_zone *az, const char *ts_name,
               const struct uuid *nb_ic_uuid, const char *type,
               struct hmap *pb_tnlids)
 {
+    /* The IC-SB Port_Binding logical_port is unique across all AZs and
+     * transit switches/routers.  If another AZ (or another transit
+     * switch/router) already binds a port with this name, inserting would
+     * violate the index, abort the whole IC-SB transaction and retry it
+     * forever, so leave this port unbound instead. */
+    const struct icsbrec_port_binding *existing =
+        find_isb_pb_by_name(ctx, logical_port);
+    if (existing) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Port %s of %s in availability zone %s conflicts "
+                     "with a port with the same name of %s in availability "
+                     "zone %s, not binding it.",
+                     logical_port, ts_name, az->name,
+                     existing->transit_switch,
+                     existing->availability_zone
+                     ? existing->availability_zone->name : "<unknown>");
+        return NULL;
+    }
+
     uint32_t pb_tnl_key = allocate_port_key(pb_tnlids);
     if (!pb_tnl_key) {
         return NULL;
@@ -720,7 +773,7 @@ port_binding_sync_ts(struct ic_context *ctx,
             if (ctx->ovnisb_txn && is_az_leader(ctx->ovnisb_txn)) {
                 if (!isb_pb) {
                     isb_pb = create_isb_pb(
-                        ctx->ovnisb_txn, tsp->name, runned_az,
+                        ctx, ctx->ovnisb_txn, tsp->name, runned_az,
                         ts->name, &ts->header_.uuid, "transit-switch-port",
                         &pb_tnlids);
                 }
@@ -730,8 +783,8 @@ port_binding_sync_ts(struct ic_context *ctx,
             /* Create ISB port_binding as its chassis is local. */
             isb_pb = shash_find_and_delete(&local_pbs, tsp->name);
             if (!isb_pb) {
-                isb_pb = create_isb_pb(ctx->ovnisb_unlocked_txn, tsp->name,
-                                       runned_az,
+                isb_pb = create_isb_pb(ctx, ctx->ovnisb_unlocked_txn,
+                                       tsp->name, runned_az,
                                        ts->name, &ts->header_.uuid,
                                        "transit-switch-port", &pb_tnlids);
             }
@@ -773,9 +826,12 @@ port_binding_sync_ts(struct ic_context *ctx,
             isb_pb = shash_find_and_delete(&local_pbs, lsp->name);
             if (!isb_pb) {
                 isb_pb = create_isb_pb(
-                    ctx->ovnisb_unlocked_txn, sb_pb->logical_port,
+                    ctx, ctx->ovnisb_unlocked_txn, sb_pb->logical_port,
                     runned_az, ts->name, &ts->header_.uuid,
                     "transit-switch-port", &pb_tnlids);
+                if (!isb_pb) {
+                    continue;
+                }
                 sync_ts_isb_pb(ctx, sb_pb, isb_pb);
             } else {
                 sync_local_port(ctx, isb_pb, sb_pb, lsp);
@@ -899,7 +955,7 @@ port_binding_sync_tr(struct ic_context *ctx,
 
             if (ctx->ovnisb_txn && is_az_leader(ctx->ovnisb_txn)) {
                 if (!isb_pb) {
-                    isb_pb = create_isb_pb(ctx->ovnisb_txn, trp->name,
+                    isb_pb = create_isb_pb(ctx, ctx->ovnisb_txn, trp->name,
                                            runned_az,
                                            tr->name, &tr->header_.uuid,
                                            "transit-router-port",
@@ -912,8 +968,8 @@ port_binding_sync_tr(struct ic_context *ctx,
         } else {
             isb_pb = shash_find_and_delete(&local_pbs, trp->name);
             if (!isb_pb) {
-                isb_pb = create_isb_pb(ctx->ovnisb_unlocked_txn, trp->name,
-                                       runned_az,
+                isb_pb = create_isb_pb(ctx, ctx->ovnisb_unlocked_txn,
+                                       trp->name, runned_az,
                                        tr->name, &tr->header_.uuid,
                                        "transit-router-port", &pb_tnlids);
             }

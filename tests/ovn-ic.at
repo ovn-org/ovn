@@ -1690,6 +1690,60 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-ic -- same port name in two AZs])
+
+ovn_init_ic_db
+ovn-ic-nbctl ts-add ts1
+ovn_start az1
+ovn_start az2
+check ovn-ic-nbctl --wait=sb sync
+
+dnl Each AZ connects a router to ts1 through a legacy port that has the
+dnl same name in both AZs.  Pause ovn-ic so that neither AZ learns about the
+dnl other's port before creating its own.
+for az in az1 az2; do
+    as $az check ovn-appctl -t ic/ovn-ic pause
+done
+for az in az1 az2; do
+    ovn_as $az
+    check ovn-nbctl lr-add lr1
+    check ovn-nbctl lrp-add lr1 lrp-lr1-ts1 aa:aa:aa:aa:aa:01 169.254.100.1/24
+    check ovn-nbctl --wait=sb lsp-add-router-port ts1 lsp-dup lrp-lr1-ts1
+done
+for az in az1 az2; do
+    as $az check ovn-appctl -t ic/ovn-ic resume
+done
+
+dnl IC-SB port names are unique, so only one AZ gets to bind the port; the
+dnl other one must give up instead of retrying the insert forever.
+wait_row_count ic-sb:Port_Binding 1 logical_port=lsp-dup
+OVS_WAIT_UNTIL([grep -q "Port lsp-dup of ts1 .* conflicts with a port" \
+                az1/ic/ovn-ic.log az2/ic/ovn-ic.log])
+
+dnl And the AZ that got the binding must not try to create a remote NB port
+dnl over the other AZ's local port with the same name.
+OVS_WAIT_UNTIL([grep -q "Port lsp-dup of transit switch ts1 .* conflicts" \
+                az1/ic/ovn-ic.log az2/ic/ovn-ic.log])
+for az in az1 az2; do
+    ovn_as $az
+    check_row_count nb:Logical_Switch_Port 1 name=lsp-dup type=router
+done
+
+dnl ovn-ic must keep committing NB transactions: a port added in az1 shows
+dnl up as remote in az2.
+ovn_as az1
+check ovn-nbctl lrp-add lr1 lrp-lr1-ts1-2 aa:aa:aa:aa:aa:02 169.254.101.1/24
+check ovn-nbctl --wait=sb lsp-add-router-port ts1 lsp-az1-only lrp-lr1-ts1-2
+ovn_as az2
+wait_row_count nb:Logical_Switch_Port 1 name=lsp-az1-only type=remote
+
+AT_CHECK([grep -q "constraint violation" az1/ic/ovn-ic.log az2/ic/ovn-ic.log], [1])
+
+OVN_CLEANUP_IC([az1], [az2])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([ovn-ic -- address-set sync])
 
 ovn_init_ic_db

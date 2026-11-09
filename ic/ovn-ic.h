@@ -43,6 +43,7 @@ struct ic_context {
     struct ovsdb_idl_index *icnbrec_transit_switch_by_name;
     struct ovsdb_idl_index *icnbrec_transit_router_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_az;
+    struct ovsdb_idl_index *icsbrec_port_binding_by_name;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts;
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts_az;
     struct ovsdb_idl_index *icsbrec_route_by_az;

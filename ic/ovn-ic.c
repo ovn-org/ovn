@@ -1191,6 +1191,10 @@ main(int argc, char *argv[])
         = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_port_binding_col_availability_zone);
 
+    struct ovsdb_idl_index *icsbrec_port_binding_by_name
+        = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
+                                  &icsbrec_port_binding_col_logical_port);
+
     struct ovsdb_idl_index *icsbrec_port_binding_by_ts
         = ovsdb_idl_index_create1(ovnisb_unlocked_idl_loop.idl,
                                   &icsbrec_port_binding_col_transit_switch);
@@ -1408,6 +1412,7 @@ main(int argc, char *argv[])
                 .icnbrec_transit_router_by_name =
                     icnbrec_transit_router_by_name,
                 .icsbrec_port_binding_by_az = icsbrec_port_binding_by_az,
+                .icsbrec_port_binding_by_name = icsbrec_port_binding_by_name,
                 .icsbrec_port_binding_by_ts = icsbrec_port_binding_by_ts,
                 .icsbrec_port_binding_by_ts_az = icsbrec_port_binding_by_ts_az,
                 .icsbrec_route_by_az = icsbrec_route_by_az,
