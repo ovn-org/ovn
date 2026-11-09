@@ -25034,3 +25034,52 @@ OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Remove lb group and delete switch in the same txn])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl ls-add sw1
+
+check ovn-nbctl lb-add lb0 172.16.0.10:80 10.0.0.2:80
+lb0_uuid=$(fetch_column nb:load_balancer _uuid name=lb0)
+lbg_uuid=$(ovn-nbctl create load_balancer_group name=lbg0 load_balancer=$lb0_uuid)
+check ovn-nbctl --wait=sb set logical_switch sw1 load_balancer_group=$lbg_uuid
+
+sleep_northd
+check ovn-nbctl remove logical_switch sw1 load_balancer_group $lbg_uuid
+check ovn-nbctl ls-del sw0
+check ovn-nbctl ls-del sw1
+wake_up_northd
+
+check ovn-nbctl --wait=sb sync
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Remove lb group and delete router in the same txn])
+ovn_start
+
+check ovn-nbctl lr-add r0
+check ovn-nbctl lr-add r1
+
+check ovn-nbctl lb-add lb0 172.16.0.10:80 10.0.0.2:80
+lb0_uuid=$(fetch_column nb:load_balancer _uuid name=lb0)
+lbg_uuid=$(ovn-nbctl create load_balancer_group name=lbg0 load_balancer=$lb0_uuid)
+check ovn-nbctl --wait=sb add logical_router r1 load_balancer_group $lbg_uuid
+
+sleep_northd
+check ovn-nbctl remove logical_router r1 load_balancer_group $lbg_uuid
+check ovn-nbctl lr-del r0
+check ovn-nbctl lr-del r1
+wake_up_northd
+
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([grep -q "referential integrity violation" northd/ovn-northd.log], [1])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
