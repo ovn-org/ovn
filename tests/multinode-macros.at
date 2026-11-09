@@ -311,9 +311,11 @@ multinode_setup_controller() {
         eth1_ip=$(m_as $c ip -4 -o addr show eth1 | awk '{print $4}')
     fi
 
-    # Cleanup existing one
-    m_as $c /usr/share/openvswitch/scripts/ovs-ctl stop
+    # Cleanup existing one.  Stop ovn-controller before OVS: on exit it removes
+    # its own records from SB, which needs both the OVS database and the SB
+    # connection (with INLINE_BR_EX=yes the latter goes through eth1 on br-ex).
     m_as $c /usr/share/ovn/scripts/ovn-ctl stop_controller
+    m_as $c /usr/share/openvswitch/scripts/ovs-ctl stop
     m_as $c sh -c "rm -f /etc/openvswitch/*.db"
 
     m_as $c /usr/share/openvswitch/scripts/ovs-ctl start --system-id=$c
