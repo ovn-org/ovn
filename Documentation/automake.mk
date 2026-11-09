@@ -25,6 +25,7 @@ DOC_SOURCE = \
 	Documentation/topics/testing.rst \
 	Documentation/topics/test-development.rst \
 	Documentation/topics/high-availability.rst \
+	Documentation/topics/replicated-gateway.rst \
 	Documentation/topics/dynamic-routing/architecture.rst \
 	Documentation/topics/dynamic-routing/configuration-examples.rst \
 	Documentation/topics/dynamic-routing/index.rst \

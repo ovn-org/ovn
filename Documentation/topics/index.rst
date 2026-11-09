@@ -40,6 +40,7 @@ OVN
    dynamic-routing/index
    incremental-processing/index
    high-availability
+   replicated-gateway
    role-based-access-control
    vif-plug-providers/index
    testing

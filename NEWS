@@ -68,6 +68,11 @@ Post v26.09.0
      table at startup; it defers its kernel route updates until the initial
      dump of the advertised routes of the local route-exchange datapaths is
      complete.
+   - Documented the "replicated gateway" setup, in which several ovn-controller
+     instances share one chassis name and one anycast encapsulation IP
+     reachable over the underlay through ECMP, so that they appear to OVN as
+     a single chassis. See Documentation/topics/replicated-gateway.rst for the
+     requirements and the restrictions.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

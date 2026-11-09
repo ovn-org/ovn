@@ -100,7 +100,14 @@
       local OVN "etc" directory or via the <code>-n</code> command-line option.
       The following precedence is used: first, the command-line option is read;
       if not present, the <code>system-id-override</code> file is read; if not
-      present, then the name configured in the database is used.</dd>
+      present, then the name configured in the database is used.
+      <p>
+        Several <code>ovn-controller</code> instances running on different
+        nodes may share the same <code>system-id</code>, so that they appear
+        to OVN as a single chassis backed by an anycast encapsulation IP.
+        See the "Replicated Gateway" document for the requirements and the
+        restrictions of such a setup.
+      </p></dd>
 
       <dt><code>external_ids:hostname</code></dt>
       <dd>The hostname to use in the Chassis table.</dd>
