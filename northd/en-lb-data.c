@@ -399,6 +399,7 @@ lb_data_synced_logical_switch_handler(struct engine_node *node, void *data)
         if (od_lb_data) {
             hmap_remove(&lb_data->ls_lb_map, &od_lb_data->hmap_node);
             hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
+            changed = true;
         }
     }
 
@@ -479,6 +480,7 @@ lb_data_synced_logical_router_handler(struct engine_node *node, void *data)
         if (od_lb_data) {
             hmap_remove(&lb_data->lr_lb_map, &od_lb_data->hmap_node);
             hmapx_add(&trk_lb_data->deleted_od_lb_data, od_lb_data);
+            changed = true;
         }
     }
 
