@@ -308,7 +308,7 @@ ecmp_member_hash(const struct parsed_route *route)
 #define ECMP_ID_MAX_ROUNDS 32
 
 struct ecmp_id_slot {
-    struct hmap_node hmap_node;
+    struct hmap_node hmap_node; /* In 'slots', hashed by 'id'. */
     uint16_t id;
     bool taken;         /* Assigned to an element. */
     size_t n_claims;    /* Elements that derived 'id' in the current round. */
@@ -317,35 +317,34 @@ struct ecmp_id_slot {
 static struct ecmp_id_slot *
 ecmp_id_slot_get(struct hmap *slots, uint16_t id)
 {
-    struct ecmp_id_slot *slot;
-    HMAP_FOR_EACH_WITH_HASH (slot, hmap_node, id, slots) {
-        if (slot->id == id) {
-            return slot;
-        }
+    /* The id is the hash itself, so any node with that hash is its slot. */
+    struct hmap_node *node = hmap_first_with_hash(slots, id);
+    if (node) {
+        return CONTAINER_OF(node, struct ecmp_id_slot, hmap_node);
     }
-    slot = xzalloc(sizeof *slot);
+
+    struct ecmp_id_slot *slot = xzalloc(sizeof *slot);
     slot->id = id;
     hmap_insert(slots, &slot->hmap_node, id);
     return slot;
 }
 
 struct ecmp_hash_count {
-    struct hmap_node hmap_node;
-    uint32_t hash;
+    struct hmap_node hmap_node; /* In 'counts', hashed by the counted hash. */
     size_t n;
 };
 
 static struct ecmp_hash_count *
 ecmp_hash_count_get(struct hmap *counts, uint32_t hash)
 {
-    struct ecmp_hash_count *count;
-    HMAP_FOR_EACH_WITH_HASH (count, hmap_node, hash, counts) {
-        if (count->hash == hash) {
-            return count;
-        }
+    /* The counted hash is used as the hmap hash, so any node with that hash
+     * is its count. */
+    struct hmap_node *node = hmap_first_with_hash(counts, hash);
+    if (node) {
+        return CONTAINER_OF(node, struct ecmp_hash_count, hmap_node);
     }
-    count = xzalloc(sizeof *count);
-    count->hash = hash;
+
+    struct ecmp_hash_count *count = xzalloc(sizeof *count);
     hmap_insert(counts, &count->hmap_node, hash);
     return count;
 }
