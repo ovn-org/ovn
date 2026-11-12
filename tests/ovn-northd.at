@@ -17242,6 +17242,174 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Transit router - remote port flows])
+ovn_start
+
+check ovn-sbctl chassis-add remote geneve 192.0.2.2 \
+    -- set chassis remote other_config:is-remote=true
+check ovn-sbctl chassis-add local geneve 192.0.2.1
+check ovn-nbctl lr-add tr -- lr-add ordinary \
+    -- lrp-add ordinary ordinary-port 00:00:00:00:03:01 10.0.3.1/24 fd00:3::1/64
+for p in 1 2; do
+    check ovn-nbctl lrp-add tr rp$p 00:00:00:00:0$p:01 10.0.$p.1/24 fd00:$p::1/64 \
+        -- set Logical_Router_Port rp$p options:route_table=blue options:gateway_mtu=1400 \
+            options:prefix_delegation=true \
+            ipv6_ra_configs:address_mode=slaac \
+        -- ls-add ls$p -- lsp-add-router-port ls$p ls$p-tr rp$p
+    relay=$(ovn-nbctl create DHCP_Relay servers=10.0.3.2)
+    check ovn-nbctl set Logical_Router_Port rp$p dhcp_relay=$relay \
+        -- set Logical_Switch ls$p other_config:dhcp_relay_port=ls$p-tr
+    check ovn-nbctl --bfd lr-route-add tr 10.30.$p.0/24 10.0.$p.2 rp$p
+done
+check ovn-nbctl set Logical_Router tr options:lb_force_snat_ip=router_ip \
+    options:mcast_relay=true \
+    options:always_learn_from_arp_request=false \
+    -- lb-add lb 10.0.2.100:80 10.0.1.2:80 \
+    -- lb-add lb '[[fd00:2::100]]:80' '[[fd00:1::2]]:80' \
+    -- lr-lb-add tr lb
+check ovn-nbctl --ecmp-symmetric-reply lr-route-add tr 10.10.0.0/24 10.0.1.2 \
+    -- --ecmp-symmetric-reply lr-route-add tr 10.10.0.0/24 10.0.2.2 \
+    -- lr-policy-add tr 100 'ip4.dst == 10.20.0.0/24' reroute 10.0.2.2
+check ovn-nbctl --wait=sb set Logical_Router_Port rp2 options:requested-chassis=remote
+check ovn-nbctl lsp-add ls2 routing-daemon \
+    -- lsp-set-addresses routing-daemon 00:00:00:00:02:10 \
+    -- set Logical_Router_Port rp2 options:routing-protocol-redirect=routing-daemon \
+        options:routing-protocols=BGP
+
+check_port_flows() {
+    port=$1
+    present=$2
+    check ovn-nbctl --wait=sb sync
+    ovn-sbctl lflow-list tr > lflows
+    AT_CAPTURE_FILE([lflows])
+    dnl Every selected family is present for local/chassisless ports, absent
+    dnl for remote ports.  Do not infer correctness from a total flow count.
+    for stage in lr_in_admission lr_in_lookup_neighbor lr_in_nd_ra_options \
+                 lr_in_nd_ra_response lr_in_ip_routing_pre lr_in_ip_input \
+                 lr_in_dhcp_relay_req; do
+        AT_CHECK([grep "$stage" lflows | grep -q "inport == \"$port\""], [$present])
+    done
+    for stage in lr_out_delivery lr_in_network_id; do
+        AT_CHECK([grep "$stage" lflows | grep -q "outport == \"$port\""], [$present])
+    done
+    dnl Late ingress still runs locally after choosing a remote outport.
+    AT_CHECK([grep lr_in_chk_pkt_len lflows | grep -q "outport == \"$port\""])
+    AT_CHECK([grep lr_in_ecmp_stateful lflows | grep "outport == \"$port\"" | grep -q ct_commit])
+    AT_CHECK([grep lr_in_ip_routing lflows | grep 'ip4.dst == 10.0.' | grep -q "outport = \"$port\""])
+    AT_CHECK([grep lr_in_ip_routing lflows | grep 'ip6.dst == fd00:' | grep -q "outport = \"$port\""])
+    AT_CHECK([grep lr_in_ip_routing lflows | grep fe80: | grep -q "inport == \"$port\""], [$present])
+    AT_CHECK([grep lr_in_ip_routing lflows | grep 'udp.dst == 3784' | grep -q "inport == \"$port\""], [$present])
+}
+
+check_port_flows rp1 0
+check_port_flows rp2 1
+dnl Address-global handling and DHCP responses must survive remote pruning.
+AT_CHECK([grep lr_in_ip_input lflows | grep 'ip4.dst == 10.0.2.1' | grep -q 'icmp4.type == 8'])
+AT_CHECK([grep lr_in_ip_input lflows | grep 'ip6.dst ==' | grep fd00:2::1 | grep -q 'icmp6.type == 128'])
+AT_CHECK([grep lr_in_ip_input lflows | grep 'ip4.src ==' | grep -q 10.0.2.1])
+AT_CHECK([grep lr_in_ip_input lflows | grep 'ip4.dst == 10.0.2.1' | grep -q tcp_reset])
+AT_CHECK([grep lr_in_dhcp_relay_resp lflows | grep -q 'outport = "rp2"'])
+AT_CHECK([grep lr_in_ip_input lflows | grep 'priority=60 ' | grep -q 'ip4.dst == {10.0.2.1}'])
+AT_CHECK([grep lr_in_arp_resolve lflows | grep -q 'get_arp(outport, reg0)'])
+AT_CHECK([grep lr_in_ip_routing_ecmp lflows | grep -q 'outport = "rp2"'])
+AT_CHECK([grep lr_in_policy lflows | grep -q 'outport = "rp2"'])
+AT_CHECK([grep lr_in_lookup_neighbor lflows | grep 'arp.op == 2' | grep -q flood_remote])
+AT_CHECK([grep lr_in_learn_neighbor lflows | grep 'nd.tll == 0' | grep -q 'put_nd(inport, nd.target, eth.src)'])
+AT_CHECK([grep lr_in_ip_input lflows | grep fd00:2::1 | grep -q handle_dhcpv6_reply])
+AT_CHECK([grep lr_in_ip_input lflows | grep 10.0.2.1 | grep -q handle_bfd_msg])
+AT_CHECK([grep lr_in_larger_pkts lflows | grep 'outport == "rp2"' | grep -q 'inport == "rp1"'])
+AT_CHECK([grep lr_in_larger_pkts lflows | grep -q 'inport == "rp2"'], [1])
+AT_CHECK([ovn-sbctl lflow-list ordinary | grep lr_in_admission | grep -q 'inport == "ordinary-port"'])
+AT_CHECK([ovn-sbctl lflow-list ls2 | grep ls_in_l2_lkup | grep 'tcp.dst == 179' | grep -q 'outport = "routing-daemon"'])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Remote LRPs can also supply neighbor resolution flows on a peer router.
+check ovn-nbctl lr-add peer \
+    -- lrp-add tr tr-peer 00:00:00:00:04:01 10.40.0.1/24 fd00:40::1/64 \
+    -- set Logical_Router_Port tr-peer peer=peer-tr options:requested-chassis=remote \
+    -- lrp-add peer peer-tr 00:00:00:00:04:02 10.40.0.2/24 fd00:40::2/64 peer=tr-peer
+check ovn-nbctl --wait=sb sync
+AT_CHECK([ovn-sbctl lflow-list peer | grep lr_in_arp_resolve | grep 'outport == "peer-tr"' | grep -q 'eth.dst = 00:00:00:00:04:01'])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check ovn-nbctl --wait=sb lrp-del tr-peer -- lr-del peer
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Chassis changes must restore and prune the same flows on recompute.
+check ovn-sbctl remove Chassis remote other_config is-remote
+check_port_flows rp2 0
+AT_CHECK([grep lr_in_admission lflows | grep -q 'priority=40'], [1])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check ovn-sbctl set Chassis remote other_config:is-remote=true
+check_port_flows rp2 1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Requested-chassis changes use the same classification as chassis updates.
+check ovn-nbctl --wait=sb set Logical_Router_Port rp2 options:requested-chassis=local
+dnl The previous remote chassis may still be recorded on the patch binding.
+dnl It must not suppress ordinary port flows after the NB request changes.
+check_port_flows rp2 0
+AT_CHECK([grep lr_in_admission lflows | grep -q 'priority=40'], [1])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check ovn-nbctl --wait=sb set Logical_Router_Port rp2 options:requested-chassis=remote
+check_port_flows rp2 1
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check ovn-nbctl lr-route-del tr 10.30.2.0/24
+check ovn-nbctl --wait=sb lrp-del rp2
+AT_CHECK([ovn-sbctl lflow-list tr | grep lr_in_admission | grep -q 'priority=40'], [1])
+check_port_flows rp1 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Transit router - force SNAT flows])
+ovn_start
+check ovn-sbctl chassis-add remote geneve 192.0.2.2 \
+    -- set Chassis remote other_config:is-remote=true
+check ovn-sbctl chassis-add local geneve 192.0.2.1
+check ovn-nbctl lr-add tr \
+    -- set Logical_Router tr options:lb_force_snat_ip=router_ip \
+    -- lrp-add tr remote 00:00:00:00:02:01 10.0.2.1/24 fd00:2::1/64 \
+    -- set Logical_Router_Port remote options:requested-chassis=remote \
+    -- ls-add ts -- lsp-add-router-port ts ts-tr remote
+dnl Router-IP force SNAT is supported on chassis-bound gateway routers, not
+dnl distributed transit routers.  Check local preservation in that context.
+check ovn-nbctl lr-add gw \
+    -- set Logical_Router gw options:chassis=local options:lb_force_snat_ip=router_ip \
+    -- lrp-add gw gw-ls 00:00:00:00:05:01 10.0.5.1/24 fd00:5::1/64 \
+    -- ls-add gs -- lsp-add-router-port gs gs-gw gw-ls \
+    -- lb-add lb 10.0.2.100:80 10.0.5.2:80 \
+    -- lb-add lb '[[fd00:2::100]]:80' '[[fd00:5::2]]:80' \
+    -- lr-lb-add tr lb -- lr-lb-add gw lb
+
+check_snat_flows() {
+    check ovn-nbctl --wait=sb sync
+    ovn-sbctl lflow-list "$1" > snatflows
+    AT_CAPTURE_FILE([snatflows])
+    for family in 4 6; do
+        AT_CHECK([grep lr_in_unsnat snatflows | grep "inport == \"$2\"" | grep -q "ip$family.dst"], [$3])
+        for priority in 105 110; do
+            AT_CHECK([grep lr_out_snat snatflows | grep "priority=$priority " | grep "outport == \"$2\"" | grep -q "&& ip$family"], [$3])
+        done
+    done
+}
+check_snat_flows tr remote 1
+check_snat_flows gw gw-ls 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+dnl LB-only changes regenerate stateful flows independently of port flows.
+check ovn-nbctl lb-add lb 10.0.2.101:80 10.0.5.3:80 \
+    -- lb-add lb '[[fd00:2::101]]:80' '[[fd00:5::3]]:80'
+check_snat_flows tr remote 1
+check_snat_flows gw gw-ls 0
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([ACL persistent ID - Logical Flows])
 ovn_start
 

@@ -2060,6 +2060,14 @@ Logical Router Datapaths
 Logical router datapaths will only exist for ``Logical_Router`` rows in the OVN
 Northbound database that do not have ``enabled`` set to ``false``
 
+Remote transit router ports do not receive ordinary ingress traffic or execute
+local egress delivery.  Their per-port admission, neighbor request handling,
+router advertisements, and ingress error responses are therefore omitted.
+Tunneled neighbor replies use shared admission and learning flows instead.
+Routes selecting remote ports, neighbor resolution, and output MTU checks still
+run locally before tunneling and remain installed, as do router-wide flows
+matching the remote ports' IP addresses.
+
 .. _lr-in-0:
 
 Ingress Table 0: L2 Admission Control
