@@ -96,7 +96,7 @@ function configure_gcc()
             sudo apt update && sudo apt install -y gcc-multilib
         elif which dnf; then
             # Install equivalent of gcc-multilib for Fedora.
-            sudo dnf -y install glibc-devel.i686
+            sudo dnf -y install glibc-devel.i686 libatomic.i686
         fi
 
         return
