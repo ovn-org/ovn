@@ -15044,6 +15044,14 @@ build_adm_ctrl_flows_for_lrouter(
                   "vlan.present || eth.src[40]", debug_drop_action(),
                   lflow_ref);
 
+    if (od->is_transit_router) {
+        /* Flooded replies reenter ingress with a remote inport to learn
+         * neighbor bindings.  They need not target that port's MAC. */
+        ovn_lflow_add(lflows, od, S_ROUTER_IN_ADMISSION, 40,
+                      "flags.tunnel_rx == 1 && (arp.op == 2 || nd_na)",
+                      "next;", lflow_ref);
+    }
+
     /* Default action for L2 security is to drop. */
     ovn_lflow_add_default_drop(lflows, od, S_ROUTER_IN_ADMISSION,
                                lflow_ref);
@@ -15157,8 +15165,15 @@ build_adm_ctrl_flows_for_lrouter_port(
     ovs_assert(op->nbrp);
 
     if (!lrport_is_enabled(op->nbrp)) {
-        /* Drop packets from disabled logical ports (since logical flow
-         * tables are default-drop). */
+        /* Override shared reply admission on transit routers.  Other
+         * routers reject disabled inports through the default drop. */
+        if (op->od->is_transit_router) {
+            ds_clear(match);
+            ds_put_format(match, "inport == %s", op->json_key);
+            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ADMISSION, 60,
+                          ds_cstr(match), debug_drop_action(), lflow_ref,
+                          WITH_HINT(&op->nbrp->header_));
+        }
         return;
     }
 

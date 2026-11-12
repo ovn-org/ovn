@@ -2071,6 +2071,13 @@ Ethernet headers.  It contains the following flows:
 - Priority-100 flows to drop packets with VLAN tags or multicast Ethernet source
   addresses.
 
+- On transit routers, a priority-40 flow admits ARP replies and IPv6 neighbor
+  advertisements received from a tunnel, regardless of their destination MAC
+  address.  These packets reenter ingress to learn remote neighbor bindings;
+  the IP input table then drops them.  The higher-priority Ethernet security
+  drops still apply.  A priority-60 flow drops packets from each disabled
+  router port, overriding the shared admission rule.
+
 - For each enabled router port *P* with Ethernet address *E*, a priority-50 flow
   that matches ``inport == P && (eth.mcast || eth.dst == E``), stores the router
   port ethernet address and advances to next table, with action

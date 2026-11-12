@@ -17136,6 +17136,60 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Transit router - reply admission])
+ovn_start
+
+check ovn-sbctl chassis-add remote geneve 192.0.2.2 \
+    -- set chassis remote other_config:is-remote=true
+check ovn-nbctl lr-add tr \
+    -- lrp-add tr local 00:00:00:00:01:01 10.0.1.1/24 fd00:1::1/64 \
+    -- lrp-add tr remote 00:00:00:00:02:01 10.0.2.1/24 fd00:2::1/64 \
+    -- set Logical_Router_Port remote options:requested-chassis=remote
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list tr | grep lr_in_admission | grep 'priority=40' | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=40   , match=(flags.tunnel_rx == 1 && (arp.op == 2 || nd_na)), action=(next;)
+])
+
+dnl The reply destination need not be the remote LRP's own MAC address.
+for learn in true false; do
+    check ovn-nbctl --wait=sb set Logical_Router tr \
+        options:always_learn_from_arp_request=$learn
+    arp='inport == "remote" && eth.src == 00:00:00:00:02:02 && eth.dst == 00:00:00:00:03:01 && arp.op == 2 && arp.spa == 10.0.2.2 && arp.tpa == 10.0.3.1 && arp.sha == 00:00:00:00:02:02 && arp.tha == 00:00:00:00:03:01'
+    AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && $arp" > arp.trace])
+    AT_CAPTURE_FILE([arp.trace])
+    AT_CHECK([grep -q 'put_arp(inport, arp.spa, arp.sha)' arp.trace])
+    for tll in 00:00:00:00:02:02 00:00:00:00:00:00; do
+        na="inport == \"remote\" && eth.src == 00:00:00:00:02:02 && eth.dst == 00:00:00:00:03:01 && ip6.src == fd00:2::2 && ip6.dst == fd00:3::1 && ip.ttl == 255 && nd_na && nd.target == fd00:2::2 && nd.tll == $tll"
+        AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && $na" | grep -q put_nd])
+    done
+    dnl No non-tunnel or VLAN-tagged reply may use the exception.
+    AT_CHECK([ovn-trace tr "$arp" | grep -q put_arp], [1])
+    AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && vlan.tci == 0x1001 && $arp" | grep -q put_arp], [1])
+    AT_CHECK([ovn-trace tr 'flags.tunnel_rx == 1 && inport == "remote" && eth.src == 01:00:00:00:02:02 && eth.dst == 00:00:00:00:03:01 && arp.op == 2' | grep -q put_arp], [1])
+    AT_CHECK([ovn-trace tr 'flags.tunnel_rx == 1 && inport == "remote" && eth.src == 00:00:00:00:02:02 && eth.dst == 00:00:00:00:03:01 && arp.op == 1' | grep -q put_arp], [1])
+done
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+dnl Disabling the port must override the shared reply exception.
+check ovn-nbctl --wait=sb set Logical_Router_Port remote enabled=false
+AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && $arp" | grep -q put_arp], [1])
+AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && $na" | grep -q put_nd], [1])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+check ovn-nbctl --wait=sb set Logical_Router_Port remote enabled=true
+AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && $arp" | grep -q put_arp])
+AT_CHECK([ovn-trace tr "flags.tunnel_rx == 1 && $na" | grep -q put_nd])
+
+dnl Removing the last remote binding withdraws the exception.
+check ovn-nbctl --wait=sb lrp-del remote
+AT_CHECK([ovn-sbctl lflow-list tr | grep lr_in_admission | grep -q 'priority=40'], [1])
+CHECK_NO_CHANGE_AFTER_RECOMPUTE
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
 AT_SETUP([Transit router - remote ports])
 ovn_start
 
