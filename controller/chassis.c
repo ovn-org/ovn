@@ -303,21 +303,17 @@ chassis_parse_ovs_iface_types(char **iface_types, size_t n_iface_types,
 }
 
 /*
- * Parse the 'ovs_table' entry and populate 'ovs_cfg'.
+ * Parse the 'ovs_table' entry and populate 'ovs_cfg'.  Returns true on
+ * success.  Returns false if 'cfg' has no encap type and/or ip configured,
+ * in which case the caller should delete the chassis.
  */
 static bool
 chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
+                         const struct ovsrec_open_vswitch *cfg,
                          const struct ovsrec_bridge *br_int,
                          struct ovs_chassis_cfg *ovs_cfg)
 {
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
-    const struct ovsrec_open_vswitch *cfg =
-        ovsrec_open_vswitch_table_first(ovs_table);
-
-    if (!cfg) {
-        VLOG_INFO("No Open_vSwitch row defined.");
-        return false;
-    }
 
     const char *chassis_id = get_ovs_chassis_id(ovs_table);
     const char *encap_type =
@@ -328,7 +324,8 @@ chassis_parse_ovs_config(const struct ovsrec_open_vswitch_table *ovs_table,
         get_chassis_external_id_value(&cfg->external_ids, chassis_id,
                                       "ovn-encap-ip", NULL);
     if (!encap_type || !encap_ips) {
-        VLOG_INFO_RL(&rl, "Need to specify an encap type and ip");
+        VLOG_WARN_RL(&rl, "No encap type and/or ip on chassis '%s'. "
+                     "Deleting chassis.", chassis_id);
         return false;
     }
 
@@ -801,36 +798,6 @@ remove_unsupported_options(const struct sbrec_chassis *chassis_rec,
     sset_destroy(&supported_options);
 }
 
-/* If this is a chassis config update after we initialized the record once
- * then we should always be able to find it with the ID we saved in
- * chassis_state.
- * Otherwise (i.e., first time we create the record or if the system-id
- * changed) we create a new record.
- *
- * Sets '*chassis_rec' to point to the local chassis record.
- * Returns true if this record was already in the database, false if it was
- * just inserted.
- */
-static bool
-chassis_get_record(struct ovsdb_idl_txn *ovnsb_idl_txn,
-                   struct ovsdb_idl_index *sbrec_chassis_by_name,
-                   const char *chassis_id,
-                   const struct sbrec_chassis **chassis_rec)
-{
-    const struct sbrec_chassis *chassis =
-        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
-
-    if (!chassis && ovnsb_idl_txn) {
-        /* Create the chassis record. */
-        VLOG_DBG("Could not find Chassis, will create it: %s", chassis_id);
-        *chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
-        return false;
-    }
-
-    *chassis_rec = chassis;
-    return true;
-}
-
 /* Update a Chassis record based on the config in the ovs config.
  * Returns CHASSIS_UPDATED if 'chassis_rec' was updated, CHASSIS_NEED_DELETE if
  * another chassis exists with an encap with same IP and type as 'chassis', and
@@ -901,31 +868,6 @@ chassis_update(const struct sbrec_chassis *chassis_rec,
     return CHASSIS_UPDATED;
 }
 
-/* If this is a chassis_private config update after we initialized the record
- * once then we should always be able to find it with the ID we saved in
- * chassis_state.
- * Otherwise (i.e., first time we created the chassis record or if the
- * system-id changed) we create a new record.
- *
- * Returns the local chassis record.
- */
-static const struct sbrec_chassis_private *
-chassis_private_get_record(
-    struct ovsdb_idl_txn *ovnsb_idl_txn,
-    struct ovsdb_idl_index *sbrec_chassis_pvt_by_name,
-    const char *chassis_id)
-{
-    const struct sbrec_chassis_private *chassis_p =
-            chassis_private_lookup_by_name(sbrec_chassis_pvt_by_name,
-                                           chassis_id);
-
-    if (!chassis_p) {
-        return sbrec_chassis_private_insert(ovnsb_idl_txn);
-    }
-
-    return chassis_p;
-}
-
 static void
 chassis_private_update(const struct sbrec_chassis_private *chassis_pvt,
                        const struct sbrec_chassis *chassis,
@@ -937,6 +879,19 @@ chassis_private_update(const struct sbrec_chassis_private *chassis_pvt,
 
     if (chassis_pvt->chassis != chassis) {
         sbrec_chassis_private_set_chassis(chassis_pvt, chassis);
+    }
+}
+
+/* Delete the Chassis and Chassis_Private records, if they exist. */
+static void
+chassis_delete(const struct sbrec_chassis *chassis_rec,
+               const struct sbrec_chassis_private *chassis_pvt_rec)
+{
+    if (chassis_rec) {
+        sbrec_chassis_delete(chassis_rec);
+    }
+    if (chassis_pvt_rec) {
+        sbrec_chassis_private_delete(chassis_pvt_rec);
     }
 }
 
@@ -957,49 +912,74 @@ chassis_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
     *chassis_private = NULL;
 
     /* Get the chassis config from the ovs table. */
-    ovs_chassis_cfg_init(&ovs_cfg);
-    if (!chassis_parse_ovs_config(ovs_table, br_int, &ovs_cfg)) {
+    const struct ovsrec_open_vswitch *cfg =
+        ovsrec_open_vswitch_table_first(ovs_table);
+
+    if (!cfg) {
+        VLOG_INFO("No Open_vSwitch row defined.");
         return NULL;
     }
 
-    const struct sbrec_chassis *chassis_rec = NULL;
-    bool existed = chassis_get_record(ovnsb_idl_txn, sbrec_chassis_by_name,
-                                      chassis_id, &chassis_rec);
+    ovs_chassis_cfg_init(&ovs_cfg);
+    bool parse_status = chassis_parse_ovs_config(ovs_table, cfg,
+                                                 br_int, &ovs_cfg);
+
+    /* Look up any existing records for this chassis. */
+    const struct sbrec_chassis *chassis_rec =
+        chassis_lookup_by_name(sbrec_chassis_by_name, chassis_id);
+    const struct sbrec_chassis_private *chassis_pvt_rec =
+        chassis_private_lookup_by_name(sbrec_chassis_private_by_name,
+                                       chassis_id);
+    bool existed = chassis_rec != NULL;
+
+    if (!ovnsb_idl_txn) {
+        ovs_chassis_cfg_destroy(&ovs_cfg);
+        /* If there's no txn, still return the Chassis record if it exists. */
+        return chassis_rec;
+    }
+
+    /* If no encaps are configured, delete the Chassis record. */
+    if (!parse_status) {
+        chassis_delete(chassis_rec, chassis_pvt_rec);
+        ovs_chassis_cfg_destroy(&ovs_cfg);
+        return NULL;
+    }
+
+    /* Insert a new record if needed. */
+    if (!chassis_rec) {
+        chassis_rec = sbrec_chassis_insert(ovnsb_idl_txn);
+    }
+    if (!chassis_pvt_rec) {
+        chassis_pvt_rec = sbrec_chassis_private_insert(ovnsb_idl_txn);
+    }
 
     /* If we found (or created) a record, update it with the correct config
      * and store the current chassis_id for fast lookup in case it gets
      * modified in the ovs table.
      */
-    if (chassis_rec && ovnsb_idl_txn) {
-        enum chassis_update_status update_status =
-            chassis_update(chassis_rec, ovnsb_idl_txn, &ovs_cfg,
-                           chassis_id,
-                           transport_zones, sbrec_encaps_index_by_ip_and_type);
+    enum chassis_update_status update_status =
+        chassis_update(chassis_rec, ovnsb_idl_txn, &ovs_cfg, chassis_id,
+                       transport_zones, sbrec_encaps_index_by_ip_and_type);
 
-        *chassis_private = chassis_private_get_record(ovnsb_idl_txn,
-                               sbrec_chassis_private_by_name, chassis_id);
-
-        if (update_status == CHASSIS_NEED_DELETE) {
-            sbrec_chassis_delete(chassis_rec);
-            if (*chassis_private) {
-                sbrec_chassis_private_delete(*chassis_private);
-            }
-
-            ovs_chassis_cfg_destroy(&ovs_cfg);
-            return NULL;
-        }
-
-        if (!existed || update_status == CHASSIS_UPDATED) {
-            ovsdb_idl_txn_add_comment(ovnsb_idl_txn,
-                                      "ovn-controller: %s chassis '%s'",
-                                      !existed ? "registering" : "updating",
-                                      chassis_id);
-        }
-        if (*chassis_private) {
-            chassis_private_update(*chassis_private, chassis_rec, chassis_id);
-        }
+    /* Delete the chassis if another chassis already has the same encap. */
+    if (update_status == CHASSIS_NEED_DELETE) {
+        chassis_delete(chassis_rec, chassis_pvt_rec);
+        ovs_chassis_cfg_destroy(&ovs_cfg);
+        return NULL;
     }
 
+    if (!existed || update_status == CHASSIS_UPDATED) {
+        ovsdb_idl_txn_add_comment(ovnsb_idl_txn,
+                                  "ovn-controller: %s chassis '%s'",
+                                  !existed ? "registering" : "updating",
+                                  chassis_id);
+    }
+    if (chassis_pvt_rec) {
+        chassis_private_update(chassis_pvt_rec, chassis_rec, chassis_id);
+        *chassis_private = chassis_pvt_rec;
+    }
+
+    /* Only return committed Chassis record. */
     ovs_chassis_cfg_destroy(&ovs_cfg);
     return existed ? chassis_rec : NULL;
 }

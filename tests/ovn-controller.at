@@ -4558,3 +4558,55 @@ done
 OVN_CLEANUP([gw1],[gw3],[hv2])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([ovn-controller - remove encap from chassis add to other chassis])
+AT_KEYWORDS([ovn])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1 check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.11
+
+sim_add hv2
+as hv2 check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.12
+
+as hv2
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl find Interface type=geneve | grep -c _uuid], [0], [1
+])
+
+as hv1
+OVS_WAIT_FOR_OUTPUT([ovs-vsctl find Interface type=geneve | grep -c _uuid], [0], [1
+])
+wait_row_count Encap 4
+wait_row_count Chassis 2
+
+# Remove hv1's encap.
+as hv1 check ovs-vsctl remove Open_vSwitch . external-ids ovn-encap-ip="192.168.0.11"
+check ovn-nbctl --wait=sb sync
+
+# Make sure that hv1's chassis rec was deleted from sb.  And of course with
+# that its encaps too.
+OVS_WAIT_UNTIL([test $(ovn-sbctl --bare find Encap chassis_name=hv1 ip="192.168.0.11" | wc -l) -eq 0])
+wait_row_count Encap 0 chassis_name="hv1" ip="192.168.0.11"
+wait_row_count Chassis 0 name="hv1"
+OVS_WAIT_UNTIL([grep -q "No encap type and/or ip on chassis 'hv1'. Deleting chassis."  hv1/ovn-controller.log
+])
+
+# Assign hv1's old encap ip to hv2.  Verify it worked.
+as hv2 check ovs-vsctl set Open_vSwitch . external-ids:ovn-encap-ip="192.168.0.11"
+wait_row_count Encap 0 chassis_name="hv2" ip="192.168.0.12"
+wait_row_count Encap 2 chassis_name="hv2" ip="192.168.0.11"
+
+# Now give hv1 a new different encap ip.  Verify the chassis is back.
+as hv1 check ovs-vsctl set Open_vSwitch . external-ids:ovn-encap-ip="192.168.0.13"
+check ovn-nbctl --wait=hv sync
+wait_row_count Encap 2 chassis_name="hv1" ip="192.168.0.13"
+wait_row_count Chassis 1 name="hv1"
+
+OVN_CLEANUP([hv2], [hv1
+/No encap type and\/or ip on chassis 'hv1'. Deleting chassis/d])
+AT_CLEANUP
+])
