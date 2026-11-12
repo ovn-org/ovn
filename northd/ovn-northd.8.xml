@@ -3228,6 +3228,16 @@ output;
       </li>
 
       <li>
+        On transit routers, a priority-40 flow admits ARP replies and IPv6
+        neighbor advertisements received from a tunnel, regardless of their
+        destination MAC address.  These packets reenter ingress to learn
+        remote neighbor bindings; the IP input table then drops them.
+        The higher-priority Ethernet security drops still apply.
+        A priority-60 flow drops packets from each disabled router port,
+        overriding the shared admission rule.
+      </li>
+
+      <li>
         <p>
           For each enabled router port <var>P</var> with Ethernet address
           <var>E</var>, a priority-50 flow that matches <code>inport ==

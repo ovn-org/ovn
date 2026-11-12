@@ -1,6 +1,105 @@
 AT_BANNER([system-ovn])
 
 OVN_FOR_EACH_NORTHD([
+AT_SETUP([Transit router - tunneled neighbor admission])
+CHECK_SCAPY
+
+ovn_start
+OVS_TRAFFIC_VSWITCHD_START()
+ADD_BR([br-int])
+ADD_BR([br-phys])
+
+check ovs-ofctl add-flow br-phys actions=normal
+check ip addr add 192.0.2.1/24 dev br-phys
+check ip link set br-phys up
+check ovs-vsctl set Open_vSwitch . external_ids:system-id=hv1 \
+    external_ids:ovn-remote=unix:$ovs_base/ovn-sb/ovn-sb.sock \
+    external_ids:ovn-encap-type=geneve external_ids:ovn-encap-ip=192.0.2.1 \
+    external_ids:ovn-is-interconn=true \
+    -- set Bridge br-int fail-mode=secure other_config:disable-in-band=true
+start_daemon ovn-controller
+
+check ovn-sbctl chassis-add hv2 geneve 192.0.2.2 \
+    -- set Chassis hv2 other_config:is-remote=true
+check ovn-nbctl lr-add tr \
+    -- lrp-add tr local 00:00:00:00:01:01 10.0.1.1/24 fd00:1::1/64 \
+    -- lrp-add tr remote 00:00:00:00:02:01 10.0.2.1/24 fd00:2::1/64 \
+    -- set Logical_Router_Port remote options:requested-chassis=hv2 \
+    -- ls-add ls -- lsp-add-router-port ls ls-tr local \
+    -- lsp-add ls workload -- lsp-set-addresses workload '00:00:00:00:01:02 10.0.1.2'
+
+ADD_NAMESPACES(workload, underlay)
+ADD_VETH(workload, workload, br-int, "10.0.1.2/24", "00:00:00:00:01:02")
+ADD_VETH(underlay, underlay, br-phys, "192.0.2.2/24", "00:00:00:00:ff:02")
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+dp_key=$(fetch_column Datapath_Binding tunnel_key external_ids:name=tr)
+port_key=$(fetch_column Port_Binding tunnel_key logical_port=remote)
+underlay_mac=$(ovs-vsctl get Interface br-phys mac_in_use | tr -d '\"')
+
+cat > send-replies.py <<'EOF'
+import argparse
+from scapy.all import Ether, IP, IPv6, UDP, ARP, sendp
+from scapy.all import ICMPv6ND_NA, ICMPv6NDOptDstLLAddr
+from scapy.contrib.geneve import GENEVE, GeneveOptions
+
+parser = argparse.ArgumentParser()
+for name in ("datapath", "port", "host", "network"):
+    parser.add_argument(name, type=int)
+parser.add_argument("mac")
+parser.add_argument("underlay_mac")
+args = parser.parse_args()
+outer = (Ether(src="00:00:00:00:ff:02", dst=args.underlay_mac) /
+         IP(src="192.0.2.2", dst="192.0.2.1") / UDP(dport=6081) /
+         GENEVE(vni=args.datapath, options=GeneveOptions(
+             classid=0x102, type=0x80, data=(args.port << 16).to_bytes(4, "big"))))
+inner = Ether(src=args.mac, dst="00:00:00:00:03:01")
+ip4 = f"10.0.{args.network}.{args.host}"
+ip6 = f"fd00:{args.network}::{args.host}"
+sendp(outer / inner / ARP(op=2, hwsrc=args.mac, psrc=ip4, pdst="10.0.3.1"),
+      iface="underlay", verbose=False)
+sendp(outer / inner / IPv6(src=ip6, dst="fd00:3::1", hlim=255) /
+      ICMPv6ND_NA(tgt=ip6, S=1) / ICMPv6NDOptDstLLAddr(lladdr=args.mac),
+      iface="underlay", verbose=False)
+EOF
+
+send_replies() {
+    NS_CHECK_EXEC([underlay], [$PYTHON send-replies.py "$dp_key" "$port_key" "$1" "$2" "$3" "$underlay_mac"], [0], [], [ignore])
+}
+send_replies 2 2 00:00:00:00:02:02
+wait_column '00:00:00:00:02:02' MAC_Binding mac logical_port=remote ip=10.0.2.2
+wait_column '00:00:00:00:02:02' MAC_Binding mac logical_port=remote ip='"fd00:2::2"'
+
+check ovn-nbctl --wait=hv set Logical_Router_Port remote enabled=false
+send_replies 2 2 00:00:00:00:02:99
+send_replies 99 2 00:00:00:00:02:99
+remote_key=$port_key
+port_key=$(fetch_column Port_Binding tunnel_key logical_port=local)
+send_replies 99 1 00:00:00:00:01:99
+wait_column '00:00:00:00:01:99' MAC_Binding mac logical_port=local ip='"fd00:1::99"'
+port_key=$remote_key
+check_row_count MAC_Binding 0 logical_port=remote ip=10.0.2.99
+check_row_count MAC_Binding 0 logical_port=remote ip='"fd00:2::99"'
+check_column '00:00:00:00:02:02' MAC_Binding mac logical_port=remote ip=10.0.2.2
+check_column '00:00:00:00:02:02' MAC_Binding mac logical_port=remote ip='"fd00:2::2"'
+
+check ovn-nbctl --wait=hv set Logical_Router_Port remote enabled=true
+send_replies 99 2 00:00:00:00:02:99
+wait_column '00:00:00:00:02:99' MAC_Binding mac logical_port=remote ip=10.0.2.99
+wait_column '00:00:00:00:02:99' MAC_Binding mac logical_port=remote ip='"fd00:2::99"'
+
+dnl Discard cached tunnel flows before controller cleanup removes the tunnel.
+check ovs-appctl revalidator/purge
+OVN_CLEANUP_CONTROLLER([hv1])
+OVN_CLEANUP_NORTHD
+as
+OVS_TRAFFIC_VSWITCHD_STOP(["/failed to query port patch-.*/d
+/connection dropped.*/d"])
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD([
 AT_SETUP([2 LRs connected via LS, gateway router, SNAT and DNAT])
 AT_KEYWORDS([ovnnat])
 
