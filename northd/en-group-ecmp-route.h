@@ -37,7 +37,6 @@ struct ecmp_groups_node {
     bool has_discard_route;
     enum route_source source;
     uint32_t route_table_id;
-    uint16_t route_count;
     struct vector route_list; /* Contains ecmp_route_list_node */
     struct sset selection_fields;
 };
