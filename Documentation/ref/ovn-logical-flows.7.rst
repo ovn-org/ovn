@@ -3804,6 +3804,19 @@ Egress Table 1: UNDNAT on Distributed Routers
   If the router is configured to force SNAT  any load-balanced packets, above
   action will be replaced by ``flags.force_snat_for_lb = 1; ct_dnat;``.
 
+- For each VIP of the load balancing rules of a router without a gateway port
+  (other than a Gateway router), a priority-120 flow is programmed on every
+  chassis that matches ``IP && ((IP.src == B && P.src == PORT) || ...)``,
+  where *IP* is ``ip4`` or ``ip6``, for the backend addresses *B* and, if
+  configured, L4 ports *PORT* of protocol *P* of the ``VIP``, with an action
+  ``ct_dnat;``.  The match does not include a gateway port or
+  ``is_chassis_resident``: the replies are unDNATed on the chassis where they
+  re-enter the router, which the CMS must make sure is the chassis that load
+  balanced the request.  If the load balancer has ``options:skip_snat`` set,
+  the action is ``flags.skip_snat_for_lb = 1; ct_dnat;``.  With
+  ``use_common_zone`` set in ``NB_Global``, ``ct_dnat_in_czone`` is used
+  instead of ``ct_dnat``.
+
 - For each configuration in the OVN Northbound database that asks to change the
   destination IP address of a packet from an IP address of *A* to *B*, a
   priority-100 flow matches ``ip && ip4.src == B && outport == GW``, where *GW*

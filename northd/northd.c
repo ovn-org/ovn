@@ -13994,6 +13994,15 @@ build_lrouter_nat_flows_for_lb(
 
         if (vector_is_empty(&od->l3dgw_ports)) {
             bitmap_set1(gw_dp_bitmap[type], index);
+            /* A distributed router without a DGP load balances on every
+             * chassis, so un-DNAT the replies on whichever chassis they
+             * re-enter the router.  The CMS must make sure that it is the
+             * chassis that load balanced the request.  Gateway routers
+             * un-DNAT all traffic in a separate flow. */
+            if (!od->is_gw_router && !vector_is_empty(&lb_vip->backends)) {
+                build_lrouter_lb_undnat_flow(&ctx, type, od, NULL, NULL,
+                                             lb_dps->lflow_ref);
+            }
         } else {
             /* Create stateless LB NAT rules when using multiple DGPs and
              * use_stateless_nat is true.

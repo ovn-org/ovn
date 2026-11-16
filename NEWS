@@ -73,6 +73,10 @@ Post v26.09.0
      reachable over the underlay through ECMP, so that they appear to OVN as
      a single chassis. See Documentation/topics/replicated-gateway.rst for the
      requirements and the restrictions.
+   - A distributed router without a distributed gateway port now un-DNATs
+     the replies from the backends of its load balancers.  The CMS must make
+     sure that the replies re-enter the router on the chassis that load
+     balanced the request.  See ovn-nb(5).
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------

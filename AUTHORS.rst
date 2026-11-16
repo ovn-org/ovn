@@ -418,6 +418,7 @@ SUGYO Kazushi                      sugyo.org@gmail.com
 Surya Seetharaman                  suryaseetharaman.9@gmail.com
 Sven Haardiek                      sven.haardiek@uni-muenster.de
 Tadaaki Nagao                      nagao@stratosphere.co.jp
+Takao Yatagai                      tyatagai@crusoe.ai
 Tao Liu                            taoliu828@163.com
 Terry Wilson                       twilson@redhat.com
 Tetsuo NAKAGAWA                    nakagawa@mxc.nes.nec.co.jp

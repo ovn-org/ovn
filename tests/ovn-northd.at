@@ -26109,3 +26109,85 @@ AT_CHECK([grep -q "referential integrity violation" northd/ovn-northd.log], [1])
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Load balancer un-DNAT on a router without DGP])
+ovn_start
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-port1 \
+    -- lsp-set-addresses sw0-port1 "50:54:00:00:00:03 10.0.0.3"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.1/24
+check ovn-nbctl lsp-add sw0 sw0-lr0 \
+    -- lsp-set-type sw0-lr0 router \
+    -- lsp-set-addresses sw0-lr0 router \
+    -- lsp-set-options sw0-lr0 router-port=lr0-sw0
+
+check ovn-nbctl lb-add lb0 172.168.0.200:80 10.0.0.4:8080
+check ovn-nbctl lr-lb-add lr0 lb0
+check ovn-nbctl --wait=sb sync
+
+# The router load balances in lr_in_dnat on every chassis and un-DNATs the
+# backend's replies on every chassis: no DGP or chassis terms.
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CAPTURE_FILE([lr0flows])
+AT_CHECK([grep "lr_in_dnat" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_in_dnat         ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.168.0.200 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark(backends=10.0.0.4:8080);)
+  table=??(lr_in_dnat         ), priority=50   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted), action=(next;)
+  table=??(lr_in_dnat         ), priority=50   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl), action=(ct_commit_nat;)
+  table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; next;)
+  table=??(lr_in_dnat         ), priority=70   , match=(ct.est && !ct.rel && !ct.new && !ct.rpl && ct_mark.natted && ct_mark.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; next;)
+  table=??(lr_in_dnat         ), priority=70   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl && ct_mark.force_snat == 1), action=(flags.force_snat_for_lb = 1; ct_commit_nat;)
+  table=??(lr_in_dnat         ), priority=70   , match=(ct.rel && !ct.est && !ct.new && !ct.rpl && ct_mark.skip_snat == 1), action=(flags.skip_snat_for_lb = 1; ct_commit_nat;)
+])
+
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 10.0.0.4 && tcp.src == 8080))), action=(ct_dnat;)
+])
+
+# With use_common_zone the un-DNAT uses the common zone, like the LB's
+# own flows on routers with a distributed gateway port.
+check ovn-nbctl --wait=sb set NB_Global . options:use_common_zone=true
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 10.0.0.4 && tcp.src == 8080))), action=(ct_dnat_in_czone;)
+])
+
+check ovn-nbctl --wait=sb remove NB_Global . options use_common_zone
+
+# skip_snat keeps its flag, as on routers with a distributed gateway port.
+check ovn-nbctl --wait=sb set load_balancer lb0 options:skip_snat=true
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 10.0.0.4 && tcp.src == 8080))), action=(flags.skip_snat_for_lb = 1; ct_dnat;)
+])
+
+check ovn-nbctl --wait=sb remove load_balancer lb0 options skip_snat
+
+# With a DGP, the flow is bound to the DGP and its chassis instead.
+check ovn-nbctl lrp-add lr0 lr0-public 00:00:00:00:ff:02 172.168.0.1/24
+check ovn-nbctl --wait=sb lrp-set-gateway-chassis lr0-public gw1
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 10.0.0.4 && tcp.src == 8080)) && (inport == "lr0-public" || outport == "lr0-public") && is_chassis_resident("cr-lr0-public")), action=(ct_dnat;)
+])
+
+check ovn-nbctl --wait=sb lrp-del lr0-public
+
+# Removing the load balancer removes the un-DNAT flow.
+check ovn-nbctl --wait=sb lr-lb-del lr0 lb0
+ovn-sbctl dump-flows lr0 > lr0flows
+AT_CHECK([grep "lr_out_undnat" lr0flows | ovn_strip_lflows | sort], [0], [dnl
+  table=??(lr_out_undnat      ), priority=0    , match=(1), action=(next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

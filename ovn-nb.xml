@@ -2609,6 +2609,50 @@
       </p>
     </column>
 
+    <group title="Load Balancing on Logical Routers">
+      <p>
+        A load balancer associated with a logical router (see the
+        <ref column="load_balancer" table="Logical_Router"/> and
+        <ref column="load_balancer_group" table="Logical_Router"/> columns of
+        the <ref table="Logical_Router"/> table) DNATs requests to its VIPs in
+        the router's ingress pipeline and un-DNATs the replies from its
+        backends in the router's egress pipeline.  Both use connection
+        tracking, so a request and its replies must pass the router on the
+        same chassis.  How that is ensured depends on the router:
+      </p>
+
+      <ul>
+        <li>
+          A gateway router is bound to one chassis, so all of its traffic
+          passes that chassis.
+        </li>
+
+        <li>
+          On a distributed router with a distributed gateway port (DGP),
+          traffic through the DGP is load balanced and un-DNATed on the
+          gateway chassis of the DGP, unless the load balancer sets
+          <ref column="options" key="distributed"/>.  See the
+          <ref column="load_balancer" table="Logical_Router"/> column for
+          routers with more than one DGP.
+        </li>
+
+        <li>
+          A distributed router without a DGP load balances requests on the
+          chassis where they enter the router, and un-DNATs replies on the
+          chassis where they re-enter it.  OVN does not make sure that this
+          is the same chassis: the CMS must, through its logical topology.
+          For example, a downstream router can translate the source of the
+          requests with a distributed NAT rule (see the
+          <ref column="logical_port" table="NAT"/> and
+          <ref column="external_mac" table="NAT"/> columns of the
+          <ref table="NAT"/> table), so that the replies are only routed to
+          the chassis of that NAT rule's logical port.  Replies that re-enter
+          the router on another chassis are not un-DNATed, and leave it with
+          the backend's address as their source.
+        </li>
+      </ul>
+    </group>
+
     <group title="Health Checks">
       <p>
         OVN supports health checks for load balancer endpoints. When health
@@ -3314,6 +3358,10 @@ or
       balancer in scenarios with DGPs associated with different gateway chassis
       (e.g. ECMP routes), consider using the <code>use_stateless_nat</code>
       option to <code>true</code> in the load balancer options column.
+      Load balancers also work on distributed routers without a DGP, if the
+      CMS makes sure that the replies re-enter the router on the chassis that
+      load balanced the request.  See ``Load Balancing on Logical Routers''
+      in the <ref table="Load_Balancer"/> table.
     </column>
 
     <column name="load_balancer_group">
