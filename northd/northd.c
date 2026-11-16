@@ -13682,6 +13682,52 @@ build_lrouter_flows_for_lb_stateless(struct lrouter_nat_lb_flows_ctx *ctx,
     ds_destroy(&snat_action);
 }
 
+/* Returns the action of the lr_out_undnat flow for load balancer flows of
+ * 'type' on 'od'. */
+static const char *
+lrouter_lb_undnat_action(const struct ovn_datapath *od,
+                         enum lrouter_nat_lb_flow_type type)
+{
+    bool czone = lrouter_use_common_zone(od);
+
+    if (type == LROUTER_NAT_LB_FLOW_SKIP_SNAT) {
+        return czone ? "flags.skip_snat_for_lb = 1; ct_dnat_in_czone;"
+                     : "flags.skip_snat_for_lb = 1; ct_dnat;";
+    }
+    return czone ? "ct_dnat_in_czone;" : "ct_dnat;";
+}
+
+/* Adds the priority 120 lr_out_undnat flow for the backends of
+ * 'ctx->lb_vip' on 'od'.  With 'dgp', the flow only matches traffic through
+ * 'dgp'.  With 'cr_port', it only matches on the chassis where 'cr_port' is
+ * resident. */
+static void
+build_lrouter_lb_undnat_flow(struct lrouter_nat_lb_flows_ctx *ctx,
+                             enum lrouter_nat_lb_flow_type type,
+                             struct ovn_datapath *od,
+                             const struct ovn_port *dgp,
+                             const struct ovn_port *cr_port,
+                             struct lflow_ref *lflow_ref)
+{
+    size_t undnat_match_len = ctx->undnat_match->length;
+
+    ds_put_char(ctx->undnat_match, ')');
+    if (dgp) {
+        ds_put_format(ctx->undnat_match,
+                      " && (inport == %s || outport == %s)",
+                      dgp->json_key, dgp->json_key);
+    }
+    if (cr_port) {
+        ds_put_format(ctx->undnat_match, " && is_chassis_resident(%s)",
+                      cr_port->json_key);
+    }
+    ovn_lflow_add(ctx->lflows, od, S_ROUTER_OUT_UNDNAT, 120,
+                  ds_cstr(ctx->undnat_match),
+                  lrouter_lb_undnat_action(od, type),
+                  lflow_ref, WITH_HINT(&ctx->lb->nlb->header_));
+    ds_truncate(ctx->undnat_match, undnat_match_len);
+}
+
 static void
 build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                                      enum lrouter_nat_lb_flow_type type,
@@ -13730,20 +13776,6 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
         return;
     }
 
-    struct ds undnat_action = DS_EMPTY_INITIALIZER;
-
-    switch (type) {
-    case LROUTER_NAT_LB_FLOW_SKIP_SNAT:
-        ds_put_cstr(&undnat_action, "flags.skip_snat_for_lb = 1; ");
-        break;
-    case LROUTER_NAT_LB_FLOW_FORCE_SNAT:
-    case LROUTER_NAT_LB_FLOW_NORMAL:
-    case LROUTER_NAT_LB_FLOW_MAX:
-        break;
-    }
-    ds_put_cstr(&undnat_action, lrouter_use_common_zone(od)
-                                ? "ct_dnat_in_czone;" : "ct_dnat;");
-
     /* We need to centralize the LB traffic to properly perform
      * the undnat stage.
      */
@@ -13757,19 +13789,9 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
                   lflow_ref, WITH_HINT(&ctx->lb->nlb->header_));
     ds_truncate(ctx->undnat_match, undnat_match_len);
 
-    ds_put_format(ctx->undnat_match, ") && (inport == %s || outport == %s)",
-                  dgp->json_key, dgp->json_key);
-
-    if (lb_is_centralized) {
-        ds_put_format(ctx->undnat_match, " && is_chassis_resident(%s)",
-                      dgp->cr_port->json_key);
-    }
-    ovn_lflow_add(ctx->lflows, od, S_ROUTER_OUT_UNDNAT, 120,
-                  ds_cstr(ctx->undnat_match), ds_cstr(&undnat_action),
-                  lflow_ref, WITH_HINT(&ctx->lb->nlb->header_));
-
-    ds_truncate(ctx->undnat_match, undnat_match_len);
-    ds_destroy(&undnat_action);
+    build_lrouter_lb_undnat_flow(ctx, type, od, dgp,
+                                 lb_is_centralized ? dgp->cr_port : NULL,
+                                 lflow_ref);
 }
 
 static void
