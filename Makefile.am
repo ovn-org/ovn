@@ -220,8 +220,11 @@ dist-hook-git: distfiles
 	    grep -v '\.gitattributes$$' | \
 	    grep -v '\.gitmodules$$' | \
 	    grep -v "$(submodules)" | \
+	    grep -v "\.distignore.downstream$$" | \
 	    LC_ALL=C sort -u > all-gitfiles; \
-	  LC_ALL=C comm -1 -3 distfiles all-gitfiles > missing-distfiles; \
+	  LC_ALL=C comm -2 -3 all-gitfiles .distignore.downstream \
+	    > filtered-gitfiles; \
+	  LC_ALL=C comm -1 -3 distfiles filtered-gitfiles > missing-distfiles; \
 	  if test -s missing-distfiles; then \
 	    echo "The following files are in git but not the distribution:"; \
 	    cat missing-distfiles; \
@@ -233,7 +236,7 @@ dist-hook-git: distfiles
 	    exit 1; \
 	  fi \
 	fi
-CLEANFILES += distfiles all-gitfiles missing-distfiles
+CLEANFILES += distfiles all-gitfiles filtered-gitfiles missing-distfiles
 # The following is based on commands for the Automake "distdir" target.
 distfiles: Makefile
 	@srcdirstrip=`echo "$(srcdir)" | sed 's/[].[^$$\\*]/\\\\&/g'`; \

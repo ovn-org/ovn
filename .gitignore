@@ -53,6 +53,7 @@
 /depcomp
 /distfiles
 /dist-docs
+/filtered-gitfiles
 /flake8-check
 /docs-check
 /install-sh
