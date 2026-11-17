@@ -12963,6 +12963,94 @@ check ovn-nbctl clear Logical_Switch sw0 dns_records
 check ovn-nbctl --wait=sb sync
 wait_row_count sb:DNS 0
 
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([DNS lookup skipped for packets entering through router ports])
+ovn_start
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lrp0 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lrp-add lr0 lrp1 00:00:00:00:00:02 10.0.0.2/24
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-vm1
+check ovn-nbctl lsp-set-addresses sw0-vm1 "00:00:00:00:00:11 10.0.0.11"
+check ovn-nbctl lsp-add sw0 sw0-lr0
+check ovn-nbctl lsp-set-type sw0-lr0 router
+check ovn-nbctl lsp-set-addresses sw0-lr0 router
+check ovn-nbctl lsp-set-options sw0-lr0 router-port=lrp0
+
+dns_uuid=$(ovn-nbctl create DNS records={})
+check ovn-nbctl set DNS $dns_uuid records:vm1.ovn.org="10.0.0.11"
+
+dns_lookup_flows() {
+    ovn-sbctl dump-flows sw0 | grep -w "ls_in_dns_lookup" | ovn_strip_lflows | sort
+}
+
+# Without DNS records, there is no lookup flow.
+check ovn-nbctl --wait=sb sync
+AT_CHECK([dns_lookup_flows], [0], [dnl
+  table=??(ls_in_dns_lookup   ), priority=0    , match=(1), action=(next;)
+])
+
+# With DNS records, packets entering through the router port skip the lookup,
+# all the others are looked up, whatever the number of ports.
+check ovn-nbctl set Logical_Switch sw0 dns_records="$dns_uuid"
+check ovn-nbctl --wait=sb sync
+AT_CHECK([dns_lookup_flows], [0], [dnl
+  table=??(ls_in_dns_lookup   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_dns_lookup   ), priority=100  , match=(udp.dst == 53), action=(reg0[[4]] = dns_lookup(); next;)
+  table=??(ls_in_dns_lookup   ), priority=200  , match=(inport == "sw0-lr0"), action=(next;)
+])
+
+# Adding VIF ports does not add lookup flows.
+for i in 2 3 4; do
+    check ovn-nbctl lsp-add sw0 sw0-vm$i
+    check ovn-nbctl lsp-set-addresses sw0-vm$i "00:00:00:00:00:1$i 10.0.0.1$i"
+done
+check ovn-nbctl --wait=sb sync
+AT_CHECK([dns_lookup_flows], [0], [dnl
+  table=??(ls_in_dns_lookup   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_dns_lookup   ), priority=100  , match=(udp.dst == 53), action=(reg0[[4]] = dns_lookup(); next;)
+  table=??(ls_in_dns_lookup   ), priority=200  , match=(inport == "sw0-lr0"), action=(next;)
+])
+
+# A second router port gets its own skip flow, and loses it when removed.
+check ovn-nbctl lsp-add sw0 sw0-lr1
+check ovn-nbctl lsp-set-type sw0-lr1 router
+check ovn-nbctl lsp-set-addresses sw0-lr1 router
+check ovn-nbctl lsp-set-options sw0-lr1 router-port=lrp1
+check ovn-nbctl --wait=sb sync
+AT_CHECK([dns_lookup_flows], [0], [dnl
+  table=??(ls_in_dns_lookup   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_dns_lookup   ), priority=100  , match=(udp.dst == 53), action=(reg0[[4]] = dns_lookup(); next;)
+  table=??(ls_in_dns_lookup   ), priority=200  , match=(inport == "sw0-lr0"), action=(next;)
+  table=??(ls_in_dns_lookup   ), priority=200  , match=(inport == "sw0-lr1"), action=(next;)
+])
+
+check ovn-nbctl lsp-del sw0-lr1
+check ovn-nbctl --wait=sb sync
+AT_CHECK([dns_lookup_flows], [0], [dnl
+  table=??(ls_in_dns_lookup   ), priority=0    , match=(1), action=(next;)
+  table=??(ls_in_dns_lookup   ), priority=100  , match=(udp.dst == 53), action=(reg0[[4]] = dns_lookup(); next;)
+  table=??(ls_in_dns_lookup   ), priority=200  , match=(inport == "sw0-lr0"), action=(next;)
+])
+
+# The DNS response flows are unchanged.
+AT_CHECK([ovn-sbctl dump-flows sw0 | grep -w "ls_in_dns_response" | grep -c "udp.dst == 53"], [0], [2
+])
+
+# Clearing the DNS records removes every lookup flow again.
+check ovn-nbctl clear Logical_Switch sw0 dns_records
+check ovn-nbctl --wait=sb sync
+AT_CHECK([dns_lookup_flows], [0], [dnl
+  table=??(ls_in_dns_lookup   ), priority=0    , match=(1), action=(next;)
+])
+
+OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
 

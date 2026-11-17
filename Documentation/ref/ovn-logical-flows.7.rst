@@ -1390,6 +1390,13 @@ Ingress Table 30 DNS Lookup
 This table looks up and resolves the DNS names to the corresponding configured
 IP address(es).
 
+- For each logical switch port ``P`` of type ``router`` of a logical switch
+  that is configured with DNS records, a priority-200 logical flow which
+  matches packets with ``inport`` == ``P`` and advances them to the next table
+  without any DNS lookup. Packets coming from the routed side of the logical
+  switch, e.g. from the internet, are thus never handed to ``ovn-controller``
+  and are subject to the ACLs like any other UDP traffic.
+
 - A priority-100 logical flow for each logical switch datapath if it is
   configured with DNS records, which matches the IPv4 and IPv6 packets with
   ``udp.dst`` = 53 and applies the action ``dns_lookup`` and advances the packet
