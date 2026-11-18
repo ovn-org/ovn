@@ -1149,6 +1149,10 @@ def ovs_checkpatch_file(filename):
         print("Subject missing! Your provisional subject is",
               mail['Subject'])
 
+    subject = ' '.join(mail['Subject'].split())
+    subject = re.sub(r'^\[(PATCH|RFC)[^\]]*\]\s*', '', subject)
+    mail.replace_header('Subject', subject)
+
     if run_subject_checks('Subject: ' + mail['Subject'], spellcheck):
         result = True
 
