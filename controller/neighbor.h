@@ -70,6 +70,7 @@ enum neighbor_interface_type {
     NEIGH_IFACE_BRIDGE,
     NEIGH_IFACE_VXLAN,
     NEIGH_IFACE_LOOPBACK,
+    NEIGH_IFACE_UNSPECIFIED,
 };
 
 struct neighbor_interface_monitor {

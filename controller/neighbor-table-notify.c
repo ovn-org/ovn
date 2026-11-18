@@ -244,7 +244,7 @@ neighbor_table_change(const void *change_, void *aux OVS_UNUSED)
         return;
     }
 
-    if (!ne_is_ovn_owned(&change->nd)) {
+    if (!ne_is_ovn_owned(&change->nd, NEIGH_IFACE_UNSPECIFIED)) {
         if (find_watch_entry_by_if_index(change->nd.if_index)) {
             any_neighbor_table_changed = true;
         }
