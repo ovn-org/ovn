@@ -5055,6 +5055,12 @@ northd_handle_ls_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
             hmapx_add(&trk_data->ls_with_changed_acls, od);
         }
         hmapx_add(&trk_data->trk_switches.crupdated, od);
+        bool ls_has_ipam = od->ipam_info.allocated_ipv4s ||
+                           od->ipam_info.ipv6_prefix_set ||
+                           od->ipam_info.mac_only;
+        if (ls_has_ipam) {
+            hmapx_add(&trk_data->ls_with_changed_ipam, od);
+        }
     }
 
     HMAPX_FOR_EACH (node, &ni->synced_lses->updated) {
