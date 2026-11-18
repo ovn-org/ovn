@@ -9486,8 +9486,8 @@ check ovn-nbctl --wait=sb lsp-add sw0 p26 -- lsp-set-addresses p26 dynamic
 check_dynamic_addresses p26 "0a:00:00:a8:01:17 192.168.1.16"
 
 # Test for exhausting subnet address space.
-check ovn-nbctl ls-add sw2 -- add Logical-Switch sw2 other_config subnet=172.16.1.0/30
-check ovn-nbctl --wait=sb lsp-add sw2 p27 -- lsp-set-addresses p27 dynamic
+check ovn-nbctl --wait=sb ls-add sw2 -- add Logical-Switch sw2 other_config subnet=172.16.1.0/30 \
+                       -- lsp-add sw2 p27 -- lsp-set-addresses p27 dynamic
 check_dynamic_addresses p27 "0a:00:00:10:01:03 172.16.1.2"
 
 check ovn-nbctl --wait=sb lsp-add sw2 p28 -- lsp-set-addresses p28 dynamic
