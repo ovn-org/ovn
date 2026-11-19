@@ -25835,7 +25835,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # setting the jump_chain.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
 policy_uuid=$(fetch_column nb:Logical_Router_Policy _uuid action=allow)
-check ovn-nbctl set Logical_Router_Policy $policy_uuid action=jump
+check ovn-nbctl --wait=sb set Logical_Router_Policy $policy_uuid action=jump
 
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
@@ -25845,7 +25845,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 
 # Un-invalidate the policy by changing it back to an allow policy.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl set Logical_Router_Policy $policy_uuid action=allow
+check ovn-nbctl --wait=sb set Logical_Router_Policy $policy_uuid action=allow
 
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
@@ -25885,7 +25885,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Add a reroute policy to lr1. Like other policy additions, this should
 # be handled incrementally everywhere now.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl lr-policy-add lr1 101 "ip4.src == 10.0.0.1" reroute 20.0.0.10
+check ovn-nbctl --wait=sb lr-policy-add lr1 101 "ip4.src == 10.0.0.1" reroute 20.0.0.10
 
 check_engine_stats northd norecompute compute
 check_engine_stats route_policies norecompute compute
@@ -25896,7 +25896,7 @@ CHECK_NO_CHANGE_AFTER_RECOMPUTE
 # Add another port to lr1. Like before, we should be able to handle this
 # incrementally, even though northd has to recompute.
 check as northd ovn-appctl -t ovn-northd inc-engine/clear-stats
-check ovn-nbctl lrp-add lr1 newer_port 00:00:00:00:00:06 30.0.0.1/24
+check ovn-nbctl --wait=sb lrp-add lr1 newer_port 00:00:00:00:00:06 30.0.0.1/24
 
 check_engine_stats northd recompute compute
 check_engine_stats route_policies norecompute compute
