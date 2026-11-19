@@ -4092,6 +4092,18 @@ or
         <code>from-lport</code> mirrors the packets going out of logical port.
         <code>both</code> mirrors for both directions.
       </p>
+
+      <p>
+        For mirrors of <var>type</var> <code>lport</code>, mirroring is
+        done as close to the interface as possible, so that the mirror
+        shows the traffic that is really present on that interface.
+        Packets coming into the logical port (<code>to-lport</code>) are
+        mirrored in the last egress table, that is, after ACLs, load
+        balancing and port security have already been applied.  Packets
+        going out of the logical port (<code>from-lport</code>) are
+        mirrored the other way around, in the first ingress table, before
+        any of those are applied.
+      </p>
     </column>
 
     <column name="sink">

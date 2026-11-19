@@ -6417,7 +6417,7 @@ build_mirror_default_lflow(struct ovn_datapath *od,
                            struct lflow_table *lflows)
 {
     ovn_lflow_add(lflows, od, S_SWITCH_IN_MIRROR, 0, "1", "next;", NULL);
-    ovn_lflow_add(lflows, od, S_SWITCH_OUT_MIRROR, 0, "1", "next;", NULL);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_MIRROR, 0, "1", "output;", NULL);
 }
 
 static void
@@ -6444,7 +6444,7 @@ build_mirror_lflow(struct ovn_port *op,
         stage = S_SWITCH_IN_MIRROR;
     }
 
-    ds_put_cstr(&action, "next;");
+    ds_put_cstr(&action, egress ? "output;" : "next;");
     ds_put_format(&match, "%s == %s && (%s)", dir, op->json_key, rule->match);
     ovn_lflow_add(lflows, op->od, stage, priority, ds_cstr(&match),
                   ds_cstr(&action), op->lflow_ref);
@@ -6471,7 +6471,8 @@ build_mirror_pass_lflow(struct ovn_port *op,
         stage = S_SWITCH_IN_MIRROR;
     }
 
-    ds_put_format(&action, "mirror(%s); next;", serving_port->json_key);
+    ds_put_format(&action, "mirror(%s); %s", serving_port->json_key,
+                  egress ? "output;" : "next;");
     ds_put_format(&match, "%s == %s", dir, op->json_key);
     ovn_lflow_add(lflows, op->od, stage, OVN_LPORT_MIRROR_OFFSET,
                   ds_cstr(&match), ds_cstr(&action), op->lflow_ref);
@@ -6606,7 +6607,7 @@ build_lswitch_port_sec_op(struct ovn_port *op, struct lflow_table *lflows,
         }
 
         ds_clear(actions);
-        ds_put_format(actions, "set_queue(%s); output;", queue_id);
+        ds_put_format(actions, "set_queue(%s); next;", queue_id);
 
         ds_clear(match);
         if (lsp_is_localnet(op->nbsp)) {
@@ -6887,7 +6888,7 @@ build_lswitch_output_port_sec_od(struct ovn_datapath *od,
                   REGBIT_PORT_SEC_DROP" == 1", debug_drop_action(), lflow_ref,
                   WITH_DESC("Packet does not follow port security rules"));
     ovn_lflow_add(lflows, od, S_SWITCH_OUT_APPLY_PORT_SEC, 0,
-                  "1", "output;", lflow_ref);
+                  "1", "next;", lflow_ref);
 }
 
 static void
