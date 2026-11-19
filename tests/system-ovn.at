@@ -21025,11 +21025,11 @@ validate_nf_vtap_with_traffic() {
     nf_up nf-vtap
     nf_down nf-vtap2
     check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-close
-    check ovn-nbctl --wait=hv sync
 
     # Wait for the health check to mark nf0 as the active NF.
     wait_column "$nf0_uuid" nb:network_function_group \
         network_function_active name=nfg0
+    check ovn-nbctl --wait=hv sync
 
     NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap $pcap_filter], [tcpdump-nf-vtap])
 
@@ -21050,11 +21050,11 @@ validate_nf_vtap_with_traffic() {
     # Bring nf0 down, nf1 up (failover)
     nf_down nf-vtap
     nf_up nf-vtap2
-    check ovn-nbctl --wait=hv sync
 
     # Wait for the health check to fail over to nf1.
     wait_column "$nf1_uuid" nb:network_function_group \
         network_function_active name=nfg0
+    check ovn-nbctl --wait=hv sync
 
     NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap2 $pcap_filter], [tcpdump-nf-vtap])
 
@@ -21075,11 +21075,11 @@ validate_nf_vtap_with_traffic() {
     # Bring nf0 back up and nf1 down (fallback to nf0)
     nf_up nf-vtap
     nf_down nf-vtap2
-    check ovn-nbctl --wait=hv sync
 
     # Wait for the health check to fall back to nf0.
     wait_column "$nf0_uuid" nb:network_function_group \
         network_function_active name=nfg0
+    check ovn-nbctl --wait=hv sync
 
     NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap $pcap_filter], [tcpdump-nf-vtap])
 
@@ -21101,11 +21101,11 @@ validate_nf_vtap_with_traffic() {
     nf_down nf-vtap
     nf_down nf-vtap2
     check ovn-nbctl set network_function_group $nfg_uuid fallback=fail-close
-    check ovn-nbctl --wait=hv sync
 
     # Wait for the health check to mark the NFG as having no active NF.
     wait_column "" nb:network_function_group \
         network_function_active name=nfg0
+    check ovn-nbctl --wait=hv sync
 
     NETNS_START_TCPDUMP([nf], [-nvvv -i nf-vtap $pcap_filter], [tcpdump-nf-vtap])
 
