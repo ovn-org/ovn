@@ -6849,6 +6849,57 @@ AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | grep "192.168.4.100" | ovn_strip_lfl
   table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 192.168.4.100 && arp.spa == 192.168.4.100), action=(outport = "_MC_flood_l2"; output;)
 ])
 
+AS_BOX([Deleting the router port's logical switch port])
+
+# Deleting a router-type lsp is not incrementally processed by northd
+# (lsp_can_be_inc_processed() rejects typed ports), so it falls back to a
+# recompute.  All the flows owned by ls1-ro1's lflow_ref and
+# stateful_lflow_ref must be gone from SB afterwards.
+
+check ovn-nbctl lsp-del ls1-ro1
+check ovn-nbctl --wait=sb sync
+
+ovn-sbctl lflow-list ls1 > ls1_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls1_lflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:01:02), action=(outport = "vm1"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+])
+
+dnl No flow may reference the deleted lsp.
+AT_CHECK([grep ls1-ro1 ls1_lflows], [1])
+
+dnl ls2 must be unaffected by the deletion of ls1's router port.
+ovn-sbctl lflow-list ls2 > ls2_lflows
+AT_CHECK([grep "ls_in_l2_lkup" ls2_lflows | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=0    , match=(1), action=(outport = get_fdb(eth.dst); next;)
+  table=??(ls_in_l2_lkup      ), priority=100  , match=(reg8[[23]] == 1), action=(output;)
+  table=??(ls_in_l2_lkup      ), priority=110  , match=(eth.dst == $svc_monitor_mac && (tcp || icmp || icmp6)), action=(handle_svc_check(inport);)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:01), action=(outport = "ls2-ro2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 00:00:00:00:02:02), action=(outport = "vm2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=70   , match=(eth.mcast), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && arp), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=71   , match=(eth.mcast && ip), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=72   , match=(eth.mcast && (nd_na || nd_rs || nd_ra)), action=(outport = "_MC_flood"; output;)
+  table=??(ls_in_l2_lkup      ), priority=75   , match=(eth.src == {00:00:00:00:02:01} && eth.dst == ff:ff:ff:ff:ff:ff && (arp.op == 1 || rarp.op == 3 || nd_ns)), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 192.168.2.1), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_unknown"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 20.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_unknown"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 20.0.0.200), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_unknown"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 40.0.0.100), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_unknown"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 40.0.0.200), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_unknown"; output;)
+  table=??(ls_in_l2_lkup      ), priority=80   , match=(flags[[1]] == 0 && eth.mcast && nd_ns && nd.target == fe80::200:ff:fe00:201), action=(clone {outport = "ls2-ro2"; output; }; outport = "_MC_unknown"; output;)
+  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 192.168.2.1 && arp.spa == 192.168.2.1), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 20.0.0.100 && arp.spa == 20.0.0.100), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 20.0.0.200 && arp.spa == 20.0.0.200), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 40.0.0.100 && arp.spa == 40.0.0.100), action=(outport = "_MC_flood_l2"; output;)
+  table=??(ls_in_l2_lkup      ), priority=90   , match=(flags[[1]] == 0 && eth.dst == ff:ff:ff:ff:ff:ff && arp.op == 1 && arp.tpa == 40.0.0.200 && arp.spa == 40.0.0.200), action=(outport = "_MC_flood_l2"; output;)
+])
+
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
