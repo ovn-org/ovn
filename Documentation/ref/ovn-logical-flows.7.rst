@@ -16,10 +16,29 @@ Logical Switch Datapaths
 
 .. _ls-in-0:
 
-Ingress Table 0: Admission Control and Ingress Port Security check
+Ingress Table 0: Mirror
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Overlay remote mirror table contains the following logical flows:
+
+- For each logical switch port with an attached mirror, a logical flow with a
+  priority of 100 is added. This flow matches all incoming packets to the
+  attached port, clones them, and forwards the cloned packets to the mirror
+  target port.
+
+- A priority 0 flow is added which matches on all packets and applies the
+  action ``next;``.
+
+- A logical flow added for each Mirror Rule in Mirror table attached to logical
+  switch ports, matches all incoming packets that match rules and clones the
+  packet and sends cloned packet to mirror target port.
+
+.. _ls-in-1:
+
+Ingress Table 1: Admission Control and Ingress Port Security check
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ingress table 0 contains these logical flows:
+Ingress table 1 contains these logical flows:
 
 - Priority 100 flows to drop packets with VLAN tags or multicast Ethernet source
   addresses.
@@ -61,9 +80,9 @@ Ingress table 0 contains these logical flows:
   applies the port security rules defined in the ``port_security`` column of
   ``Logical_Switch_Port`` table.
 
-.. _ls-in-1:
+.. _ls-in-2:
 
-Ingress Table 1: Ingress Port Security - Apply
+Ingress Table 2: Ingress Port Security - Apply
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For each logical switch port *P* of type router connected to a gw router a
@@ -90,32 +109,13 @@ This table adds a priority-105 flow that matches 'recirculated' icmp{4,6} error
 This table drops the packets if the port security check failed in the previous
 stage i.e the register bit ``REGBIT_PORT_SEC_DROP`` is set to 1.
 
-Ingress table 1 contains these logical flows:
+Ingress table 2 contains these logical flows:
 
 - A priority-50 fallback flow that drops the packet if the register bit
   ``REGBIT_PORT_SEC_DROP`` is set to 1.
 
 - One priority-0 fallback flow that matches all packets and advances to the next
   table.
-
-.. _ls-in-2:
-
-Ingress Table 2: Mirror
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Overlay remote mirror table contains the following logical flows:
-
-- For each logical switch port with an attached mirror, a logical flow with a
-  priority of 100 is added. This flow matches all incoming packets to the
-  attached port, clones them, and forwards the cloned packets to the mirror
-  target port.
-
-- A priority 0 flow is added which matches on all packets and applies the action
-  ``next;``.
-
-- A logical flow added for each Mirror Rule in Mirror table attached to logical
-  switch ports, matches all incoming packets that match rules and clones the
-  packet and sends cloned packet to mirror target port.
 
 .. _ls-in-3:
 
@@ -970,7 +970,7 @@ refer to either the parent or child ports as applicable to this logical switch.
   ``inport == P`` and advances packets to the next table (packets from the
   network function are not subject to redirection). This flow also sets
   ``reg5[16..31] = ct_label.tun_if_id`` for cross host traffic redirection for
-  VLAN subnet; the tunnel id is populated in egress :ref:`Stateful <ls-out-12>`
+  VLAN subnet; the tunnel id is populated in egress :ref:`Stateful <ls-out-11>`
   table.
 
 - In inline: For each active network function with *id* that is referenced in a
@@ -1496,7 +1496,7 @@ This table implements switching behavior.  It contains these logical flows:
 
 - A priority-100 flow that matches ``reg8[23] == 1`` and does ``output`` action.
   This ensures that packets that got injected back into this table from egress
-  table :ref:`Network Function <ls-out-13>` (after it set the ``outport`` for
+  table :ref:`Network Function <ls-out-12>` (after it set the ``outport`` for
   packet redirection) get forwarded without any further processing.
 
 - For any logical port that's defined as a target of routing protocol
@@ -1707,9 +1707,9 @@ This table also has a priority-115 flow for each network_function ``inport``
 *P*
 that matches ``inport == P`` and applies
 ``reg8[24] = nf_lookup_orig_inport(); next(pipeline=egress, table=T);`` where
-*T* is the table immediately following :ref:`Network Function <ls-out-13>`.
+*T* is the table immediately following :ref:`Network Function <ls-out-12>`.
 This is for the case where packet redirection happens in egress
-:ref:`Network Function <ls-out-13>` table. When the packet comes back from the
+:ref:`Network Function <ls-out-12>` table. When the packet comes back from the
 other NF port, it should not be processed again by the same egress stages,
 specifically conntrack processing should be skipped. This flow also performs
 ``nf_lookup_orig_inport()`` before continuing so post-NF loopback copies can
@@ -1785,7 +1785,8 @@ indicate their verdicts. ``Allow-type`` ACLs set ``reg8[16]``, ``drop`` ACLs set
 
 Also like with ingress ACLs, egress ACLs can have network_function_group *id*
 and in that case the flow will set ``reg8[21] = 1; reg8[22] = 1; reg0[22..29] =
-id``. These registers are used in the :ref:`Network Function <ls-out-13>` table.
+id``. These registers are used in the
+:ref:`Network Function <ls-out-12>` table.
 
 Also like with ingress ACLs, egress ACLs can have a configured ``tier``. If a
 tier is configured, then the current tier counter is evaluated against the ACL's
@@ -1830,34 +1831,15 @@ This is similar to ingress table :ref:`ACL action <ls-in-11>`.
 
 .. _ls-out-9:
 
-Egress Table 9: Mirror
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Overlay remote mirror table contains the following logical flows:
-
-- For each logical switch port with an attached mirror, a logical flow with a
-  priority of 100 is added. This flow matches all outcoming packets to the
-  attached port, clones them, and forwards the cloned packets to the mirror
-  target port.
-
-- A priority 0 flow is added which matches on all packets and applies the action
-  ``next;``.
-
-- A logical flow added for each Mirror Rule in Mirror table attached to logical
-  switch ports, matches all outcoming packets that match rules and clones the
-  packet and sends cloned packet to mirror target port.
-
-.. _ls-out-10:
-
-Egress Table 10: ``to-lport`` QoS
+Egress Table 9: ``to-lport`` QoS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is similar to ingress table :ref:`QoS <ls-in-12>` except they apply to
 ``to-lport`` QoS rules.
 
-.. _ls-out-11:
+.. _ls-out-10:
 
-Egress Table 11: Pre Network Function
+Egress Table 10: Pre Network Function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This stage selects the active network function from a ``Network_Function_Group``
@@ -1909,9 +1891,9 @@ support network function load balancing.
 - In inline, vtap mode: A priority-0 flow that simply moves traffic to the next
   table.
 
-.. _ls-out-12:
+.. _ls-out-11:
 
-Egress Table 12: Stateful
+Egress Table 11: Stateful
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is similar to ingress table :ref:`Stateful <ls-in-24>` except that there
@@ -1929,9 +1911,9 @@ connection tracking.
   when it comes out of the other port of the network function (required for
   cross host traffic redirection for VLAN subnet).
 
-.. _ls-out-13:
+.. _ls-out-12:
 
-Egress Table 13: Network Function
+Egress Table 12: Network Function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This table handles request packets for ``to-lport`` ACLs and response packets
@@ -2003,13 +1985,13 @@ in ``ct_label.nf_id`` during request processing.
 - In inline, vtap mode: One priority-0 flow same as ingress :ref:`Network
   Function <ls-in-25>`.
 
-.. _ls-out-14:
+.. _ls-out-13:
 
-Egress Table 14: Egress Port Security - check
+Egress Table 13: Egress Port Security - check
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is similar to the port security logic in table :ref:`Ingress Port Security
-check <ls-in-0>` except that action ``check_out_port_sec`` is used to check the
+check <ls-in-1>` except that action ``check_out_port_sec`` is used to check the
 port security rules.  This table adds the below logical flows.
 
 - A priority-110 flow matching ``reg8[24] == 1`` with action ``drop;``.  This
@@ -2025,27 +2007,27 @@ port security rules.  This table adds the below logical flows.
   addresses defined in the ``port_security`` column of ``Logical_Switch_Port``
   table before delivering the packet to the ``outport``.
 
-.. _ls-out-15:
+.. _ls-out-14:
 
-Egress Table 15: Egress Port Security - Apply
+Egress Table 14: Egress Port Security - Apply
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is similar to the ingress port security logic in ingress table
-:ref:`Ingress Port Security - Apply <ls-in-1>`.  This table drops the packets if
-the port security check failed in the previous stage i.e the register bit
-``REGBIT_PORT_SEC_DROP`` is set to 1.
+:ref:`Ingress Port Security - Apply <ls-in-2>`.  This table drops packets if
+the port security check failed in the previous stage, i.e. if the register
+bit ``REGBIT_PORT_SEC_DROP`` is set to 1.
 
 The following flows are added.
 
 - For each port configured with egress qos in the ``options:qdisc_queue_id``
   column of ``Logical_Switch_Port``, running a localnet port on the same logical
   switch, a priority 110 flow is added which matches on the localnet ``outport``
-  and on the port ``inport`` and applies the action ``set_queue(id); output;"``.
+  and on the port ``inport`` and applies the action ``set_queue(id); next;``.
 
 - For each localnet port configured with egress qos in the
   ``options:qdisc_queue_id`` column of ``Logical_Switch_Port``, a priority 100
   flow is added which matches on the localnet ``outport`` and applies the action
-  ``set_queue(id); output;"``.
+  ``set_queue(id); next;``.
 
   Please remember to mark the corresponding physical interface with ``ovn-
   egress-iface`` set to true in ``external_ids`` of ``Interface``.
@@ -2053,7 +2035,27 @@ The following flows are added.
 - A priority-50 flow that drops the packet if the register bit
   ``REGBIT_PORT_SEC_DROP`` is set to 1.
 
-- A priority-0 flow that outputs the packet to the ``outport``.
+- A priority-0 flow that advances the packet to the mirror table.
+
+.. _ls-out-15:
+
+Egress Table 15: Mirror
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Overlay remote mirror table contains the following logical flows:
+
+- For each logical switch port with an attached mirror, a logical flow with a
+  priority of 100 is added. This flow matches all outgoing packets to the
+  attached port, clones them, and forwards the cloned packets to the mirror
+  target port.
+
+- A priority 0 flow is added which matches on all packets and applies the
+  action ``output;``.
+
+- A logical flow added for each Mirror Rule in Mirror table attached to logical
+  switch ports, matches all outgoing packets that match rules and clones the
+  packet and sends cloned packet to mirror target port.
+
 
 .. _lr-datapaths:
 

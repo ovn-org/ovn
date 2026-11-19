@@ -8,6 +8,12 @@ OVN v26.09.1 - xx xxx xxxx
    - Allow FDB learning on logical switch ports that have both
      port_security and "unknown" addresses configured.
    - Drop OSX support, there will be no further testing of OVN build on OSX.
+   - Mirrors of type "lport" now mirror the traffic that is really present
+     on the logical port: "from-lport" traffic is mirrored in the first
+     ingress table, before port security, and "to-lport" traffic in the last
+     egress table, after port security.  Packets dropped by ingress port
+     security are now mirrored, while packets dropped by egress port
+     security are not mirrored anymore.
 
 OVN v26.09.0 - Sep 18 2026
 --------------------------

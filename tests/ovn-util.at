@@ -78,7 +78,7 @@ AT_CHECK_UNQUOTED([cat trace | $PYTHON $top_srcdir/utilities/ovn_detrace.py.in],
         resubmit(,??)
       * Logical datapaths:
       *     "ls" ($dp_uuid) [[egress]]
-      * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(output;)
+      * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(next;)
         65. reg15=0x2,metadata=0x1, priority 100, cookie $pb_vm1
             output:2
           * Logical datapath: "ls" ($dp_uuid)
@@ -99,7 +99,7 @@ cookie=$ingress, priority=50,metadata=0x1 actions=load:0->NXM_NX_REG10[[12]],res
 cookie=$egress, priority=0,metadata=0x1 actions=resubmit(,??)
   * Logical datapaths:
   *     "ls" ($dp_uuid) [[egress]]
-  * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(output;)
+  * Logical flow: table=$egress_table (ls_out_apply_port_sec), priority=0, match=(1), actions=(next;)
 
 ])
 
