@@ -25305,3 +25305,29 @@ AT_CHECK([grep -q "referential integrity violation" northd/ovn-northd.log], [1])
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Deleting a router with NAT does not leave orphaned lflows])
+ovn_start
+
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lr-nat-add lr1 snat 172.16.1.1 192.168.1.1
+check ovn-nbctl --wait=sb sync
+
+dnl The lr_stateful-owned ARP respond flow for the SNAT external IP
+dnl must be installed before the router is deleted.
+OVS_WAIT_UNTIL([ovn-sbctl lflow-list lr1 | grep 'lr_in_ip_input' | grep -q 'arp.tpa == 172.16.1.1'])
+
+check ovn-nbctl --wait=sb lr-del lr1
+
+dnl Deleting the router must remove all its logical flows from the SB
+dnl database without any referential integrity violation.
+AT_CHECK([grep -q "referential integrity violation" northd/ovn-northd.log], [1])
+AT_CHECK([ovn-sbctl lflow-list], [0], [dnl
+])
+AT_CHECK([ovn-sbctl --no-heading list datapath_binding], [0], [dnl
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])

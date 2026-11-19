@@ -21693,6 +21693,19 @@ lflow_handle_lr_stateful_changes(struct ovsdb_idl_txn *ovnsb_txn,
     struct hmapx_node *hmapx_node;
     bool handled = true;
 
+    HMAPX_FOR_EACH (hmapx_node, &trk_data->deleted) {
+        lr_stateful_rec = hmapx_node->data;
+
+        if (!lflow_ref_resync_flows(
+                lr_stateful_rec->lflow_ref, lflows, ovnsb_txn,
+                lflow_input->dps,
+                lflow_input->ovn_internal_version_changed,
+                lflow_input->sbrec_logical_flow_table,
+                lflow_input->sbrec_logical_dp_group_table)) {
+            return false;
+        }
+    }
+
     HMAPX_FOR_EACH (hmapx_node, &trk_data->crupdated) {
         lr_stateful_rec = hmapx_node->data;
         /* Unlink old lflows. */
