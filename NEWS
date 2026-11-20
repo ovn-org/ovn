@@ -77,6 +77,7 @@ Post v26.09.0
      the replies from the backends of its load balancers.  The CMS must make
      sure that the replies re-enter the router on the chassis that load
      balanced the request.  See ovn-nb(5).
+   - Drop OSX support, there will be no further testing of OVN build on OSX.
 
 OVN v26.09.0 - xxx xx xxxx
 --------------------------
