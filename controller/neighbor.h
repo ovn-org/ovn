@@ -27,11 +27,6 @@
 
 #include "vec.h"
 
-/* XXX: AF_BRIDGE doesn't seem to be defined on some systems, e.g., OSX. */
-#ifndef AF_BRIDGE
-#define AF_BRIDGE AF_UNSPEC
-#endif
-
 struct tracked_lport;
 
 enum neighbor_family {

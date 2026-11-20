@@ -7,6 +7,7 @@ OVN v26.09.1 - xx xxx xxxx
      Advertisements.
    - Allow FDB learning on logical switch ports that have both
      port_security and "unknown" addresses configured.
+   - Drop OSX support, there will be no further testing of OVN build on OSX.
 
 OVN v26.09.0 - Sep 18 2026
 --------------------------

@@ -75,8 +75,6 @@ EXTRA_DIST = \
 	.ci/linux-util.sh \
 	.ci/ovn_upgrade_test.py \
 	.ci/ovn_upgrade_utils.py \
-	.ci/osx-build.sh \
-	.ci/osx-prepare.sh \
 	.ci/ovn-kubernetes/prepare.sh \
 	.ci/ovn-kubernetes/custom.patch \
 	.github/workflows/containers.yml \
