@@ -20912,6 +20912,8 @@ AT_CLEANUP
 OVN_FOR_EACH_NORTHD([
 AT_SETUP([Network Function - vtap mode])
 AT_SKIP_IF([test $HAVE_TCPDUMP = no])
+TAG_UNSTABLE
+
 ovn_start
 OVS_TRAFFIC_VSWITCHD_START()
 
