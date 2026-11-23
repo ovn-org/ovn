@@ -25,7 +25,7 @@
 #include "include/ovn/version.h"
 
 #define ovn_set_program_name(name) \
-    ovs_set_program_name(name, OVN_PACKAGE_VERSION)
+    ovs_set_program_name(name, OVN_PACKAGE_VERSION_DISPLAY)
 
 #define ovn_print_version(MIN_OFP, MAX_OFP) \
     ovs_print_version(MIN_OFP, MAX_OFP)

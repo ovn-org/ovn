@@ -389,6 +389,8 @@ AC_DEFUN([OVN_ENABLE_VIF_PLUG], [
     fi
 ])
 
+dnl OVN_CHECK_VERSION_SUFFIX
+dnl
 dnl Append a version suffix.
 AC_DEFUN([OVN_CHECK_VERSION_SUFFIX], [
   AC_ARG_WITH([version-suffix],

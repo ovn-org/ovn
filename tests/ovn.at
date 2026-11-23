@@ -34233,8 +34233,9 @@ wait_row_count Port_Binding 1 logical_port=sw0-p2 chassis=$ch
 
 northd_version=$(ovn-sbctl get SB_Global . options:northd_internal_version | sed s/\"//g)
 echo "northd version = $northd_version"
-AT_CHECK([grep -c $northd_version hv1/ovn-controller.log], [0], [1
+AT_CHECK([grep -c "$northd_version" hv1/ovn-controller.log], [0], [1
 ])
+AT_CHECK([echo "$northd_version" | grep -q "\s"], [1])
 
 # Stop ovn-northd so that we can modify the northd_version.
 as northd

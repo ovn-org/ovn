@@ -18,8 +18,27 @@
 #ifndef OVN_VERSION_H
 #define OVN_VERSION_H 1
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+#if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+#define ASAN_SUFFIX " ASAN"
+#else
+#define ASAN_SUFFIX ""
+#endif
+#if __has_feature(undefined_behavior_sanitizer)
+#define UBSAN_SUFFIX " UBSAN"
+#else
+#define UBSAN_SUFFIX ""
+#endif
+
 #define OVN_PACKAGE_STRING  "@PACKAGE_STRING@"
 #define OVN_PACKAGE_VERSION "@PACKAGE_VERSION@@VERSION_SUFFIX@"
+
+/* For --version to display ASAN/UBSAN if compiled with sanitizers.
+ * Do not use for internal version. */
+#define OVN_PACKAGE_VERSION_DISPLAY \
+    OVN_PACKAGE_VERSION ASAN_SUFFIX UBSAN_SUFFIX
 
 #define OVN_LIB_VERSION     @LT_CURRENT@
 #define OVN_LIB_REVISION    @LT_REVISION@
