@@ -32,6 +32,8 @@ struct neighbor_exchange_ctx_in {
 struct neighbor_exchange_ctx_out {
     /* Contains int32_t representing if_index. */
     struct vector *neighbor_table_watches;
+    /* Last usable observations for each monitored interface and family. */
+    struct hmap *snapshots;
     /* Contains 'struct evpn_remote_vtep'. */
     struct hmap *remote_vteps;
     /* Contains 'struct evpn_static_entry', remote FDB entries learned through
@@ -68,6 +70,7 @@ struct evpn_static_entry {
 void neighbor_exchange_run(const struct neighbor_exchange_ctx_in *,
                            struct neighbor_exchange_ctx_out *);
 bool neighbor_exchange_retry_due(void);
+void neighbor_exchange_snapshots_clear(struct hmap *);
 void evpn_remote_vteps_clear(struct hmap *remote_vteps);
 void evpn_remote_vtep_list(struct unixctl_conn *, int argc,
                            const char *argv[], void *data_);

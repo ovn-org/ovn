@@ -54,7 +54,7 @@ struct ne_table_msg {
 int ne_nl_sync_neigh(uint8_t family, int32_t if_index,
                      enum neighbor_interface_type type,
                      const struct hmap *neighbors,
-                     struct vector *learned_neighbors);
+                     struct vector *learned_neighbors, bool *dump_failed);
 
 bool ne_is_ovn_owned(const struct ne_nl_received_neigh *nd,
                      enum neighbor_interface_type type);
