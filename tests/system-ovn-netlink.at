@@ -1,5 +1,10 @@
 AT_BANNER([system-ovn-netlink])
 
+AT_SETUP([sync netlink neighbors - retry failed writes])
+AT_KEYWORDS([netlink-neighbors netlink-retry])
+check ovstest test-ovn-netlink neighbor-exchange-retry
+AT_CLEANUP
+
 AT_SETUP([sync netlink neighbors - learn VXLAN VTEP neighbors])
 AT_KEYWORDS([netlink-neighbors])
 
