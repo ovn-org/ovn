@@ -137,6 +137,19 @@ if_notifier_cb(const struct rtnetlink_change *change, void *aux OVS_UNUSED)
         return;
     }
 
+    /* A rename reports the new name, which might not be watched.  Remove
+     * mappings for the same index before considering the current name. */
+    if (change->nlmsg_type == RTM_NEWLINK) {
+        struct simap_node *node;
+        SIMAP_FOR_EACH_SAFE (node, &monitor.ifname_to_ifindex) {
+            if (node->data == change->if_index
+                && strcmp(node->name, change->ifname)) {
+                simap_delete(&monitor.ifname_to_ifindex, node);
+                monitor.changes_detected = true;
+            }
+        }
+    }
+
     switch (change->nlmsg_type) {
     case RTM_NEWLINK:
         if ((change->ifi_flags & IFF_UP)
