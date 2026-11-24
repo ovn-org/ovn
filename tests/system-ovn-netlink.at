@@ -367,6 +367,21 @@ AT_CHECK_UNQUOTED([netlink_if_index lo-test], [0], [dnl
 $if_index
 ])
 
+dnl A rename to an unwatched name must invalidate the old mapping.
+on_exit 'if ip link show lo-renamed >/dev/null 2>&1; then ip link del lo-renamed; fi'
+AT_CHECK([ovstest test-ovn-netlink host-if-monitor lo-test \
+    'ip link set lo-test down && ip link set lo-test name lo-renamed' \
+    true], [0], [dnl
+0
+])
+
+dnl Renaming an interface into the watched name must learn its index.
+AT_CHECK_UNQUOTED([ovstest test-ovn-netlink host-if-monitor lo-test \
+    'ip link set lo-renamed name lo-test && ip link set lo-test up' \
+    true], [0], [dnl
+$if_index
+])
+
 dnl Should NOT notify if an interface whose name is not monitored by OVN
 dnl is added.
 check ip link del lo-test
