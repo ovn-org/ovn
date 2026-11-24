@@ -14,6 +14,7 @@
  */
 
 #include <config.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <linux/if_ether.h>
 #include <linux/rtnetlink.h>
@@ -44,14 +45,8 @@ VLOG_DEFINE_THIS_MODULE(neighbor_exchange_netlink);
 #endif
 
 static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5, 20);
+static struct vlog_rate_limit record_rl = VLOG_RATE_LIMIT_INIT(5, 20);
 
-/* Inspired from route_table_dump_one_table() in OVS. */
-typedef void ne_table_handle_msg_callback(const struct ne_table_msg *,
-                                          void *aux);
-static void ne_table_dump_one_ifindex(unsigned char address_family,
-                                      int32_t if_index,
-                                      ne_table_handle_msg_callback *,
-                                      void *aux);
 struct ne_msg_handle_data {
     /* Stores 'struct advertise_neighbor_entry'. */
     struct hmapx *neighbors_to_advertise;
@@ -69,7 +64,10 @@ struct ne_msg_handle_data {
     enum neighbor_interface_type type;
 };
 
-static void handle_ne_msg(const struct ne_table_msg *, void *data);
+static int ne_table_dump_one_ifindex(uint8_t family, int32_t if_index,
+                                      struct ne_msg_handle_data *);
+static void handle_ne_msg(const struct ne_nl_received_neigh *,
+                           struct ne_msg_handle_data *);
 
 static int ne_table_parse__(struct ofpbuf *, size_t ofs,
                             const struct nlmsghdr *,
@@ -91,15 +89,20 @@ static int ne_nl_del_neigh(int32_t if_index, uint8_t family,
  * (struct ne_nl_received_neigh) that exist in the table associated to
  * 'if_index'.
  *
+ * Sets 'dump_failed' when the dump is incomplete.  In that case, leaves
+ * 'learned_neighbors' and the kernel table unchanged.
+ *
  * Returns 0 on success, errno on failure. */
 int
 ne_nl_sync_neigh(uint8_t family, int32_t if_index,
                  enum neighbor_interface_type type,
                  const struct hmap *neighbors,
-                 struct vector *learned_neighbors)
+                 struct vector *learned_neighbors, bool *dump_failed)
 {
     struct hmapx neighbors_to_advertise =
         HMAPX_INITIALIZER(&neighbors_to_advertise);
+    struct vector learned =
+        VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh);
     struct vector stale_neighbors =
         VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh);
     struct advertise_neighbor_entry *an;
@@ -111,12 +114,22 @@ ne_nl_sync_neigh(uint8_t family, int32_t if_index,
 
     struct ne_msg_handle_data data = {
         .neighbors_to_advertise = &neighbors_to_advertise,
-        .learned_neighbors = learned_neighbors,
+        .learned_neighbors = learned_neighbors ? &learned : NULL,
         .stale_neighbors = &stale_neighbors,
         .neighbors = neighbors,
         .type = type,
     };
-    ne_table_dump_one_ifindex(family, if_index, handle_ne_msg, &data);
+    ret = ne_table_dump_one_ifindex(family, if_index, &data);
+    *dump_failed = ret != 0;
+    if (ret) {
+        VLOG_WARN_RL(&rl, "Neighbor dump failed for ifindex=%"PRId32
+                     " family=%u: %s", if_index, family, ovs_strerror(ret));
+        goto out;
+    }
+    if (!vector_is_empty(&learned)) {
+        vector_push_array(learned_neighbors, vector_get_array(&learned),
+                          vector_len(&learned));
+    }
 
     /* Add any remaining neighbors in the neighbors_to_advertise hmapx to the
      * system table. */
@@ -168,6 +181,8 @@ ne_nl_sync_neigh(uint8_t family, int32_t if_index,
         }
     }
 
+out:
+    vector_destroy(&learned);
     hmapx_destroy(&neighbors_to_advertise);
     vector_destroy(&stale_neighbors);
     return ret;
@@ -225,15 +240,15 @@ ne_is_valid_static_arp(struct ne_nl_received_neigh *ne)
            ne->state & NUD_NOARP && ne->flags & NTF_EXT_LEARNED;
 }
 
-static void
-ne_table_dump_one_ifindex(unsigned char address_family, int32_t if_index,
-                          ne_table_handle_msg_callback *handle_msg_cb,
-                          void *aux)
+static int
+ne_table_dump_one_ifindex(uint8_t address_family, int32_t if_index,
+                          struct ne_msg_handle_data *data)
 {
     uint64_t reply_stub[NL_DUMP_BUFSIZE / 8];
     struct ofpbuf request, reply, buf;
     struct ndmsg *rq_msg;
     struct nl_dump dump;
+    bool interrupted = false;
 
     uint8_t request_stub[NETNL_REQ_BUFFER_SIZE];
     ofpbuf_use_stub(&request, request_stub, sizeof request_stub);
@@ -250,24 +265,45 @@ ne_table_dump_one_ifindex(unsigned char address_family, int32_t if_index,
 
     ofpbuf_use_stub(&buf, reply_stub, sizeof reply_stub);
     while (nl_dump_next(&dump, &reply, &buf)) {
-        struct ne_table_msg msg;
-
-        if (ne_table_parse(&reply, &msg)) {
-            struct nlmsghdr *nlmsghdr = nl_msg_nlmsghdr(&reply);
-
-            /* Older kernels do not support filtering.  If so, we
-             * filter ourselves. */
-            if (!(nlmsghdr->nlmsg_flags & NLM_F_DUMP_FILTERED)) {
-                if (msg.nd.family != address_family
-                    || (if_index && msg.nd.if_index != if_index)) {
-                    continue;
-                }
-            }
-            handle_msg_cb(&msg, aux);
+        const struct nlmsghdr *nlmsghdr = ofpbuf_at(&reply, 0, NLMSG_HDRLEN);
+        if (nlmsghdr && (nlmsghdr->nlmsg_flags & NLM_F_DUMP_INTR)) {
+            interrupted = true;
         }
+        /* Drain this buffer too.  It may already contain NLMSG_DONE. */
+        if (interrupted) {
+            continue;
+        }
+
+        const struct ndmsg *nd = ofpbuf_at(&reply, NLMSG_HDRLEN, sizeof *nd);
+        if (!nlmsghdr || !nd) {
+            VLOG_WARN_RL(&record_rl,
+                         "Skipping truncated neighbor dump record");
+            continue;
+        }
+
+        /* Older kernels may return an unfiltered dump. */
+        if (!(nlmsghdr->nlmsg_flags & NLM_F_DUMP_FILTERED)
+            && (nd->ndm_family != address_family
+                || (if_index && nd->ndm_ifindex != if_index))) {
+            continue;
+        }
+
+        struct ne_table_msg msg;
+        if (!ne_table_parse(&reply, &msg)) {
+            VLOG_WARN_RL(&record_rl,
+                         "Skipping unsupported or malformed neighbor record "
+                         "for ifindex=%"PRId32" family=%u",
+                         nd->ndm_ifindex, nd->ndm_family);
+            continue;
+        }
+        handle_ne_msg(&msg.nd, data);
     }
     ofpbuf_uninit(&buf);
-    nl_dump_done(&dump);
+    int error = nl_dump_done(&dump);
+    if (!error && (interrupted || (dump.nl_flags & NLM_F_DUMP_INTR))) {
+        error = EINTR;
+    }
+    return error;
 }
 
 static int
@@ -376,42 +412,40 @@ ne_table_parse__(struct ofpbuf *buf, size_t ofs, const struct nlmsghdr *nlmsg,
 }
 
 static void
-handle_ne_msg(const struct ne_table_msg *msg, void *data)
+handle_ne_msg(const struct ne_nl_received_neigh *nd,
+              struct ne_msg_handle_data *data)
 {
-    struct ne_msg_handle_data *handle_data = data;
-    const struct ne_nl_received_neigh *nd = &msg->nd;
-
     /* OVN only manages VLAN 0 entries. */
     if (nd->vlan) {
         return;
     }
 
-    if (!ne_is_ovn_owned(nd, handle_data->type)) {
-        if (!handle_data->learned_neighbors) {
+    if (!ne_is_ovn_owned(nd, data->type)) {
+        if (!data->learned_neighbors) {
             return;
         }
 
         /* Learn the non-OVN entry. */
-        vector_push(handle_data->learned_neighbors, nd);
+        vector_push(data->learned_neighbors, nd);
         return;
     }
 
     /* This neighbor was presumably added by OVN, see if it's still valid.
      * OVN only adds neighbors with port set to 0, all others can be
      * removed. */
-    if (!nd->port && handle_data->neighbors_to_advertise) {
+    if (!nd->port && data->neighbors_to_advertise) {
         struct advertise_neighbor_entry *an =
-            advertise_neigh_find(handle_data->neighbors, nd->lladdr,
+            advertise_neigh_find(data->neighbors, nd->lladdr,
                                  &nd->addr);
         if (an) {
-            hmapx_find_and_delete(handle_data->neighbors_to_advertise, an);
+            hmapx_find_and_delete(data->neighbors_to_advertise, an);
             return;
         }
     }
 
     /* Store the entry for deletion. */
-    if (handle_data->stale_neighbors) {
-        vector_push(handle_data->stale_neighbors, nd);
+    if (data->stale_neighbors) {
+        vector_push(data->stale_neighbors, nd);
     }
 }
 
