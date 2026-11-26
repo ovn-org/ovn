@@ -19,7 +19,7 @@
 #include <net/if.h>
 
 #include "lib/rtnetlink.h"
-#include "openvswitch/shash.h"
+#include "lib/simap.h"
 #include "openvswitch/vlog.h"
 
 #include "host-if-monitor.h"
@@ -32,9 +32,7 @@ struct host_if_monitor {
     struct nln_notifier *link_notifier;
 
     struct sset watched_interfaces;
-    /* Maps interface names to struct host_if_monitor_link. */
-    struct shash links;
-    uint64_t last_link_generation;
+    struct simap ifname_to_ifindex;
 
     bool changes_detected;
 };
@@ -42,7 +40,7 @@ struct host_if_monitor {
 static struct host_if_monitor monitor = (struct host_if_monitor) {
     .link_notifier = NULL,
     .watched_interfaces = SSET_INITIALIZER(&monitor.watched_interfaces),
-    .links = SHASH_INITIALIZER(&monitor.links),
+    .ifname_to_ifindex = SIMAP_INITIALIZER(&monitor.ifname_to_ifindex),
     .changes_detected = false,
 };
 
@@ -67,21 +65,6 @@ host_if_monitor_run(void)
     return monitor.changes_detected;
 }
 
-static void
-host_if_monitor_set_link(const char *if_name, int32_t if_index)
-{
-    struct host_if_monitor_link *link = shash_find_data(&monitor.links,
-                                                       if_name);
-    if (!link) {
-        link = xzalloc(sizeof *link);
-        shash_add(&monitor.links, if_name, link);
-    }
-    if (link->if_index != if_index) {
-        link->if_index = if_index;
-        link->generation = ++monitor.last_link_generation;
-    }
-}
-
 void
 host_if_monitor_update_watches(const struct sset *if_names)
 {
@@ -102,11 +85,10 @@ host_if_monitor_update_watches(const struct sset *if_names)
         sset_clone(&monitor.watched_interfaces, if_names);
 
         /* Remove mappings for if_names that are not tracked anymore. */
-        struct shash_node *node;
-        SHASH_FOR_EACH_SAFE (node, &monitor.links) {
-            if (!sset_contains(&monitor.watched_interfaces, node->name)) {
-                free(node->data);
-                shash_delete(&monitor.links, node);
+        struct simap_node *sn;
+        SIMAP_FOR_EACH_SAFE (sn, &monitor.ifname_to_ifindex) {
+            if (!sset_contains(&monitor.watched_interfaces, sn->name)) {
+                simap_delete(&monitor.ifname_to_ifindex, sn);
             }
         }
     }
@@ -128,10 +110,8 @@ host_if_monitor_update_watches(const struct sset *if_names)
          *   callback is not called.
          */
         SSET_FOR_EACH (if_name, &new_if_names) {
-            int32_t if_index = if_nametoindex(if_name);
-            if (if_index) {
-                host_if_monitor_set_link(if_name, if_index);
-            }
+            simap_put(&monitor.ifname_to_ifindex, if_name,
+                      if_nametoindex(if_name));
         }
     } else {
         if (monitor.link_notifier) {
@@ -144,12 +124,10 @@ host_if_monitor_update_watches(const struct sset *if_names)
     sset_destroy(&new_if_names);
 }
 
-struct host_if_monitor_link
-host_if_monitor_get_link(const char *if_name)
+int32_t
+host_if_monitor_ifname_toindex(const char *if_name)
 {
-    const struct host_if_monitor_link *link = shash_find_data(&monitor.links,
-                                                             if_name);
-    return link ? *link : (struct host_if_monitor_link) { 0 };
+    return simap_get(&monitor.ifname_to_ifindex, if_name);
 }
 
 static void
@@ -159,29 +137,35 @@ if_notifier_cb(const struct rtnetlink_change *change, void *aux OVS_UNUSED)
         return;
     }
 
-    if (change->nlmsg_type != RTM_NEWLINK
-        && change->nlmsg_type != RTM_DELLINK) {
-        return;
-    }
-
-    /* A rename event names the new link, which may not be watched.
-     * Invalidate the old name by index so its generation cannot restore
-     * observations to an interface that no longer matches the watch. */
-    struct shash_node *node;
-    SHASH_FOR_EACH_SAFE (node, &monitor.links) {
-        const struct host_if_monitor_link *link = node->data;
-        if (link->if_index == change->if_index
-            && (change->nlmsg_type == RTM_DELLINK
-                || strcmp(node->name, change->ifname))) {
-            free(node->data);
-            shash_delete(&monitor.links, node);
-            monitor.changes_detected = true;
+    /* A rename reports the new name, which might not be watched.  Remove
+     * mappings for the same index before considering the current name. */
+    if (change->nlmsg_type == RTM_NEWLINK) {
+        struct simap_node *node;
+        SIMAP_FOR_EACH_SAFE (node, &monitor.ifname_to_ifindex) {
+            if (node->data == change->if_index
+                && strcmp(node->name, change->ifname)) {
+                simap_delete(&monitor.ifname_to_ifindex, node);
+                monitor.changes_detected = true;
+            }
         }
     }
 
-    if (change->nlmsg_type == RTM_NEWLINK && (change->ifi_flags & IFF_UP)
-        && sset_contains(&monitor.watched_interfaces, change->ifname)) {
-        host_if_monitor_set_link(change->ifname, change->if_index);
-        monitor.changes_detected = true;
+    switch (change->nlmsg_type) {
+    case RTM_NEWLINK:
+        if ((change->ifi_flags & IFF_UP)
+            && sset_find(&monitor.watched_interfaces, change->ifname)) {
+            simap_put(&monitor.ifname_to_ifindex,
+                      change->ifname, change->if_index);
+            monitor.changes_detected = true;
+        }
+        break;
+    case RTM_DELLINK:
+        if (sset_find(&monitor.watched_interfaces, change->ifname)) {
+            simap_find_and_delete(&monitor.ifname_to_ifindex, change->ifname);
+            monitor.changes_detected = true;
+        }
+        break;
+    default:
+        break;
     }
 }

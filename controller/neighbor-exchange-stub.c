@@ -30,11 +30,6 @@ neighbor_exchange_retry_due(void)
 }
 
 void
-neighbor_exchange_snapshots_clear(struct hmap *snapshots OVS_UNUSED)
-{
-}
-
-void
 evpn_remote_vteps_clear(struct hmap *remote_vteps OVS_UNUSED)
 {
 }

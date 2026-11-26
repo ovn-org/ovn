@@ -36,8 +36,8 @@ host_if_monitor_update_watches(const struct sset *if_names OVS_UNUSED)
 {
 }
 
-struct host_if_monitor_link
-host_if_monitor_get_link(const char *if_name OVS_UNUSED)
+int32_t
+host_if_monitor_ifname_toindex(const char *if_name OVS_UNUSED)
 {
-    return (struct host_if_monitor_link) { 0 };
+    return 0;
 }

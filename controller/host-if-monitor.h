@@ -18,18 +18,13 @@
 
 #include <stdint.h>
 #include "lib/sset.h"
+#include "lib/smap.h"
 
 void host_if_monitor_wait(void);
 bool host_if_monitor_run(void);
 
 void host_if_monitor_update_watches(const struct sset *if_names);
 
-struct host_if_monitor_link {
-    int32_t if_index;
-    /* Changes when a watched link is removed or replaced. */
-    uint64_t generation;
-};
-
-struct host_if_monitor_link host_if_monitor_get_link(const char *if_name);
+int32_t host_if_monitor_ifname_toindex(const char *if_name);
 
 #endif /* HOST_IF_MONITOR_H */

@@ -52,60 +52,6 @@ static uint32_t evpn_static_entry_hash(const struct eth_addr *mac,
  * of other engine inputs. */
 static long long int neighbor_exchange_retry_at;
 
-struct neighbor_snapshot {
-    struct hmap_node node;
-    uint64_t link_generation;
-    enum neighbor_family family;
-    enum neighbor_interface_type type;
-    uint32_t vni;
-    struct vector learned;
-    bool seen;
-};
-
-static struct neighbor_snapshot *
-neighbor_snapshot_get(struct hmap *snapshots,
-                      const struct neighbor_interface_monitor *nim,
-                      uint64_t link_generation)
-{
-    uint32_t hash = hash_3words(nim->family, nim->type, nim->vni);
-    hash = hash_uint64_basis(link_generation, hash);
-    struct neighbor_snapshot *snapshot;
-    HMAP_FOR_EACH_WITH_HASH (snapshot, node, hash, snapshots) {
-        if (snapshot->link_generation == link_generation
-            && snapshot->family == nim->family && snapshot->type == nim->type
-            && snapshot->vni == nim->vni) {
-            return snapshot;
-        }
-    }
-
-    snapshot = xmalloc(sizeof *snapshot);
-    *snapshot = (struct neighbor_snapshot) {
-        .link_generation = link_generation,
-        .family = nim->family,
-        .type = nim->type,
-        .vni = nim->vni,
-        .learned = VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh),
-    };
-    hmap_insert(snapshots, &snapshot->node, hash);
-    return snapshot;
-}
-
-static void
-neighbor_snapshot_destroy(struct neighbor_snapshot *snapshot)
-{
-    vector_destroy(&snapshot->learned);
-    free(snapshot);
-}
-
-void
-neighbor_exchange_snapshots_clear(struct hmap *snapshots)
-{
-    struct neighbor_snapshot *snapshot;
-    HMAP_FOR_EACH_POP (snapshot, node, snapshots) {
-        neighbor_snapshot_destroy(snapshot);
-    }
-}
-
 void
 neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
                       struct neighbor_exchange_ctx_out *n_ctx_out)
@@ -119,42 +65,24 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
     host_if_monitor_update_watches(&if_names);
     sset_destroy(&if_names);
 
-    evpn_remote_vteps_clear(n_ctx_out->remote_vteps);
-    evpn_static_entries_clear(n_ctx_out->static_fdbs);
-    evpn_static_entries_clear(n_ctx_out->static_arps);
-    vector_clear(n_ctx_out->neighbor_table_watches);
-
     bool retry = false;
     VECTOR_FOR_EACH (n_ctx_in->monitored_interfaces, nim) {
-        struct host_if_monitor_link link =
-            host_if_monitor_get_link(nim->if_name);
-        if (!link.if_index) {
+        int32_t if_index = host_if_monitor_ifname_toindex(nim->if_name);
+        if (!if_index) {
             continue;
         }
 
         struct vector received_neighbors =
             VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh);
-        bool dump_failed;
-        int error = ne_nl_sync_neigh(nim->family, link.if_index, nim->type,
+        int error = ne_nl_sync_neigh(nim->family, if_index, nim->type,
                                     &nim->announced_neighbors,
-                                    &received_neighbors, &dump_failed);
+                                    &received_neighbors);
         retry |= error != 0;
-
-        struct neighbor_snapshot *snapshot =
-            neighbor_snapshot_get(n_ctx_out->snapshots, nim, link.generation);
-        snapshot->seen = true;
-        /* A successful empty dump supersedes the previous observations.
-         * Add/delete errors still leave us with a usable dump. */
-        if (!dump_failed) {
-            vector_destroy(&snapshot->learned);
-            snapshot->learned = vector_steal(&received_neighbors);
-        }
-        vector_destroy(&received_neighbors);
 
         struct ne_nl_received_neigh *ne;
         switch (nim->type) {
         case NEIGH_IFACE_BRIDGE:
-            VECTOR_FOR_EACH_PTR (&snapshot->learned, ne) {
+            VECTOR_FOR_EACH_PTR (&received_neighbors, ne) {
                 if (ne_is_valid_static_arp(ne)) {
                     if (!evpn_static_entry_find(n_ctx_out->static_arps,
                                                 ne->lladdr, ne->addr,
@@ -167,7 +95,7 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
             }
             break;
         case NEIGH_IFACE_VXLAN:
-            VECTOR_FOR_EACH_PTR (&snapshot->learned, ne) {
+            VECTOR_FOR_EACH_PTR (&received_neighbors, ne) {
                 if (ne_is_valid_remote_vtep(ne)) {
                     uint16_t port = ne->port ? ne->port : DEFAULT_VXLAN_PORT;
                     if (!evpn_remote_vtep_find(n_ctx_out->remote_vteps,
@@ -195,17 +123,8 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
             OVS_NOT_REACHED();
         }
 
-        vector_push(n_ctx_out->neighbor_table_watches, &link.if_index);
-    }
-
-    struct neighbor_snapshot *snapshot;
-    HMAP_FOR_EACH_SAFE (snapshot, node, n_ctx_out->snapshots) {
-        if (!snapshot->seen) {
-            hmap_remove(n_ctx_out->snapshots, &snapshot->node);
-            neighbor_snapshot_destroy(snapshot);
-        } else {
-            snapshot->seen = false;
-        }
+        vector_push(n_ctx_out->neighbor_table_watches, &if_index);
+        vector_destroy(&received_neighbors);
     }
 
     neighbor_exchange_retry_at = retry ? time_msec() + 1000 : 0;
