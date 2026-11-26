@@ -25,7 +25,6 @@
 #include "openvswitch/vlog.h"
 #include "ovn-util.h"
 #include "packets.h"
-#include "timeval.h"
 #include "vec.h"
 #include "unixctl.h"
 
@@ -48,9 +47,23 @@ static uint32_t evpn_static_entry_hash(const struct eth_addr *mac,
                                        const struct in6_addr *ip,
                                        uint32_t vni, uint32_t nh_id);
 
-/* Retry failed Netlink operations at most once per second in the absence
- * of other engine inputs. */
-static long long int neighbor_exchange_retry_at;
+/* Last neighbor_exchange netlink operation. */
+static int neighbor_exchange_nl_status;
+
+#define CLEAR_NEIGHBOR_EXCHANGE_NL_STATUS() \
+    do {                                    \
+        neighbor_exchange_nl_status = 0;    \
+    } while (0)
+
+#define SET_NEIGHBOR_EXCHANGE_NL_STATUS(error)     \
+    do {                                           \
+        if (!neighbor_exchange_nl_status) {        \
+            neighbor_exchange_nl_status = (error); \
+            if (error) {                           \
+                poll_immediate_wake();             \
+            }                                      \
+        }                                          \
+    } while (0)
 
 void
 neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
@@ -65,19 +78,20 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
     host_if_monitor_update_watches(&if_names);
     sset_destroy(&if_names);
 
-    bool retry = false;
+    CLEAR_NEIGHBOR_EXCHANGE_NL_STATUS();
     VECTOR_FOR_EACH (n_ctx_in->monitored_interfaces, nim) {
         int32_t if_index = host_if_monitor_ifname_toindex(nim->if_name);
+
         if (!if_index) {
             continue;
         }
 
         struct vector received_neighbors =
             VECTOR_EMPTY_INITIALIZER(struct ne_nl_received_neigh);
-        int error = ne_nl_sync_neigh(nim->family, if_index, nim->type,
-                                    &nim->announced_neighbors,
-                                    &received_neighbors);
-        retry |= error != 0;
+        SET_NEIGHBOR_EXCHANGE_NL_STATUS(
+            ne_nl_sync_neigh(nim->family, if_index, nim->type,
+                             &nim->announced_neighbors, &received_neighbors)
+        );
 
         struct ne_nl_received_neigh *ne;
         switch (nim->type) {
@@ -126,24 +140,12 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *n_ctx_in,
         vector_push(n_ctx_out->neighbor_table_watches, &if_index);
         vector_destroy(&received_neighbors);
     }
-
-    neighbor_exchange_retry_at = retry ? time_msec() + 1000 : 0;
-    if (retry) {
-        poll_timer_wait_until(neighbor_exchange_retry_at);
-    }
 }
 
-bool
-neighbor_exchange_retry_due(void)
+int
+neighbor_exchange_status_run(void)
 {
-    if (!neighbor_exchange_retry_at) {
-        return false;
-    }
-    if (time_msec() >= neighbor_exchange_retry_at) {
-        return true;
-    }
-    poll_timer_wait_until(neighbor_exchange_retry_at);
-    return false;
+    return neighbor_exchange_nl_status;
 }
 
 void

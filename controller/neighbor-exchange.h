@@ -67,7 +67,7 @@ struct evpn_static_entry {
 
 void neighbor_exchange_run(const struct neighbor_exchange_ctx_in *,
                            struct neighbor_exchange_ctx_out *);
-bool neighbor_exchange_retry_due(void);
+int neighbor_exchange_status_run(void);
 void evpn_remote_vteps_clear(struct hmap *remote_vteps);
 void evpn_remote_vtep_list(struct unixctl_conn *, int argc,
                            const char *argv[], void *data_);

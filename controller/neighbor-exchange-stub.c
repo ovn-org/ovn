@@ -23,10 +23,10 @@ neighbor_exchange_run(const struct neighbor_exchange_ctx_in *ctx_in OVS_UNUSED,
 {
 }
 
-bool
-neighbor_exchange_retry_due(void)
+int
+neighbor_exchange_status_run(void)
 {
-    return false;
+    return 0;
 }
 
 void

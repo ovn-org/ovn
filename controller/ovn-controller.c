@@ -8386,7 +8386,7 @@ main(int argc, char *argv[])
                     struct ed_type_neighbor_exchange_status *neigh_res =
                         engine_get_internal_data(&en_neighbor_exchange_status);
                     neigh_res->netlink_trigger_run =
-                        neighbor_exchange_retry_due();
+                        !!neighbor_exchange_status_run();
 
                     stopwatch_start(CONTROLLER_LOOP_STOPWATCH_NAME,
                                     time_msec());
