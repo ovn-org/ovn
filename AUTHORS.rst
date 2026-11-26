@@ -179,6 +179,7 @@ Gianluca Merlo                     gianluca.merlo@gmail.com
 Giuseppe Lettieri                  g.lettieri@iet.unipi.it
 Glen Gibb                          grg@stanford.edu
 Gongming Chen                      gmingchen@tencent.com
+Guillaume Boutry                   guillaume.boutry@canonical.com
 Guoshuai Li                        ligs@dtdream.com
 Guolin Yang                        gyang@vmware.com
 Guru Chaitanya Perakam             gperakam@Brocade.com
